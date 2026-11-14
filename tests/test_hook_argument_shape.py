@@ -207,6 +207,9 @@ _REFUSAL_AUDITED = {
     "archive-plan": "names the token; exits 2 (valid --dry-run exits 0)",
     "plan": "names the token; exits 2 (valid resolve exits 0) — every op parses "
             "through `_parse_plan_args`, which refuses any unknown dash token",
+    "native-review": "names the token; exits 1, as the valid show does here, with a "
+                     "different message — `show` takes one review id and refuses a "
+                     "token that is not one; any other shape is a usage error naming argv",
 }
 
 # Empty, and it must stay that way by argument rather than by neglect: an entry
@@ -240,6 +243,7 @@ _VALID_INVOCATIONS = {
     "archive-plan": ["archive-plan", ".prawduct/artifacts/build-plan.md", "--dry-run"],
     # The read-only op; `new`/`bind` share its parser (`_parse_plan_args`).
     "plan": ["plan", "resolve"],
+    "native-review": ["native-review", "show"],
 }
 
 _UNKNOWN_TOKEN = "--zzz-unrecognised-token"
@@ -464,6 +468,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("critic-discard", []),
         ("critic-restore", ["rev-abc"]),
         ("critic-consolidate", []),
+        ("validate-partial", [".prawduct/.critic-partials/design.rev-1.json"]),
         ("subagent-stop", []),
         ("stop", []),
         ("jurisdiction", ["--file", "plan.md"]),
@@ -552,7 +557,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
     from both is one nobody checked against the guard."""
     listed = {
         "clear", "critic-begin", "critic-end", "critic-discard", "critic-restore",
-        "critic-consolidate", "subagent-stop", "stop", "jurisdiction", "test-status",
+        "critic-consolidate", "validate-partial", "subagent-stop", "stop", "jurisdiction", "test-status",
         "validate-evidence", "test-evidence", "check-cumulative-critic",
         "verify-chunk-refs", "verify-records", "verify-coverage", "ledger-append",
         "handoff", "review-stats", "stats", "contribute", "aggregate-stats", "classify-diff-risk",
@@ -580,6 +585,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "git-tidy",
         "stale-plugin-caches",
         "plan",
+        "native-review",
     }
     assert set(_dispatch_branches()) == listed
 

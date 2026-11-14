@@ -21,6 +21,7 @@ pyc-cache learning, mirroring tests/test_governance_ledger.py.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import subprocess
 from pathlib import Path
@@ -404,6 +405,50 @@ class TestAboveReviewerCeiling:
         assert report["above_reviewer_ceiling"]["reviews"] == 1
 
 
+class TestSpanRollup:
+    """The bounded-cumulative lever's split: a cumulative is `bounded` (the
+    delta since a boundary review) or `full`. A cumulative event from before
+    the field reviewed the whole bundle — nothing was bounded then — so it
+    reads `full`, its reason `unrecorded`. Other modes have no span."""
+
+    def test_cumulatives_split_by_span_with_the_full_reasons(self, tmp_path):
+        repo = tmp_path / "repo"
+        bounded = _event(mode=CUMULATIVE_MODE, stage="boundary", findings=[
+            {"goal": "2", "severity": "blocking", "summary": "b"},
+        ])
+        bounded["review"].update(span="bounded", bounded_from="rev-1", span_reason=None)
+        full = _event(mode=CUMULATIVE_MODE, stage="boundary")
+        full["review"].update(span="full", bounded_from=None, span_reason="path-not-clean")
+        _write_ledger(repo, [
+            bounded, full,
+            _event(mode=CUMULATIVE_MODE),  # before the field: the whole bundle
+            _event(mode=CHUNK_MODE, stage="inner"),  # no span at all
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        by = {e["span"]: e for e in report["by_span"]}
+        assert [e["span"] for e in report["by_span"]] == ["bounded", "full"]
+        assert by["bounded"]["reviews"] == 1 and by["bounded"]["findings"]["blocking"] == 1
+        assert by["full"]["reviews"] == 2
+        assert by["full"]["reasons"] == {"path-not-clean": 1, "unrecorded": 1}
+        assert "reasons" not in by["bounded"]
+
+    def test_both_spans_are_listed_at_zero(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(mode=CHUNK_MODE)])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert [(e["span"], e["reviews"]) for e in report["by_span"]] == [("bounded", 0), ("full", 0)]
+
+    def test_the_human_rendering_prints_the_split_and_the_reasons(self, tmp_path):
+        repo = tmp_path / "repo"
+        full = _event(mode=CUMULATIVE_MODE, stage="boundary")
+        full["review"].update(span="full", span_reason="base-moved")
+        _write_ledger(repo, [full])
+        out = _run(repo).stdout
+        (line,) = [ln for ln in out.splitlines() if ln.startswith("  full: ")]
+        assert line.endswith(" — base-moved 1")
+        assert "by span (cumulative only):" in out
+
+
 class TestStageRollup:
     """The yield-by-stage query the stage-keyed rigor norm was drawn to answer
     (`nonfunctional-requirements.md` § Direction). `critic-begin` stamps
@@ -540,7 +585,7 @@ class TestJsonSchemaStability:
         report = json.loads(_run(repo, "--json").stdout)
         assert list(report) == [
             "schema_version", "project", "generated_at", "window", "dispositions", "events_total",
-            "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage",
+            "native_review", "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage", "by_span",
             "consolidated_by", "above_reviewer_ceiling", "top_files",
             "files_attributed_total", "learning",
         ]
@@ -570,7 +615,18 @@ class TestJsonSchemaStability:
         # 9 -> 10 (reviewer-model-cap): an `above_reviewer_ceiling` count of
         # reviews recorded on a model above the reviewer ceiling joined the top
         # level. Added.
-        assert report["schema_version"] == 10
+        # 10 -> 11 (bounded-cumulative Chunk 04): a `by_span` grouping of
+        # cumulative reviews, with why each full one ran full, joined the top
+        # level. Added.
+        # 12 -> 13 (native-review-paired Chunk 03): `native_review`, the paired
+        # native review's runs reported apart from every Critic total. Added.
+        # 13 -> 14 (native-review-inner): `native_review` gained `by_stage`,
+        # inner and boundary native runs apart. A nested key change, pinned
+        # below so the next one is caught too.
+        assert report["schema_version"] == 14
+        assert list(report["native_review"]) == [
+            "runs", "duration_measured", "countable_runs", "findings", "by_stage",
+        ]
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -589,6 +645,9 @@ class TestJsonSchemaStability:
         assert list(report["by_role_model_mode"][0]) == ["role", "model", "mode", *stat_keys]
         assert list(report["by_scope"][0]) == ["scope", *stat_keys]
         assert list(report["by_stage"][0]) == ["stage", *stat_keys]
+        assert [list(e) for e in report["by_span"]] == [
+            ["span", *stat_keys], ["span", *stat_keys, "reasons"],
+        ]
         assert list(report["top_files"][0]) == ["path", "actionable_findings", "findings"]
         for key in ("duration_measured", "duration_self_reported"):
             assert list(report["overall"][key]) == ["reviews", "total_seconds", "median_seconds"]
@@ -834,14 +893,14 @@ class TestDurationProvenanceSplit:
         """The control for the rendering change: `--json` is a published
         contract, so the older keys still carry the estimate over every review
         that had one. No key is repurposed, so the rendering change moved no
-        schema version; 9 and 10 are later key additions, not this change."""
+        schema version; every version since is a later key addition, not this change."""
         repo = tmp_path / "repo"
         _write_ledger(repo, [
             _event(duration=600, dispatched_at="2026-06-10T11:56:00Z"),
             _event(duration=300),
         ])
         report = json.loads(_run(repo, "--json").stdout)
-        assert report["schema_version"] == 10
+        assert report["schema_version"] == 14
         assert report["overall"]["duration_total_seconds"] == 900
         assert report["overall"]["duration_median_seconds"] == 450
 
@@ -1255,9 +1314,13 @@ class TestDispositionJoin:
         }
         assert block["by_outcome"] == expected
         # The fixture reaches every branch it claims to: one of each, the note
-        # outside the block, and R-5 left open.
+        # outside the block, and R-5 left open. `waived_inherited` is zero: R-4's
+        # waiver is a verify pass's, and consolidation's own inherited-base
+        # waiver is counted apart (pinned in `test_critic_consolidate`,
+        # `test_review_stats_counts_an_inherited_waiver_apart_from_a_judged_one`).
         assert expected == {"fixed": 1, "fixed_unreviewed": 0, "filed": 1, "accepted": 1,
-                            "waived": 1, "undispositioned": 1, "other": 0}
+                            "waived": 1, "waived_inherited": 0, "undispositioned": 1,
+                            "other": 0}
         answered = sum(by_version["findings"][s]["answered"] for s in ("blocking", "warning"))
         assert block["answered"] == answered == 4
         assert block["acted_on_rate"] == 0.5  # fixed + filed over four answered
@@ -1434,8 +1497,29 @@ class TestJsonContractMatchesTheDoc:
                     "acted_on_rate", "as_of"):
             assert f"`{key}`" in section, key
 
+    def test_every_outcome_name_is_documented_in_both_reports(self):
+        """`by_outcome`'s keys and `stats`'s per-severity outcomes are one fixed
+        set, `stats.OUTCOMES`, and a nested key set is a contract too: a name the
+        code emits and the doc's lists omit is an outcome no reader can decode,
+        and adding one bumps both reports' schema versions."""
+        doc = (ROOT / "docs" / "governance-telemetry.md").read_text()
+        review_stats = doc.split("## `prawduct-hook review-stats", 1)[1].split("\n## ", 1)[0]
+        stats_section = doc.split("## `prawduct-hook stats", 1)[1].split("\n## ", 1)[0]
+        # The list items themselves, not the whole section: a "Schema N added"
+        # sentence naming the outcome must not stand in for the list.
+        by_outcome = (
+            review_stats.split("- `by_outcome`:", 1)[1].split("(", 1)[1].split(")", 1)[0]
+        )
+        stats_words = set(re.findall(
+            r"[a-z_]+", stats_section.split("Outcomes are", 1)[1].split("Anything", 1)[0]
+        ))
+        for name in _stats.OUTCOMES:
+            assert f"`{name}`" in by_outcome, f"by_outcome list omits {name}"
+            if name != "other":
+                assert name in stats_words, f"stats outcome list omits {name}"
 
-REPORT_SCHEMA = 10
+
+REPORT_SCHEMA = 12
 
 
 class TestRecordedPrReviewsStayReadable:

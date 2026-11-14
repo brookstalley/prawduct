@@ -51,7 +51,9 @@ roster role has reported a schema-valid partial at the manifest's dispatch
 commit. Anything else is a no-op naming the missing roles (still in flight)
 or a hard error (malformed / inconsistent / off-protocol). Success appends
 the review fact (skipped when the id already exists — the CRT-4B7X race dies
-here), appends any resolution facts, regenerates ``.critic-findings.json``
+here), appends any resolution facts — a verify pass's, and the
+inherited-baseline waivers consolidation writes itself in every mode
+(:func:`_waive_inherited_failures`) — regenerates ``.critic-findings.json``
 as a derived cache carrying its source ``fact_id`` (D7), anchors the ledger,
 clears the critic-active marker, and removes the partials so every repeat
 call is a clean no-op.
@@ -66,6 +68,7 @@ staleness" defect class this plan deletes.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -75,7 +78,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import coverage_algebra, critic_marker, evidence, evidence_notes, gates, gitstate, ledger, model_tier
+from . import coverage_algebra, critic_marker, dispositions, evidence, evidence_notes, gates, gitstate, ledger, model_tier
 from .core import GITIGNORE_ENTRIES, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -108,7 +111,8 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 #: ``begin_review`` chooses the interval by mode — ``chunk``/``final`` review
 #: to the working tree from HEAD (or from the covered frontier behind it),
 #: ``verify-resolutions`` the delta since the prior fact,
-#: ``cumulative`` merge-base → HEAD — so the stage is a function of the mode
+#: ``cumulative`` the committed bundle to HEAD, or the part of it since the last
+#: boundary review — so the stage is a function of the mode
 #: token. This mapping is that function's one home: the dispatch writes the
 #: result onto the manifest as ``stage``, and every reader downstream (the
 #: reviewer prompt, the fact, the findings cache, the ledger event,
@@ -116,6 +120,12 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 STAGE_INNER = "inner"
 STAGE_BOUNDARY = "boundary"
 STAGE_VALUES = frozenset({STAGE_INNER, STAGE_BOUNDARY})
+
+#: A ``cumulative``'s span: the delta since the last boundary review, or the
+#: whole bundle (``begin_review``; ``gates.boundary_frontier`` decides).
+SPAN_BOUNDED = "bounded"
+SPAN_FULL = "full"
+SPAN_VALUES = frozenset({SPAN_BOUNDED, SPAN_FULL})
 STAGE_OF_MODE = {
     "chunk": STAGE_INNER,
     "final": STAGE_INNER,
@@ -808,8 +818,9 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     it. Two reasons not to. The phrasings are an open set, so a parser that
     misses one fails silently in the same direction as the bug. And
     ``data-model.md`` forbids the result outright: a resolution fact requires a
-    ``verify-resolutions`` origin and a pre-existing target finding — minting
-    one from narration would record a judgment nobody made. So nothing is
+    ``verify-resolutions`` origin (or an ``inherited-baseline`` one, backed by a
+    base-tree test run naming every failing id) and a pre-existing target
+    finding — minting one from narration would record a judgment nobody made. So nothing is
     invented here; the pass simply stops being able to claim it finished while a
     blocker it inherited is still outstanding.
 
@@ -878,15 +889,33 @@ def next_action_line(
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
     uncertified: "tuple[str, list[str]] | None" = None,
+    waived: "list[str] | None" = None,
 ) -> str:
     """:func:`_next_action_core`'s sentence, ending on :func:`uncertified_clause`
     when ``uncertified`` (the review's mode and the plan's open chunks) says a
     whole-plan review certified nothing. Every arm carries it: a fix round does
-    not change which chunks this review left open."""
+    not change which chunks this review left open.
+
+    ``waived`` names this review's BLOCKING findings consolidate waived as
+    inherited from the base tree. They still count in ``blocking`` on the
+    fact, so they are taken out here and named first: told to fix them, the
+    builder would buy the very round the waiver exists to save. Its one caller
+    is :func:`fact_to_cache_record`, which derives the list from the store
+    (:func:`dispositions.inherited_waivers`); the relayed ``NEXT-ACTION:`` line
+    is that record's own ``next_action``, so no caller computes it twice."""
+    if waived:
+        blocking = max(blocking - len(waived), 0)
     line = _next_action_core(
         fact_id, blocking, warning, note, price_sentence, carried, span,
         observations, cost, rides_next_review,
     )
+    if waived:
+        line = (
+            f"{len(waived)} BLOCKING finding(s) ({', '.join(waived)}) failed on"
+            " the merge-base tree too and are waived as inherited (`origin:"
+            " inherited-baseline` resolution facts); no fix or verify round is"
+            " owed for them. " + line
+        )
     if uncertified:
         line += " " + uncertified_clause(*uncertified)
     return line
@@ -1517,7 +1546,7 @@ def _widened_fallback_mode(
                 "the delta includes committed work, and `final`'s interval starts at "
                 f"the last reviewed state ({start['commit'][:12]}), so it covers "
                 "those commits and the uncommitted work — a narrower span than "
-                "`cumulative`'s merge-base…HEAD"
+                "a full `cumulative`'s merge-base…HEAD"
             )
         if start["origin"] == BASE_AT_MERGE_BASE:
             return "final", (
@@ -1554,8 +1583,9 @@ def _widened_fallback_mode(
     return "cumulative", (
         "the delta includes committed work that `final` cannot reach — no "
         "reviewed state without an open blocker sits behind it for its interval "
-        "to start from; `cumulative` spans merge-base…HEAD — the work this "
-        "branch owes, and the PR gate's own span"
+        "to start from; `cumulative` spans merge-base…HEAD, or the delta since "
+        "the last clean boundary review — either way the work this branch owes, "
+        "composing to the PR gate's own span"
     )
 
 
@@ -2176,7 +2206,8 @@ CHUNK_TYPE_DEFAULT_LABEL = "code (default)"
 
 def signals_line(manifest: dict) -> str:
     """The one-line signals summary a coordinator hands each reviewer —
-    ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``.
+    ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``, then
+    ``· Span: bounded from <review id>`` or ``· Span: full`` on a cumulative.
 
     Rendered FROM the manifest, by code, so no coordinator composes it: the
     freeform ``Signals: [summary]`` it replaces was the one substitution in the
@@ -2189,11 +2220,20 @@ def signals_line(manifest: dict) -> str:
     stage = manifest.get("stage")
     judgeable = manifest.get("judgeable_files")
     chunk_type = manifest.get("chunk_type") or CHUNK_TYPE_DEFAULT_LABEL
-    return (
+    line = (
         f"Stage: {stage if stage in STAGE_VALUES else 'unknown'} · "
         f"Judgeable files: {judgeable if isinstance(judgeable, int) else '?'} · "
         f"Type: {chunk_type}"
     )
+    # A cumulative names its span, so the reviewer knows whether its subject is
+    # the whole bundle or the delta since a boundary review that already rated
+    # the rest. Other modes carry no span and the line is unchanged.
+    span = manifest.get("span")
+    if span == SPAN_BOUNDED:
+        line += f" · Span: bounded from {manifest.get('bounded_from')}"
+    elif span == SPAN_FULL:
+        line += " · Span: full"
+    return line
 
 
 def _dispatch_chunk_type(prawduct_dir: Path, lint: dict) -> "str | None":
@@ -3001,6 +3041,226 @@ def _proposed_chunks(
     return proposal.chunks, proposal.notes
 
 
+# --- The paired native review (#1130) ------------------------------------------
+#
+# On a development build, every boundary review — and a sample of the inner
+# `chunk` and `verify-resolutions` reviews — also runs the host's native
+# `/code-review` over the same interval, so the two can be compared before any
+# Critic goal is ceded to it. The Critic itself is unchanged: the native review
+# is a second instrument its dispatch starts beside the reviewers, it rates and
+# blocks nothing, and consolidation never waits for it. What the host does, as
+# measured rather than documented, is in
+# `.prawduct/research/native-review-paired/host-facts-2026-11-12.md` of the
+# prawduct repo.
+
+#: The ``project-state.yaml`` key a repo opts out with (``false``).
+NATIVE_REVIEW_PAIRING_KEY = "native_review_pairing"
+#: The host skill and the level it runs at (owner ruling 2026-11-12). Always
+#: passed explicitly: the host remembers the last level typed, so an omitted one
+#: would run whatever the last person chose.
+NATIVE_REVIEW_SKILL = "code-review"
+NATIVE_REVIEW_LEVEL = "high"
+#: Never passed: a flag that writes (to the tree under review or to the PR), or
+#: a level the host reserves for an explicit request — ``max``, and ``ultra``,
+#: the cloud review. The validator refuses a manifest carrying one.
+NATIVE_REVIEW_FORBIDDEN = ("--fix", "--comment", "--post", "max", "ultra")
+#: The inner reviews that pair, one in this many of them. Inner reviews are
+#: where most of the Critic's correctness reviewing happens, and pairing every
+#: one would roughly triple the experiment's spend; one in six collects an
+#: inner sample about the size of #1130's sixty boundary pairs within its four
+#: weeks at the measured rate. Inner pairs do not count toward #1130's stop.
+NATIVE_REVIEW_INNER_MODES = ("chunk", "verify-resolutions")
+NATIVE_REVIEW_INNER_SAMPLE = 6
+
+
+def native_review_sampled(review_id: "str | None") -> bool:
+    """Whether an inner review falls in the sample — decided by its id, so the
+    same review always gets the same answer and no clock or random state picks
+    what is measured."""
+    if not isinstance(review_id, str) or not review_id:
+        return False
+    digest = hashlib.sha256(review_id.encode("utf-8")).hexdigest()
+    return int(digest, 16) % NATIVE_REVIEW_INNER_SAMPLE == 0
+
+
+def native_review_pairing(
+    prawduct_dir: Path, mode_token: str, *, version: "str | None" = None,
+    review_id: "str | None" = None,
+) -> "tuple[bool, str]":
+    """Whether this dispatch pairs a native review, and why not when it does
+    not. Pairs every ``cumulative`` review, and a ``chunk`` or
+    ``verify-resolutions`` review whose id falls in the sample, on a development
+    build (``version``, default the running plugin's), in a repo that has not
+    set ``native_review_pairing: false``.
+
+    Only an explicit ``false`` opts out: pairing is the development build's
+    default, so a misspelt value keeps the measurement running rather than
+    ending it silently.
+    """
+    from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    if mode_token in NATIVE_REVIEW_INNER_MODES:
+        if not native_review_sampled(review_id):
+            return False, f"not in the one-in-{NATIVE_REVIEW_INNER_SAMPLE} sample of {mode_token} reviews"
+    elif mode_token != "cumulative":
+        return False, (
+            "only a cumulative review and a sample of chunk and verify-resolutions "
+            f"reviews pair, and this is {mode_token}"
+        )
+    if not core.is_dev_version(core.PRAWDUCT_VERSION if version is None else version):
+        return False, "a released build never pairs"
+    state, raw = core.read_scalar_yaml_key(
+        Path(prawduct_dir) / "project-state.yaml", NATIVE_REVIEW_PAIRING_KEY
+    )
+    if state == core.YAML_SCALAR_VALUE and (raw or "").strip().lower() == "false":
+        return False, f"project-state.yaml sets {NATIVE_REVIEW_PAIRING_KEY}: false"
+    return True, "paired"
+
+
+def native_review_prompt(review_id: str, worktree: str, args: str, text_path: str) -> str:
+    """The wrapper subagent's whole instruction, rendered once so no skill file
+    composes it. The wrapper exists because the native review runs on its
+    caller's model and may come back in the background: it holds the model
+    fixed and stays alive until the text lands."""
+    return (
+        f"Native review for Critic review `{review_id}`. Project (absolute): `{worktree}`. "
+        f"Invoke the Skill tool with skill `{NATIVE_REVIEW_SKILL}` and args `{args}` — exactly "
+        "those, adding and changing nothing. If the result says it is running in the "
+        "background, stay alive until its completion notification arrives (start a "
+        "background `sleep 900`, and stop it once the notification lands). Then write the "
+        "review's complete text, everything after `Result:`, verbatim, to "
+        f"`{text_path}` with the Write tool, and run "
+        f"`{native_review_record_command(review_id)}`. Edit nothing else and fix "
+        "nothing. Report one line: that command's output."
+    )
+
+
+def native_review_record_command(review_id: str) -> str:
+    """The record command, naming the binary that ran this dispatch. The one on
+    PATH may be another build (a framework checkout runs its own), and the record
+    must be written by the code that wrote the sidecar it reads."""
+    from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    return f'python3 "{core.FRAMEWORK_DIR / "bin" / "prawduct-hook"}" native-review record {review_id}'
+
+
+
+#: Who the range's unreachable commits say made them. Passed explicitly, so
+#: naming a range never depends on the repo's or the user's git identity.
+_NATIVE_RANGE_IDENTITY = {
+    "GIT_AUTHOR_NAME": "prawduct", "GIT_AUTHOR_EMAIL": "prawduct@invalid",
+    "GIT_COMMITTER_NAME": "prawduct", "GIT_COMMITTER_EMAIL": "prawduct@invalid",
+}
+
+
+def native_review_range(
+    project_dir: Path, base_commit: "str | None", base_tree: "str | None",
+    head_commit: "str | None", head_tree: "str | None", review_id: str,
+) -> dict:
+    """The commit range the native review reads for this interval:
+    ``{"status": "ok", "base", "head", "synthetic"}`` or
+    ``{"status": "error", "reason"}``.
+
+    The native review takes a commit range, and an inner review usually reads a
+    working tree no commit holds. Then both ends are named by unreachable
+    commits — the base tree's (or the real base commit), and the head tree's
+    parented on it — so ``git diff base...head`` is exactly the interval the
+    Critic reads. They are objects only: no ref, index or file moves, and
+    ``git gc`` collects them; nothing reads them after the run."""
+    if base_commit and head_commit:
+        return {"status": "ok", "base": base_commit, "head": head_commit, "synthetic": False}
+    if not head_tree or not (base_commit or base_tree):
+        return {"status": "error", "reason": "the interval has no base or head to name as a range"}
+    env = {**os.environ, **_NATIVE_RANGE_IDENTITY}
+    message = f"prawduct: the tree Critic review {review_id} read"
+
+    def commit(tree: str, parent: "str | None") -> "tuple[str | None, str]":
+        args = ["commit-tree", "--no-gpg-sign", "-m", message]
+        if parent:
+            args += ["-p", parent]
+        rc, out, err = evidence.run_git(project_dir, *args, f"{tree}^{{tree}}", env=env)
+        return (out, "") if rc == 0 and out else (None, err or "git commit-tree printed nothing")
+
+    base = base_commit
+    if not base:
+        base, err = commit(base_tree, None)
+        if base is None:
+            return {"status": "error", "reason": f"the base tree could not be named: {err}"}
+    head, err = commit(head_tree, base)
+    if head is None:
+        return {"status": "error", "reason": f"the head tree could not be named: {err}"}
+    return {"status": "ok", "base": base, "head": head, "synthetic": True}
+
+
+def native_review_block(
+    prawduct_dir: Path, review_id: str, worktree: str, base_commit: str,
+    head_commit: str, reviewer_model: "str | None", *, mode: str = "cumulative",
+    synthetic_range: bool = False,
+) -> dict:
+    """The manifest's ``native_review`` block: everything the coordinator
+    dispatches, derived here. ``model`` is the reviewers' model (null means
+    the wrapper inherits the session's, as they do), because a comparison
+    between instruments on different models measures the models. ``mode`` and
+    ``synthetic_range`` ride to the sidecar, so the record says what the run
+    was paired with."""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    args = f"{NATIVE_REVIEW_LEVEL} {base_commit}...{head_commit}"
+    text_path = str(native_review.text_path(prawduct_dir, review_id))
+    return {
+        "skill": NATIVE_REVIEW_SKILL,
+        "level": NATIVE_REVIEW_LEVEL,
+        "mode": mode,
+        "synthetic_range": synthetic_range,
+        "args": args,
+        "model": reviewer_model,
+        "text_path": text_path,
+        "prompt": native_review_prompt(review_id, worktree, args, text_path),
+        "dispatched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def native_review_line(manifest: dict) -> "str | None":
+    """The dispatch line ``critic-begin`` prints when the manifest pairs a native
+    review, or ``None``. The fork acts on it in the same message as the reviewers;
+    nothing about the pairing is the fork's to decide."""
+    native = manifest.get("native_review")
+    if not native:
+        return None
+    model = (
+        f"model `{native['model']}`" if native.get("model")
+        else "no `model` (it inherits yours, as the reviewers do)"
+    )
+    return (
+        "native review paired (#1130) — in the same message as the reviewers (or, "
+        "single-pass, before you start reviewing), dispatch ONE general-purpose Agent, "
+        f"in the background, with {model} and the manifest's `native_review.prompt` "
+        "verbatim. Do not wait for it, read its result or mention it in your review: "
+        "consolidation never waits for it, and it records itself."
+    )
+
+
+def _validate_native_review(block) -> "tuple[bool, str]":
+    if not isinstance(block, dict):
+        return False, "'native_review' must be an object or absent"
+    for key in ("skill", "level", "args", "text_path", "prompt", "dispatched_at"):
+        if not _nonempty_str(block.get(key)):
+            return False, f"'native_review.{key}' must be a non-empty string"
+    if block.get("model") is not None and not _nonempty_str(block.get("model")):
+        return False, "'native_review.model' must be a non-empty string or null"
+    if block.get("mode", "cumulative") not in ("cumulative", *NATIVE_REVIEW_INNER_MODES):
+        return False, "'native_review.mode' must be a mode that pairs"
+    if not isinstance(block.get("synthetic_range", False), bool):
+        return False, "'native_review.synthetic_range' must be a boolean"
+    tokens = block["args"].split()
+    if tokens[0] != block["level"]:
+        return False, "'native_review.args' must open with its level, explicitly"
+    forbidden = sorted(set(tokens) & set(NATIVE_REVIEW_FORBIDDEN))
+    if forbidden:
+        return False, f"'native_review.args' carries a forbidden argument: {', '.join(forbidden)}"
+    return True, ""
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -3077,8 +3337,14 @@ def begin_review(
       clean (:func:`working_tree_interval_base` owns the choice; an extended
       base is recorded as ``base_extended_from``); head = the captured working
       tree (D3 temp-index capture; non-mutating).
-    - ``cumulative`` — base = merge-base(resolve-base, HEAD), head = ``HEAD``
-      (the committed bundle; a dirty working tree is noted, not reviewed).
+    - ``cumulative`` — head = ``HEAD`` (the committed bundle; a dirty working
+      tree is noted, not reviewed). base = the last boundary review's tree when
+      :func:`gates.boundary_frontier` finds one (``span: bounded``), else
+      merge-base(resolve-base, HEAD) (``span: full``, with ``span_reason``). A
+      bounded review rates the delta and reads the rest of the bundle as
+      oracle; record-lint and the chunk proposal grade the whole bundle either
+      way. ``--chosen-by`` equal to ``critic_mode.FULL_SPAN_RATIONALE`` (the
+      ``full`` token) asks for the whole bundle.
     - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;
       head is **intent-aware**, because this mode serves two gate targets that
       diverge once the tree is dirty. When content was committed that the prior
@@ -3246,13 +3512,27 @@ def begin_review(
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
     # Findings a THIS-mode review could still resolve. Only verify-resolutions
-    # records resolution facts, so it is the only mode that can carry a nonzero
+    # records resolution facts for an EARLIER review's findings (a review's own
+    # inherited-baseline waivers are written when it consolidates), so it is
+    # the only mode that can carry a nonzero
     # value; for every other mode there is nothing outstanding that running it
     # would clear. Read by the free-interval refusal below, where it is the
     # conjunct that keeps the gate from deadlocking.
     pending_actionable = 0
 
     base_extended_from: "str | None" = None
+    # A `cumulative`'s span (bounded-cumulative design): `bounded` reviews the
+    # delta since the last boundary review (`gates.boundary_frontier`), `full`
+    # the whole bundle. `span_reason` is the decline code when full. The bundle
+    # interval is kept beside the review's own, because the machine relays —
+    # record-lint and the chunk proposal — grade the bundle whatever the span,
+    # and the bundle's other files ride to the reviewer as oracle. Every other
+    # mode leaves these unset and its manifest carries no span.
+    span: "str | None" = None
+    bounded_from: "str | None" = None
+    span_reason: "str | None" = None
+    bundle_base_commit: "str | None" = None
+    bundle_base_tree: "str | None" = None
     # Where a `chunk`/`final` interval started, read at the empty-interval check
     # below: an empty interval whose start is HEAD_COVERED is "the last review
     # already covers HEAD", which is not the same answer as "committed work sits
@@ -3328,6 +3608,40 @@ def begin_review(
         if not capture["clean"]:
             excluded_wip = _judgeable_wip(project_dir, capture)
             dirty_note = _dirty_anchor_note("cumulative", excluded_wip)
+        # Bounded by default, so a repeat cumulative stops re-rating what an
+        # earlier boundary review already rated. The fact over frontier → HEAD
+        # composes with the frontier's own, so the PR gate's verdict is the one
+        # the whole span would reach. `base_reviewed` stays the merge-base: it
+        # is the bundle this review stands for, and what the next repeat's
+        # frontier search compares.
+        from . import critic_mode  # noqa: PLC0415 — lazy; critic_mode imports this module lazily too
+
+        bundle_base_commit, bundle_base_tree = base_commit, base_tree
+        span = SPAN_FULL
+        if (chosen_by or "").strip() == critic_mode.FULL_SPAN_RATIONALE:
+            span_reason = gates.SPAN_FULL_OVERRIDE
+            notes.append(
+                "this cumulative reviews the whole bundle (merge-base → HEAD) because "
+                "the dispatch asked for `full` — the override"
+            )
+        else:
+            frontier = gates.boundary_frontier(project_dir, read=read_store())
+            if frontier["status"] == "bounded":
+                span, bounded_from = SPAN_BOUNDED, frontier["fact_id"]
+                base_commit, base_tree = frontier["head_commit"], frontier["head_tree"]
+                notes.append(
+                    f"this cumulative is bounded: it rates what changed since boundary "
+                    f"review {bounded_from} at {base_commit[:12]}, and reads the rest of "
+                    "the bundle as oracle. Record-lint and the chunk proposal still grade "
+                    "the whole bundle. `/prawduct:critic cumulative full` reviews the "
+                    "whole bundle instead"
+                )
+            else:
+                span_reason = frontier["code"]
+                notes.append(
+                    f"this cumulative reviews the whole bundle (merge-base → HEAD): "
+                    f"{frontier['reason']}"
+                )
     else:  # verify-resolutions
         prior, reason = _prior_review_fact(project_dir, prawduct_dir, read_store())
         if prior is None:
@@ -3775,6 +4089,24 @@ def begin_review(
     for f in prior_oracle:
         if f not in files_oracle and f not in files_reviewed:
             files_oracle.append(f)
+    # A bounded cumulative's reviewer reads the rest of the bundle without
+    # rating it: the earlier boundary review rated those files. They ride as
+    # `files_context`, NOT `files_oracle`, because the Records Pass rates the
+    # oracle at the boundary stage; handed over as oracle, the bundle's records
+    # would be re-rated and its code put through a records-only pass, which is
+    # the whole-bundle review this span exists to stop buying.
+    bundle_files: "list[str] | None" = None
+    files_context: list[str] = []
+    if span == SPAN_BOUNDED:
+        bundle_files = evidence.tree_diff(project_dir, bundle_base_tree, head_tree)
+        if bundle_files is None:
+            return {
+                "status": "error",
+                "reason": f"cannot diff the bundle {bundle_base_tree[:12]}..{head_tree[:12]}",
+            }
+        files_context = [
+            f for f in bundle_files if f not in files_reviewed and f not in files_oracle
+        ]
 
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()
@@ -3784,9 +4116,15 @@ def begin_review(
     # proposal is recorded as declared, and said: `chunks_proposed` sits beside
     # it on the fact, so the edit is visible on the record. Resolved BEFORE
     # record-lint, so the deliverables it grades are the chunks the fact names.
+    # The machine relays grade the bundle whatever the span (the owner's
+    # 2026-11-11 ruling on Decision 2), so a bounded review proposes, and
+    # record-lint grades, exactly what a full one would.
+    relay_files = bundle_files if bundle_files is not None else files_changed
+    relay_base_commit = bundle_base_commit if span == SPAN_BOUNDED else base_commit
+    relay_base_tree = bundle_base_tree if span == SPAN_BOUNDED else base_tree
     chunks_proposed, proposal_notes = _proposed_chunks(
-        project_dir, graded_plan, read_store, files_changed, mode_token, verify_anchor,
-        base_commit, head_tree,
+        project_dir, graded_plan, read_store, relay_files, mode_token, verify_anchor,
+        relay_base_commit, head_tree,
     )
     notes.extend(proposal_notes)
     if declared_chunks is None:
@@ -3810,7 +4148,7 @@ def begin_review(
     # chunk the fact will name (`chunk_ids`), not only the first.
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
     lint = record_lint.lint_records_safe(
-        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope,
+        project_dir, prawduct_dir, relay_files, relay_base_tree, head_tree, chunk, scope,
         chunk_ids=list(declared_chunks),
     )
 
@@ -3901,6 +4239,11 @@ def begin_review(
         # notice a review that changed the product it was judging.
         "dispatch_tree": capture["tree"],
     }
+    if span is not None:
+        manifest["span"] = span
+        manifest["bounded_from"] = bounded_from
+        manifest["span_reason"] = span_reason
+        manifest["files_context"] = files_context
     # The review STAGE, derived once here from the mode (which chose the
     # interval above) and read everywhere else — the reviewer prompt's signals
     # line, the review fact, the findings cache, the ledger event and
@@ -3914,6 +4257,28 @@ def begin_review(
     # Rendered from the three fields above, so the coordinator copies a line
     # rather than composing one.
     manifest["signals"] = signals_line(manifest)
+    # The paired native review (#1130), decided here once so the dispatch fires
+    # on code's answer and not on a skill remembering to. A development build's
+    # boundary review that does not pair says why, since a silent skip reads as a
+    # native review that never landed; a released build says nothing new.
+    paired, pairing_reason = native_review_pairing(prawduct_dir, mode_token, review_id=review_id)
+    if paired:
+        named = native_review_range(
+            project_dir, base_commit, manifest.get("base_tree"), head_commit,
+            manifest.get("head_tree"), review_id,
+        )
+        if named["status"] == "ok":
+            manifest["native_review"] = native_review_block(
+                prawduct_dir, review_id, manifest["worktree"], named["base"], named["head"],
+                manifest["reviewer_model"], mode=mode_token, synthetic_range=named["synthetic"],
+            )
+        else:
+            notes.append(f"native review not paired: {named['reason']}")
+    else:
+        from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+        if mode_token == "cumulative" and core.is_dev_build():
+            notes.append(f"native review not paired: {pairing_reason}")
     # Rendered once: the CLI prints this list to the fork, and a reviewer the
     # fork hands the review to reads the same list here, since it never sees
     # the fork's tool output. Absent when no reviewer model is set, because then
@@ -3952,6 +4317,20 @@ def begin_review(
     superseded = _mark_cache_superseded(prawduct_dir, review_id)
     pdir.mkdir(parents=True, exist_ok=True)
     atomic_write_text(manifest_path(prawduct_dir), json.dumps(manifest, indent=2))
+    if "native_review" in manifest:
+        # The native run's own record, beside its text: the manifest is deleted
+        # when the Critic consolidates, which may be before the native run ends.
+        # Advice fails soft — an unwritable sidecar costs the experiment one
+        # record, never the Critic its review.
+        from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+        try:
+            native_review.write_dispatch(prawduct_dir, manifest, session_model)
+        except OSError as exc:
+            notes.append(
+                f"native review paired but its dispatch record was not written "
+                f"({exc.__class__.__name__}: {exc}); `native-review record` will refuse it"
+            )
 
     # Start this review's stopwatch — LAST, so the mark attests an interval a
     # reviewer actually spends. Every refusal above returns before here, and a
@@ -4072,7 +4451,8 @@ def validate_partial(data) -> tuple[bool, str]:
     """Validate a single reviewer partial.
 
     Schema: ``{role, goals, dispatch_id, commit_reviewed, model?,
-    duration_seconds?, findings:[{name, goal, severity, recommendation, files?}],
+    duration_seconds?, findings:[{name, goal, severity, recommendation, files?,
+    failed_tests?}],
     resolutions?:[{review_id, fid, disposition, rationale?}], summary}``.
     ``model``/``duration_seconds`` are nullable telemetry; everything else is
     load-bearing. ``severity`` must be ``blocking`` or ``warning`` so a typo
@@ -4146,6 +4526,18 @@ def validate_partial(data) -> tuple[bool, str]:
         # META-finding otherwise bricked every review).
         if "files" in f and not isinstance(f["files"], list):
             return False, f"finding[{idx}] 'files' must be a list"
+        # The test ids a test-failure finding rates, which consolidate matches
+        # against the base tree's run to waive an inherited failure. Unlike
+        # ``files`` a bad element is refused, not dropped: a dropped id would
+        # shrink the set the waiver must cover, so the waiver could fire on
+        # less than the reviewer named. Absent, null and ``[]`` all mean "names
+        # no test".
+        tests = f.get("failed_tests")
+        if tests is not None and not _str_list(tests):
+            return False, (
+                f"finding[{idx}] 'failed_tests' must be a list of non-empty "
+                "strings (the failing ids from .test-evidence.json)"
+            )
     ok, why = _validate_observations(data.get("observations"))
     if not ok:
         return False, why
@@ -4267,6 +4659,10 @@ def validate_manifest(data) -> tuple[bool, str]:
     # the fact and a reader that walks it must not meet a non-string.
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
+    # Read by a bounded cumulative's reviewer, never rated on its own merits. Typed for the
+    # same reason as the oracle: a reviewer walks it.
+    if data.get("files_context") is not None and not _str_list(data.get("files_context")):
+        return False, "'files_context' must be a list of non-empty strings or null"
     # The chunks the review names and the code's proposal (ST8). Optional, as a
     # manifest restored from before the fields still consolidates (its fact then
     # carries `chunk` alone, which `plan_status.fact_chunks` reads); typed when
@@ -4284,7 +4680,8 @@ def validate_manifest(data) -> tuple[bool, str]:
         )
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
-                "chunk_type", "signals", "dispatch_tree", "reviewer_model"):
+                "chunk_type", "signals", "dispatch_tree", "reviewer_model",
+                "bounded_from", "span_reason"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
@@ -4297,6 +4694,22 @@ def validate_manifest(data) -> tuple[bool, str]:
     # instruction; an empty list is a mode owed none.
     if data.get("dispatch_directives") is not None and not _str_list(data.get("dispatch_directives")):
         return False, "'dispatch_directives' must be a list of non-empty strings or null"
+    # The paired native review's block, when a development build's boundary
+    # review wrote one. Validated because the coordinator hands its arguments to
+    # the host verbatim: a manifest carrying a writing flag or a reserved level
+    # must fail here, not run.
+    if "native_review" in data:
+        ok, reason = _validate_native_review(data["native_review"])
+        if not ok:
+            return False, reason
+    # A cumulative's span. Optional, as a manifest from before the field still
+    # consolidates; typed, because `bounded` without its frontier is a fact
+    # nobody could trace back to the review it extends.
+    span = data.get("span")
+    if span is not None and span not in SPAN_VALUES:
+        return False, f"'span' must be one of {sorted(SPAN_VALUES)} or null, got {span!r}"
+    if span == SPAN_BOUNDED and not _nonempty_str(data.get("bounded_from")):
+        return False, "'bounded_from' must name the frontier review when 'span' is bounded"
     stage = data.get("stage")
     if stage is not None and stage not in STAGE_VALUES:
         return False, f"'stage' must be one of {sorted(STAGE_VALUES)} or null, got {stage!r}"
@@ -4806,8 +5219,9 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     with sequential ``fid``s assigned in merge order (deterministic: roster
     order × each partial's findings order).
 
-    Each partial finding ``{name, goal, severity, recommendation, files?}``
-    maps to ``{fid, goal, severity, title, recommendation, files?}`` — the
+    Each partial finding ``{name, goal, severity, recommendation, files?,
+    failed_tests?}`` maps to ``{fid, goal, severity, title, recommendation,
+    files?, failed_tests?}`` — the
     reviewer's ``name`` becomes the fact ``title`` (the field the coverage
     algebra surfaces for unresolved blockers; the derived cache renders it
     as the record ``summary``). The ``fid`` is what resolution facts join on
@@ -4833,6 +5247,10 @@ def merge_findings(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            tests = [t.strip() for t in (f.get("failed_tests") or [])]
+            if tests:
+                # What `_waive_inherited_failures` matches against the base run.
+                entry["failed_tests"] = tests
             if partial.get("role") == RECORD_LINT_SOURCE:
                 entry["source"] = RECORD_LINT_SOURCE
             existing = merged.get(key)
@@ -4915,7 +5333,9 @@ def answered_lint_results(store: "dict | None", scope: "str | None") -> dict:
             continue
         identity = _lint_identity(finding)
         ref = f"{key[0]}/{key[1]}"
-        if resolutions.get(key) == "waived":
+        if resolutions.get(key) in (
+            dispositions.STATE_WAIVED, dispositions.STATE_WAIVED_INHERITED
+        ):
             answered["blocking"].setdefault(
                 identity, f"already waived by a resolution of {ref}"
             )
@@ -5463,6 +5883,13 @@ def build_fact_body(
         # on principle instead of retired on evidence). No gate reads this copy:
         # its results reach `findings` above, through `record_lint_partial`.
         "record_lint": manifest.get("record_lint"),
+        # A cumulative's span, the review it was bounded from, and why it ran
+        # full when it did — so review-stats can split the two and the decline
+        # codes are countable. Absent on every other mode, and on a fact from
+        # before the fields, which a reader takes as full.
+        "span": manifest.get("span"),
+        "bounded_from": manifest.get("bounded_from"),
+        "span_reason": manifest.get("span_reason"),
     }
     # The dispatch clock, on the one record every worktree of the clone can
     # read. `duration_seconds` above is the reviewers' own estimate; this is
@@ -5668,13 +6095,24 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
     # than the one it would displace, since they would anchor on it.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     candidate = prawduct_dir / ".critic-findings.json.derived"
-    atomic_write_text(candidate, json.dumps(fact_to_cache_record(fact, carried=carried), indent=2))
+    atomic_write_text(candidate, json.dumps(
+        fact_to_cache_record(fact, carried=carried, store={"facts": usable}, prawduct_dir=prawduct_dir),
+        indent=2
+    ))
     if not gates.validate_critic_findings(candidate):
         candidate.unlink(missing_ok=True)
         return {"status": "invalid", "review": review,
                 "reason": "the rendered record failed the findings schema"}
     os.replace(candidate, findings_path)
     return {"status": "derived", "review": review, "reason": None}
+
+
+def _native_clause(prawduct_dir: "Path | None", review_id) -> str:
+    if prawduct_dir is None:
+        return ""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    return native_review.next_action_clause(prawduct_dir, review_id)
 
 
 def fact_to_cache_record(
@@ -5685,12 +6123,24 @@ def fact_to_cache_record(
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
     uncertified: "tuple[str, list[str]] | None" = None,
+    *,
+    store: dict,
+    not_waived: "dict[str, str] | None" = None,
+    prawduct_dir: "Path | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
     and briefings read it for content; no gate reads it). Carries the source
     ``fact_id`` so staleness is detectable and the verify-resolutions
     dispatch can locate its anchor fact.
+
+    ``store`` (required: a :func:`evidence.read_facts` answer, or ``{"facts":
+    [...]}``) is where the review's inherited-baseline waivers are READ from
+    (:func:`dispositions.inherited_waivers`), never handed in. Consolidation
+    and the ingest path (:func:`derive_branch_cache`) both render through here,
+    so a clone that ingested the review shows the same waivers the reviewing
+    clone wrote: each waived entry is marked ``waived: inherited-baseline``,
+    and the summary and ``next_action`` stop counting it as open.
 
     ``price_sentence`` rides through to :func:`next_action_line`. It is a
     parameter rather than a ledger read here because this function is a pure
@@ -5701,6 +6151,7 @@ def fact_to_cache_record(
     builder who met them saying different things about the branch would have no
     way to tell which was computed."""
     body = fact.get("body") or {}
+    waived = dispositions.inherited_waivers(store, fact)
     findings = []
     for f in body.get("findings", []):
         entry = {
@@ -5715,6 +6166,16 @@ def fact_to_cache_record(
         # Additive key; the schema validator checks required fields only and
         # `--json` readers tolerate unknown ones (api-contract § Direction).
         entry["fix_cost"] = finding_fix_cost(f.get("files"))
+        if f.get("fid") in waived:
+            # So a verify reviewer reading this as the prior record can tell a
+            # waived blocker from an open one. Additive, like `fix_cost`.
+            entry["waived"] = INHERITED_BASELINE_ORIGIN
+        elif f.get("fid") in (not_waived or {}):
+            # Why a finding that named failing tests was not waived as
+            # inherited. Only the consolidating clone knows it (the reason is
+            # computed from its store and git, never persisted), so an
+            # ingesting clone's render simply lacks the key. Additive.
+            entry["not_waived"] = not_waived[f["fid"]]
         findings.append(entry)
     # The builder's only surface for these. Observation ids are assigned HERE,
     # at consolidation — the reviewer wrote prose and never saw an `O-n` — so
@@ -5735,7 +6196,7 @@ def fact_to_cache_record(
     blocking = counts.get("blocking", 0)
     warning = counts.get("warning", 0)
     note = counts.get("note", 0)
-    if blocking:
+    if blocking - len(waived) > 0:
         verdict = "Blocking findings must be resolved before proceeding."
     else:
         verdict = "Changes ready to proceed."
@@ -5749,6 +6210,11 @@ def fact_to_cache_record(
         # Rides the cache because the ledger's `review.critic` event copies this
         # record verbatim — `review-stats --json` groups on it (`by_stage`).
         "stage": body.get("stage"),
+        # Beside `stage`, for the same reader: the ledger's copy of this record
+        # is what `review-stats`'s `by_span` groups on, and counts full spans by.
+        "span": body.get("span"),
+        "bounded_from": body.get("bounded_from"),
+        "span_reason": body.get("span_reason"),
         "model": models[0] if models else None,
         "commit_reviewed": body.get("dispatch_commit"),
         "base_reviewed": body.get("base_reviewed"),
@@ -5763,11 +6229,16 @@ def fact_to_cache_record(
         # The builder's copy of the loop-termination rule, computed from the
         # counts just read. See `next_action_line` for why the findings file is
         # the carrier that had a reader and no message.
+        # A paired native review's list (#1130) is named in this one sentence,
+        # which reaches the builder however the review ran, so they work from
+        # both. Here rather than at one caller, so every path that renders this
+        # record from the fact says it; it needs only the review's sidecar.
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
             cost=cost, rides_next_review=rides_next_review, uncertified=uncertified,
-        ),
+            waived=waived,
+        ) + _native_clause(prawduct_dir, fact.get("id")),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
         # path. Additive key: `--json` readers tolerate unknown fields.
@@ -6137,6 +6608,476 @@ def _tree_changed_line(body: dict) -> str:
     return f"\nTree changed during the review (builder-attested): {describe_tree_change(changed)}"
 
 
+#: The ``origin`` of a resolution fact consolidate writes for a BLOCKING
+#: test-failure finding the base tree already failed — the one resolution not
+#: written by a ``verify-resolutions`` pass. Its home, and its one reader, is
+#: ``dispositions`` (:func:`dispositions.resolution_detail_index`).
+INHERITED_BASELINE_ORIGIN = dispositions.INHERITED_BASELINE_ORIGIN
+
+
+def _inherited_baseline(project_dir: Path, manifest: dict, store: dict) -> dict:
+    """The tree before the reviewed work, and what its suite run and the
+    reviewed tree's own run say — or why neither can be trusted.
+
+    Returns ``{"reason": str}`` when no waiver may fire, else ``{"run",
+    "base_tree", "inherited", "new"}``: the base-tree run's id, the ids it
+    failed among the reviewed tree's failures and the findings' named ids, and
+    the reviewed tree's failures the base did NOT have (the ones this branch
+    caused).
+
+    The base is ``coverage.resolve_merge_base_tree``'s — the one prelude every
+    gate anchors its span with — and it is refused unless it is genuinely
+    BEFORE the reviewed work. A merge-base is "the tree before this work" only
+    when the work is not in it, so three answers are refused: the moving
+    ``HEAD~1`` fallback (the base is then this branch's own previous commit); a
+    merge-base that is not an ancestor of (or equal to) the review interval's
+    own base commit (work committed straight onto the base branch, where the
+    merge-base is HEAD, the base tree holds the reviewed commits, and the
+    builder's own red record reads as the base's run); and a base tree equal to
+    the reviewed tree. Uncommitted work on a branch cut from its base is the
+    ordinary case and passes: the merge-base is HEAD, but the interval starts
+    there too, so nothing the review judged is in the base tree.
+
+    The reviewed tree's own newest suite run must list EVERY failure (the
+    100-id cap fails closed), because the caller also checks that each failure
+    this branch caused is still answered by an unwaived finding: a reviewer
+    that named only the inherited subset of a mixed red suite must not have the
+    whole suite waived.
+    """
+    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
+
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return {"reason": f"no merge-base to compare against ({resolved['reason']})"}
+    if resolved.get("moving"):
+        return {"reason": (
+            f"the base resolved to the moving {coverage.MOVING_FALLBACK_BASE} "
+            "fallback (no origin/main, main or base_branch:), so the \"base\" is "
+            "this branch's own previous commit — set base_branch: in "
+            ".prawduct/project-state.yaml"
+        )}
+    merge_base = resolved["merge_base"]
+    interval_base = manifest.get("base_commit")
+    if not isinstance(interval_base, str) or not interval_base:
+        return {"reason": (
+            "the review's interval names no base commit, so nothing shows the "
+            "merge-base is before the reviewed work"
+        )}
+    rc, _, _ = evidence.run_git(
+        project_dir, "merge-base", "--is-ancestor", merge_base, interval_base
+    )
+    if rc != 0:
+        rc_head, head, _ = evidence.run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+        where = (
+            "the merge-base is HEAD itself"
+            if rc_head == 0 and head.strip() == merge_base
+            else "the merge-base"
+        )
+        return {"reason": (
+            f"{where} ({merge_base[:12]}), and this review's interval starts "
+            f"before it at {interval_base[:12]}: commits the review judged sit on "
+            f"the base branch {resolved['base_branch']}, so the base tree holds "
+            "the work"
+        )}
+    base_tree = resolved["tree"]
+    if base_tree == manifest["head_tree"]:
+        return {"reason": (
+            f"the merge-base tree {base_tree[:12]} is the reviewed tree, so a "
+            "run on it is a run of this work"
+        )}
+    head_run, why = evidence.newest_suite_run(store, manifest["head_tree"])
+    if head_run is None:
+        return {"reason": f"the reviewed tree's own run cannot vouch: {why}"}
+    head_failed, complete = evidence.run_failed_tests(head_run)
+    if not complete:
+        return {"reason": (
+            f"the reviewed tree's run {head_run['id']} failed "
+            f"{(head_run.get('body') or {}).get('failed')} test(s) but lists "
+            f"{len(head_failed)} id(s) (the 100-id cap) — the unlisted ones may "
+            "be new"
+        )}
+    review = next(
+        (r for r in evidence.facts_of_kind(store, "review") if r.get("id") == manifest["id"]),
+        {},
+    )
+    named = {
+        t for f in coverage_algebra.blocking_findings(review)
+        for t in (f.get("failed_tests") or []) if isinstance(t, str)
+    }
+    run_id, inherited, why = evidence.inherited_failures(
+        store, base_tree, head_failed | named
+    )
+    if run_id is None:
+        # Recording the base run now does not reach back: a waiver is written
+        # only at the consolidation of the review whose finding it waives.
+        return {"reason": (
+            f"no base-tree run to match: {why}. A base run recorded after this "
+            "review serves only later reviews' findings; this one clears through "
+            "verify-resolutions"
+        )}
+    return {
+        "run": run_id,
+        "base_tree": base_tree,
+        "inherited": inherited,
+        "new": head_failed - inherited,
+    }
+
+
+def _waive_inherited_failures(
+    project_dir: Path, manifest: dict, review_id: str, review_anchor: "str | None",
+    refusals: "dict[str, str] | None" = None,
+) -> "list[str] | None":
+    """Waive each BLOCKING finding of ``review_id`` whose failing tests the base
+    tree already failed. Returns the waived fids, or ``None`` when an append
+    failed (the caller fails closed and a retry heals it).
+
+    A finding qualifies only when it is BLOCKING, names a non-empty
+    ``failed_tests``, EVERY id it names failed in :func:`_inherited_baseline`'s
+    base-tree run too, and every failure of the reviewed tree's own run that
+    the base did NOT have is named by a BLOCKING finding of this review that
+    stays unwaived. The finding stays BLOCKING on the review fact; what is
+    written is a ``waived`` resolution fact citing that run (``base_run``), so
+    the record shows both the rating and why it no longer gates. Its id is
+    ``{review_id}:{review_id}:{fid}`` — the resolution-id shape with the review
+    as its own verifier — so a re-run finds it held and appends nothing.
+
+    A finding that named tests and was NOT waived gets one line saying why. It
+    goes into ``refusals`` (fid → reason), which the caller renders onto that
+    finding's ``.critic-findings.json`` entry as ``not_waived`` — the surface a
+    builder reads after any roster, where stderr is lost once consolidation
+    runs inside SubagentStop — and is mirrored on stderr for the log.
+
+    Runs in every mode, after the review fact is appended, because the review
+    is what the waiver resolves: no separate round is owed for a failure the
+    branch did not cause.
+    """
+    store = evidence.read_facts(project_dir)
+    fact = next(
+        (f for f in evidence.facts_of_kind(store, "review") if f.get("id") == review_id),
+        None,
+    )
+    if fact is None:
+        return []
+    candidates = [
+        f for f in coverage_algebra.blocking_findings(fact)
+        if isinstance(f.get("fid"), str)
+        and isinstance(f.get("failed_tests"), list)
+        and f["failed_tests"]
+    ]
+    if not candidates:
+        return []
+    held = {
+        f.get("id"): f for f in evidence.facts_of_kind(store, "resolution")
+    }
+    waived: list[str] = []
+    pending: list[dict] = []
+    for finding in candidates:
+        res_id = f"{review_id}:{review_id}:{finding['fid']}"
+        if res_id in held:
+            _attach_note(project_dir, held[res_id], review_anchor)
+            waived.append(finding["fid"])
+        else:
+            pending.append(finding)
+    if not pending:
+        return waived
+
+    def refuse(fid: str, reason: str) -> None:
+        if refusals is not None:
+            refusals[fid] = reason
+        print(
+            f"critic-consolidate: {fid} names failing tests but was not waived "
+            f"as inherited — {reason}.",
+            file=sys.stderr,
+        )
+
+    base = _inherited_baseline(project_dir, manifest, store)
+    if "reason" in base:
+        for finding in pending:
+            refuse(finding["fid"], base["reason"])
+        return waived
+    base_run, inherited = base["run"], base["inherited"]
+    eligible: list[tuple[dict, list[str]]] = []
+    unwaived_names: set[str] = set()
+    for finding in pending:
+        ids = [t for t in finding["failed_tests"] if isinstance(t, str)]
+        missing = [t for t in ids if t not in inherited]
+        if ids and not missing:
+            eligible.append((finding, ids))
+            continue
+        unwaived_names.update(ids)
+        refuse(finding["fid"], (
+            f"{', '.join(missing) or 'its ids'} did not fail in the newest suite "
+            f"run on the merge-base tree {base['base_tree'][:12]} (test-run "
+            f"{base_run}; a newer green run supersedes a red one, and an id past "
+            "its 100-id cap is never matched)"
+        ))
+    unanswered = sorted(base["new"] - unwaived_names)
+    if unanswered:
+        for finding, _ in eligible:
+            refuse(finding["fid"], (
+                f"the reviewed tree's run also fails {', '.join(unanswered)}, "
+                "which the base did not, and no unwaived BLOCKING finding names "
+                "them — a waiver would let them ride"
+            ))
+        return waived
+    for finding, ids in eligible:
+        fid = finding["fid"]
+        named = ", ".join(ids)
+        body = {
+            "finding": {"review_id": review_id, "fid": fid},
+            "disposition": "waived",
+            "verified_by": review_id,
+            "at_tree": manifest["head_tree"],
+            "origin": INHERITED_BASELINE_ORIGIN,
+            "base_run": base_run,
+            "rationale": (
+                f"Inherited failure: {named} also failed on the merge-base tree "
+                f"(test-run {base_run}). The finding stays BLOCKING on the "
+                "record; this branch did not cause it, so no fix round is owed."
+            ),
+        }
+        result = evidence.append_fact(
+            project_dir, "resolution", f"{review_id}:{review_id}:{fid}", body
+        )
+        if result["status"] != "appended":
+            print(
+                f"critic-consolidate: could not append the inherited-baseline "
+                f"waiver for {fid} — {result['reason']}",
+                file=sys.stderr,
+            )
+            return None
+        _attach_note(project_dir, result.get("envelope"), review_anchor)
+        print(
+            f"critic-consolidate: waived {fid} as an inherited failure — {named} "
+            f"also failed on the merge-base tree (test-run {base_run}); it stays "
+            "BLOCKING on the record and needs no fix or verify-resolutions round.",
+            file=sys.stderr,
+        )
+        waived.append(fid)
+    return waived
+
+
+def _load_partial(
+    prawduct_dir: Path, manifest: dict, role: str, path: Path
+) -> "tuple[dict | None, str]":
+    """Read one reviewer partial and judge it: ``(data, "")`` when it is sound,
+    ``(None, reason)`` when it is not. The body of :func:`check_partial`, kept
+    separate only because consolidation needs the parsed record and a second
+    read of the file would be a second verdict on bytes that may have changed.
+
+    Every check consolidation makes on ONE partial lives here and nowhere else
+    — parse, schema (:func:`validate_partial`), the keyed location, the role,
+    the dispatching review's id and the commit it reviewed — so the verb a
+    reviewer runs on its own file and the consolidation that later reads it
+    cannot disagree. ``reason`` names the role and is a clause, not a sentence
+    about what to do next: that is the caller's.
+    """
+    try:
+        if path.resolve() != partial_path(prawduct_dir, role, manifest["id"]).resolve():
+            return None, (
+                f"partial {role!r} at {path} is not where this review keeps it "
+                f"({partial_path(prawduct_dir, role, manifest['id'])})"
+            )
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:  # ValueError: see the findings-cache read
+        return None, f"partial {role!r} unreadable ({exc})"
+    valid, preason = validate_partial(data)
+    if not valid:
+        return None, f"partial {role!r} invalid — {preason}"
+    if data["role"] != role:
+        return None, (
+            f"partial for {role!r} declares role {data['role']!r} — roster mismatch"
+        )
+    # Belt-and-braces against the commit binding being the ONLY one. The
+    # keyed filename already stops a straggler from another review landing
+    # here; this catches the case the name cannot — a reviewer handed the
+    # wrong id in its dispatch prompt, writing to the right file with the
+    # wrong review's identity. Stripped before comparing, because
+    # surrounding whitespace normalizes identically and must not abort a
+    # whole consolidation (the `files: []` lesson, same module): hard-fail
+    # is for genuine ambiguity, which a different id is and a padded one
+    # is not.
+    review_id = manifest["id"]
+    if data["dispatch_id"].strip() != review_id.strip():
+        return None, (
+            f"reviewer {role!r} was dispatched by {data['dispatch_id'].strip()} "
+            f"but this manifest is {review_id} — the partial belongs to a "
+            "different review"
+        )
+    if data["commit_reviewed"] != manifest["commit_reviewed"]:
+        return None, (
+            f"reviewer {role!r} reviewed {data['commit_reviewed'][:12]} but "
+            f"dispatch was at {manifest['commit_reviewed'][:12]} — inconsistent, "
+            "re-review"
+        )
+    return data, ""
+
+
+def check_partial(
+    prawduct_dir: Path, manifest: dict, role: str, path: Path
+) -> "tuple[bool, str]":
+    """Whether ``path`` is a partial consolidation would accept for ``role``.
+
+    The one verdict on a single partial, shared by :func:`consolidate`'s read
+    loop and by ``prawduct-hook validate-partial`` (a reviewer's own check
+    before it returns), so a partial the reviewer was told is sound cannot be
+    refused when consolidation reads it. ``(True, "")`` or ``(False, reason)``;
+    a parse failure's reason carries the decoder's line and column.
+    """
+    data, reason = _load_partial(prawduct_dir, manifest, role, path)
+    return data is not None, reason
+
+
+def _partial_failure_message(
+    prawduct_dir: Path, manifest: dict, role: str, reason: str
+) -> str:
+    """Why consolidation refused, and the route that costs one reviewer.
+
+    A bad partial leaves the others untouched on disk; the message says so and
+    which ones, because nothing else tells the builder that a re-run of the
+    whole round is not the only recovery. Every line is derived from the disk:
+    the other roles are judged by :func:`check_partial`, so a role still in
+    flight, a role that passed and a second failing one each read as what they
+    are rather than as "the others passed".
+    """
+    roster = manifest["roster"]
+    review_id = manifest["id"]
+    passed: list[str] = []
+    pending: list[str] = []
+    failing: list[tuple[str, str]] = [(role, reason)]
+    for other in roster:
+        if other == role:
+            continue
+        opath = partial_path(prawduct_dir, other, review_id)
+        if not opath.is_file():
+            pending.append(other)
+            continue
+        ok, why = check_partial(prawduct_dir, manifest, other, opath)
+        if ok:
+            passed.append(other)
+        else:
+            failing.append((other, why))
+    lines = [
+        f"critic-consolidate: {reason} — fail-closed, not persisting a partial "
+        "review as complete."
+    ]
+    for other, why in failing[1:]:
+        lines.append(f"  Also failing: {why}.")
+    if passed:
+        lines.append(
+            f"  The other {len(passed)} partial(s) passed and are kept on disk "
+            f"({', '.join(passed)})."
+        )
+    if pending:
+        lines.append(f"  Not yet written: {', '.join(pending)}.")
+    names = [name for name, _ in failing]
+    paths = ", ".join(str(partial_path(prawduct_dir, name, review_id)) for name in names)
+    if roster == ["reviewer"] and not manifest.get("reviewer_model"):
+        # The fork reviewed inline, so there is no reviewer to send back.
+        lines.append(
+            f"  Remedy: rewrite {paths} and re-run `prawduct-hook critic-consolidate`. "
+            "Do not run `critic-begin` or `critic-discard` — they archive the "
+            "partials that are sound."
+        )
+    else:
+        who = " and ".join(f"`{name}`" for name in names)
+        lines.append(
+            f"  Remedy: re-dispatch the {who} `critic-reviewer` alone — the same "
+            f"manifest and the same dispatch prompt — to rewrite {paths}; its "
+            "SubagentStop re-runs consolidation. Do not run `critic-begin` or "
+            "`critic-discard` — they archive the partials that are sound."
+        )
+    return "\n".join(lines)
+
+
+#: `validate-partial`'s exit when the partial cannot be checked at all — no
+#: readable or valid manifest owns it, or it is keyed to another review. Its
+#: own code because the remedy differs from exit 1's: a reviewer cannot fix
+#: its file into a review that consolidated already or is not its own, so it
+#: stops. The same "could not answer" code the hook's other probes use.
+VALIDATE_PARTIAL_CANNOT_CHECK = 3
+
+
+def validate_partial_cmd(project_dir: Path, path_arg: str) -> int:
+    """``prawduct-hook validate-partial <path>``: the reviewer's own check.
+
+    Read-only. Finds which roster role of the pending review ``path`` is the
+    keyed partial of, then asks :func:`check_partial` — the verdict
+    consolidation will reach on the same file.
+
+    The review is read from the partial's OWN ``.prawduct`` directory when the
+    path sits in a partials directory (``<prawduct>/.critic-partials/<file>``),
+    and from the caller's project only otherwise: a subagent's process can
+    resolve a different checkout than the one that dispatched it, and the file
+    is the one thing that names its review. A relative path is resolved against
+    the project directory.
+
+    Exits: 0 prints ``ok``; 1 means this file fails the check (a parse error
+    with its line and column, or the validation reason) — fix it and re-run;
+    :data:`VALIDATE_PARTIAL_CANNOT_CHECK` means there is nothing to check it
+    against (no readable or valid manifest owns it, or it is keyed to another
+    review) — the review consolidated already or is not the caller's, so the
+    caller stops rather than rewriting the file.
+    """
+    target = Path(path_arg)
+    if not target.is_absolute():
+        target = project_dir / target
+    try:
+        resolved = target.resolve()
+    except OSError as exc:
+        print(f"validate-partial: cannot resolve {path_arg!r} ({exc})", file=sys.stderr)
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    if resolved.parent.name == PARTIALS_DIRNAME:
+        prawduct_dir = resolved.parent.parent
+    else:
+        prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    mpath = manifest_path(prawduct_dir)
+    try:
+        manifest = json.loads(mpath.read_text())
+    except (OSError, ValueError) as exc:
+        print(
+            f"validate-partial: no readable review manifest at {mpath} ({exc}) — "
+            "there is no pending review to check this partial against (it may "
+            "have consolidated already). Nothing to fix in the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    ok, reason = validate_manifest(manifest)
+    if not ok:
+        print(
+            f"validate-partial: invalid manifest — {reason}. Nothing to fix in "
+            "the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    for role in manifest["roster"]:
+        if partial_path(prawduct_dir, role, manifest["id"]).resolve() == resolved:
+            ok, reason = check_partial(prawduct_dir, manifest, role, target)
+            if ok:
+                print("ok")
+                return 0
+            print(f"validate-partial: {reason}", file=sys.stderr)
+            return 1
+    # `<role>.<review id>.json` is the keyed shape (:func:`partial_path`); a
+    # file keyed to ANOTHER review id is a straggler or a replaced review's,
+    # which no edit makes this review's. Any other wrong name is fixable.
+    stem = resolved.name[: -len(".json")] if resolved.name.endswith(".json") else ""
+    keyed_id = stem.split(".", 1)[1] if "." in stem else None
+    if keyed_id is not None and keyed_id != manifest["id"]:
+        print(
+            f"validate-partial: {path_arg!r} is not keyed to the pending review "
+            f"{manifest['id']} — it belongs to another review, which this one "
+            "replaced or never was. Nothing to fix in the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    print(
+        f"validate-partial: {path_arg!r} is not a partial of review {manifest['id']} — "
+        "write it at the path your manifest's `rendezvous` names for your role.",
+        file=sys.stderr,
+    )
+    return 1
+
 def consolidate(
     project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None" = None
 ) -> int:
@@ -6156,8 +7097,9 @@ def consolidate(
         dispatch age and whether silence is still normal (wait) or past the
         grace window (critic-end + re-dispatch).
       - ``0`` + ``consolidated:`` — review fact appended (or already present),
-        resolution facts appended, cache regenerated, ledger anchored, marker
-        cleared, partials removed.
+        resolution facts appended (a verify pass's, and any inherited-baseline
+        waivers), cache regenerated, ledger anchored, marker cleared, partials
+        removed.
       - ``1`` — fail-closed: malformed manifest/partial, a partial reviewed a
         different commit than dispatched, off-protocol resolutions, a
         resolution referencing a finding the store doesn't hold, a working
@@ -6198,7 +7140,6 @@ def consolidate(
         return 1
 
     roster = manifest["roster"]
-    manifest_commit = manifest["commit_reviewed"]
     review_id = manifest["id"]
     is_verify = manifest["mode"] == _VERBOSE_VERIFY_RESOLUTIONS
 
@@ -6210,53 +7151,10 @@ def consolidate(
         if not ppath.is_file():
             missing.append(role)
             continue
-        try:
-            data = json.loads(ppath.read_text())
-        except (OSError, ValueError) as exc:  # ValueError: see the findings-cache read
+        data, why = _load_partial(prawduct_dir, manifest, role, ppath)
+        if data is None:
             print(
-                f"critic-consolidate: partial {role!r} unreadable ({exc}) — "
-                "fail-closed, not persisting a partial review as complete.",
-                file=sys.stderr,
-            )
-            return 1
-        valid, preason = validate_partial(data)
-        if not valid:
-            print(
-                f"critic-consolidate: partial {role!r} invalid — {preason}. "
-                "Fail-closed; not consolidating.",
-                file=sys.stderr,
-            )
-            return 1
-        if data["role"] != role:
-            print(
-                f"critic-consolidate: partial for {role!r} declares role "
-                f"{data['role']!r} — roster mismatch, fail-closed.",
-                file=sys.stderr,
-            )
-            return 1
-        # Belt-and-braces against the commit binding being the ONLY one. The
-        # keyed filename already stops a straggler from another review landing
-        # here; this catches the case the name cannot — a reviewer handed the
-        # wrong id in its dispatch prompt, writing to the right file with the
-        # wrong review's identity. Stripped before comparing, because
-        # surrounding whitespace normalizes identically and must not abort a
-        # whole consolidation (the `files: []` lesson, same module): hard-fail
-        # is for genuine ambiguity, which a different id is and a padded one
-        # is not.
-        if data["dispatch_id"].strip() != review_id.strip():
-            print(
-                f"critic-consolidate: reviewer {role!r} was dispatched by "
-                f"{data['dispatch_id'].strip()} but this manifest is "
-                f"{review_id} — the partial belongs to a different review, "
-                "fail-closed.",
-                file=sys.stderr,
-            )
-            return 1
-        if data["commit_reviewed"] != manifest_commit:
-            print(
-                f"critic-consolidate: reviewer {role!r} reviewed "
-                f"{data['commit_reviewed'][:12]} but dispatch was at "
-                f"{manifest_commit[:12]} — inconsistent, re-review.",
+                _partial_failure_message(prawduct_dir, manifest, role, why),
                 file=sys.stderr,
             )
             return 1
@@ -6293,8 +7191,10 @@ def consolidate(
                 file=sys.stderr,
             )
 
-    # Resolutions may only arrive from a verify-resolutions dispatch — they
-    # WEAKEN gates (they unblock findings), so off-protocol ones fail closed.
+    # A reviewer's resolutions may only arrive from a verify-resolutions
+    # dispatch — they WEAKEN gates (they unblock findings), so off-protocol ones
+    # fail closed. The one resolution written in other modes is consolidate's
+    # own inherited-baseline waiver, computed from facts, never from a partial.
     resolutions: list[dict] = []
     seen_res: set[tuple[str, str]] = set()
     for partial in partials:
@@ -6303,7 +7203,8 @@ def consolidate(
             print(
                 f"critic-consolidate: partial {partial['role']!r} carries "
                 f"resolutions but the dispatch mode is {manifest['mode']!r} — "
-                "only a verify-resolutions dispatch may resolve findings; "
+                "only a verify-resolutions dispatch may carry a reviewer's "
+                "resolutions; "
                 "fail-closed.",
                 file=sys.stderr,
             )
@@ -6453,6 +7354,15 @@ def consolidate(
         _attach_note(project_dir, result.get("envelope"), review_anchor)
         appended_resolutions += 1
 
+    # Inherited-baseline waivers: a BLOCKING test failure the merge-base tree
+    # already had is resolved here, from the base run's fact, not by a round.
+    # The renderers below read the waivers back from the store re-read next.
+    waiver_refusals: dict[str, str] = {}
+    if _waive_inherited_failures(
+        project_dir, manifest, review_id, review_anchor, waiver_refusals
+    ) is None:
+        return 1
+
     # Regenerate the derived cache FROM the stored fact (D7) — re-read so a
     # retry after a partial failure renders the original fact, not a new one.
     store = evidence.read_facts(project_dir)
@@ -6542,7 +7452,8 @@ def consolidate(
 
     uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
     record = fact_to_cache_record(
-        fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified
+        fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
+        store=store, not_waived=waiver_refusals, prawduct_dir=prawduct_dir,
     )
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
@@ -6695,23 +7606,9 @@ def consolidate(
     # that fork to relay `NEXT-ACTION:` verbatim as its closing line. Code owns
     # the wording so it cannot be paraphrased into something weaker, and so it
     # stays identical to the `next_action` the builder reads in
-    # `.critic-findings.json` whenever the reviewers were dispatched instead.
-    print(
-        "NEXT-ACTION: "
-        + next_action_line(
-            review_id,
-            counts.get("blocking", 0),
-            counts.get("warning", 0),
-            counts.get("note", 0),
-            price_sentence,
-            carried=carried,
-            span=span,
-            observations=len(fact_body.get("observations") or []),
-            cost=cost_sentence,
-            rides_next_review=rides_next_review,
-            uncertified=uncertified,
-        )
-    )
+    # `.critic-findings.json` whenever the reviewers were dispatched instead —
+    # identical by construction: it IS that record's sentence, rendered once.
+    print("NEXT-ACTION: " + record["next_action"])
     return 0
 
 

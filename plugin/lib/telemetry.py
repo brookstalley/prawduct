@@ -66,7 +66,16 @@ from .timewindow import in_window, is_usable_bound
 #: reviewer labelled.
 #: Bumped to 10 when `above_reviewer_ceiling` joined: how many reviews ran on a
 #: model above the reviewer ceiling, the cost the owner capped.
-REPORT_SCHEMA_VERSION = 10
+#: Bumped to 11 when `by_span` joined: a cumulative's span (bounded to the
+#: delta since a boundary review, or the whole bundle) and why a full one ran
+#: full, so the bounded-cumulative lever can be judged against its falsifier.
+#: Bumped to 12 when `waived_inherited` joined `by_outcome`'s fixed key set:
+#: consolidation's own waiver of a failure the base tree already had.
+#: Bumped to 13 when `native_review` joined the top level: the paired native
+#: review's runs (#1130), reported apart from every Critic aggregate.
+#: Bumped to 14 when `native_review` gained `by_stage`: inner and boundary
+#: native runs, whose pooled median described neither (#1166).
+REPORT_SCHEMA_VERSION = 14
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -74,6 +83,12 @@ REPORT_SCHEMA_VERSION = 10
 #: the field existed, or a value this reader does not know — groups as
 #: ``None``, rendered "(unrecorded)": "not measured" must not read as a stage.
 _STAGES = ("inner", "boundary")
+
+#: A cumulative's two spans, as `critic-begin` records them. Unlike a stage, a
+#: missing span IS known: no cumulative was bounded before the field existed,
+#: so a cumulative event without one reviewed the whole bundle and reads `full`
+#: (its reason `unrecorded`). Other modes have no span and are not grouped.
+_SPANS = ("bounded", "full")
 
 #: Ledger kind -> the tally it feeds. Exact kinds, never a `learning.` prefix
 #: match: a future kind this report has no column for must surface as
@@ -229,6 +244,13 @@ def _read_events(
             learning[bucket] += 1
             units[bucket].add(unit)
             continue
+        if kind == NATIVE_EVENT:
+            native = event.get("native")
+            if isinstance(native, dict) and isinstance(native.get("findings"), list):
+                events.append(event)
+            else:
+                skipped["invalid_payloads"] += 1
+            continue
         if not kind.startswith("review."):
             skipped["unknown_kinds"] += 1
             continue
@@ -333,6 +355,8 @@ def _extract_row(event: dict) -> dict:
         "model": _canonical_model(model),
         "mode": _short_mode(event["review"].get("mode")),
         "stage": stage if stage in _STAGES else None,
+        "span": event["review"].get("span"),
+        "span_reason": event["review"].get("span_reason"),
         # Read, never inferred — an event written before the key existed says
         # nothing about which path consolidated it.
         "trigger": trigger if trigger in CONSOLIDATION_TRIGGERS else None,
@@ -347,6 +371,52 @@ def _extract_row(event: dict) -> dict:
         "remedies": remedies,
         "findings": findings,
         "observations": observations,
+    }
+
+
+#: The paired native review's event (#1130). A second instrument run beside the
+#: Critic, not a Critic review: counted into any Critic aggregate it would read
+#: as a boundary review and inflate the boundary yield the rigor norm is judged
+#: on. Its kind sits outside `review.` (so older readers skip it as unknown),
+#: `_read_events` admits it by name, and every Critic reader splits it out here.
+NATIVE_EVENT = "native.review"
+
+
+def _split_native(events: list[dict]) -> "tuple[list[dict], list[dict]]":
+    """``(critic events, native events)`` — the one place the two are told apart."""
+    critic = [e for e in events if e.get("event") != NATIVE_EVENT]
+    native = [e for e in events if e.get("event") == NATIVE_EVENT]
+    return critic, native
+
+
+def _native_stage(event: dict) -> str:
+    """The stage of the Critic review a native run was paired with. An event
+    from before inner reviews paired carries none, and every run then was a
+    boundary one."""
+    stage = event["native"].get("stage")
+    return stage if isinstance(stage, str) and stage else "boundary"
+
+
+def _native_block(native: list[dict]) -> dict:
+    """The paired native runs on their own: how many, how long (code-clocked
+    from ``critic-begin``'s dispatch stamp), and the findings of the runs whose
+    text was countable — over all runs, and per stage in ``by_stage``, since a
+    short inner run and a whole-bundle boundary run pooled into one median
+    describe neither."""
+    def figures(runs: list[dict]) -> dict:
+        measured = [d for d in (_measured_duration(e) for e in runs) if d is not None]
+        countable = [e for e in runs if e["native"].get("findings_parsed") is True]
+        return {
+            "runs": len(runs),
+            "duration_measured": _population(measured),
+            "countable_runs": len(countable),
+            "findings": sum(len(e["native"]["findings"]) for e in countable),
+        }
+
+    stages = sorted({_native_stage(e) for e in native})
+    return {
+        **figures(native),
+        "by_stage": {s: figures([e for e in native if _native_stage(e) == s]) for s in stages},
     }
 
 
@@ -588,7 +658,8 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
             "status": "unavailable",
             "reason": f"this repo's governance ledger could not be read ({unreadable})",
         }
-    rows = [row for row in (_extract_row(e) for e in events) if row["mode"] == mode]
+    critic_events, _native = _split_native(events)
+    rows = [row for row in (_extract_row(e) for e in critic_events) if row["mode"] == mode]
     measured = [row["duration_measured"] for row in rows if row["duration_measured"] is not None]
     if len(measured) >= MIN_PRICED_SAMPLE:
         return {
@@ -710,15 +781,19 @@ def aggregate_review_stats(
     outcome}}}``, or ``{"status": "unavailable", "reason"}``. Omitted, the join
     is unavailable, never a 0%."""
     joins = dispositions or {"status": "unavailable", "reason": "the evidence store was not read"}
+    events, native = _split_native(events)
     rows = [_extract_row(e) for e in events]
 
     by_rmm: dict[tuple, list[dict]] = {}
     by_scope: dict[str | None, list[dict]] = {}
     by_stage: dict[str | None, list[dict]] = {}
+    by_span: dict[str, list[dict]] = {span: [] for span in _SPANS}
     for row in rows:
         by_rmm.setdefault((row["role"], row["model"], row["mode"]), []).append(row)
         by_scope.setdefault(row["scope"], []).append(row)
         by_stage.setdefault(row["stage"], []).append(row)
+        if row["mode"] == "cumulative":
+            by_span["bounded" if row["span"] == "bounded" else "full"].append(row)
 
     top_files, files_attributed_total = _top_files(rows)
     return {
@@ -732,6 +807,7 @@ def aggregate_review_stats(
             else {"status": "unavailable", "reason": joins.get("reason")}
         ),
         "events_total": len(rows),
+        "native_review": _native_block(native),
         "skipped": dict(skipped),
         "overall": _group_stats(rows, joins),
         "by_role_model_mode": [
@@ -754,6 +830,15 @@ def aggregate_review_stats(
                 by_stage.items(),
                 key=lambda kv: _STAGES.index(kv[0]) if kv[0] in _STAGES else len(_STAGES),
             )
+        ],
+        # The bounded-cumulative lever's own numbers: what a bounded repeat
+        # cost and found beside a full one, and why each full one ran full.
+        # Both spans are listed even at zero, so an absent lever reads as a
+        # zero rather than as a missing key.
+        "by_span": [
+            {"span": span, **_group_stats(by_span[span], joins),
+             **({"reasons": _span_reasons(by_span[span])} if span == "full" else {})}
+            for span in _SPANS
         ],
         # Which path consolidated each Critic review. The three leave identical
         # state, so the only symptom of a dead path is its count here sitting at
@@ -810,6 +895,16 @@ def _fmt_dispositions(block: dict) -> str:
         f"acted on {round(block['acted_on_rate'] * 100)}% of {block['answered']} "
         f"answered blocking/warning findings, {open_} undispositioned ({joined})"
     )
+
+
+def _span_reasons(rows: list[dict]) -> dict:
+    """Why each full-span cumulative ran full: its recorded decline code, or
+    ``unrecorded`` for one written before the field existed."""
+    reasons: dict[str, int] = {}
+    for row in rows:
+        code = row["span_reason"] if isinstance(row["span_reason"], str) and row["span_reason"] else "unrecorded"
+        reasons[code] = reasons.get(code, 0) + 1
+    return dict(sorted(reasons.items()))
 
 
 def _fmt_stats(stats: dict) -> str:
@@ -895,6 +990,27 @@ def _fmt_remedies(remedies: dict) -> str:
     return " | ".join(parts) if parts else "(no findings)"
 
 
+def _native_line(block: dict) -> "list[str]":
+    """The paired native runs' lines, one per stage, or nothing when there were
+    none. A block written before the stage split has no ``by_stage``; its runs
+    were all boundary ones."""
+    if not block.get("runs"):
+        return []
+    lines = []
+    for stage, figures in (block.get("by_stage") or {"boundary": block}).items():
+        duration = figures["duration_measured"]
+        clocked = (
+            f"median {duration['median_seconds']}s over {duration['reviews']} clocked"
+            if duration["reviews"] else "none clocked"
+        )
+        lines.append(
+            f"native review, {stage} (paired, #1130; in no total here): {figures['runs']} run(s) | "
+            f"duration {clocked} | {figures['findings']} finding(s) over "
+            f"{figures['countable_runs']} countable run(s)"
+        )
+    return lines
+
+
 def _render_human(report: dict, ledger_rel: str) -> str:
     sk = report["skipped"]
     lines = [
@@ -907,6 +1023,7 @@ def _render_human(report: dict, ledger_rel: str) -> str:
         "",
         f"overall: {_fmt_stats(report['overall'])}",
         f"remedies: {_fmt_remedies(report['overall']['remedies'])}",
+        *_native_line(report.get("native_review") or {}),
         "",
         "by role x model x mode:",
     ]
@@ -919,6 +1036,11 @@ def _render_human(report: dict, ledger_rel: str) -> str:
     lines += ["", "by stage:"]
     for entry in report["by_stage"]:
         lines.append(f"  {entry['stage'] or '(unrecorded)'}: {_fmt_stats(entry)}")
+    lines += ["", "by span (cumulative only):"]
+    for entry in report["by_span"]:
+        reasons = entry.get("reasons")
+        why = (" — " + ", ".join(f"{code} {n}" for code, n in reasons.items())) if reasons else ""
+        lines.append(f"  {entry['span']}: {_fmt_stats(entry)}{why}")
     lines += ["", "critic reviews consolidated by: " + ", ".join(
         f"{trigger} {count}" for trigger, count in report["consolidated_by"].items()
     )]
@@ -1039,7 +1161,10 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         events, skipped = [], {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
         learning = {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0, "units_uncited": 0}
 
-    report = aggregate_review_stats(events, skipped, learning, _read_dispositions(project_dir, events))
+    critic_events, _native = _split_native(events)
+    report = aggregate_review_stats(
+        events, skipped, learning, _read_dispositions(project_dir, critic_events)
+    )
     # Header fields the pure aggregation can't know — added once, here, so the
     # JSON and human renderings always agree.
     report = {

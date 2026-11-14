@@ -33,6 +33,8 @@ if _PLUGIN not in sys.path:
 
 from lib import critic_consolidate as cc  # noqa: E402
 
+#: `fact_to_cache_record` reads a review's waivers from the store; none here.
+_NO_FACTS = {"facts": []}
 
 def _review(rid, base, head, findings=()):
     return {
@@ -246,7 +248,7 @@ def test_cache_record_carries_the_sentence_to_the_builder():
     }
 
     record = cc.fact_to_cache_record(
-        fact, None, [{"review_id": "rev-A", "fid": "R-12"}]
+        fact, None, [{"review_id": "rev-A", "fid": "R-12"}], store=_NO_FACTS
     )
 
     assert "R-12" in record["next_action"]
@@ -262,7 +264,7 @@ def test_cache_record_without_carried_is_unchanged():
                  "findings": [], "roster": [], "mode": "verify-resolutions"},
     }
 
-    assert cc.fact_to_cache_record(fact, None, []) == cc.fact_to_cache_record(fact, None)
+    assert cc.fact_to_cache_record(fact, None, [], store=_NO_FACTS) == cc.fact_to_cache_record(fact, None, store=_NO_FACTS)
 
 
 def test_carried_is_computed_after_resolution_facts_land():

@@ -608,6 +608,22 @@ class TestStopObservations:
         assert "observed only      clear-reason 3 (catch 1, slip 1, unclassified 1)" in text
         assert "clear-verdict 1 (catch 1, slip 0, unclassified 0)" in text
 
+    def test_close_pointer_observations_are_counted_by_kind_with_no_verdict(self):
+        """close-pointer has no slip rule: a positional reason is the defect
+        whatever the session's state, so it is counted and never scored."""
+        facts = [
+            _fact("session-start", {}, fid="s-1", session="s1"),
+            _observation("close-pointer", "a", reason="points-above",
+                         observed={"notes_present": True, "work_live": False}),
+            _observation("close-pointer", "b", reason="points-below",
+                         observed={"notes_present": False, "work_live": True}),
+        ]
+        obs = _v(facts)["stop_observations"]
+        assert obs["by_gate"] == {"close-pointer": 2}
+        assert obs["by_gate_reason"]["close-pointer"] == {"points-above": 1, "points-below": 1}
+        assert "close-pointer" not in obs["verdicts"]
+        assert "close-pointer" not in stats.SLIP_WHEN_OBSERVED
+
     def test_the_human_report_shows_observations_only_when_there_are_some(self):
         facts = [_fact("session-start", {}, fid="s-1", session="s1"), _observation("clear-verdict", "a",
                  reason="handed-over-complete", observed={"work_live": False})]

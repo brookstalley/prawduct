@@ -153,7 +153,8 @@ of fixing rather than after.
 5. **Where the closure property is evaluated (#694's acceptance).** Proposed answer: the *finding
    author* records it (D1), the *resolver* addresses it per member (D2), and the *verifier*
    grades each member against the `closure` sentence (D3 + existing grading directive).
-   `verify-resolutions` remains the only place resolution facts are minted (data-model rule).
+   `verify-resolutions` remains the only place a reviewer's judgment mints resolution facts
+   (data-model rule; consolidation's inherited-baseline waiver is computed from a base-tree test run).
 
 ## Measurement (before building)
 

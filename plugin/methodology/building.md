@@ -72,7 +72,7 @@ retroactivity). Departing from a norm that already governs your change is a reco
 **Establish a clean baseline.** Before the first work cycle of a session:
 
 - *Tests*: `test-status` current is the baseline (exit 0 — don't re-run); else one run of the declared suite, all passing. A delegate skips this, inheriting the main agent's baseline.
-- *A red baseline*: establish whether your work caused it before fixing it. If it predates your work, record it (`test-evidence record --degraded`) and name it in the handoff rather than folding a fix into your diff; if your work caused it, fix it first.
+- *A red baseline*: establish whether your work caused it before fixing it. If it predates your work, record it (`test-evidence record --degraded`) — and once more in a clean checkout of the merge-base (a detached worktree; the store is clone-shared), which lets consolidation waive its BLOCKING finding — and name it in the handoff rather than folding a fix into your diff; if your work caused it, fix it first.
 - *Git state*: Commit or stash unrelated work. Medium+ work gets a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Address or explicitly acknowledge each compliance finding in the session briefing.
 
@@ -100,7 +100,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Verify.** Two layers:
 
-- *Code:* A chunk runs the ceiling above; record the declared suite once, at the boundary run — not after committing (a commit doesn't stale session-scoped evidence). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. A flaky failure: `--rerun-failed` retries only the failures. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
+- *Code:* A chunk runs the ceiling above; record the declared suite once, at the boundary run — not after committing (a commit doesn't stale session-scoped evidence). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit` (any full-suite JUnit report), `--from-counts` (only with no declared command), `--no-rerun` (restamp). A flaky failure: `--rerun-failed` retries only the failures. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
@@ -125,7 +125,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 1. **Critic** (if medium+ and not run yet) on the uncommitted chunk — resolve blocking findings. 2. **Commit** (tests passing). 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged. 6. **Handoff notes** — read `.prawduct/.handoff-notes.md` before rewriting it, then reconcile to what the *next* session needs: where you stopped, what you'd do next, what would bite them. Never blind-append; the Stop hook flags a missing one.
 
-**A chunk boundary ends the turn only when the plan is done, the next chunk needs the user, or the work cycle has reached what one review can cover** (§ above); otherwise carry on to the next chunk after steps 1-6. When the turn does end, close it with the closing line — last, after every other word. Say `SAFE TO CLEAR` only when steps 1-6 above are done and nothing is outstanding, in flight included — that binding is what this file owes the line. A decision awaiting the user is not outstanding once step 6 records it. Its shape, trigger and failure modes are `methodology/session-hygiene.md`, and the session digest injects them into every session.
+**A chunk boundary ends the turn only when the plan is done, the next chunk needs the user, or the work cycle has reached what one review can cover** (§ above); otherwise carry on to the next chunk after steps 1-6. When the turn does end, close it with the closing line. Say `SAFE TO CLEAR` only when steps 1-6 above are done and nothing is outstanding, in flight included — that binding is what this file owes the line. A decision awaiting the user is not outstanding once step 6 records it. Its shape, trigger and failure modes are `methodology/session-hygiene.md`, and the session digest injects them into every session.
 
 The `/clear` hook regenerates `.prawduct/.session-handoff.md` — never hand-edit it — from your notes (first), `prawduct-hook plan status`, reflection, Critic findings and changed files. `prawduct-hook handoff preview` shows what the next session would get.
 
@@ -199,9 +199,9 @@ Every consolidated review appends a fact to a store shared by all worktrees of t
 
 ### Modes
 
-Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
+Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and only `verify-resolutions` resolves an earlier review's findings.
 
-**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll. While it runs, never edit the reviewed files: `critic-begin` snapshots a tree, so an edit under review voids the review and the suite evidence together, and `test-status` still exits 0. Any tracked edit, the plan included, needs an attestation (`review-cycle.md`). If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
+**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll. While it runs, never edit the reviewed files: `critic-begin` snapshots a tree, so an edit under review voids the review and the suite evidence together, and `test-status` still exits 0. Any tracked edit, the plan included, needs an attestation (`review-cycle.md`). If it fails, tell the user and follow the remedy the refusal prints, not a fresh review — never write `.critic-findings.json` yourself.
 
 **Warnings gate nothing, and an observation is owed no disposition.** Every fix commit extends HEAD, which is how a passing review buys another round. Think before dismissing one anyway: the Critic catches blind spots the builder can't see.
 

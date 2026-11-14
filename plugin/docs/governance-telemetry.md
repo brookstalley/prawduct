@@ -48,6 +48,19 @@ kind-named key (`review` for `review.*`):
 - `review.critic` (the Critic, after writing its findings file, whose only trusted source is the
   canonical `.critic-findings.json`). A ledger may also hold `review.pr` events, which `stats` and
   `review-stats` read and `ledger-append` refuses to write.
+- `native.review` (role `native`; a development build's paired native review, #1130), written only
+  by `native-review record` once the wrapper has saved the review's text, one per Critic review it
+  was paired with (`native.critic_review_id`). Its `native` payload carries the range, the level,
+  each finding's `file` and `line` — never its text, which stays in `.prawduct/.native-reviews/` —
+  and `findings_parsed` (false when the text held nothing countable); the paired review's `mode`
+  and `stage`; `synthetic_range` (true when the range was named by unreachable commits because the
+  interval had no commit at one end); and `tree_moved` (true when a file in the reviewed interval,
+  outside `.prawduct/`, differed in the working tree by the time the run was recorded, `null` when
+  it could not be told). `dispatched_at` is the time
+  `critic-begin` stamped. The kind sits outside `review.` and the payload under `native`, so a
+  reader that takes `review.*` events as Critic reviews (older builds of this plugin included)
+  skips it as unknown; `review-stats` reports it in its own `native_review` block, in no Critic
+  total. `ledger-append` refuses to write it.
 - `learning.written`, `learning.fired` and `learning.compacted` — the learning loop, below.
 - **Consumers skip unknown event kinds and unknown fields** — that contract is
   what lets producers grow without migrating the ledger.
@@ -160,8 +173,9 @@ worktrees get deleted.
 - **A Stop-hook check that observes without blocking** appends one
   `guard-refusal` fact per firing, with `guard` = `stop-observed:<check id>`,
   through `append_stop_observation`, carrying the same `reason` and `observed`
-  a block of that check would. `clear-verdict` (#1044) and `clear-reason`
-  (#1131) are the two such checks; no Stop gate blocks on the close's wording.
+  a block of that check would. `clear-verdict` (#1044), `clear-reason`
+  (#1131) and `close-pointer` (owner ruling 2026-11-11, asks come last) are the three such checks; no Stop
+  gate blocks on the close's wording.
   `stats` scores these with the block verdict
   rules and reports them as *observed only*, never as Stops blocked or guard
   refusals.
@@ -188,12 +202,13 @@ Each firing records what was observed, never a judgment of it. A reader derives 
 judgment (below), so a revised definition re-reads every recorded firing. A
 control that records neither is counted as `unspecified`.
 
-The Stop checks that record a reason (both observe without blocking):
+The Stop checks that record a reason (all observe without blocking):
 
 | Gate | `reason` | `observed` |
 |---|---|---|
 | `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: harness background tasks in flight, or a live Critic review. `notes_present`: a non-empty `.handoff-notes.md`. `session_changed`: the session authored a non-metadata change, committed or not (`gates.session_work_span`) |
 | `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same three |
+| `close-pointer` | `points-above`, `points-below`: which way the close's reason points at the turn by position, under any disposition (`standing_block.POSITIONAL_POINTER_KINDS`); the phrase itself is not recorded. A `SAFE TO CLEAR` reason saying "is above" can fire this and `clear-reason` both | the same three |
 
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
@@ -232,12 +247,21 @@ window           {since, until} — the bounds in force, stated even when both
                  are null so a slice is never mistaken for the whole corpus
 dispositions     {status: available, as_of} or {status: unavailable, reason}
                  — whether the evidence store could be joined (below)
-events_total     reportable review.* events
+events_total     reportable review.* events (Critic reviews; native.review is
+                 not one)
+native_review    {runs, duration_measured, countable_runs, findings, by_stage}
+                 — a development build's paired native review runs (#1130),
+                 counted in no other key: a second instrument, not a review.
+                 by_stage (schema 14) holds the same four figures per stage of
+                 the paired Critic review (an event with no stage counts as
+                 boundary)
 skipped          {corrupt_lines, unknown_kinds, invalid_payloads}
 overall          one stat block (below)
 by_role_model_mode  [{role, model, mode, ...stat block}]
 by_scope         [{scope, ...stat block}]
 by_stage         [{stage, ...stat block}] — `inner` / `boundary` / null
+by_span          [{span, ...stat block}] — `bounded` / `full`, cumulatives
+                 only; the `full` entry adds `reasons` {decline code: count}
 consolidated_by  {subagent-stop, explicit, session-end-backstop, unrecorded}
                  — review.critic events per `trigger`, every path listed even
                  at zero; `unrecorded` is events without a known value
@@ -297,8 +321,9 @@ finding's outcome comes from `stats.finding_outcome`, the rule `prawduct-hook st
   `review.pr` event carries no `fact_id`, so it is always unjoined, and so is an event whose fact
   is not in this clone's store. The rate is over the joined reviews only.
 - `by_outcome`: blocking and warning findings of the joined reviews, by `stats`'s outcome names
-  (`fixed`, `fixed_unreviewed`, `filed`, `accepted`, `waived`, `undispositioned`, `other`). A
-  finding with no `fid` is `other`.
+  (`fixed`, `fixed_unreviewed`, `filed`, `accepted`, `waived`, `waived_inherited`,
+  `undispositioned`, `other`). A finding with no `fid` is `other`. Schema 12 added
+  `waived_inherited`.
 - `answered` and `acted_on_rate`: the same definition as `stats` (§ below, through the one
   helper `stats.acted_on`). `acted_on_rate` is `null` when nothing was answered.
 
@@ -327,6 +352,14 @@ cache onto `review.critic` events. It is **read, never derived from the mode**: 
 before the field existed groups under `null` (rendered "(unrecorded)"), and so does a `review.pr`
 event, which carries none. Schema 5 added the key. This is the yield-by-stage query the
 stage-keyed rigor norm (`nonfunctional-requirements.md` § Direction) was drawn to answer.
+
+`by_span` groups `cumulative` reviews by the record's `span`: `bounded` (the delta since an earlier
+boundary review) or `full` (the whole bundle). Both are listed even at zero. A cumulative event
+written before the field reads `full`, which is true, because nothing was bounded then; its reason
+is `unrecorded`. The `full` entry's `reasons` counts each recorded decline code (`gates.SPAN_FULL_*`),
+so why a repeat ran full is a query. Other modes carry no span and are not grouped. Schema 11 added
+the key. This is the bounded-cumulative lever's yield, read against its falsifier
+(`.prawduct/artifacts/bounded-cumulative-design.md`).
 
 Mode keys are the short tokens (`chunk` / `final` / `cumulative` /
 `verify-resolutions`), derived from the persisted verbose strings. `review.pr`
@@ -425,6 +458,9 @@ The definitions (their one home):
       that keeps a gate. Its firings are now observations, not blocks
       (counts across that change do not compare), scored by this same rule
       under *observed only*.
+    - `close-pointer` has no rule: a reason that points by position is the
+      defect whatever the session's state, so no observation separates a catch
+      from a slip. Its firings are counted by kind only.
 - **observed only**: firings of a Stop check that records without blocking
   (`stop-observed:` facts), by check, with the verdicts above. Never counted
   in stops blocked or guard refusals.
@@ -441,12 +477,14 @@ The definitions (their one home):
   - A resolution outranks any disposition; among dispositions, the newest
     wins.
   - Outcomes are fixed (a verify pass confirmed it), fixed_unreviewed (recorded
-    fixed with no review), filed, accepted, waived and undispositioned. Anything
-    else lands in `other`, including a state a later plugin adds or a malformed
-    finding.
+    fixed with no review), filed, accepted, waived, waived_inherited
+    (consolidation waived a failure the base tree already had; schema 4) and
+    undispositioned. Anything else lands in `other`, including a state a later
+    plugin adds or a malformed finding.
   - *acted on* = (fixed + fixed_unreviewed + filed) / (those + accepted +
-    waived). Undispositioned findings are left out of the rate and reported
-    beside it. The denominator is exported as `answered`.
+    waived). Undispositioned and waived_inherited findings are left out of the
+    rate (the latter is a fact about the base, not an answer to the finding)
+    and reported beside it. The denominator is exported as `answered`.
 - **blocking fixed by goal**, and **blocking and warnings fixed per scope**.
   Both kinds of fixed count.
 - **red suite runs**: recorded suite runs with a failure.

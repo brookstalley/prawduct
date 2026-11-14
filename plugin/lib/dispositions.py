@@ -94,6 +94,19 @@ REPORT_SCHEMA_VERSION = 2
 #: it correctly counts as unresolved.
 STATE_FIXED = "fixed"
 STATE_WAIVED = "waived"
+#: The ``origin`` of a ``waived`` resolution fact consolidation writes itself,
+#: for a BLOCKING test failure the merge-base tree already had — the one
+#: resolution no ``verify-resolutions`` pass judged.
+INHERITED_BASELINE_ORIGIN = "inherited-baseline"
+#: A finding waived as inherited from the base tree. Kept DISTINCT from
+#: :data:`STATE_WAIVED` for the reason :data:`STATE_FIXED_FREE` is kept apart
+#: from :data:`STATE_FIXED`: both lift the blocker, and only one says a reviewer
+#: weighed it. Counted together, "a reviewer accepted a blocker" and "the base
+#: was already red" would be one number in the yield figures.
+STATE_WAIVED_INHERITED = "waived-inherited"
+#: The resolution states that lift a blocking finding — every reader asking
+#: "is it answered" rather than "how" reads this set, not a literal.
+RESOLVED_STATES = frozenset({STATE_FIXED, STATE_WAIVED, STATE_WAIVED_INHERITED})
 STATE_ACCEPTED = "accepted"
 STATE_FILED = "filed"
 #: A fix recorded by :data:`FIXED` rather than by a resolution fact. Kept
@@ -326,19 +339,52 @@ def disposition_history(store: dict, review_id: str, fid: str) -> list[dict]:
 
 
 def resolution_detail_index(store: dict) -> dict[tuple[str, str], str]:
-    """``(review_id, fid)`` → the resolution fact's disposition string.
+    """``(review_id, fid)`` → the resolution fact's disposition string, or
+    :data:`STATE_WAIVED_INHERITED` for a ``waived`` one whose ``origin`` is
+    :data:`INHERITED_BASELINE_ORIGIN`.
 
     Deliberately *not* ``coverage_algebra.resolution_index``: that one answers
     the gate's boolean question and must fail toward stricter, so it discards
     both which disposition resolved a finding and any value it does not
-    recognize. A census has to show what was actually recorded."""
+    recognize. A census has to show what was actually recorded — the origin
+    included, which is what tells consolidation's own waiver from a judged one.
+
+    The one reader of a resolution's ``origin``: the census and ``review-stats``
+    (through :func:`finding_state`) and the derived findings cache
+    (:func:`inherited_waivers`) all ask here, so they cannot disagree."""
     index: dict[tuple[str, str], str] = {}
     for fact in evidence.facts_of_kind(store, "resolution"):
         key = _target(fact)
-        disposition = (fact.get("body") or {}).get("disposition")
-        if key is not None and _nonempty(disposition):
-            index[key] = disposition.strip()
+        body = fact.get("body") or {}
+        disposition = body.get("disposition")
+        if key is None or not _nonempty(disposition):
+            continue
+        disposition = disposition.strip()
+        if disposition == STATE_WAIVED and body.get("origin") == INHERITED_BASELINE_ORIGIN:
+            disposition = STATE_WAIVED_INHERITED
+        index[key] = disposition
     return index
+
+
+def inherited_waivers(store: dict, review: dict) -> list[str]:
+    """The fids of ``review``'s BLOCKING findings waived as inherited from the
+    base tree, in the review's own order — derived from the store's resolution
+    facts, never handed in, so every renderer of one review fact (consolidation,
+    and the ingest path that re-renders it in another clone) names the same
+    ones."""
+    rid = review.get("id")
+    findings = (review.get("body") or {}).get("findings")
+    if not isinstance(findings, list):
+        return []
+    index = resolution_detail_index(store)
+    return [
+        f["fid"]
+        for f in findings
+        if isinstance(f, dict)
+        and isinstance(f.get("fid"), str)
+        and _severity_of(f) == "blocking"
+        and index.get((rid, f["fid"])) == STATE_WAIVED_INHERITED
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -747,12 +793,15 @@ def finding_state(key: "tuple[str, str]", dispositions: dict, resolutions: dict)
 
     ``dispositions`` is :func:`disposition_index`, ``resolutions`` is
     :func:`resolution_detail_index`. A resolution outranks any disposition,
-    because it is the only answer an independent verify pass attests; among
-    dispositions the newest wins. A resolution value this plugin does not
-    recognize is shown as ``resolved-<value>`` rather than hidden."""
+    because it is a recorded fact the gate itself reads: a verify pass's
+    judgment, or — :data:`STATE_WAIVED_INHERITED`, reported apart — the
+    waiver consolidation computes from a base-tree run that already failed the
+    same tests. Among dispositions the newest wins. A resolution value this
+    plugin does not recognize is shown as ``resolved-<value>`` rather than
+    hidden."""
     resolution = resolutions.get(key)
     disposition = ((dispositions.get(key) or {}).get("body")) or {}
-    if resolution in (STATE_FIXED, STATE_WAIVED):
+    if resolution in RESOLVED_STATES:
         return resolution
     if resolution is not None:
         return f"resolved-{resolution}"

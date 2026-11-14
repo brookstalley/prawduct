@@ -317,16 +317,23 @@ def _deliver_stop_advisories(advisories: list[str]) -> None:
 #: How a blocked turn should answer the block, said once at the top of every
 #: Stop block reason. The turn's answer and its closing line are already
 #: above the block; a model that writes both again reads to the operator as
-#: the hook firing twice. The close is written again only when the turn must
-#: now close `RUNNING` · `DO NOT CLEAR`, because the deferral reads the close
-#: from the LAST message: to keep a deferral of the session-end gates, or
-#: because the fix starts work a clear would kill, such as a dispatched
-#: review. No gate blocks on the close's own wording.
+#: the hook firing twice. The one exception is the asks block
+#: (`lib/standing_block.ASKS_HEADER`, spelled out here because this constant
+#: is built before any `lib` import): a turn that ended with one has put the
+#: block between its asks and the user, so the answer ends with the asks again,
+#: unchanged, to keep them the last thing shown. The close is written again
+#: only when the turn must now close `RUNNING` · `DO NOT CLEAR`, because the
+#: deferral reads the close from the LAST message: to keep a deferral of the
+#: session-end gates, or because the fix starts work a clear would kill, such
+#: as a dispatched review. It goes before the asks, where the reader looks for
+#: it. No gate blocks on the close's own wording.
 STOP_BLOCK_ANSWER = (
     "Your answer above stands. Do only what the items below ask, then end with a short "
-    "note of what you did. Do not repeat your answer. Write the closing line again only "
-    "if you must now close `RUNNING` · `DO NOT CLEAR` (to keep a deferral, or because "
-    "what you just started, such as a review, would die on a clear)."
+    "note of what you did. Do not repeat your answer, except: if it ended with a "
+    "`**Needs you:**` block, end with that block again, unchanged, so your asks stay "
+    "the last thing shown. Write the closing line again only if you must now close "
+    "`RUNNING` · `DO NOT CLEAR` (to keep a deferral, or because what you just started, "
+    "such as a review, would die on a clear), before the asks."
 )
 
 
@@ -989,6 +996,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials",
     ".prawduct/.critic-partials-archive",
+    ".prawduct/.native-reviews",
     ".prawduct/.delegate-brief.md",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
@@ -2442,6 +2450,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     from lib import model_tier  # noqa: PLC0415 — lazy; `_critic_consolidate` above seeded sys.path
 
     print(f"PRAWDUCT: {model_tier.reviewer_model_line(manifest.get('reviewer_model'))}")
+    # The paired native review (#1130), when code paired one: printed beside the
+    # reviewer model because the same dispatch message carries both.
+    native_line = consolidate.native_review_line(manifest)
+    if native_line:
+        print(f"PRAWDUCT: {native_line}")
     # PDT-WT9K: surface the resolved target so a wrong-tree review is obvious.
     base_ref = manifest.get("base_commit") or manifest.get("base_tree") or "?"
     print(
@@ -2748,6 +2761,55 @@ def cmd_critic_consolidate(project_dir: Path, args: list[str] | None = None) -> 
     )
 
 
+def cmd_native_review(project_dir: Path, argv: list[str]) -> int:
+    """``native-review record <review id>`` | ``native-review show [<review id>]``.
+
+    The paired native review's record (#1130, ``lib/native_review.py``).
+    ``record`` is run by the wrapper a development build's boundary review
+    dispatches, once it has written the review's text: it appends one
+    ``native.review`` ledger event (exit 0, also when already recorded) or says
+    why there is nothing to record (exit 1). ``show`` prints a native review's
+    text, the newest by default (exit 0), or why it cannot (exit 1). Exit 2 on a
+    usage error."""
+    from lib import gitstate, native_review  # noqa: PLC0415 — lazy; the dispatcher seeded sys.path
+
+    usage = "usage: prawduct-hook native-review record <review id> | show [<review id>]"
+    op = argv[0] if argv else None
+    rest = argv[1:]
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    if op == "record" and len(rest) == 1:
+        rc, message = native_review.record(project_dir, prawduct_dir, rest[0])
+    elif op == "show" and len(rest) <= 1:
+        rc, message = native_review.show(prawduct_dir, rest[0] if rest else None)
+    else:
+        shown = " ".join(argv) or "(no arguments)"
+        print(f"native-review: cannot read {shown!r} — {usage}", file=sys.stderr)
+        return 2
+    print(message, file=sys.stdout if rc == 0 else sys.stderr)
+    return rc
+
+
+def cmd_validate_partial(project_dir: Path, path: str | None) -> int:
+    """Read-only: would consolidation accept this reviewer partial?
+
+    A reviewer runs it on its own file before returning. Exit 0 prints ``ok``;
+    exit 1 prints the parse error (line and column) or the validation reason —
+    the file is the caller's to fix; exit 3 means nothing can check it (no
+    manifest owns it, or it is keyed to another review) — the caller stops;
+    exit 2 is a usage error (no path given). The verdict is
+    ``critic_consolidate.check_partial``, the same function consolidation
+    reads each partial through."""
+    if not path:
+        print("usage: prawduct-hook validate-partial <partial path>", file=sys.stderr)
+        return 2
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    return critic_consolidate.validate_partial_cmd(project_dir, path)
+
+
 def cmd_subagent_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     """SubagentStop trigger: consolidate Critic partials as each reviewer finishes.
 
@@ -2951,12 +3013,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     path: a turn whose close says ``RUNNING`` and ``DO NOT CLEAR`` is not a
     session end, so the session-end gates (reflection, Critic) defer while
     every other gate still blocks (``lib/gates.turn_declares_in_flight``). The
-    same field drives two clear checks that record and never refuse: a turn
+    same field drives three close checks that record and never refuse: a turn
     that hands the session over (``YOUR TURN`` / ``COMPLETE``) while saying
     ``DO NOT CLEAR`` (``clear-verdict``,
     ``lib/gates.turn_contradicts_its_verdict``) — ``YOUR TURN`` only when no
-    work a clear would kill is observed — and a ``SAFE TO CLEAR`` whose reason
-    is the turn itself (``clear-reason``, ``lib/gates.turn_self_citation``).
+    work a clear would kill is observed — a ``SAFE TO CLEAR`` whose reason
+    is the turn itself (``clear-reason``, ``lib/gates.turn_self_citation``),
+    and, under any disposition, a close whose reason points at the turn by
+    position (``close-pointer``, ``lib/gates.turn_positional_pointer``).
     """
     prawduct_dir = get_prawduct_dir(project_dir)
 
@@ -3065,6 +3129,21 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             reason=self_citation[1],
             observed=_clear_observations(project_dir, defer_active),
         )
+    # A close whose reason points by position ("the one ask above is for
+    # you"), under any disposition: the reader came to the bottom to be told
+    # what the asks are, and with the asks after the close an "above" points
+    # the wrong way. Recorded, not blocked, like the two checks above, under
+    # its own check id so its firings count apart from theirs; a turn can
+    # fire it and `clear-reason` both. It records the pointer's kind, never
+    # the phrase.
+    positional_pointer = _gates().turn_positional_pointer(event)
+    if positional_pointer:
+        _record_stop_observation(
+            project_dir,
+            "close-pointer",
+            reason=positional_pointer[1],
+            observed=_clear_observations(project_dir, defer_active),
+        )
 
     # v5: Compliance canary (informational)
     try:
@@ -3089,22 +3168,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     KNOWN_WAIVER_KEYS = set(_WAIVER_KEY_BY_GATE.values())
     retired_waiver_keys = sorted(k for k in waivers if k in _RETIRED_WAIVER_KEYS)
     if retired_waiver_keys:
-        print(
-            "\nNOTE: .gates-waived has retired keys (no effect): "
+        stop_advisories.append(
+            "NOTE: .gates-waived has retired keys (no effect): "
             + "; ".join(f"{k} — {_RETIRED_WAIVER_KEYS[k]}" for k in retired_waiver_keys)
-            + ".",
-            file=sys.stderr,
+            + "."
         )
     unknown_waiver_keys = sorted(
         k for k in waivers if k not in KNOWN_WAIVER_KEYS and k not in _RETIRED_WAIVER_KEYS
     )
     if unknown_waiver_keys:
-        # Stderr-only warning so the agent learns about typos. Doesn't affect gate
-        # behavior — unknown keys simply have no effect.
-        print(
-            f"\nNOTE: .gates-waived has unknown keys (no effect): {', '.join(unknown_waiver_keys)}. "
-            f"Valid keys: {', '.join(sorted(KNOWN_WAIVER_KEYS))}.",
-            file=sys.stderr,
+        # An advisory, so a typo is heard about: unknown keys have no effect on
+        # any gate, which is exactly why a typo would otherwise go unnoticed.
+        stop_advisories.append(
+            f"NOTE: .gates-waived has unknown keys (no effect): {', '.join(unknown_waiver_keys)}. "
+            f"Valid keys: {', '.join(sorted(KNOWN_WAIVER_KEYS))}."
         )
 
     # The learnings layout, read ONCE and in its OWN guarded step — three
@@ -3139,11 +3216,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         _learnings_both = _lf.STATE_BOTH
         _unmigrated_states = (_lf.STATE_LEGACY, _lf.STATE_BOTH)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-        print(
-            f"\nNOTE: the learnings layout could not be read ({type(exc).__name__}: {exc}).\n"
+        stop_advisories.append(
+            f"NOTE: the learnings layout could not be read ({type(exc).__name__}: {exc}).\n"
             "  The cutover floor and the budget gate did NOT run this session — nothing\n"
-            "  below says whether this repo's rules were loaded or whether they fit.\n",
-            file=sys.stderr,
+            "  below says whether this repo's rules were loaded or whether they fit."
         )
 
     # Where a durable rule goes, named by the ONE resolver rather than by a path
@@ -3373,11 +3449,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     "  agent → the session briefing carries the migration recipe; "
                     "`prawduct-hook learnings-files` shows what is on disk"
                 )
-                print(
-                    f"\nNOTE: the learnings directive could not be rendered "
+                stop_advisories.append(
+                    f"NOTE: the learnings directive could not be rendered "
                     f"({type(exc).__name__}: {exc}) — the floor still blocks, but the short\n"
-                    "  form below is all it can say. The full recipe is in the session briefing.\n",
-                    file=sys.stderr,
+                    "  form below is all it can say. The full recipe is in the session briefing."
                 )
             blockers.append(_attributed("learnings-unmigrated",
                 _headline
@@ -3457,14 +3532,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         # `unchecked` is not a pass, and it is never silent: a ceiling that could
         # not be measured must not read as a ceiling that held.
         for _entry in _budget_unchecked:
-            print(f"\nNOTE: {_entry}", file=sys.stderr)
+            stop_advisories.append(f"NOTE: {_entry}")
         # Advisory findings print as a NOTE and never block: an unapproved core
         # raise is already IGNORED by the check (the cap holds), so blocking on
         # the declaration would charge the session for text that changes nothing.
         _budget_advisory = {"learnings-core-raise-unapproved"}
         for _f in _budget_findings:
             if _f["check"] in _budget_advisory:
-                print(f"\nNOTE: {_f['path']}: {_f['detail']}", file=sys.stderr)
+                stop_advisories.append(f"NOTE: {_f['path']}: {_f['detail']}")
         _budget_findings = [
             _f for _f in _budget_findings if _f["check"] not in _budget_advisory
         ]
@@ -3588,14 +3663,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                             file=_lt_rel, unit_hash=_lt_hash, seen=_lt_seen,
                         )
             except Exception as _lt_exc:  # prawduct:allow prawduct/broad-except -- telemetry must never change a gate's verdict
-                print(
-                    "\nNOTE: `learning.written` was not recorded this turn "
+                # Log-only: the user cannot act on a telemetry miss, and no gate changes.
+                stop_advisories.append(_LogOnlyAdvisory(
+                    "NOTE: `learning.written` was not recorded this turn "
                     f"({type(_lt_exc).__name__}: {_lt_exc}) — the rules written "
                     "in this session are missing from the governance ledger, so "
                     "an audit of the learning loop will under-count them. The "
-                    "gates above are unaffected.",
-                    file=sys.stderr,
-                )
+                    "gates above are unaffected."
+                ))
 
     # Gate 2: Critic review (only when building against a plan)
     # Skipped for doc-only changes (no code to review). The waiver is only
@@ -3734,9 +3809,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         "CRITIC REVIEW (consolidation failed): every reviewer reported, but\n"
                         "  the partials could not be consolidated — the specific cause is on\n"
                         "  stderr above (e.g. the working tree changed since dispatch, a\n"
-                        "  malformed partial, or a ledger failure). Follow its remedy, or\n"
-                        "  re-run the review:\n"
-                        "    /prawduct:critic\n"
+                        "  malformed partial, or a ledger failure). Follow the remedy it\n"
+                        "  names: a refused partial costs that one reviewer, and a fresh\n"
+                        "  /prawduct:critic is refused while this complete roster is on disk.\n"
                     ))
             elif state == "incomplete":
                 abandoned_critic = True
@@ -3985,9 +4060,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         "  This plan's last chunk is `Type: cumulative-final`:\n"
                         + _wrap_gate_prose(_critic_mode().LAST_CHUNK_BOUNDARY_STEP + ".")
                     )
+                # Why, directly under the line saying THAT the span is
+                # uncovered — the same explanation the PR gate prints, so a
+                # builder blocked here is not left to guess among a base
+                # advance, a changed head and an uncommitted file. Only for
+                # `uncovered`: an error status has no coverage to explain.
+                cause_line = (
+                    f"  {_gates().session_uncovered_cause(project_dir)}\n"
+                    if verdict_status == "uncovered"
+                    else ""
+                )
                 blockers.append(_attributed("critic",
                     "CRITIC REVIEW: no composed review coverage spans this session's\n"
                     f"  changes{span}: {detail}\n"
+                    + cause_line
                     + broken_binding_note
                     + last_chunk_note +
                     "  If you have completed a chunk, run `/prawduct:critic` now. It runs as an\n"
@@ -3999,6 +4085,21 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     + _committed_work_remedy(project_dir)
                     + "  A `Type: designer-handoff` chunk skips this gate automatically.\n"
                 ))
+
+    # The session gate passed on the session's own work while files a sync
+    # brought in stay unreviewed: say so in one line, so a pass that excused
+    # something is never silent about what it excused, or about who still owes it.
+    imported = critic_verdict.get("imported") if not critic_would_block else None
+    if imported:
+        shown = ", ".join(imported[:3]) + (
+            f" (+{len(imported) - 3} more)" if len(imported) > 3 else ""
+        )
+        stop_advisories.append(
+            f"NOTE: the Critic gate judged this session's own work; {len(imported)} "
+            f"judgeable file(s) a sync brought in were not judged here ({shown}) — "
+            "the PR gate's merge-base span still requires review of any not "
+            "already on the base branch."
+        )
 
     # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed (composed
     # coverage vouches for the current state). The mode is telemetry read from
@@ -4012,18 +4113,17 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     if critic_has_work and not critic_doc_only and not critic_would_block:
         mode_satisfied, mode_reason = _gates()._critic_session_satisfies_gate(project_dir)
         if not mode_satisfied:
-            print("", file=sys.stderr)
-            print(f"NOTE: {mode_reason}", file=sys.stderr)
+            stop_advisories.append(f"NOTE: {mode_reason}")
 
     # Surface any waivers so the agent (and reviewer) can see what was skipped.
     # Waivers clear at the next session BOUNDARY (a fresh start or /clear), so they
     # never carry into a new session — but they DO outlive a resume/compact/fork,
     # which is correct: the waiver is session-scoped and that session continues.
     if waiver_notes:
-        print("", file=sys.stderr)
-        print("GATE WAIVERS (this session, .gates-waived):", file=sys.stderr)
-        for note in waiver_notes:
-            print(f"  {note}", file=sys.stderr)
+        stop_advisories.append(
+            "GATE WAIVERS (this session, .gates-waived):\n"
+            + "\n".join(f"  {note}" for note in waiver_notes)
+        )
 
     # STH-3W7F deferral: harness-tracked background work is still producing the
     # diff, so the gate(s) below would fire on work that isn't finished and a
@@ -4144,9 +4244,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: silent, because a directive that prints every time is one the reader learns
 #: to skip. The trigger is language-agnostic (see
 #: ``_evidence_changed_judged_code``): it fires off ``changes_referenced`` and
-#: ``changes_unreferenced`` (#556), and ALSO off any ``changes_unjudged`` path
-#: that needs review coverage, which is how a Swift/Go/Rust/C#/TS product
-#: reaches it at all.
+#: ``changes_unreferenced`` (#556), and ALSO off any ``changes_out_of_remit`` or
+#: ``changes_unjudged`` path that needs review coverage, which is how a
+#: Swift/Go/Rust/C#/TS product reaches it at all.
 #:
 #: **Not "a restamp stays silent."** An earlier draft of this comment, the plan,
 #: and the change-log all said so, and it is false: ``--no-rerun`` takes the same
@@ -4195,8 +4295,9 @@ def _evidence_changed_judged_code(evidence_path: Path) -> bool:
     holds still carries the empty seed.
 
     **Two senses of "judged" meet in this function — do not conflate them.**
-    ``changes_unjudged`` means *the symbol-grep overlay had no signal for this
-    file* (it is not Python, declares no symbols, or was deleted).
+    ``changes_out_of_remit`` / ``changes_unjudged`` mean *the symbol-grep overlay
+    had no signal for this file* (it is not Python, declares no symbols, or was
+    deleted).
     ``coverage_algebra.is_judgeable_path`` means *a change here needs review
     coverage*. A Swift file is unjudged in the first sense and judgeable in the
     second, which is exactly the population this trigger has to reach.
@@ -4241,15 +4342,23 @@ def _evidence_changed_judged_code(evidence_path: Path) -> bool:
     # `.prawduct/`-resident Python file can sit in `changes_referenced` while
     # `is_judgeable_path` calls it framework metadata, and substituting the new
     # predicate would take that case dark.
-    unjudged = merged.get("changes_unjudged")
-    if not isinstance(unjudged, list):
+    # Both no-signal buckets are read: a non-Python path is in
+    # `changes_out_of_remit` (#682) in a fresh record and in `changes_unjudged`
+    # in one written before the split, so reading either alone would take a
+    # whole language dark.
+    no_signal: list = []
+    for key in ("changes_out_of_remit", "changes_unjudged"):
+        bucket = merged.get(key)
+        if isinstance(bucket, list):
+            no_signal.extend(bucket)
+    if not no_signal:
         return False
     try:
         is_judgeable = _coverage_algebra().is_judgeable_path
     except ImportError:
         # Broken install — advice fails soft, same as an unreadable record.
         return False
-    return any(isinstance(p, str) and is_judgeable(p) for p in unjudged)
+    return any(isinstance(p, str) and is_judgeable(p) for p in no_signal)
 
 
 #: How many untracked paths the warning names before it summarises the rest.
@@ -5313,14 +5422,20 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             # someone holding a report already, and a bare `record` for someone
             # who has not run yet. Naming only the first sent a caller who had
             # not run to run the suite BY HAND and come back, which is a second
-            # full suite run for evidence one command would have produced.
+            # full suite run for evidence one command would have produced. In a
+            # repo on testament the caller has most likely just run `testament
+            # run`, so the text leads with the testament route there; one
+            # function owns which route leads.
+            from lib import testament_evidence_probes  # noqa: PLC0415 — lazy keeps top-level cheap
+
+            # The declaration this command already resolved, so the refusal's text
+            # is chosen from what the recorder would run, not from a second read.
+            declared = testament_evidence_probes.Declared(
+                "test_commands" if test_commands else "test_command",
+                tuple(declared_commands),
+            )
             print(
-                "error: --from-counts cannot be combined with a declared "
-                "test_command/test_commands — the declared command(s) emit "
-                "JUnit. If you have already run them, ingest the report(s) "
-                "with repeated `--from-junit <report>` (no re-run, "
-                "machine-backed evidence). If you have not run them yet, bare "
-                "`test-evidence record` runs them and records in one step.",
+                testament_evidence_probes.from_counts_refusal(project_dir, declared),
                 file=sys.stderr,
             )
             return 2
@@ -6099,6 +6214,13 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             run_fact["head"] = head_sha.strip()
         if degraded_reason:
             run_fact["degraded"] = degraded_reason
+        if record.get("failed_tests"):
+            # The record's own value and cap, omitted the same way when no id
+            # was visible. Its reader is `evidence.run_failed_tests`, through
+            # which consolidate waives a failure this run proves the base tree
+            # already had — and, on the reviewed tree, checks every failure is
+            # accounted for.
+            run_fact["failed_tests"] = record["failed_tests"]
         appended = _evidence_mod.append_test_run(project_dir, run_fact)
         if appended.get("status") != "appended":
             print(
@@ -8277,6 +8399,9 @@ def _status_block_span(lines: list[str]) -> "tuple[int, int] | tuple[str, str] |
       deleting to EOF deletes whatever trails it;
     - a code fence or an unclosed HTML comment inside the span — a ``## ``
       line inside either is not the heading the bounds stopped at;
+    - a heading inside the span — the reader runs past ``###`` so a plan that
+      keeps its chunk definitions under ``## Status`` still reads, which makes
+      the span every one of those definitions, open chunks included;
     - an HTML comment trailing the block's last item — it reads exactly like
       the next section's banner, and deleting it loses that section's prose.
 
@@ -8325,6 +8450,15 @@ def _status_block_span(lines: list[str]) -> "tuple[int, int] | tuple[str, str] |
             if "-->" in stripped[stripped.find("<!--") + 4 if opened else 0:]:
                 in_comment = False
             continue
+        hashes = len(stripped) - len(stripped.lstrip("#"))
+        if 1 <= hashes <= 6 and (len(stripped) == hashes or stripped[hashes].isspace()):
+            return (
+                "status-block-undelimited",
+                f"a heading at line {index + 1} sits inside the `## Status` section, so "
+                "the section holds more than the block and removing it would take what "
+                "is under that heading; add a `## ` heading before it, or remove the "
+                "block by hand",
+            )
         if stripped:
             last_content = index
             trailing_comment = None
@@ -10625,7 +10759,8 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--session-model <id>] [--scope <s>] [--chunks <id>[,<id>...]] [--force]|critic-end|critic-discard|"
-    "critic-restore <review-id>|critic-consolidate|"
+    "critic-restore <review-id>|critic-consolidate|validate-partial <path>|"
+    "native-review record <review-id>|native-review show [<review-id>]|"
     "subagent-stop|"
     "stop|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
@@ -11106,6 +11241,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "aggregate-stats",
     "test-status",
     "validate-evidence",
+    # Read-only: parses one reviewer partial and prints a verdict; writes nothing.
+    "validate-partial",
     "verify-chunk-refs",
     "verify-coverage",
     "verify-records",
@@ -11149,6 +11286,8 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # in `_ephemeral_command_writes`, not by this table. `new` and `bind` write
     # a plan.
     "plan": frozenset({"resolve", "status", "check-claims"}),
+    # `show` prints a native review's text; `record` appends the ledger event.
+    "native-review": frozenset({"show"}),
     # The one `evidence` read set the skew guard also reads. Its writes are
     # refused here on a narrower ground than this guard's usual one: none of
     # them can strand — the store, the notes ref and `.git/config` belong to
@@ -11625,6 +11764,7 @@ _NO_ARGUMENT_NOTE_ONLY_COMMANDS = frozenset({
 _SINGLE_POSITIONAL_COMMANDS = frozenset({
     "accept-operator-verification",
     "check-branch-pushed",
+    "validate-partial",
     "verify-chunk-refs",
     "verify-operator-verification",
 })
@@ -11741,6 +11881,11 @@ def _dispatch() -> int:
         return cmd_critic_restore(project_dir, sys.argv[2:])
     elif command == "critic-consolidate":
         return cmd_critic_consolidate(project_dir, sys.argv[2:])
+    elif command == "validate-partial":
+        partial = sys.argv[2] if len(sys.argv) > 2 else None
+        return cmd_validate_partial(project_dir, partial)
+    elif command == "native-review":
+        return cmd_native_review(project_dir, sys.argv[2:])
     elif command == "subagent-stop":
         return cmd_subagent_stop(project_dir, _read_stop_stdin())
     elif command == "jurisdiction":

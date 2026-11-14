@@ -106,6 +106,9 @@ _BOUNDARY_SURVIVORS = {
         "compute already spent",
     ".prawduct/.governance-ledger.jsonl":
         "the append-only ledger; it is history, and history does not end with a session",
+    ".prawduct/.native-reviews":
+        "the paired native review's texts (#1130): the monthly comparison reads every one, "
+        "and a wrapper may still be writing this review's when a session ends",
     ".prawduct/.test-evidence.json":
         "the test record the freshness gates compare against `.session-start` — the "
         "comparison is what makes it stale, so deleting it would defeat the gate",

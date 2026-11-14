@@ -56,7 +56,7 @@ out where reality still lags.
 
 - **Governance verdicts on the Critic data plane are computed from the append-only fact ledger, never from mutable model-written state — no model sits in a fact's write path.** Facts are written by deterministic code; a reviewer's judgment enters only as validated content inside a partial that code checks against a code-written manifest before it becomes a fact.
   Why: the governed party must never be able to certify itself — deriving every verdict from code-written facts is what keeps model judgment out of the authority path and lets any worktree reconstruct the same verdict from the same log.
-  Status: steady-state — scoped to the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run` facts (#653, owner decision 2026-09-23) — the test-evidence freshness fallback is the one reader that decides anything by them (`evidence list` only displays them), and the per-worktree `.test-evidence.json` remains the run's primary record; PR-review evidence still lives in its own file. Extending the store to subsume the rest (reserved kinds `pr-review`/`promotion`) is design direction, not yet a ratified norm.
+  Status: steady-state — scoped to the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run` facts (#653, owner decision 2026-09-23) — the test-evidence freshness fallback and the inherited-baseline waiver (`evidence.newest_suite_run`, on the base tree and the reviewed one) are the readers that decide anything by them (`evidence list` only displays them), and the per-worktree `.test-evidence.json` remains the run's primary record; PR-review evidence still lives in its own file. Extending the store to subsume the rest (reserved kinds `pr-review`/`promotion`) is design direction, not yet a ratified norm.
   Amended: 2026-11-10, owner ruling (`.prawduct/owner-rulings.md`): "yes fold PR reviewer in". `/prawduct:pr` dispatches no reviewer and nothing writes PR-review evidence, so the Status line's "PR-review evidence still lives in its own file" and the reserved `pr-review` kind describe nothing; `promotion` is the one reserved kind. The PR gate's verdict is composed Critic coverage over this store, so the PR boundary is inside this norm's scope rather than beside it. The Status line keeps its words.
 - **Facts are immutable and append-only; a state change is expressed as a new fact, never an edit or delete in place.**
   Why: append-only history is what lets any checkout replay the same verdict from the same log — an in-place edit or delete would make the ledger unreproducible and a verdict unauditable.
@@ -138,7 +138,8 @@ clone that wrote it.
   proposal when omitted; ST8 of #1050), `chunks_proposed[]` (that proposal, recorded beside the
   declaration so an edit to it is visible on the record, never silent), `chunk` (`chunks[0]` or
   null — kept one release for readers of the singular field), `findings[]` (each with a
-  stable `fid`, `goal`, `severity`, `title`, `recommendation`), `counts`, and `observations[]` —
+  stable `fid`, `goal`, `severity`, `title`, `recommendation`, and — on a test-failure finding —
+  `failed_tests`, the ids it rates, omitted when none), `counts`, and `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
   `recommendation` and no severity. A `verify-resolutions` pass keeps only observations whose
   `about: {review_id, fid}` names the finding or observation whose fix they judge; it counts the rest
@@ -169,8 +170,21 @@ clone that wrote it.
   artifact, in `build-plan-review-friction.md` § Owner rulings.
 - **Resolution fact `body`** — points at the finding it resolves (`{review_id, fid}`), the
   `disposition` (`fixed` | `waived`), the `verified_by` review that attests it, the `at_tree` it was
-  verified against, and a `rationale` (required for `waived`). A resolution may only originate from a
-  `verify-resolutions` review and must reference a finding already in the store (fail-closed). It may
+  verified against, and a `rationale` (required for `waived`). A resolution originates from a
+  `verify-resolutions` review, or is an inherited-baseline waiver: `critic-consolidate` writes one in
+  any mode for a BLOCKING finding of the review it consolidates when the newest `test-run` on the
+  merge-base tree lists every id in the finding's `failed_tests`, with `disposition: waived`,
+  `verified_by` that same review, `origin: inherited-baseline` and `base_run` (that run's fact id).
+  The merge-base must be before the reviewed work — not the moving `HEAD~1` fallback, an ancestor
+  of the review interval's base commit, and a tree other than the reviewed one — and the reviewed
+  tree's own newest run must list every failure (its 100-id cap fails closed), each failure the
+  base did not have named by a BLOCKING finding left unwaived. Either way it must reference a
+  finding already in the store (fail-closed). **`origin` has one reader**,
+  `dispositions.resolution_detail_index`, which reads an inherited-baseline waiver as its own
+  state (`waived-inherited`): the census and `review-stats` count it apart from a judged waiver,
+  and the derived findings cache reads the review's waivers from the store through it, so every
+  clone renders them alike. The gate reads it as `waived` (`coverage_algebra` reads only the
+  disposition). It may
   instead confirm an observation fix: `fid` then carries the observation's `O-n` id (the slot a
   disposition already uses for one; `R-n` and `O-n` never collide), and only `fixed` is accepted.
   No gate reads it, because no gate reads observations.
@@ -250,14 +264,17 @@ clone that wrote it.
   returned it just before a live run started — a run records no fact when that capture failed or
   when `gates._test_evidence_tree_valid` cannot confirm the tree held until it ended — or at ingest
   for `--from-junit`), `passed`/`failed`/`skipped`, `duration_seconds`, `source` (`run` | `from-junit`),
-  `head` (the commit checked out, omitted on an unborn branch) and `degraded` when the run reported
-  itself so. Written by `test-evidence record` through `evidence.append_test_run` — never by a
-  restamp, which measured nothing, nor by `--from-counts`, which has no tree. The one reader that
-  decides anything by it is the test-evidence freshness fallback (`gates._store_run_vouching`; `evidence
-  list` only displays it), which lets a run recorded from
+  `head` (the commit checked out, omitted on an unborn branch), `degraded` when the run reported
+  itself so, and `failed_tests` (the evidence record's failing ids under its 100-id cap, omitted when
+  none). Written by `test-evidence record` through `evidence.append_test_run` — never by a
+  restamp, which measured nothing, nor by `--from-counts`, which has no tree. Two readers decide
+  anything by it (`evidence list` only displays it). The test-evidence freshness fallback
+  (`gates._store_run_vouching`) lets a run recorded from
   another branch or worktree vouch for a tree judgeably identical to the one it met, once this
   worktree's own record has declined; among the candidates, the newest run that met the tree
-  decides it. **Observational to the coverage data plane**: composition never reads
+  decides it. `evidence.newest_suite_run` finds the newest non-narrowed run on a tree: on the
+  merge-base's tree its `failed_tests` are what an inherited-baseline waiver may cover, and on the
+  reviewed tree they must all be accounted for. **Observational to the coverage data plane**: composition never reads
   it, and it is one of `evidence.OBSERVATIONAL_KINDS`, which the verdict cache's key leaves out.
   **Droppability:** coverage-neutral, not freshness-neutral — `gates._store_run_vouching` reads it,
   and among the candidates the newest run that met a tree decides it, so dropping one can flip a
@@ -271,14 +288,16 @@ the verdict is reproducible across worktrees and across time, not tied to a muta
 #### Governance Ledger — `.prawduct/.governance-ledger.jsonl` (gitignored)
 
 Append-only telemetry of governance events (a consolidated review anchors a `review.critic` event
-here). Distinct from the evidence store: the ledger is *observability* (what happened, for
+here; on a development build, a paired native review records a `native.review` event, counts and
+range only — `plugin/docs/governance-telemetry.md`). Distinct from the evidence store: the ledger is *observability* (what happened, for
 audit/telemetry), the evidence store is *authority* (what the gate trusts). Intended to stay a
 thin event trail, not a second source of truth.
 
 **`dispatched_at` (optional envelope key, UTC ISO-8601).** Present on a `review.*` event whose
 dispatch was marked before the reviewer was spawned — `prawduct-hook pr-review-dispatch --begin`
 for a `review.pr`, `critic-begin` itself for a `review.critic`; written at append from a per-clone
-marker, once, never edited. It exists because the
+marker, once, never edited. A `native.review` event takes it from the dispatch stamp `critic-begin`
+wrote into the native review's sidecar, which is the same code clock. It exists because the
 envelope's `duration_seconds` is **self-reported by the reviewing model** — a recollection, not a
 clock — and a performance target stated against an estimate is a target stated against an estimate.
 
@@ -416,7 +435,9 @@ release-pending entries into fragments.
   `critic-begin`: the tree interval, the roster a review will attest, `rendezvous`, the resolved
   per-role write paths, the review `stage` with the code-rendered `signals` line every reviewer
   is handed, and `reviewer_model`, the model a reviewer is dispatched on or null for the session's
-  own — dispatch guidance no verdict reads) and one partial per reviewer at those paths (model-written, schema-validated
+  own — dispatch guidance no verdict reads; on a development build's `cumulative`, `native_review`,
+  the paired native review's arguments, model, text path and wrapper prompt, also guidance no
+  verdict reads) and one partial per reviewer at those paths (model-written, schema-validated
   before consolidation, each declaring the `dispatch_id` that binds it to its review). Partial paths
   are keyed by review id, so two reviews in one worktree never share a name; the shape lives in
   `critic_consolidate.partial_path` and nothing else spells it. The whole directory is removed on
@@ -448,7 +469,8 @@ release-pending entries into fragments.
   is 1:1, enforced by idempotency id).
 - A **review fact** has many **findings** (each with a stable `fid`).
 - A **resolution fact** references exactly one finding (`{review_id, fid}`) and is attested by
-  exactly one later **review fact** (`verified_by`). Findings ← resolutions is one-to-many over time
+  exactly one **review fact** (`verified_by`): a later one, or, for an inherited-baseline waiver, the
+  finding's own review, which cites a **test-run fact** (`base_run`). Findings ← resolutions is one-to-many over time
   (a finding may be re-addressed), but a gate reads the latest attesting resolution.
 - **`.critic-findings.json`** is derived from one **review fact** — the latest consolidated here,
   or the newest on the branch after an ingest — (view → fact, via `fact_id`).
@@ -488,8 +510,14 @@ probe-version bump supersedes the old advisory id with a fresh one.
 - **Facts are append-only.** No tool edits or deletes an existing fact line. (Read repair may skip a
   torn tail line, but never rewrites content.)
 - **A verdict never reads a derived view.** Gates read facts; views are for display only.
-- **A resolution fact requires a `verify-resolutions` origin and a pre-existing target finding or
-  observation** — fail-closed. A `waived` disposition requires a non-empty rationale; an observation
+- **A resolution fact requires a `verify-resolutions` origin, or `origin: inherited-baseline` with a
+  `base_run` that lists every test id the finding names, and a pre-existing target finding or
+  observation** — fail-closed. The inherited-baseline waiver resolves only a BLOCKING finding of the
+  review whose consolidation writes it.
+  `[DECISION: 2026-10-21, #900, owner ruling (auto-waive): an inherited test failure stays BLOCKING
+  and consolidation records its waiver from the base-tree run | the alternative cost a
+  verify-resolutions round per branch whose base was already red, for a failure the branch did not
+  cause; rating it below BLOCKING was rejected | owner can veto]` A `waived` disposition requires a non-empty rationale; an observation
   takes `fixed` only.
 - **The evidence store is shared per-clone via the git common dir**; every worktree appends to and
   reads the same log. Single-syscall append writes keep concurrent whole-line writes safe. Its

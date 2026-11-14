@@ -387,3 +387,64 @@ class TestReviewerAnchorsToTheDispatchedTree:
             "the dispatch prompt must carry the SHA confirmation; the agent "
             "definition alone does not bind a reviewer whose prompt overrides it"
         )
+
+
+class TestEveryReviewerThatRatesATestFailureCanNameItsIds:
+    """The review-round-cost Critic, R-7/R-9: the inherited-baseline waiver
+    fires only on a BLOCKING finding that names its `failed_tests`, and the
+    instruction to fill the field reached only the inner protocol. A `final` or
+    `cumulative` reviewer — the review where an inherited red base costs most —
+    rated the failure with no ids, so no waiver could fire.
+
+    Derived from the tree, not a list: the act is "a reviewer rates a test
+    failure" and "a reviewer writes a partial finding", and every surface
+    performing either must name the field, so the next protocol file or schema
+    block cannot skip it."""
+
+    CRITIC_PROSE = (
+        *sorted((REPO_ROOT / "skills" / "critic").glob("*.md")),
+        AGENT_DEF,
+    )
+
+    def _rating_lines(self):
+        return [
+            (path.name, line)
+            for path in self.CRITIC_PROSE
+            for line in path.read_text().splitlines()
+            if "Test failures in evidence" in line
+        ]
+
+    def _schema_files(self):
+        """Files carrying a partial-finding JSON schema: a ```json block holding
+        both a `severity` and a `recommendation` key."""
+        hits = []
+        for path in self.CRITIC_PROSE:
+            blocks = re.findall(r"```json\n(.*?)```", path.read_text(), re.S)
+            if any('"severity"' in b and '"recommendation"' in b for b in blocks):
+                hits.append(path)
+        return hits
+
+    def test_every_line_rating_a_test_failure_names_failed_tests(self):
+        lines = self._rating_lines()
+        # Non-empty, and both protocols are in it: the boundary one is the
+        # surface the defect was missing from.
+        assert {name for name, _ in lines} >= {"goals-1-3.md", "review-protocol.md"}, lines
+        for name, line in lines:
+            assert "`failed_tests`" in line, f"{name} rates a test failure without the ids: {line}"
+
+    def test_every_partial_schema_surface_names_failed_tests(self):
+        files = self._schema_files()
+        assert AGENT_DEF in files and REVIEW_PROTOCOL in files, files
+        for path in files:
+            assert "failed_tests" in path.read_text(), (
+                f"{path.name} defines the partial finding schema without `failed_tests`"
+            )
+
+    def test_the_dispatched_reviewers_schema_carries_the_field_itself(self):
+        """`critic-reviewer.md` says "match it exactly", so a field absent from
+        its block reads as forbidden to a careful reviewer."""
+        (block,) = [
+            b for b in re.findall(r"```json\n(.*?)```", AGENT_DEF.read_text(), re.S)
+            if '"severity"' in b
+        ]
+        assert '"failed_tests"' in block

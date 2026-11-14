@@ -1,7 +1,7 @@
 ---
 name: critic-reviewer
 description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator — one of a three-reviewer roster, or a whole single-pass review; reviews ONLY its assigned goals through code analysis and writes ONLY its liveness marker and its own partial findings file. Not for direct use — the coordinator dispatches it.
-tools: Read, Glob, Grep, Bash(git diff *), Bash(git -C * diff *), Bash(git log *), Bash(git -C * log *), Bash(git status *), Bash(git -C * status *), Bash(git show *), Bash(git -C * show *), Bash(git ls-files *), Bash(git -C * ls-files *), Bash(git rev-parse *), Bash(git -C * rev-parse *), Bash(git merge-base *), Bash(git -C * merge-base *), Bash(prawduct-hook test-status), Bash(python3 plugin/bin/prawduct-hook test-status), Bash(prawduct-hook verify-coverage), Bash(python3 plugin/bin/prawduct-hook verify-coverage), Write
+tools: Read, Glob, Grep, Bash(git diff *), Bash(git -C * diff *), Bash(git log *), Bash(git -C * log *), Bash(git status *), Bash(git -C * status *), Bash(git show *), Bash(git -C * show *), Bash(git ls-files *), Bash(git -C * ls-files *), Bash(git rev-parse *), Bash(git -C * rev-parse *), Bash(git merge-base *), Bash(git -C * merge-base *), Bash(prawduct-hook test-status), Bash(python3 plugin/bin/prawduct-hook test-status), Bash(prawduct-hook verify-coverage), Bash(python3 plugin/bin/prawduct-hook verify-coverage), Bash(prawduct-hook validate-partial*), Bash(python3 plugin/bin/prawduct-hook validate-partial*), Write
 model: inherit
 ---
 
@@ -28,7 +28,7 @@ your **assigned goals**, the **project directory**, the **manifest path** — th
 file sets are read from the manifest, never from your prompt (the split is explained below), a
 **`Signals:` line**, the **commit under review** (a
 SHA), the **review id**, and the **two paths you write** — your started marker and your partial.
-The `Signals:` line reads `Stage: <inner|boundary> · Judgeable files: <n> · Type: <chunk type>`;
+The `Signals:` line reads `Stage: <inner|boundary> · Judgeable files: <n> · Type: <chunk type>`, plus `· Span: …` on a cumulative;
 `critic-begin` rendered it from the manifest (`signals`) and the coordinator copied it — nobody
 composed it. **`Stage` decides what is a finding** (your protocol file says how): at `inner`, what
 you rate outside the inner BLOCKING set goes in your partial's `observations` array, and at every
@@ -121,9 +121,10 @@ make, not yours to infer. A first-time defect, or one a check already covers, is
 6. Read the changed files and inspect the diff (`git -C <project dir> …`). Do NOT run tests or
    builds — the read-only `prawduct-hook` probes your `tools:` line grants (`test-status` and
    `verify-coverage` report what a previous run recorded) are the only commands your goals ever ask
-   you to issue.
+   you to issue, besides the `validate-partial` check on your own file below.
    The manifest's `files_reviewed` is your subject set and `files_oracle` is what the code is judged
-   against; `review-protocol.md` "Subject and oracle" says which passes may rate an oracle file.
+   against; `review-protocol.md` "Subject and oracle" says which passes may rate an oracle file, and
+   what a finding may say about a `files_context` file.
    *"The code violates this spec"* has the code as its subject, at full severity.
 7. Assess your goals and report every finding with its severity, `blocking` or `warning`, and
    everything lesser as an observation (definitions in `review-protocol.md`). A clean pass has
@@ -139,6 +140,8 @@ Besides the started marker above, write a single JSON file at your
 `prawduct-hook critic-consolidate`, and do NOT run `prawduct-hook critic-end` — a
 deterministic step external to you merges the partials and persists the canonical record.
 That decoupling is what makes the review survive the harness backgrounding subagents.
+Then run `prawduct-hook validate-partial <your partial path>`: exit 0, you are done; exit 1, fix
+the file and run it again; exit 3, nothing can check it (the review consolidated, or is not yours): stop.
 
 Partial schema (validated by `lib/critic_consolidate.py`; a malformed partial fails the
 whole consolidation closed, so match it exactly):
@@ -157,7 +160,8 @@ whole consolidation closed, so match it exactly):
       "goal": "<the goal name, e.g. \"Nothing Is Broken\">",
       "severity": "blocking | warning",
       "recommendation": "<what to do about it>",
-      "files": ["<file the finding is about>"]
+      "files": ["<file the finding is about>"],
+      "failed_tests": ["<a test-failure finding's failing ids, from .test-evidence.json>"]
     }
   ],
   "observations": [
@@ -172,7 +176,7 @@ whole consolidation closed, so match it exactly):
 }
 ```
 
-`files` on a finding is optional (omit when not file-specific). `findings` is `[]` for a
+`files` on a finding is optional (omit when not file-specific); so is `failed_tests`, on a test-failure finding only. `findings` is `[]` for a
 clean pass. `observations` carries what you rate below a finding at your stage — a finding minus
 its `severity` (carry no `severity` key); a `note` finding becomes one. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
 given — the consolidator checks that every reviewer reviewed the commit the manifest dispatched
@@ -182,4 +186,4 @@ Write `resolutions` only as role `reviewer` on a `verify-resolutions` dispatch, 
 `goals-1-3.md` gives; from any other dispatch, emitting one fails the whole review closed.
 
 Your final assistant message is not read by any gate — the partial file is your entire
-output. Once it is written, you are done.
+output.

@@ -27,6 +27,43 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-14.** "Step one, but we also do need to move CI onto Testament so that we will take some work to update I suppose"
+In reply to the advice after the interim comparison: ship `feature/native-review-inner` first, then
+revive `feature/ci-testament` instead of parking it. Landed as PR #1171 and this branch's sync onto
+develop.
+
+**2026-11-14.** "Yes, let's do it"
+In reply to running the blind verification of the Critic-vs-native comparison at 12 paired reviews.
+It overrides the 2026-11-13 ruling's wait for about twenty. The interim result is posted on #1130 as
+a baseline, not a decision.
+
+**2026-11-13.** "1. yes file and build, and let's wait on 2"
+In reply to two asks after the early Critic-vs-native comparison. It settles: file three follow-ups
+to #1130 (#1164, a severity breakdown in `compare.py`; #1166, pairing a sample of `chunk` and
+`verify-resolutions` reviews; #1165, the native review's re-raise rate) and build them. #1166
+replaces #1130's scope-out of `chunk` and `verify-resolutions` reviews for the pairing; the
+2026-11-10 ruling ("BOTH each time") still governs the boundary review. The blind verification of
+the comparison waits for more paired reviews (about twenty). Landed in
+`.prawduct/artifacts/build-plan-native-review-inner.md` Goals.
+
+**2026-11-12.** "and then 1161"
+Sent as #1130's PR was being opened: once that merge and the `../prawduct-live` advance are done,
+build #1161 (harden the native text parse before the first monthly comparison). Landed on
+`fix/native-review-parse`.
+
+**2026-11-12.** "1. yes PR and mege and push to prawduct-live"
+In reply to two asks at the end of #1130's build: open the PR and merge `feature/native-review-paired`
+to develop, then advance `../prawduct-live` to it — which turns the paired native review on in every
+repo that runs the development build. Landed as the merge and the live checkout's advance; #1130
+stays open until its stop condition.
+
+**2026-11-12.** "yes to high, and yes to changes, and yes build"
+In reply to three asks on #1130's plan. It settles: every paired native review runs at `high`;
+each native run is recorded as a per-clone ledger event rather than an evidence-store fact, and its
+text is kept in `.prawduct/.native-reviews/` rather than beside the partials (both departures from
+#1130's wording); and the build proceeds. Landed in
+`.prawduct/artifacts/build-plan-native-review-paired.md` Goals.
+
 **2026-11-11.** "let's get ci using testament", with a client key for the pool supplied as
 "(github secret)" and the coordinator's address as "(variable I think, not secret)". The previous
 session's handoff quotes the owner on the same question: "We should be. I can get a key if
@@ -159,3 +196,104 @@ show the numbers are used. Landed on #1134.
 **2026-11-10.** "Yes adopt"
 On the four requirements changes (see it first, a ruling is written before the reply, mark what
 the agent originated, a third fix stops for a definition). Landed in #1135.
+
+**2026-11-11.** "yes build the three part fix and triage the reports"
+On whether a Critic review should catch a read that costs more than it returns (a lookup that
+scans for want of an index, a fetch of whole records where a few values are used). The three
+parts — an Access Paths section in the data-model template, one Goal 7 line in the Critic
+protocol rated WARNING at most, and a corrected Performance row in the concerns registry — are
+recorded in `.prawduct/changes/read-cost-review.md`. The two upstream reports were staged the
+same day, on #1137 and #1141.
+
+**2026-11-11.** "Yes to all of your recommendations"
+On four recommendations made after an ad hoc test of the read-cost check: run more blind reviewer
+replicates before merging, to see whether the new check draws attention from other defects; leave
+a per-item query rated by the rule as written rather than warned on regardless of the store; open
+the pull request for `feature/read-cost-review` once the replicates are in; and fix #1137 on its
+own branch. The replicate result is recorded in `.prawduct/changes/read-cost-review.md`.
+
+**2026-11-11.** "Yeah try the shorten approach. If that fails, perhaps a preamble somewhere that code may have multiple defects, don't assume the first round is the only one."
+On the read-cost check after the blind test found the new protocol missing a blocking defect the
+old one caught: shorten the Critic line and re-test on the same fixture first; if that does not
+recover the catch, try a preamble telling the reviewer a file can hold more than one defect. The
+outcome of each is recorded in `.prawduct/changes/read-cost-review.md`.
+
+**2026-11-11.** "I like the pseudo defect check, but I wonder if we should actually set it up in a separate repo that pulls from either the develop branch or a dedicated test branch, with that repo having a realistic app, but with the seeded defects."
+**2026-11-11.** "Yes agreed on all counts, including expense tracking domain"
+On how review-protocol changes get tested for what they do to reviewer behaviour: a seeded-defect
+check in a separate private repo holding a realistic expense-tracking app, run as a paired
+comparison of two refs, with the answer key kept out of anything a reviewer or a protocol author
+reads; a backlog item at requirements stage first, and requirements before any build. The same
+reply approved one more batch of six runs on the existing fixture and a pull request for the
+#1137 fix. The shape is carried by the backlog item filed the same day.
+
+**2026-11-11.** "Yes to both opens, the database efficiency catches are more important than the missed finding"
+On the read-cost check after a blind test showed it catching every planted read-cost mistake
+while a defect the old protocol usually caught went unraised: the check ships, and the trade is
+accepted. Pull requests are opened for both branches, `feature/read-cost-review` and the #1137
+fix. Recorded in `.prawduct/changes/read-cost-review.md`.
+
+**2026-11-11.** "yes merge then we'll clear and do requirements"
+On pull requests #1146 (the #1137 fix) and #1148 (the read-cost check): both merge to `develop`.
+The requirements for the seeded-defect check (#1147) are the next session's work.
+
+**2026-11-11.** "Yes please for 937, 890, 961, 900, 1000, 682, and 1098 using subagents, opus or sonnet, each with appropriate effort level and following our delegation protocol"
+On next priorities for consumer QOL and performance, the owner chose seven backlog items, built by
+Opus- or Sonnet-class delegates under the delegation protocol, and set aside the seeded-defect test
+repo until 3tears-evals is ready. The work is three plans: `build-plan-gate-clarity.md` (#937,
+#1000, #1098, #682), `build-plan-review-round-cost.md` (#961, #900) and
+`build-plan-bounded-cumulative.md` (#890).
+
+**2026-11-11.** "1. yes, follow your recommendation 2. Yes 3. yes 4. Yes please."
+Four answers to four questions asked together:
+1. #890 Decision 2 is re-ruled. The bounded cumulative is built without the vanished-token sweep. The
+   test-evidence relays grade the full merge-base → HEAD span, as record-lint already does under
+   Decision 3, and Chunk 04 measures the real blocking loss against the design's falsifier. This
+   replaces the 2026-09-22 "rated sweep" answer after Chunk 01 measured the sweep catching none of the
+   nine stale-prose losses through a token the finding names, and the same-base loss at about 6%. The
+   amended decision lands in `build-plan-bounded-cumulative.md` and the design's Decisions.
+2. #1098: the Stop gate's relax-only third arm stands. That is the [DECISION] in
+   `build-plan-gate-clarity.md`, with the four narrowings recorded there.
+3. #682: `changes_unjudged` narrows to symbol-less Python files and deleted files. Non-Python paths
+   move to `changes_out_of_remit`, and `changes_unchecked` stays as a deprecated alias until a major
+   release. This is a bounded exception to api-contract's additive-first norm, on the #303 precedent:
+   every reader ships with the plugin.
+4. Pull requests are opened for `feature/gate-clarity` and `feature/review-round-cost`.
+
+**2026-11-11.** "So the new dev version is improvef in most ways, but this is really hard for a human to parse: [a turn that listed its one ask, then closed `YOUR TURN · DO NOT CLEAR — … The one ask above is for you.`] ... if there ares asks for the user, it's confusing to say "don't clear, waiting on you, look above". Let's try to tune things so any actions required of the user are the last thing shown, and prominent."
+The close changes order: the one status line comes first, and any asks follow it as the turn's last
+block, under a fixed prominent header, so nothing points "above". The Stop hook's reading of the
+close learns that trailing block. Lands in `methodology/session-hygiene.md`, the session digest and
+`lib/standing_block.py` on `feature/asks-last`.
+
+**2026-11-11.** "1. Yes 2. Yes" — answering (1) whether a turn interrupted by a Stop block repeats its
+`**Needs you:**` block, so the asks stay last, and (2) whether to keep the `close-pointer` record of a
+close whose reason points "above"/"below". Both were built on `feature/asks-last` as the coordinator's
+inference from the ruling above; this confirms them. Lands in `STOP_BLOCK_ANSWER`,
+`methodology/session-hygiene.md` and `lib/standing_block.py`.
+
+**2026-11-11.** "3. Confirmed" — answering whether #890's falsifier may be restated against the same-base
+old-only blocking rate (about 7 in 114 on the 2026-11-11 dated reading, re-derived by
+`tools/measure-repeat-cumulative-yield.py`) instead of the design's all-rows ~1%. Lands in
+`build-plan-bounded-cumulative.md` § Goals (Falsifier) and the design's "Falsifies the lever".
+
+**2026-11-11.** "4. Yes PR and merge both and update prawduct-live"
+`feature/bounded-cumulative` and `feature/asks-last` are opened as PRs into `develop` and merged, and the
+`prawduct-live` worktree (the lumens profile's plugin source) is advanced to the merged `develop`.
+
+**2026-11-12.** "yes to all of your recommendations" — answering four asks together:
+1. PR #1151 (`feature/gate-clarity`) syncs with `develop` and merges first, then #1152
+   (`feature/review-round-cost`) syncs with the result and merges. `../prawduct-live` is advanced once,
+   after both.
+2. Where #1152's protocol text no longer fits the reviewer payload ceilings that #890 set, its wording
+   is trimmed rather than the ceilings raised; a trim that would lose meaning comes back to the owner.
+3. PR #1118 (Codex Phase 1 spike) stays out of this batch.
+4. The merged local branch `worktree-agent-a76c0614686964c8c` is removed (done by `git-tidy --apply`).
+
+**2026-11-12.** "1. Yes" — answering whether, when `feature/review-round-cost` (#1152) syncs with `develop`, the
+reviewer payload ceilings may rise to the merged readings rather than #1152's partial-validation and refusal-remedy
+wording being cut to fit `develop`'s ceilings. They rise: each merged reading is `develop`'s plus the raises #1152
+already declared and had reviewed (within one token of rounding), and the merge adds no new text. This narrows the
+same day's ruling that a trim, not a raise, pays for fitting #1152 under the ceilings — that ask assumed the ceilings
+were fixed limits, when each is one over its last reading. Lands in `tests/test_reviewer_payload_budget.py` and
+`tests/test_v5_methodology.py`.

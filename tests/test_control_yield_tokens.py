@@ -287,6 +287,77 @@ class TestRuleUnenforcedToken:
         )
 
 
+class TestReadCostToken:
+    """The Goal 7 read-cost check: a read whose cost follows the size of what it
+    reads from rather than what its caller uses.
+
+    Shipped 2026-11-11. Before it, reviewers raised the class unprompted, under
+    whichever goal came to hand and never above `note` — so no query could count it.
+    The token is what makes the check's yield a query, and its yield is what the
+    proportionality norm will keep or retire it on.
+    """
+
+    TOKEN = "read-cost:"
+    TEMPLATE = PLUGIN / "templates/data-model.md"
+
+    def _bullet(self) -> str:
+        goal_7 = _section(
+            CRITIC_PROTOCOL.read_text(), "### 7. The Design Is Sound", "## Framework-Specific Checks"
+        )
+        bullets = [l for l in goal_7.splitlines() if self.TOKEN in l]
+        assert len(bullets) == 1, (
+            f"Goal 7 carries {len(bullets)} bullets with `{self.TOKEN}`; the check has "
+            "one home, and without it the tests below have nothing to read."
+        )
+        return bullets[0]
+
+    def test_the_protocol_instructs_the_stable_token(self) -> None:
+        assert "Open the title" in self._bullet(), (
+            f"the read-cost bullet no longer says to open the title with `{self.TOKEN}` — "
+            "a token with no field is uncountable."
+        )
+
+    def test_an_observation_carries_the_token_too(self) -> None:
+        # Most firings are observations by design (no stated volume, or a path
+        # that is not hot). A token on findings alone would count a small part
+        # of the yield and read as a control that rarely fires.
+        assert "finding or observation" in self._bullet(), (
+            "the read-cost bullet stopped asking for the token on observations — "
+            "where most of this check's yield lands."
+        )
+
+    def test_it_never_blocks(self) -> None:
+        # A static reading cannot measure a cost, so it cannot stop the tree on
+        # one.
+        bullet = self._bullet()
+        assert "**WARNING**" in bullet and "**BLOCKING**" not in bullet, (
+            "the read-cost check changed severity — it rates WARNING at most, "
+            "because the reviewer runs nothing and so cannot measure a cost."
+        )
+
+    def test_it_stays_out_of_the_chunk_mode_payload(self) -> None:
+        # Goal 7 is a boundary goal; goals-1-3.md is the cheapest gate's whole
+        # payload and every chunk review pays for each line in it.
+        assert self.TOKEN not in CRITIC_GOALS_13.read_text(), (
+            "the read-cost check reached goals-1-3.md — it is a Goal 7 check, "
+            "scoped to `final`/`cumulative`."
+        )
+
+    def test_the_section_it_sends_the_builder_to_exists(self) -> None:
+        # The bullet names the template section a product should fill when its
+        # store states no volume. A renamed heading would leave the reviewer
+        # pointing every product at a section that is not there.
+        match = re.search(r'`templates/data-model\.md` "([^"]+)"', self._bullet())
+        assert match, "the read-cost bullet no longer names the data-model section to record in."
+        headings = [
+            l.strip() for l in self.TEMPLATE.read_text().splitlines() if l.startswith("## ")
+        ]
+        assert f"## {match.group(1)}" in headings, (
+            f"the read-cost bullet cites data-model.md \"{match.group(1)}\", and the "
+            f"template's sections are {headings}."
+        )
+
+
 def _section(text: str, start: str, end: str) -> str:
     begin = text.index(start)
     return text[begin : text.index(end, begin)]

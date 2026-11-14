@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -347,6 +348,43 @@ class TestTheSinkKeepsOnlyMachineShapedDetail:
         assert "observed" not in fact
 
 
+def _one_line(disposition: str, verdict: str, reason: str) -> str:
+    return f"Did the work.\n\n`{disposition}` · `{verdict}` — {reason}"
+
+
+class TestACloseThatPointsIsRecorded:
+    """A close whose reason points at the asks by position — "the one ask
+    above is for you" — is recorded as ``close-pointer``, under any
+    disposition, and never blocks. It records the pointer's kind, never the
+    phrase."""
+
+    def test_the_owners_example_is_recorded(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        turn = _one_line("YOUR TURN", "SAFE TO CLEAR", "the one ask above is for you.")
+        assert _stop(repo, turn) == 0
+        assert _stop_facts(repo) == []  # observed, not blocked
+        fact = _observed_fact(repo, "close-pointer")
+        assert fact["guard"] == "stop-observed:close-pointer"
+        assert fact["reason"] == "points-above"
+        assert fact["observed"] == {
+            "work_live": False, "notes_present": False, "session_changed": False,
+        }
+        assert "ask above" not in json.dumps(fact)
+
+    def test_a_running_close_pointing_below_is_recorded(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        turn = _one_line("RUNNING", "DO NOT CLEAR", "the review runs; the asks below need you.")
+        assert _stop(repo, turn) == 0
+        assert _observed_fact(repo, "close-pointer")["reason"] == "points-below"
+
+    def test_a_sound_close_records_nothing(self, tmp_path, capsys):
+        """Control: the same turn shape, with a reason that says what."""
+        repo = _repo(tmp_path)
+        turn = _one_line("YOUR TURN", "SAFE TO CLEAR", "one decision on the release flag.")
+        assert _stop(repo, turn) == 0
+        assert _observations(repo) == []
+
+
 class TestEveryDeclaredReasonIsRecordable:
     """A declared reason the sink would drop is a firing counted as
     unspecified forever, and no single-case test would notice."""
@@ -375,8 +413,26 @@ class TestEveryDeclaredReasonIsRecordable:
     def test_every_declared_reason_is_a_slug(self):
         from lib import standing_block
 
-        declared = (*standing_block.SELF_CITATION_KINDS, *standing_block.CLEAR_VERDICT_REASONS)
+        declared = (
+            *standing_block.SELF_CITATION_KINDS,
+            *standing_block.CLEAR_VERDICT_REASONS,
+            *standing_block.POSITIONAL_POINTER_KINDS,
+        )
         assert declared and all(evidence._is_slug(r) for r in declared)
+
+    @pytest.mark.parametrize(
+        "reason_text, kind",
+        [("the one ask above is for you.", "points-above"), ("see below.", "points-below")],
+    )
+    def test_each_pointer_kind_records(self, tmp_path, capsys, reason_text, kind):
+        repo = _repo(tmp_path)
+        assert _stop(repo, _one_line("YOUR TURN", "SAFE TO CLEAR", reason_text)) == 0
+        assert _observed_fact(repo, "close-pointer")["reason"] == kind
+
+    def test_the_parametrized_pointer_kinds_are_every_kind(self):
+        from lib import standing_block
+
+        assert set(standing_block.POSITIONAL_POINTER_KINDS) == {"points-above", "points-below"}
 
     def test_the_telemetry_doc_lists_every_declared_reason_in_its_gate_row(self):
         from lib import standing_block
@@ -385,13 +441,18 @@ class TestEveryDeclaredReasonIsRecordable:
         rows = {
             line.split("|")[1].strip(" `"): line
             for line in doc.splitlines()
-            if line.startswith("| `clear-")
+            if line.startswith(("| `clear-", "| `close-"))
         }
-        assert set(rows) == {"clear-verdict", "clear-reason"}
+        assert set(rows) == {"clear-verdict", "clear-reason", "close-pointer"}
         for reason in standing_block.CLEAR_VERDICT_REASONS:
             assert f"`{reason}`" in rows["clear-verdict"]
         for kind in standing_block.SELF_CITATION_KINDS:
             assert f"`{kind}`" in rows["clear-reason"]
+        # Both directions for the pointer row: the reason cell's slugs are
+        # exactly the declared kinds, so neither side can drift alone.
+        reason_cell = rows["close-pointer"].split("|")[2]
+        named = set(re.findall(r"`(points-[a-z-]+)`", reason_cell))
+        assert named == set(standing_block.POSITIONAL_POINTER_KINDS), named
 
 
 class TestNothingIsRecordedWithoutABlock:
