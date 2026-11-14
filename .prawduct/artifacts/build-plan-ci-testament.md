@@ -184,3 +184,39 @@ run with no word, which is `python -m pytest`, the command CI ran before this wo
 - **Done when:**
   1. Acceptance criteria met, the declared suite recorded once on the finished branch
   2. Committed, then `/prawduct:critic cumulative`
+
+### Chunk 03: The runner keys on testament's verdict, and refuses a selection it cannot complement
+
+**Type:** cumulative-final
+
+- **Description:** The revival's boundary review (2026-11-14) paired a native review, which found
+  that the runner reads testament's exit codes as they stood on 2026-11-11. testament has since
+  frozen its exit codes and added `verdict` / `verdict_reason` to the envelope (`testament run
+  --help`: "key scripts on verdict"). Exit 75 is an outage, and exit 2 can carry a test that
+  failed before the pool cut the run short ("never retry it away"). The runner read exit 75 as a
+  refused key, so every outage turned CI red and pointed at the key, and it retried any retryable
+  exit 2, which could retry away a real failure. Now the pool stage decides by `verdict`:
+  `passed` is a pass; `failed` with tests failed or nothing collected is the tree's result; any
+  other `failed` is a refusal; `unavailable` is retried once within the allowance, then falls
+  back; a missing or unknown verdict is a refusal (fail closed). `selected_out` refuses a manifest
+  it cannot complement exactly: a second `-m`, a joined `-m` form, `-k`/`--deselect`/`--ignore`,
+  a path after `pytest`, or a `default_selection` other than the suite's `testpaths`. The pool run
+  is started from the repo root, a console that drops mid-download is an outage, the matrix
+  comment says what a new leg now runs, and a test holds the pool job's time limit above the
+  allowance.
+- **Depends on:** Chunk 02
+- **Deliverables:** `tools/ci-suite.py`; `tests/test_ci_suite.py` (its envelope fixtures follow
+  testament's frozen contract, renegotiated in the open); `tests/preferences/test_ci_workflow_conventions.py`;
+  `.github/workflows/tests.yml` (comment only); `documentation/running-tests.md`.
+- **Tests:** one per verdict path, including exit 2 with a failed test (never retried, the job
+  fails, the failures are named) and exit 75 (retried once, then a warning and a fallback); each
+  selection the runner cannot complement is refused; an `IncompleteRead` is an outage; the
+  conventions test compares the pool job's `timeout-minutes` with the allowance.
+- **Acceptance criteria:** no envelope a frozen-contract testament can emit is misread. The
+  branch's own CI run reports, in the `pool` job's log, that the suite ran on the pool.
+- **Open, for the owner:** whether CI passes `--fresh --no-cache` (testament's advice for a
+  required merge check: a throwaway container and no cached passes). It costs a full, uncached
+  run on the pool for every push and PR. Not built until the owner rules.
+- **Done when:**
+  1. Acceptance criteria met, the declared suite recorded once on the finished branch
+  2. Committed, then `/prawduct:critic cumulative`
