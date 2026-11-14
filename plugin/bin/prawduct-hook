@@ -5422,14 +5422,20 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             # someone holding a report already, and a bare `record` for someone
             # who has not run yet. Naming only the first sent a caller who had
             # not run to run the suite BY HAND and come back, which is a second
-            # full suite run for evidence one command would have produced.
+            # full suite run for evidence one command would have produced. In a
+            # repo on testament the caller has most likely just run `testament
+            # run`, so the text leads with the testament route there; one
+            # function owns which route leads.
+            from lib import testament_evidence_probes  # noqa: PLC0415 — lazy keeps top-level cheap
+
+            # The declaration this command already resolved, so the refusal's text
+            # is chosen from what the recorder would run, not from a second read.
+            declared = testament_evidence_probes.Declared(
+                "test_commands" if test_commands else "test_command",
+                tuple(declared_commands),
+            )
             print(
-                "error: --from-counts cannot be combined with a declared "
-                "test_command/test_commands — the declared command(s) emit "
-                "JUnit. If you have already run them, ingest the report(s) "
-                "with repeated `--from-junit <report>` (no re-run, "
-                "machine-backed evidence). If you have not run them yet, bare "
-                "`test-evidence record` runs them and records in one step.",
+                testament_evidence_probes.from_counts_refusal(project_dir, declared),
                 file=sys.stderr,
             )
             return 2
