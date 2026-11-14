@@ -438,11 +438,31 @@ def blind_sheet(
     return items, key
 
 
+def tree_check(pairs: list[dict], pin: bool = False) -> "tuple[int, list[str]]":
+    """``(pinned, gone)``: with ``pin``, how many pairs had both reviewed trees
+    pinned now (#1174); and the review ids whose base or head tree no longer
+    exists, which a blind verifier could not read. Pinning first is what keeps
+    the second list empty for runs recorded before ``record`` pinned."""
+    pinned, gone = 0, []
+    for p in pairs:
+        native = (p.get("native_event") or {}).get("native") or {}
+        trees = (native.get("base_tree"), native.get("head_tree"))
+        repo = Path(p["repo"])
+        if any(not t or evidence.run_git(repo, "cat-file", "-e", f"{t}^{{tree}}")[0] != 0 for t in trees):
+            gone.append(p["review_id"])
+            continue
+        if pin and native_review.pin_trees(repo, p["review_id"], *trees):
+            pinned += 1
+    return pinned, gone
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("repos", nargs="+", type=Path)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--transcripts", type=Path, action="append", default=[])
+    parser.add_argument("--pin", action="store_true",
+                        help="pin every paired review's reviewed trees so git gc cannot prune them (#1174)")
     args = parser.parse_args(argv)
 
     pairs = [p for repo in args.repos for p in load_pairs(repo.resolve())]
@@ -465,6 +485,12 @@ def main(argv: list[str]) -> int:
     agree, disagree = count_check(pairs)
     print(f"count check: {agree} of {agree + len(disagree)} countable run(s) agree with the ledger"
           + (": " + ", ".join(disagree) if disagree else ""))
+    pinned, gone = tree_check(pairs, pin=args.pin)
+    if args.pin:
+        print(f"trees pinned: {pinned} of {len(pairs)} paired review(s)")
+    if gone:
+        print(f"WARNING: {len(gone)} review(s) whose reviewed tree is gone, so the verifier "
+              f"cannot read the code as reviewed: {', '.join(gone)}")
     mismatched = model_mismatches(pairs)
     if mismatched:
         print(f"WARNING: {len(mismatched)} model mismatch(es): " + ", ".join(mismatched))
