@@ -19,9 +19,11 @@ way "Recording evidence" below describes for a machine without testament.
 
 Read the JSON on stdout:
 
-- `exit_code`: 0 all passed; 1 tests failed (a real red: fix it); 5 nothing collected;
-  2 anything else, which is **not** a test result. Read `error.code`; when `error.retryable` is
-  true, run again.
+- `verdict` first: `passed`, `failed` or `unavailable`, with `verdict_reason` (`tests_failed`,
+  `no_tests`, or the `error.code`). A `failed` verdict is a result even when `error.retryable` is
+  true (a test can fail before the pool cuts the run short): fix it, never rerun it away. Only an
+  `unavailable` verdict (the pool could not decide, exit 75) is worth running again. The exit
+  codes are frozen and listed in `testament run --help`; key on `verdict`, not on `exit_code`.
 - `report.items[]`: one per test, with `outcome` (`passed`, `failed`, `error`, `skipped`),
   `message` (pytest's failure text for a failed or errored test) and `runner`.
 - `report.missing`: tests that were requested but never reported. A non-empty list is exit 2
@@ -59,3 +61,46 @@ one call:
 
 A plain `pytest tests/` run already includes the marked tests, so these two reports are the whole
 suite.
+
+## In CI
+
+`.github/workflows/tests.yml` runs the pytest suite through `tools/ci-suite.py`, whose docstring
+is the reference for what follows. It has two stages, which are two jobs:
+
+- **`pool`** holds the pool's key. It downloads the pool's own CLI build from the pool's console,
+  runs `testament run --no-fallback`, and tells the next job whether the pool ran the suite. It
+  installs nothing from a package index and runs no test, which is why it may hold the key.
+- **`pytest`** runs after it, whatever its result, and is given no secret. When the pool ran the
+  suite it runs the tests `.testament.toml` selects out; otherwise it runs `python -m pytest`,
+  the whole suite. A pull request from a fork is always the second case: it gets no key.
+
+Each job's summary on GitHub says what it ran.
+
+Three repository settings feed it (*Settings → Secrets and variables → Actions*):
+
+- `TESTAMENT_KEY`, a secret: a client key made for this CI in the pool's console (People, **+ New
+  client key**). Revoke it there when CI should stop using the pool.
+- `TESTAMENT_COORDINATOR`, a variable: the pool's wire address, the one `testament run` submits to.
+- `TESTAMENT_CONSOLE`, a variable: the address the console is opened at, `https://…`. The CLI
+  build is downloaded from it.
+
+Reading a red or yellow run:
+
+The runner decides by the `verdict` testament's envelope carries, not by its exit code.
+
+- **A warning on `pool`, "the pool could not be used"**: the pool could not give a verdict twice
+  (`unavailable`: unreachable, no runner, a lost connection or batches), its console did not
+  answer or was busy, or the run took longer than the ten minutes the runner gives it. `pool`
+  passes, `pytest` ran the whole suite, and its result is the verdict. Nothing to fix in the
+  repository.
+- **`pool` failed with "this workflow cannot use the pool"**: an ending that is neither a result
+  nor an outage. The error names it. Often it is the key (refused or revoked) or a missing
+  variable, but it can be an error the pool reports about the run itself, such as
+  `population_mismatch` (a requested test never reported), or a manifest selection the runner
+  cannot complement. `pytest` still ran the whole suite, so its result says whether the tree is
+  sound, and `pool` stays red until the cause is fixed. Read the named error before replacing
+  the key.
+- **`pool` failed with failing tests**: the pool ran the suite and tests failed there, even when
+  the run was then cut short. Such a run is never retried, so a failure cannot pass on a second
+  attempt and vanish. `pytest` still ran the tests the pool leaves out.
+- **Failing tests** are named in the summary whichever machine ran them.

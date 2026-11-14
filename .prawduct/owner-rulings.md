@@ -27,6 +27,16 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-14.** "Step one, but we also do need to move CI onto Testament so that we will take some work to update I suppose"
+In reply to the advice after the interim comparison: ship `feature/native-review-inner` first, then
+revive `feature/ci-testament` instead of parking it. Landed as PR #1171 and this branch's sync onto
+develop.
+
+**2026-11-14.** "Yes, let's do it"
+In reply to running the blind verification of the Critic-vs-native comparison at 12 paired reviews.
+It overrides the 2026-11-13 ruling's wait for about twenty. The interim result is posted on #1130 as
+a baseline, not a decision.
+
 **2026-11-13.** "1. yes file and build, and let's wait on 2"
 In reply to two asks after the early Critic-vs-native comparison. It settles: file three follow-ups
 to #1130 (#1164, a severity breakdown in `compare.py`; #1166, pairing a sample of `chunk` and
@@ -53,6 +63,14 @@ each native run is recorded as a per-clone ledger event rather than an evidence-
 text is kept in `.prawduct/.native-reviews/` rather than beside the partials (both departures from
 #1130's wording); and the build proceeds. Landed in
 `.prawduct/artifacts/build-plan-native-review-paired.md` Goals.
+
+**2026-11-11.** "let's get ci using testament", with a client key for the pool supplied as
+"(github secret)" and the coordinator's address as "(variable I think, not secret)". The previous
+session's handoff quotes the owner on the same question: "We should be. I can get a key if
+needed". Landed in `.prawduct/artifacts/build-plan-ci-testament.md` (Goals), which marks as
+inferred everything these words do not settle: that an unreachable pool falls back to the job
+rather than failing it, that a refused key fails the job, and that a third setting (the console's
+address) is needed beside the two supplied.
 
 **2026-11-11.** "yes please do PR and merge and advance, anc close 669"
 In reply to three numbered decisions at the hand-over of #1129. It settles two: the branch

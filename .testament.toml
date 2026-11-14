@@ -1,18 +1,25 @@
 # How Testament (`testament run`) runs this repo's pytest suite on its pool. Machine-specific
 # settings (the coordinator's address, this machine's key) live in ~/.config/testament, never here.
 #
-# The suite is the one CI runs (`.github/workflows/tests.yml`: `python -m pytest`, testpaths and
-# options from pyproject's [tool.pytest.ini_options]). On a runner Testament forces `-n 0`, so the
-# `-n`/`--dist` in addopts apply only to local runs; the pool is the parallelism. The collector's
-# node suite is not pytest and stays with `prawduct-hook test-evidence record`.
+# The suite is pyproject's ([tool.pytest.ini_options]: testpaths and options), and CI sends it here
+# too: `.github/workflows/tests.yml` runs `tools/ci-suite.py`, whose `pool` job submits this
+# manifest when the workflow holds the pool's key, and whose `pytest` job runs the whole suite on
+# GitHub's runner when the pool did not. On a runner
+# Testament forces `-n 0`, so the `-n`/`--dist` in addopts apply only to local runs; the pool is
+# the parallelism. The collector's node suite is not pytest and stays with `prawduct-hook
+# test-evidence record`.
 #
 # No lockfile: `uv.lock` is gitignored here (dependencies resolve fresh per environment, as CI's
 # `pip install ".[dev]"` does), so setup resolves the `dev` extra and the command runs `--no-sync`.
 #
 # A runner's checkout has the tree but no history and no backlog cache, so tests marked
 # `requires_history` or `requires_local_cache` are selected out here; the evidence recorder runs
-# exactly those locally (`test_commands` in `.prawduct/project-state.yaml`), and a plain `pytest`
-# run and CI still run them.
+# exactly those locally (`test_commands` in `.prawduct/project-state.yaml`), a plain `pytest` run
+# includes them, and CI runs them in its `pytest` job: `tools/ci-suite.py` reads the `-m`
+# expression of `command` below and runs its negation there, so that expression is the one place
+# they are named for CI. The runner refuses what it cannot complement exactly: the command
+# selects with one `-m <expression>` after `pytest` and passes only output flags beside it,
+# `default_selection` is pyproject's `testpaths`, and `[env]` sets no PYTEST_ADDOPTS.
 # Release tags do reach runners ([git] below), as trees, which is all the tag-reading tests use.
 manifest_version = 2
 name = "prawduct"
