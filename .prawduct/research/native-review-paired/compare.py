@@ -58,6 +58,8 @@ from lib import dispositions, evidence, gitstate, ledger, model_tier, native_rev
 STOP_WEEKS = 4
 STOP_REVIEWS = 60
 NO_GOAL = "(no goal — the verifier names one)"
+#: One question for every unique finding, whichever instrument raised it.
+UNIQUE_ASK = "real defect? and which goal?"
 OBSERVATION = "observation"
 SEVERITIES = ("blocking", "warning", OBSERVATION)
 def match(critic: list[dict], native: list[dict], observations: "list[dict] | None" = None) -> dict:
@@ -371,8 +373,17 @@ def blind_sheet(
     """The verifier's sheet and its key. Each item is a proposed pair to confirm
     or reject — a match, or a re-raise candidate — or one unique finding to
     judge real or not, with its words and location and nothing that says which
-    instrument raised it."""
+    instrument raised it: every unique finding gets one question, and a pair's
+    order is shuffled, with the key saying which side came first. Each item also
+    names the repo and the trees its review read, so the verifier reads the code
+    as reviewed and not a later fix of it."""
     items, key = [], {}
+    rng = random.Random(seed)
+
+    def where(pair):
+        native = (pair.get("native_event") or {}).get("native") or {}
+        return {"repo": pair.get("repo"), "base_tree": native.get("base_tree"),
+                "head_tree": native.get("head_tree")}
 
     def critic_words(c):
         return {"files": c.get("files"), "text": f"{c.get('title', '')} — {c.get('recommendation', '')}"}
@@ -388,23 +399,29 @@ def blind_sheet(
         return native_words(f) if "file" in f else critic_words(f)
 
     for pair, m in zip(pairs, matches):
+        at = where(pair)
         for c, n in m["shared"]:
             a, b = critic_words(c), native_words(n)
+            first = "critic"
+            if rng.random() < 0.5:
+                a, b, first = b, a, "native"
             ref = {"critic_fid": c["fid"]} if c.get("fid") else {"critic_oid": c.get("oid")}
-            items.append({"ask": "same defect?", "first": a, "second": b,
-                          "_key": {"review": pair["review_id"], **ref}})
+            items.append({"ask": "same defect?", "first": a, "second": b, **at,
+                          "_key": {"review": pair["review_id"], "first": first, **ref}})
         for c in m["critic_only"]:
-            items.append({"ask": "real defect?", "finding": critic_words(c),
+            items.append({"ask": UNIQUE_ASK, "finding": critic_words(c), **at,
                           "_key": {"review": pair["review_id"], "source": "critic", "fid": c.get("fid")}})
         for n in m["native_only"]:
-            items.append({"ask": "real defect? and which goal?", "finding": native_words(n),
+            items.append({"ask": UNIQUE_ASK, "finding": native_words(n), **at,
                           "_key": {"review": pair["review_id"], "source": "native"}})
+    at_review = {p.get("review_id"): where(p) for p in pairs}
     for r in reraised or []:
         items.append({"ask": "does it repeat one of the earlier findings?", "finding": words(r["finding"]),
                       "earlier": [words(e) for e in r["earlier"]],
+                      **at_review.get(r["review"], {"repo": None, "base_tree": None, "head_tree": None}),
                       "_key": {"review": r["review"], "reraise_by": r["by"],
                                "earlier_kind": r["earlier_kind"], "earlier_review": r["earlier_review"]}})
-    random.Random(seed).shuffle(items)
+    rng.shuffle(items)
     for i, item in enumerate(items, 1):
         item_id = f"V-{i}"
         key[item_id] = item.pop("_key")
