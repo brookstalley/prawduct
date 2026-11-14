@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -97,9 +98,11 @@ class TestBlindSheet:
                           [_native("a.py"), _native("z.py")])
         items, key = compare.blind_sheet([pair], [m])
         assert len(items) == 3 and set(key) == {i["id"] for i in items}
-        # Only these fields reach the verifier: the question, the words and the
-        # place — no source, no fid, no review id.
-        allowed = {"id", "ask", "finding", "first", "second", "earlier"}
+        # Only these fields reach the verifier: the question, the words, the
+        # place, and the trees the review read (so the verifier reads the code as
+        # reviewed, not a later fix) — no source, no fid, no review id.
+        allowed = {"id", "ask", "finding", "first", "second", "earlier", "repo", "base_tree", "head_tree",
+                   "earlier_head_tree", "tree_moved"}
         assert all(set(i) <= allowed for i in items), items
         for item in items:
             for words in (item.get("finding"), item.get("first"), item.get("second")):
@@ -109,6 +112,50 @@ class TestBlindSheet:
                     assert set(words) == {"files", "text"}, words
         # The key is where the source lives.
         assert sorted(v.get("source", "pair") for v in key.values()) == ["critic", "native", "pair"]
+
+    def test_every_unique_finding_is_asked_the_same_question(self):
+        # A Critic-only finding was asked "real defect?" and a native-only one
+        # "real defect? and which goal?", so the question named the instrument.
+        m = compare.match([_critic("R-1", "g", "a.py")], [_native("z.py")])
+        items, key = compare.blind_sheet([{"review_id": "rev-1"}], [m])
+        sources = {key[i["id"]]["source"] for i in items}
+        assert sources == {"critic", "native"}, "the fixture must hold one unique of each"
+        assert len({i["ask"] for i in items}) == 1, [i["ask"] for i in items]
+
+    def test_a_pairs_order_is_shuffled_and_the_key_says_which_came_first(self):
+        # First was always the Critic's, so the order named the instrument.
+        critic = [_critic(f"R-{n}", "g", f"f{n}.py") for n in range(30)]
+        native = [_native(f"f{n}.py") for n in range(30)]
+        items, key = compare.blind_sheet([{"review_id": "rev-1"}], [compare.match(critic, native)])
+        firsts = {key[i["id"]]["first_source"] for i in items}
+        assert firsts == {"critic", "native"}, firsts
+        for item in items:
+            critic_side = item["first"] if key[item["id"]]["first_source"] == "critic" else item["second"]
+            assert critic_side["text"].startswith("critic R-"), "the key names the side the Critic's words are on"
+
+    def test_a_reraise_item_names_its_reviews_trees_and_the_earlier_reviews(self):
+        later = {"review_id": "rev-2", "repo": "/r",
+                 "native_event": {"native": {"base_tree": "b" * 40, "head_tree": "h" * 40, "tree_moved": True}}}
+        earlier = {"review_id": "rev-1", "repo": "/r",
+                   "native_event": {"native": {"base_tree": "a" * 40, "head_tree": "e" * 40}}}
+        reraised = [{"review": "rev-2", "by": "native", "finding": _native("a.py"),
+                     "earlier": [_critic("R-1", "g", "a.py")], "earlier_kind": "finding",
+                     "earlier_review": "rev-1"}]
+        empty = compare.match([], [])
+        items, _ = compare.blind_sheet([later, earlier], [empty, empty], reraised=reraised)
+        [item] = items
+        assert (item["repo"], item["base_tree"], item["head_tree"]) == ("/r", "b" * 40, "h" * 40)
+        assert item["earlier_head_tree"] == "e" * 40
+        assert item["tree_moved"] is True
+
+    def test_each_item_names_the_repo_and_the_trees_the_review_read(self):
+        pair = {"review_id": "rev-1", "repo": "/r",
+                "native_event": {"native": {"base_tree": "b" * 40, "head_tree": "h" * 40}}}
+        m = compare.match([_critic("R-1", "g", "a.py")], [_native("a.py"), _native("z.py")])
+        items, _ = compare.blind_sheet([pair], [m])
+        assert items and all(
+            (i["repo"], i["base_tree"], i["head_tree"]) == ("/r", "b" * 40, "h" * 40) for i in items
+        ), items
 
 
 @pytest.fixture
@@ -171,6 +218,23 @@ def _branch_repo(tmp_path, pairing):
 
 
 class TestEndToEnd:
+    def test_a_real_paired_reviews_items_name_trees_the_repo_holds(self, paired_repo):
+        # Production obtains the trees from the native.review ledger event, which
+        # no unit test above exercises: they hand the pair its trees directly.
+        repo, _review_id = paired_repo
+        pairs = compare.load_pairs(repo)
+        matches = [compare.match(p["critic_fact"]["body"].get("findings") or [], p["native_findings"])
+                   for p in pairs]
+        items, _ = compare.blind_sheet(pairs, matches)
+        assert items
+        for item in items:
+            assert item["repo"] == str(repo)
+            for tree in (item["base_tree"], item["head_tree"]):
+                kind = subprocess.run(  # noqa: S603 — list-form argv, no shell (project preference)
+                    ["git", "-C", str(repo), "cat-file", "-t", tree], capture_output=True, text=True,
+                ).stdout.strip()
+                assert kind == "tree", (tree, kind)
+
     def test_a_real_paired_review_compares(self, paired_repo, tmp_path, capsys):
         repo, review_id = paired_repo
         [pair] = compare.load_pairs(repo)

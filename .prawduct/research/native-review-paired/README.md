@@ -32,15 +32,25 @@ and `build-plan-native-review-inner.md`. The host facts the design rests on are 
    that failed (a model mismatch, a recipe other than `high`, a tree that moved before the run
    landed) — investigate those before trusting the table.
 2. Hand `blind-sheet.json` alone to a verifier that has not seen the key. A fresh subagent is
-   enough: have it read the code at each finding's location and answer each item's `ask`. That is
-   "same defect?" for a pair the file match proposed, "real defect?" for a unique finding, and,
-   for a native-only finding, which Critic goal it falls under; and, for a re-raise candidate,
+   enough: have it read the code at each finding's location **as reviewed**, from the item's
+   `repo` at its `head_tree` (`git -C <repo> show <head_tree>:<path>`, and `git -C <repo> diff
+   <base_tree> <head_tree>` for the change), not the current checkout, where many findings are already
+   fixed. Then have it answer each item's `ask`. That is
+   "same defect?" for a pair the file match proposed; "real defect? and which goal?" for every
+   unique finding, whichever instrument raised it; and, for a re-raise candidate,
    whether the finding repeats one of the earlier findings listed with it. A candidate is
    proposed by file, against what the Critic would have been handed as prior dispositions (and
    earlier boundary runs' native findings, by the same rules), so most are different defects; only
    the confirmed ones are re-raises. No item carries a line number, since only native findings
    have one.
-3. Join the answers to `blind-key.json` and fill in the decision table below.
+   An item marked `tree_moved` came from a review whose working tree changed before the native
+   run landed, so the code at `head_tree` may differ a little from what was read. A re-raise
+   item's `earlier` findings are read at `earlier_head_tree`. The two instruments still word
+   findings differently (a native finding names one file and reads "summary — scenario"), so the
+   sheet hides the source as far as the words allow, not completely.
+3. Join the answers to `blind-key.json` and fill in the decision table below. A pair's order on
+   the sheet is shuffled; its key entry's `first_source` says whether the Critic's or the native
+   finding came first.
 
 ## Decision table (#1130 step 6)
 
