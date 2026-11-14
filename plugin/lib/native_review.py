@@ -226,6 +226,36 @@ def _tree_moved(project_dir: Path, sidecar: dict) -> "bool | None":
     return any(not path.startswith(".prawduct/") for path in both)
 
 
+#: Where a native run's reviewed trees are pinned. A dirty working tree's tree
+#: is written through a temporary index, so nothing else references it, and
+#: `git gc` prunes an unreferenced object after gc.pruneExpire (two weeks by
+#: default) — before the experiment's blind verification reads the code there.
+#: Clone-local: prawduct's evidence sync pushes only its notes ref, though a
+#: mirror push would publish these too. Released when the experiment stops (the
+#: research README says how). Whether a run is pinned is read from the refs,
+#: never stored, so a later pin is never contradicted by a stale record.
+PIN_PREFIX = "refs/prawduct/native-trees"
+
+
+def pin_trees(project_dir: Path, review_id: str, base: "str | None", head: "str | None") -> bool:
+    """Point ``<PIN_PREFIX>/<review_id>/{base,head}`` at the reviewed trees.
+    True only when both are pinned. Never raises: a pin that fails costs the
+    verification later, never the record now. A review id that is not a safe
+    ref component pins nothing."""
+    from . import evidence  # noqa: PLC0415 — lazy, matching the lib's other imports
+
+    if not is_safe_id(review_id):
+        return False
+    pinned = True
+    for name, tree in (("base", base), ("head", head)):
+        if not tree:
+            pinned = False
+            continue
+        rc, _out, _err = evidence.run_git(project_dir, "update-ref", f"{PIN_PREFIX}/{review_id}/{name}", tree)
+        pinned = pinned and rc == 0
+    return pinned
+
+
 def record(project_dir: Path, prawduct_dir: Path, review_id: str) -> "tuple[int, str]":
     """Append the native run's ``native.review`` ledger event. ``(0, message)``
     on an append or when it is already recorded; ``(1, reason)`` when there is
@@ -246,8 +276,13 @@ def record(project_dir: Path, prawduct_dir: Path, review_id: str) -> "tuple[int,
         return 1, f"{path} is unreadable ({exc.__class__.__name__})"
     if not text.strip():
         return 1, f"{path} is empty — write the review's text there first"
+    pinned = pin_trees(project_dir, review_id, sidecar.get("base_tree"), sidecar.get("head_tree"))
+    unpinned = "" if pinned else (
+        f"; its reviewed trees could not be pinned under {PIN_PREFIX}/{review_id}/, so git gc may "
+        "prune them before verification (run it again, or `compare.py --pin`)"
+    )
     if ledger.native_review_event_exists(prawduct_dir, review_id):
-        return 0, f"native review {review_id} is already recorded; nothing appended"
+        return 0, f"native review {review_id} is already recorded; nothing appended{unpinned}"
     findings = parse_findings(text)
     # A sidecar written before inner reviews paired carries no mode or stage;
     # every run dispatched then was a boundary `cumulative`.
@@ -273,7 +308,7 @@ def record(project_dir: Path, prawduct_dir: Path, review_id: str) -> "tuple[int,
         duration_seconds=_seconds_since(sidecar.get("dispatched_at")),
     )
     counted = f"{len(findings)} finding(s)" if findings is not None else "findings not countable from the text"
-    return 0, f"native review {review_id} recorded: {counted}"
+    return 0, f"native review {review_id} recorded: {counted}{unpinned}"
 
 
 def show(prawduct_dir: Path, review_id: "str | None" = None) -> "tuple[int, str]":

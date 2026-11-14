@@ -927,3 +927,84 @@ class TestReviewStatsByStage:
         assert block["by_stage"]["inner"]["duration_measured"]["median_seconds"] == 60
         lines = telemetry._native_line(block)
         assert [line.split(" (")[0] for line in lines] == ["native review, boundary", "native review, inner"]
+
+
+class TestTreePins:
+    """A native run's reviewed trees are pinned, so `git gc` cannot prune them
+    before the experiment's blind verification reads the code at them (#1174).
+
+    A dirty working tree's tree is written through a temporary index, so nothing
+    else references it; git prunes an unreferenced object after gc.pruneExpire."""
+
+    @staticmethod
+    def _kind(repo: Path, sha: str) -> str:
+        import subprocess  # noqa: PLC0415 — only this class reads object kinds directly
+
+        return subprocess.run(  # noqa: S603 — list-form argv, no shell (project preference)
+            ["git", "-C", str(repo), "cat-file", "-t", sha], capture_output=True, text=True,
+        ).stdout.strip()
+
+    def _recorded(self, repo, monkeypatch):
+        result = _inner(repo, monkeypatch)
+        pd = repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        rc, message = native_review.record(repo, pd, result["id"])
+        assert rc == 0, message
+        [event] = _ledger_events(repo, "native.review")
+        self.message = message
+        return result, event["native"]
+
+    def test_record_pins_both_trees(self, branch_repo, monkeypatch):
+        result, native = self._recorded(branch_repo, monkeypatch)
+        assert "could not be pinned" not in self.message
+        # Read from the refs, never stored: a later pin is never contradicted.
+        assert "trees_pinned" not in native
+        for name in ("base", "head"):
+            ref = f"{native_review.PIN_PREFIX}/{result['id']}/{name}"
+            assert _git(branch_repo, "rev-parse", ref) == native[f"{name}_tree"]
+
+    def test_a_pinned_tree_survives_gc_and_an_unpinned_one_does_not(self, branch_repo, monkeypatch):
+        result, native = self._recorded(branch_repo, monkeypatch)
+        head = native["head_tree"]
+        _git(branch_repo, "gc", "--quiet", "--prune=now")
+        assert self._kind(branch_repo, head) == "tree", "the pin must keep the reviewed tree"
+        # The control: drop the pins and the same tree goes, which is the risk.
+        for name in ("base", "head"):
+            _git(branch_repo, "update-ref", "-d", f"{native_review.PIN_PREFIX}/{result['id']}/{name}")
+        _git(branch_repo, "reflog", "expire", "--expire=now", "--all")
+        _git(branch_repo, "gc", "--quiet", "--prune=now")
+        assert self._kind(branch_repo, head) != "tree", "without the pin nothing references the tree"
+
+    def test_a_record_already_made_still_pins(self, branch_repo, monkeypatch):
+        # Re-running record is how a run recorded before pins existed gets one.
+        result, native = self._recorded(branch_repo, monkeypatch)
+        ref = f"{native_review.PIN_PREFIX}/{result['id']}/head"
+        _git(branch_repo, "update-ref", "-d", ref)
+        rc, message = native_review.record(branch_repo, branch_repo / ".prawduct", result["id"])
+        assert rc == 0 and "already recorded" in message
+        assert _git(branch_repo, "rev-parse", ref) == native["head_tree"]
+
+    def test_a_pin_that_fails_never_blocks_the_record(self, branch_repo, monkeypatch):
+        from lib import evidence  # noqa: PLC0415 — native_review imports it lazily, so patch its home
+
+        real = evidence.run_git
+
+        def failing(project_dir, *args, **kw):
+            if args and args[0] == "update-ref":
+                return 1, "", "locked"
+            return real(project_dir, *args, **kw)
+
+        monkeypatch.setattr(evidence, "run_git", failing)
+        result, _native = self._recorded(branch_repo, monkeypatch)
+        assert "could not be pinned" in self.message, "the one line the wrapper reports must say so"
+        # The re-run is the remedy the message names; it says so again while the pin still fails.
+        rc, again = native_review.record(branch_repo, branch_repo / ".prawduct", result["id"])
+        assert rc == 0 and "already recorded" in again and "could not be pinned" in again
+
+    def test_an_unsafe_review_id_pins_nothing(self, branch_repo):
+        # A name git accepts as a ref path but that is no review id: without the
+        # check it would write refs/prawduct/native-trees/heads/main/{base,head}.
+        tree = _git(branch_repo, "rev-parse", "HEAD^{tree}")
+        assert native_review.pin_trees(branch_repo, "heads/main", tree, tree) is False
+        listed = _git(branch_repo, "for-each-ref", "--format=%(refname)", native_review.PIN_PREFIX)
+        assert listed == "", listed

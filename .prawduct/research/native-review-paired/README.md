@@ -63,6 +63,17 @@ warnings; whether that holds at the **inner** stage, where most correctness revi
 confirmed **re-raise** rate against the Critic's, since a gate that re-raises settled findings
 does not terminate.
 
+## Keeping the reviewed trees
+
+Each native run's base and head trees are pinned under `refs/prawduct/native-trees/<review-id>/`
+when the run is recorded, so `git gc` cannot prune them before verification (#1174). They are
+clone-local: prawduct's evidence sync pushes only its notes ref, though a mirror push would
+publish these. `compare.py --pin` pins the trees of runs recorded before that, and `compare.py`
+warns about any review whose tree is already gone. At the stop, release them (a no-op when there
+are none):
+
+    git for-each-ref --format='delete %(refname)' refs/prawduct/native-trees | git update-ref --stdin
+
 ## Stop
 
 The experiment stops after four weeks or sixty paired reviews, whichever is later. `compare.py`

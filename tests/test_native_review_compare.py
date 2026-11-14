@@ -235,6 +235,35 @@ class TestEndToEnd:
                 ).stdout.strip()
                 assert kind == "tree", (tree, kind)
 
+    def test_pin_backfills_a_run_recorded_before_pins_existed(self, paired_repo, capsys):
+        repo, review_id = paired_repo
+        for name in ("base", "head"):  # as a run recorded before record() pinned
+            subprocess.run(["git", "-C", str(repo), "update-ref", "-d",  # noqa: S603 — list-form argv
+                            f"{compare.native_review.PIN_PREFIX}/{review_id}/{name}"], check=True)
+        assert compare.main([str(repo), "--pin"]) == 0
+        assert "trees pinned: 1 of 1" in capsys.readouterr().out
+        [pair] = compare.load_pairs(repo)
+        head = subprocess.run(  # noqa: S603 — list-form argv, no shell (project preference)
+            ["git", "-C", str(repo), "rev-parse", f"{compare.native_review.PIN_PREFIX}/{review_id}/head"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert head == pair["native_event"]["native"]["head_tree"]
+
+    def test_a_review_whose_tree_is_gone_is_named_loudly(self, paired_repo, capsys):
+        repo, review_id = paired_repo
+        _rewrite_native_event(repo, lambda e: e["native"].update(head_tree="0" * 40))
+        assert compare.main([str(repo)]) == 0
+        printed = capsys.readouterr().out
+        assert "WARNING: 1 review(s) whose reviewed tree is gone" in printed and review_id in printed
+
+    def test_a_review_whose_event_names_no_tree_is_told_apart_from_a_pruned_one(self, paired_repo, capsys):
+        repo, review_id = paired_repo
+        _rewrite_native_event(repo, lambda e: e["native"].pop("head_tree"))
+        assert compare.main([str(repo)]) == 0
+        printed = capsys.readouterr().out
+        assert "WARNING: 1 review(s) whose event names no reviewed tree" in printed
+        assert "whose reviewed tree is gone" not in printed
+
     def test_a_real_paired_review_compares(self, paired_repo, tmp_path, capsys):
         repo, review_id = paired_repo
         [pair] = compare.load_pairs(repo)

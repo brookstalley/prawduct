@@ -2,7 +2,7 @@
 """Compare the Critic with the paired native review (#1130 step 5).
 
 Usage:
-    python3 -I compare.py <repo> [<repo> ...] [--out <dir>] [--transcripts <subagents dir> ...]
+    python3 -I compare.py <repo> [<repo> ...] [--out <dir>] [--transcripts <subagents dir> ...] [--pin]
 
 For every ``native.review`` event in each repo's governance ledger, joins the
 native run to the Critic review it was paired with (the evidence store's review
@@ -36,7 +36,8 @@ the baseline. The verifier judges whether each candidate repeats one of the
 earlier findings listed with it.
 
 Reads the ledger, the evidence store and the per-clone native texts of each
-repo; writes only under ``--out``.
+repo; writes only under ``--out``, and with ``--pin`` the reviewed trees' refs under
+``refs/prawduct/native-trees/`` in each repo (#1174).
 """
 
 from __future__ import annotations
@@ -382,8 +383,8 @@ def blind_sheet(
 
     def where(pair):
         native = (pair.get("native_event") or {}).get("native") or {}
-        place = {"repo": pair.get("repo"), "base_tree": native.get("base_tree"),
-                 "head_tree": native.get("head_tree")}
+        base, head = reviewed_trees(pair)
+        place = {"repo": pair.get("repo"), "base_tree": base, "head_tree": head}
         # The native review reads the working tree; when a reviewed file moved
         # before it landed, the code at head_tree is not quite what it read. Said
         # of every item of that review, so it names no instrument.
@@ -438,11 +439,45 @@ def blind_sheet(
     return items, key
 
 
+def reviewed_trees(pair: dict) -> "tuple[str | None, str | None]":
+    """The base and head trees a pair's review read, from its native.review event."""
+    native = (pair.get("native_event") or {}).get("native") or {}
+    return native.get("base_tree"), native.get("head_tree")
+
+
+def tree_check(pairs: list[dict], pin: bool = False) -> "tuple[int, list[str], list[str]]":
+    """``(pinned, gone, unrecorded)``: with ``pin``, how many pairs had both
+    reviewed trees pinned now (#1174); the review ids whose trees git no longer
+    holds, which a blind verifier could not read; and those whose event names
+    no trees at all. Pinning first is what keeps ``gone`` empty for runs
+    recorded before ``record`` pinned."""
+    pinned, gone, unrecorded = 0, [], []
+    by_repo: dict[str, list[dict]] = {}
+    for p in pairs:
+        by_repo.setdefault(p["repo"], []).append(p)
+    for repo_name, group in by_repo.items():
+        repo = Path(repo_name)
+        named = [p for p in group if all(reviewed_trees(p))]
+        unrecorded += [p["review_id"] for p in group if not all(reviewed_trees(p))]
+        absent = evidence.missing_objects(repo, sorted({t for p in named for t in reviewed_trees(p)}))
+        for p in named:
+            trees = reviewed_trees(p)
+            missing = (any(t in absent for t in trees) if absent is not None else any(
+                evidence.run_git(repo, "cat-file", "-e", f"{t}^{{tree}}")[0] != 0 for t in trees))
+            if missing:
+                gone.append(p["review_id"])
+            elif pin and native_review.pin_trees(repo, p["review_id"], *trees):
+                pinned += 1
+    return pinned, gone, unrecorded
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("repos", nargs="+", type=Path)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--transcripts", type=Path, action="append", default=[])
+    parser.add_argument("--pin", action="store_true",
+                        help="pin every paired review's reviewed trees so git gc cannot prune them (#1174)")
     args = parser.parse_args(argv)
 
     pairs = [p for repo in args.repos for p in load_pairs(repo.resolve())]
@@ -465,6 +500,14 @@ def main(argv: list[str]) -> int:
     agree, disagree = count_check(pairs)
     print(f"count check: {agree} of {agree + len(disagree)} countable run(s) agree with the ledger"
           + (": " + ", ".join(disagree) if disagree else ""))
+    pinned, gone, no_trees = tree_check(pairs, pin=args.pin)
+    if args.pin:
+        print(f"trees pinned: {pinned} of {len(pairs)} paired review(s)")
+    if no_trees:
+        print(f"WARNING: {len(no_trees)} review(s) whose event names no reviewed tree: {', '.join(no_trees)}")
+    if gone:
+        print(f"WARNING: {len(gone)} review(s) whose reviewed tree is gone, so the verifier "
+              f"cannot read the code as reviewed: {', '.join(gone)}")
     mismatched = model_mismatches(pairs)
     if mismatched:
         print(f"WARNING: {len(mismatched)} model mismatch(es): " + ", ".join(mismatched))
