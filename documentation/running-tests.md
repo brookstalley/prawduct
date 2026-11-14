@@ -84,14 +84,21 @@ Three repository settings feed it (*Settings → Secrets and variables → Actio
 
 Reading a red or yellow run:
 
-- **A warning on `pool`, "the pool could not be used"**: the pool or its console did not answer,
-  was busy, lost the run twice, or took longer than the ten minutes the runner gives it. `pool`
+The runner decides by the `verdict` testament's envelope carries, not by its exit code.
+
+- **A warning on `pool`, "the pool could not be used"**: the pool could not give a verdict twice
+  (`unavailable`: unreachable, no runner, a lost connection or batches), its console did not
+  answer or was busy, or the run took longer than the ten minutes the runner gives it. `pool`
   passes, `pytest` ran the whole suite, and its result is the verdict. Nothing to fix in the
   repository.
-- **`pool` failed with "this workflow cannot use the pool"**: the pool refused the key, a variable
-  is missing, or the build could not be installed. `pytest` still ran the whole suite, so its
-  result says whether the tree is sound, and `pool` stays red until the setting is fixed. A
-  replaced key is the usual cause: make a new one and set the secret again.
-- **`pool` failed with failing tests**: the pool ran the suite and tests failed there. `pytest`
-  still ran the tests the pool leaves out.
+- **`pool` failed with "this workflow cannot use the pool"**: an ending that is neither a result
+  nor an outage. The error names it. Often it is the key (refused or revoked) or a missing
+  variable, but it can be an error the pool reports about the run itself, such as
+  `population_mismatch` (a requested test never reported), or a manifest selection the runner
+  cannot complement. `pytest` still ran the whole suite, so its result says whether the tree is
+  sound, and `pool` stays red until the cause is fixed. Read the named error before replacing
+  the key.
+- **`pool` failed with failing tests**: the pool ran the suite and tests failed there, even when
+  the run was then cut short. Such a run is never retried, so a failure cannot pass on a second
+  attempt and vanish. `pytest` still ran the tests the pool leaves out.
 - **Failing tests** are named in the summary whichever machine ran them.

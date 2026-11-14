@@ -44,6 +44,7 @@ Standard library only: the `pool` stage runs where nothing has been installed.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -62,9 +63,15 @@ from typing import TextIO
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = REPO_ROOT / ".testament.toml"
+# The suite's own test paths, from the one place pytest reads them.
+TEST_PATHS = tuple(
+    tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["tool"]["pytest"]["ini_options"]["testpaths"]
+)
 
 # Where the console serves the pool's current CLI build to a client key, and the header that
-# carries the digest the pool's signed release names for it.
+# carries its sha256. The digest comes in the same HTTPS answer as the build, so checking it
+# catches a body cut short or corrupted, and guarantees nothing TLS does not: no signature is
+# verified here.
 CLI_WHEEL_PATH = "/api/v1/cli/wheel"
 WHEEL_SHA256 = "X-Testament-Wheel-SHA256"
 # The download's name becomes a path and is handed to pip, which reads a wheel's name.
@@ -87,10 +94,17 @@ ON_POOL, ON_JOB = "pool", "job"
 # Console answers that mean "not now" rather than "not you": the server is failing, or busy.
 CONSOLE_OUTAGES = (408, 429)
 
-# Envelope exit codes that are test results: passed, failed, nothing collected. Everything
-# else, 2 included, is not a statement about the tests.
-RESULT_CODES = (0, 1, 5)
+# testament's envelope says how a run ended in `verdict` (`testament run --help`: its exit codes
+# are frozen, and a script keys on `verdict`). `failed` covers a failed test, an empty selection
+# and a refusal alike, so `verdict_reason` tells the tree's result from the pool's refusal: a
+# test that failed wins over how the run then ended, and is never retried away.
+VERDICT_PASSED, VERDICT_FAILED, VERDICT_UNAVAILABLE = "passed", "failed", "unavailable"
+TREE_RESULTS = ("tests_failed", "no_tests")
 NOTHING_COLLECTED = 5
+# The pytest flags a manifest's command may carry beside its one `-m`: they change what is
+# printed, never which tests run. Anything else could narrow the pool's run in a way the
+# tests stage cannot complement, so the tests it dropped would run in neither job.
+OUTPUT_ONLY = ("-q", "-qq", "-v", "-vv", "--no-header")
 # Failing tests named in the summary and annotated; the log holds the rest.
 NAMED_FAILURES = 50
 
@@ -161,17 +175,37 @@ def selected_out(manifest: Path) -> str | None:
     are named in one file. A command this cannot read is refused rather than read as "nothing
     selected out", which would stop those tests running anywhere without a word.
     """
-    command = tomllib.loads(manifest.read_text()).get("command")
+    data = tomllib.loads(manifest.read_text())
+    command = data.get("command")
     if not isinstance(command, list) or "pytest" not in command:
         raise Refused(f"{manifest.name}: `command` does not run pytest, so what it selects out is unknown")
+    paths = data.get("default_selection")
+    if paths is not None and [str(p).rstrip("/") for p in paths] != [p.rstrip("/") for p in TEST_PATHS]:
+        raise Refused(
+            f"{manifest.name}: `default_selection` {paths} is not the suite's own test paths "
+            f"{list(TEST_PATHS)}, so the tests it leaves out would run in neither job"
+        )
     # After `pytest`: `python -m pytest` carries a `-m` of its own before it.
     selection = command[command.index("pytest") + 1 :]
-    if "-m" not in selection:
-        return None
-    at = selection.index("-m") + 1
-    if at >= len(selection):
-        raise Refused(f"{manifest.name}: `command` ends at `-m` with no expression")
-    return f"not ({selection[at]})"
+    expression = None
+    i = 0
+    while i < len(selection):
+        token = selection[i]
+        if token == "-m":
+            if expression is not None:
+                raise Refused(f"{manifest.name}: `command` has a second `-m`; pytest would take the last")
+            if i + 1 >= len(selection):
+                raise Refused(f"{manifest.name}: `command` ends at `-m` with no expression")
+            expression = selection[i + 1]
+            i += 2
+            continue
+        if token not in OUTPUT_ONLY:
+            raise Refused(
+                f"{manifest.name}: `command` passes pytest `{token}`, which this cannot complement; "
+                "the manifest selects with one `-m <expression>` and nothing else"
+            )
+        i += 1
+    return None if expression is None else f"not ({expression})"
 
 
 def fetch_cli(settings: Settings, dest: Path, opener: Callable = _open) -> Path:
@@ -187,7 +221,8 @@ def fetch_cli(settings: Settings, dest: Path, opener: Callable = _open) -> Path:
             raise Unavailable(f"the pool's console answered {e.code} for its CLI build") from e
         hint = " (the key is unknown to the pool, or revoked)" if e.code in (401, 403) else ""
         raise Refused(f"the pool's console answered {e.code} for its CLI build{hint}") from e
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as e:
+        # HTTPException: the console dropped the connection partway through the body.
         raise Unavailable(f"the pool's console could not be reached: {e}") from e
     expected = (headers.get(WHEEL_SHA256) or "").strip().lower()
     if not expected:
@@ -244,7 +279,9 @@ def pool_run(
     envelope_path = work / "envelope.json"
     with envelope_path.open("wb") as stdout:
         try:
-            done = run(argv, env=child, stdout=stdout, timeout=wait, check=False)  # noqa: S603 — list-form argv, no shell (project preference)
+            # From the repo root: testament reads the manifest where it starts, and the tests
+            # stage complements the repo root's.
+            done = run(argv, env=child, stdout=stdout, timeout=wait, cwd=REPO_ROOT, check=False)  # noqa: S603 — list-form argv, no shell (project preference)
         except subprocess.TimeoutExpired as e:
             raise Unavailable(f"the pool did not finish the run in the {POOL_WAIT_SECONDS // 60} minutes it is given") from e
     try:
@@ -312,9 +349,11 @@ def _pool_verdict(
 ) -> tuple[int, dict]:
     """The pool's result for the suite, or the reason there is none.
 
-    A retryable end (a lost batch, a pool restarting) is run once more, which is what
-    `documentation/running-tests.md` tells a person to do; twice is an outage. Both attempts
-    share one allowance, so a run lost late leaves the second only what remains of it.
+    Decided by the envelope's `verdict`, never by the exit code alone. An `unavailable` ending
+    (the pool could not give a verdict: exit 75) is run once more; twice is an outage. A
+    `failed` verdict from a failed test is the tree's result even when the run was then cut
+    short, and is never run again: a retry could let it pass and vanish. Both attempts share
+    one allowance, so a run lost late leaves the second only what remains of it.
     """
     deadline = clock() + POOL_WAIT_SECONDS
     code, envelope = 2, None
@@ -323,14 +362,19 @@ def _pool_verdict(
         if left <= 0:
             break
         code, envelope = pool(testament, settings, left)
-        if code in RESULT_CODES and envelope is not None:
+        verdict = (envelope or {}).get("verdict")
+        reason = (envelope or {}).get("verdict_reason")
+        if verdict == VERDICT_PASSED and code == 0:
             return code, envelope
+        if verdict == VERDICT_FAILED and reason in TREE_RESULTS:
+            # The tree's result, however the run then ended: never retried.
+            return (code or 1), envelope
         _name_missing(envelope, report)
-        error = (envelope or {}).get("error")
-        if not (code == 2 and isinstance(error, dict) and error.get("retryable") is True):
+        if verdict != VERDICT_UNAVAILABLE:
+            # A refusal, a usage error, or an ending this runner cannot read: fail closed.
             raise Refused(_why(code, envelope))
         if attempt == 1:
-            report.notice(f"the pool run ended retryable ({_why(code, envelope)}); running it once more")
+            report.notice(f"the pool could not give a verdict ({_why(code, envelope)}); running it once more")
     raise Unavailable(_why(code, envelope))
 
 

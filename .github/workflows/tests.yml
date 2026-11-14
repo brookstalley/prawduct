@@ -140,9 +140,9 @@ jobs:
         # The floor. It mirrors `requires-python` in `pyproject.toml` — that file
         # is the fact, this is a copy of it, and
         # `tests/preferences/test_ci_workflow_conventions.py` fails if the two
-        # drift. Without the floor leg `requires-python` is a claim nothing
-        # checks. A leg for a newer release goes beside it once the suite
-        # should prove that release too.
+        # drift. When the pool runs the suite, this leg runs only the tests the
+        # pool leaves out, so a second leg here would not prove a newer release:
+        # that release would have to be the pool image's Python as well.
         #
         # A pool run executes in the pool's image, not on this interpreter, and the
         # same test holds that image (`docker/testament.Dockerfile`) to the floor.

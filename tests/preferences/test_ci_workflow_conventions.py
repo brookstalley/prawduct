@@ -33,6 +33,8 @@ from pathlib import Path
 # Imported plainly, not via `importorskip`. PyYAML is a declared dev dependency,
 # so its absence is a broken environment rather than a reason to skip — and a
 # guard that skips itself is indistinguishable from one that passes.
+import sys
+
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -43,6 +45,18 @@ POOL_IMAGE = REPO_ROOT / "docker" / "testament.Dockerfile"
 POOL_KEY = "${{ secrets.TESTAMENT_KEY }}"
 POOL_STAGE = "python tools/ci-suite.py pool"
 TESTS_STAGE = "python tools/ci-suite.py tests"
+
+
+def _runner():
+    """`tools/ci-suite.py`, imported by path (its name is not a module name), so the figures and
+    names the workflow must agree with are read from their one home."""
+    import importlib.util  # noqa: PLC0415 — only these two tests need it
+
+    spec = importlib.util.spec_from_file_location("ci_suite_conventions", REPO_ROOT / "tools" / "ci-suite.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # a dataclass resolves its module through sys.modules
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load(path: Path) -> dict:
@@ -231,9 +245,19 @@ class TestThePoolKeyIsHeldByAJobThatRunsNoTest:
         job = doc["jobs"]["pytest"]
         stage = [step for step in job["steps"] if step.get("run") == TESTS_STAGE]
         assert len(stage) == 1, "the pytest job must run the tests stage, once"
-        assert stage[0].get("env") == {"CI_SUITE_RAN_ON": "${{ needs.pool.outputs.suite }}"}
+        assert stage[0].get("env") == {_runner().RAN_ON: "${{ needs.pool.outputs.suite }}"}
         crossing = [s for s in _scalars(job) if "needs." in s]
         assert crossing == ["${{ needs.pool.outputs.suite }}"], crossing
+
+    def test_the_pool_jobs_time_limit_outlasts_what_the_runner_may_wait(self):
+        # Red if the allowance is raised and only its pin is updated. A job killed at its
+        # limit writes no `suite=` output, so the test job falls back to the whole suite with
+        # nothing saying why. The margin is for checkout, setup and the install itself.
+        runner = _runner()
+        limit = _load(TESTS_WORKFLOW)["jobs"]["pool"]["timeout-minutes"] * 60
+        margin = 120
+        assert limit >= runner.POOL_WAIT_SECONDS + runner.DOWNLOAD_SECONDS + margin, (
+            limit, runner.POOL_WAIT_SECONDS, runner.DOWNLOAD_SECONDS)
 
     def test_the_test_job_runs_whatever_the_pool_jobs_result(self):
         # Red if the `if` is dropped. A job that `needs` a failed job is skipped by

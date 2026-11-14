@@ -104,6 +104,13 @@ of running the suite, and CI's runs appear in the pool's history beside everyone
   reads its parent's environment from `/proc`, so every test and every dev dependency on a keyed
   job could read the key. Settled by the constraint the plan already stated (the key never
   reaches a test), which the first version claimed and did not meet.
+- Chunk 03 keys on `verdict` and fails closed on a missing one rather than deriving it from the
+  exit code. The CLI the job runs is always the pool's own build, so it always carries `verdict`,
+  and a copy of testament's outage list here would be a second home for a fact testament owns.
+  Settled by the CLI's own instruction ("key scripts on verdict") and "every fact has one home".
+- Chunk 03's selection check is an allowlist (one `-m`, plus output-only flags), not a list of
+  narrowing flags to refuse: a flag it has never seen fails closed, by name. Settled by the
+  plan's constraint that the two runs are the whole suite by construction.
 - Both pool attempts share one ten-minute allowance, and the `pool` job's limit is set from it
   (15 minutes); the `pytest` job keeps the 20 minutes it had, a limit earlier runs of the whole
   suite on GitHub's runner fit inside (about five minutes each). The review noted the first

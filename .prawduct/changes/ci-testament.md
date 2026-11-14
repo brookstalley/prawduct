@@ -22,10 +22,10 @@ the markers are named in one file. On any other word, an empty one included, it 
 suite.
 
 With no key the `pool` stage passes and says so; a pull request from a fork is that case. A pool
-or console that cannot be reached, is busy, loses the run twice, or does not finish within ten
-minutes over both attempts also passes, with a warning. A pool that refuses the key, a missing
-setting, a build that will not install, or an end the runner does not recognise fails the `pool`
-stage: only a red job tells the owner that CI has stopped using the pool. In each of those cases
+that cannot give a verdict twice, a console that cannot be reached or is busy, or a run that does
+not finish within ten minutes over both attempts also passes, with a warning. A pool that refuses
+the key, a missing setting, a build that will not install, or an ending the runner cannot read
+fails the `pool` stage: only a red job tells the owner that CI has stopped using the pool. In each of those cases
 the `tests` stage still runs the whole suite, so the tree gets its verdict.
 
 The run's summary names failing tests and never a runner.
@@ -50,6 +50,25 @@ declared floor, which on the pool path is what exercises it. The norm is a new r
 with how to read a warning and a failure) and `documentation/project-structure.md` describe CI
 as it now runs. The repository gained the Actions secret `TESTAMENT_KEY` and the variables
 `TESTAMENT_COORDINATOR` and `TESTAMENT_CONSOLE`.
+
+### The runner reads testament's verdict (Chunk 03)
+
+The runner was written against testament's exit codes as they stood on 2026-11-11. testament has
+since frozen its exit codes and added `verdict` to its envelope, and says to key scripts on it.
+The boundary review that revived the branch found the runner misreading two endings: exit 75 (the
+pool could not give a verdict) read as a refused key, so every outage would have turned CI red
+and pointed at the key; and a retryable exit 2 was run again even when a test had already failed,
+so a failure could pass on the second attempt and vanish. Now `passed` passes; `failed` from a
+failed test or an empty selection is the tree's result and is never retried; `unavailable` is
+retried once, then falls back with a warning; anything else, a missing or unknown verdict
+included, fails closed.
+
+The runner also refuses a manifest whose selection it cannot complement exactly: a second `-m`,
+any other pytest flag that could narrow the run, a path after `pytest`, or a `default_selection`
+other than the suite's `testpaths`. Before, the tests such a manifest dropped would have run in
+neither job. The pool run starts from the repo root, a console that drops the connection
+mid-download is an outage, and a test holds the `pool` job's time limit above what the runner may
+wait.
 
 ## Consumer note
 None. This changes how this repository tests itself; nothing under `plugin/` changed.

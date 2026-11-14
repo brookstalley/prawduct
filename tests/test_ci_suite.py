@@ -23,6 +23,7 @@ entry point with nothing handed to it.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import importlib.util
 import io
 import os
@@ -44,11 +45,13 @@ FULL = {
     "TESTAMENT_COORDINATOR": "tls://wire.example:443",
     "TESTAMENT_CONSOLE": "https://console.example/",
 }
-PASSED = (0, {"exit_code": 0, "report": {"counts": {"passed": 3}, "items": [], "missing": []}})
+PASSED = (0, {"exit_code": 0, "verdict": "passed", "verdict_reason": "passed", "report": {"counts": {"passed": 3}, "items": [], "missing": []}})
 FAILED = (
     1,
     {
         "exit_code": 1,
+        "verdict": "failed",
+        "verdict_reason": "tests_failed",
         "report": {
             "counts": {"passed": 2, "failed": 1},
             "items": [
@@ -63,8 +66,30 @@ FAILED = (
         },
     },
 )
-RETRYABLE = (2, {"exit_code": 2, "error": {"code": "coordinator_unreachable", "retryable": True}})
-REFUSAL = (2, {"exit_code": 2, "error": {"code": "unauthorized", "retryable": False}})
+# The envelopes below follow testament's frozen exit codes (`testament run --help`: "These codes
+# are frozen ... key scripts on verdict"). They replaced fixtures written before `verdict`
+# existed, when an outage was exit 2 with `retryable`; the runner now decides by `verdict`.
+UNAVAILABLE = (
+    75,
+    {"exit_code": 75, "verdict": "unavailable", "verdict_reason": "coordinator_unreachable",
+     "error": {"code": "coordinator_unreachable", "retryable": True, "ran": 0}},
+)
+REFUSAL = (
+    2,
+    {"exit_code": 2, "verdict": "failed", "verdict_reason": "unauthorized",
+     "error": {"code": "unauthorized", "retryable": False, "ran": 0}},
+)
+# A test failed, then the pool lost a batch: exit 2 with `retryable`, and still a failed verdict.
+# testament: "a test that failed before the pool cut the run short ... never retry it away".
+FAILED_THEN_CUT = (
+    2,
+    {"exit_code": 2, "verdict": "failed", "verdict_reason": "tests_failed",
+     "error": {"code": "batches_lost", "retryable": True, "ran": 3},
+     "report": {"counts": {"passed": 2, "failed": 1},
+                "items": [{"id": "tests/test_a.py::test_b", "outcome": "failed",
+                           "message": "E   assert 1 == 2", "runner": "a-machine-name"}],
+                "missing": ["tests/test_c.py::test_d"]}},
+)
 
 
 def _load():
@@ -193,7 +218,8 @@ class TestThePoolJobWhosePoolAnswers:
 
     def test_a_run_that_collected_nothing_fails_the_job(self):
         # Exit 5 from the pool means the selection matched no test: never a pass.
-        job = PoolJob(pool=[(5, {"exit_code": 5, "report": {"counts": {}}})])
+        job = PoolJob(pool=[(5, {"exit_code": 5, "verdict": "failed", "verdict_reason": "no_tests",
+                                 "report": {"counts": {}}})])
 
         code, _ = job.run(dict(FULL))
 
@@ -225,8 +251,20 @@ class TestThePoolJobWhosePoolAnswers:
         assert "- `tests/test_a.py::test_b` failed: assert 1 == 2" in job.summary
         assert "a-machine-name" not in job.all
 
+    def test_a_test_that_failed_before_the_run_was_cut_short_is_never_retried_away(self):
+        # Retrying would let a flaky or order-dependent failure pass on attempt two and vanish.
+        job = PoolJob(pool=[FAILED_THEN_CUT, PASSED])
+
+        code, ran_on = job.run(dict(FULL))
+
+        assert code != 0 and ran_on == ci.ON_POOL
+        assert len(job.waits) == 1
+        assert "- `tests/test_a.py::test_b` failed: assert 1 == 2" in job.summary
+        assert "tests/test_c.py::test_d" in job.all, "the tests the cut left unrun are named"
+
     def test_tests_the_pool_never_reported_are_named(self):
-        answer = (2, {"exit_code": 2, "error": {"code": "population_mismatch", "retryable": False},
+        answer = (2, {"exit_code": 2, "verdict": "failed", "verdict_reason": "population_mismatch",
+                      "error": {"code": "population_mismatch", "retryable": False},
                       "report": {"counts": {"passed": 1}, "missing": ["tests/test_a.py::test_gone"]}})
         job = PoolJob(pool=[answer])
 
@@ -236,20 +274,29 @@ class TestThePoolJobWhosePoolAnswers:
 
 
 class TestThePoolJobWhosePoolCannotBeReached:
+    def test_exit_75_is_an_outage_and_never_a_refused_key(self):
+        job = PoolJob(pool=[UNAVAILABLE, UNAVAILABLE])
+
+        code, ran_on = job.run(dict(FULL))
+
+        assert (code, ran_on) == (0, ci.ON_JOB)
+        assert not [line for line in job.annotations if line.startswith("::error")]
+        assert "key" not in " ".join(job.annotations).lower()
+
     def test_a_retryable_end_is_tried_once_more(self):
-        job = PoolJob(pool=[RETRYABLE, PASSED])
+        job = PoolJob(pool=[UNAVAILABLE, PASSED])
 
         assert job.run(dict(FULL)) == (0, ci.ON_POOL)
         assert len(job.waits) == 2
 
     def test_two_retryable_ends_pass_the_job_and_leave_the_suite_to_the_test_job(self):
-        job = PoolJob(pool=[RETRYABLE, RETRYABLE])
+        job = PoolJob(pool=[UNAVAILABLE, UNAVAILABLE])
 
         assert job.run(dict(FULL)) == (0, ci.ON_JOB)
         assert len(job.waits) == 2
 
     def test_the_fallback_is_a_warning_naming_why_and_not_an_error(self):
-        job = PoolJob(pool=[RETRYABLE, RETRYABLE])
+        job = PoolJob(pool=[UNAVAILABLE, UNAVAILABLE])
 
         job.run(dict(FULL))
 
@@ -273,14 +320,14 @@ class TestThePoolJobWhosePoolCannotBeReached:
     def test_both_attempts_share_one_allowance(self):
         # The workflow's time limit for this job is set from the allowance. Two full waits
         # would outlast it and end the job with no answer for the test job to act on.
-        job = PoolJob(pool=[RETRYABLE, PASSED], takes=450.0)
+        job = PoolJob(pool=[UNAVAILABLE, PASSED], takes=450.0)
 
         job.run(dict(FULL))
 
         assert job.waits == [ci.POOL_WAIT_SECONDS, ci.POOL_WAIT_SECONDS - 450.0]
 
     def test_a_run_lost_at_the_end_of_the_allowance_is_not_tried_again(self):
-        job = PoolJob(pool=[RETRYABLE, PASSED], takes=float(ci.POOL_WAIT_SECONDS))
+        job = PoolJob(pool=[UNAVAILABLE, PASSED], takes=float(ci.POOL_WAIT_SECONDS))
 
         assert job.run(dict(FULL)) == (0, ci.ON_JOB)
         assert len(job.waits) == 1
@@ -341,6 +388,11 @@ class TestThePoolJobThePoolRefuses:
             (3, {"exit_code": 3}),
             (2, None),
             (2, {"exit_code": 2}),  # exit 2 with no error named is not known to be an outage
+            # Written before `verdict` existed: retryable, but no verdict says it is an outage.
+            (2, {"exit_code": 2, "error": {"code": "coordinator_unreachable", "retryable": True}}),
+            (0, {"exit_code": 0, "report": {"counts": {"passed": 3}}}),  # a pass with no verdict
+            (130, {"exit_code": 130, "verdict": "failed", "verdict_reason": "interrupted"}),
+            (2, {"exit_code": 2, "verdict": "maybe", "verdict_reason": "x"}),  # a verdict it has never seen
         ],
     )
     def test_an_end_that_is_not_a_known_result_is_a_refusal(self, answer):
@@ -361,7 +413,7 @@ class TestThePoolJobThePoolRefuses:
         assert code != 0 and ran_on == ci.ON_JOB and job.waits == []
 
     def test_nothing_the_job_says_holds_the_key(self):
-        for job in (PoolJob(pool=[PASSED]), PoolJob(pool=[REFUSAL]), PoolJob(pool=[RETRYABLE, RETRYABLE])):
+        for job in (PoolJob(pool=[PASSED]), PoolJob(pool=[REFUSAL]), PoolJob(pool=[UNAVAILABLE, UNAVAILABLE])):
             job.run(dict(FULL))
             assert KEY not in job.all
 
@@ -449,6 +501,12 @@ class TestWhatTheTestJobRunsBesideAPoolRun:
 
         assert ci.selected_out(manifest) == "not (not slow)"
 
+    def test_the_suites_own_test_paths_are_no_narrowing(self, tmp_path):
+        manifest = tmp_path / ".testament.toml"
+        manifest.write_text('command = ["python", "-m", "pytest", "-q", "-m", "not a"]\ndefault_selection = ["tests/"]\n')
+
+        assert ci.selected_out(manifest) == "not (not a)"
+
     def test_no_selection_is_nothing_selected_out(self, tmp_path):
         manifest = tmp_path / ".testament.toml"
         manifest.write_text('command = ["python", "-m", "pytest", "-q"]\n')
@@ -457,7 +515,20 @@ class TestWhatTheTestJobRunsBesideAPoolRun:
 
     @pytest.mark.parametrize(
         "body",
-        ['name = "x"\n', 'command = ["swift", "test"]\n', 'command = ["python", "-m", "pytest", "-m"]\n'],
+        [
+            'name = "x"\n',
+            'command = ["swift", "test"]\n',
+            'command = ["python", "-m", "pytest", "-m"]\n',
+            # pytest takes the LAST -m, and these forms are not the separate `-m EXPR` this reads.
+            'command = ["python", "-m", "pytest", "-m", "a", "-m", "b"]\n',
+            'command = ["python", "-m", "pytest", "-mnot slow"]\n',
+            # Narrowing it cannot complement: the tests it drops would run in neither job.
+            'command = ["python", "-m", "pytest", "-m", "not a", "-k", "fast"]\n',
+            'command = ["python", "-m", "pytest", "-m", "not a", "--deselect", "tests/t.py::x"]\n',
+            'command = ["python", "-m", "pytest", "-m", "not a", "--ignore=tests/slow"]\n',
+            'command = ["python", "-m", "pytest", "tests/unit"]\n',
+            'command = ["python", "-m", "pytest", "-m", "not a"]\ndefault_selection = ["tests/unit"]\n',
+        ],
     )
     def test_a_command_it_cannot_read_is_refused_not_guessed(self, tmp_path, body):
         manifest = tmp_path / ".testament.toml"
@@ -562,6 +633,14 @@ class TestFetchingThePoolsBuild:
         with pytest.raises(ci.Unavailable):
             ci.fetch_cli(self.settings, tmp_path, opener=opener)
 
+    def test_a_console_that_drops_mid_download_is_an_outage(self, tmp_path):
+        class Dropped(_Response):
+            def read(self):
+                raise http.client.IncompleteRead(b"partial", 100)
+
+        with pytest.raises(ci.Unavailable):
+            ci.fetch_cli(self.settings, tmp_path, opener=lambda request, timeout: Dropped(b"", {}))
+
     def test_a_redirect_is_never_followed(self):
         # urllib would carry the Authorization header to wherever the redirect points.
         handler = ci.NoRedirect()
@@ -609,6 +688,9 @@ class TestWhatEachProcessIsGiven:
         assert kwargs["env"]["TESTAMENT_COORDINATOR"] == FULL["TESTAMENT_COORDINATOR"]
         assert kwargs["env"]["TESTAMENT_BRANCH"] == "feature/x"
         assert kwargs["timeout"] == 77.0
+        # testament finds `.testament.toml` from where it starts; the tests stage complements
+        # the repo root's, so the pool run must read that one too.
+        assert kwargs["cwd"] == ci.REPO_ROOT
         assert (code, envelope["exit_code"]) == (0, 0)
 
     def test_output_that_is_not_an_envelope_is_no_envelope(self, tmp_path):
