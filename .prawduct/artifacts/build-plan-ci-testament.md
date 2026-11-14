@@ -230,9 +230,10 @@ run with no word, which is `python -m pytest`, the command CI ran before this wo
   conventions test compares the pool job's `timeout-minutes` with the allowance.
 - **Acceptance criteria:** no envelope a frozen-contract testament can emit is misread. The
   branch's own CI run reports, in the `pool` job's log, that the suite ran on the pool.
-- **Open, for the owner:** whether CI passes `--fresh --no-cache` (testament's advice for a
-  required merge check: a throwaway container and no cached passes). It costs a full, uncached
-  run on the pool for every push and PR. Not built until the owner rules.
+- **Ruled by the owner 2026-11-14 (`owner-rulings.md`):** CI does not pass `--fresh --no-cache`
+  (testament's advice for a required merge check: a throwaway container and no cached passes),
+  which would cost a full, uncached run on the pool for every push and PR. Revisit if a cached
+  pass ever hides a real failure.
 - **Done when:**
   1. Acceptance criteria met, the declared suite recorded once on the finished branch
   2. Committed, then `/prawduct:critic cumulative`

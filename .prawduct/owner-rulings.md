@@ -27,6 +27,13 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-14.** "Yes to both of your recommendations."
+In reply to two asks after `feature/ci-testament` merged (PR #1172). It settles: (1) the norm row
+in `project-preferences.md` that the testament key is held by a CI job that runs no test and
+reaches no fork's code, which the agent originated on 2026-11-11, is confirmed by the owner;
+(2) CI does not pass `--fresh --no-cache` for now, and it is revisited if a cached pass ever hides
+a real failure. Landed in that row's provenance and in `build-plan-ci-testament.md` Chunk 03.
+
 **2026-11-14.** "Step one, but we also do need to move CI onto Testament so that we will take some work to update I suppose"
 In reply to the advice after the interim comparison: ship `feature/native-review-inner` first, then
 revive `feature/ci-testament` instead of parking it. Landed as PR #1171 and this branch's sync onto
