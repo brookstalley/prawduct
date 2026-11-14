@@ -17,7 +17,9 @@
 # exactly those locally (`test_commands` in `.prawduct/project-state.yaml`), a plain `pytest` run
 # includes them, and CI runs them in its `pytest` job: `tools/ci-suite.py` reads the `-m`
 # expression of `command` below and runs its negation there, so that expression is the one place
-# they are named for CI. It must stay the argument after a `-m` that follows `pytest`.
+# they are named for CI. The runner refuses what it cannot complement exactly: the command
+# selects with one `-m <expression>` after `pytest` and passes only output flags beside it,
+# `default_selection` is pyproject's `testpaths`, and `[env]` sets no PYTEST_ADDOPTS.
 # Release tags do reach runners ([git] below), as trees, which is all the tag-reading tests use.
 manifest_version = 2
 name = "prawduct"

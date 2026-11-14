@@ -111,6 +111,15 @@ of running the suite, and CI's runs appear in the pool's history beside everyone
 - Chunk 03's selection check is an allowlist (one `-m`, plus output-only flags), not a list of
   narrowing flags to refuse: a flag it has never seen fails closed, by name. Settled by the
   plan's constraint that the two runs are the whole suite by construction.
+- A `failed` verdict whose reason is neither a failed test nor an empty selection (for example
+  `population_mismatch`) is a refusal, not retried: testament marks it a failure, and it can come
+  from the project's own hung test. The pool job is red and the test job runs the whole suite.
+  Settled by "an ending this runner cannot read fails closed".
+- A failed run that the pool then cut short stays the pool's run: the test job runs only what
+  the manifest selects out, so the tests the cut left unrun run nowhere this time. CI is red
+  either way and the summary names them. Running the whole suite on the job as well would cost a
+  full run on every such red to learn about tests behind a failure already being fixed. Settled
+  by the product goal (the tree gets a verdict); revisit if cut-short runs become common.
 - Both pool attempts share one ten-minute allowance, and the `pool` job's limit is set from it
   (15 minutes); the `pytest` job keeps the 20 minutes it had, a limit earlier runs of the whole
   suite on GitHub's runner fit inside (about five minutes each). The review noted the first

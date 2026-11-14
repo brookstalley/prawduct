@@ -19,9 +19,11 @@ way "Recording evidence" below describes for a machine without testament.
 
 Read the JSON on stdout:
 
-- `exit_code`: 0 all passed; 1 tests failed (a real red: fix it); 5 nothing collected;
-  2 anything else, which is **not** a test result. Read `error.code`; when `error.retryable` is
-  true, run again.
+- `verdict` first: `passed`, `failed` or `unavailable`, with `verdict_reason` (`tests_failed`,
+  `no_tests`, or the `error.code`). A `failed` verdict is a result even when `error.retryable` is
+  true (a test can fail before the pool cuts the run short): fix it, never rerun it away. Only an
+  `unavailable` verdict (the pool could not decide, exit 75) is worth running again. The exit
+  codes are frozen and listed in `testament run --help`; key on `verdict`, not on `exit_code`.
 - `report.items[]`: one per test, with `outcome` (`passed`, `failed`, `error`, `skipped`),
   `message` (pytest's failure text for a failed or errored test) and `runner`.
 - `report.missing`: tests that were requested but never reported. A non-empty list is exit 2

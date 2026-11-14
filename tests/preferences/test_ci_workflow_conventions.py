@@ -26,15 +26,16 @@ that image's Python is a third copy of the floor and is checked here like the ma
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import re
 from pathlib import Path
 
+import sys
+
 # Imported plainly, not via `importorskip`. PyYAML is a declared dev dependency,
 # so its absence is a broken environment rather than a reason to skip — and a
 # guard that skips itself is indistinguishable from one that passes.
-import sys
-
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -47,11 +48,10 @@ POOL_STAGE = "python tools/ci-suite.py pool"
 TESTS_STAGE = "python tools/ci-suite.py tests"
 
 
+@functools.cache
 def _runner():
     """`tools/ci-suite.py`, imported by path (its name is not a module name), so the figures and
     names the workflow must agree with are read from their one home."""
-    import importlib.util  # noqa: PLC0415 — only these two tests need it
-
     spec = importlib.util.spec_from_file_location("ci_suite_conventions", REPO_ROOT / "tools" / "ci-suite.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module  # a dataclass resolves its module through sys.modules

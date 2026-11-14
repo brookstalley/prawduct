@@ -501,6 +501,23 @@ class TestWhatTheTestJobRunsBesideAPoolRun:
 
         assert ci.selected_out(manifest) == "not (not slow)"
 
+    def test_a_manifest_that_sets_pytest_addopts_is_refused(self, tmp_path):
+        # The other way a manifest could narrow the pool's run without its command saying so.
+        manifest = tmp_path / ".testament.toml"
+        manifest.write_text('command = ["python", "-m", "pytest", "-m", "not a"]\n[env]\nPYTEST_ADDOPTS = "-k fast"\n')
+
+        with pytest.raises(ci.Refused):
+            ci.selected_out(manifest)
+
+    @pytest.mark.parametrize("body", ["", "[tool.pytest.ini_options]\ntestpaths = \"tests\"\n", "not toml ["])
+    def test_test_paths_it_cannot_read_are_a_refusal_not_a_crash(self, tmp_path, body):
+        # A crash at import would stop the tests stage, whose contract is to always run the suite.
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(body)
+
+        with pytest.raises(ci.Refused):
+            ci.test_paths(pyproject)
+
     def test_the_suites_own_test_paths_are_no_narrowing(self, tmp_path):
         manifest = tmp_path / ".testament.toml"
         manifest.write_text('command = ["python", "-m", "pytest", "-q", "-m", "not a"]\ndefault_selection = ["tests/"]\n')
@@ -536,6 +553,23 @@ class TestWhatTheTestJobRunsBesideAPoolRun:
 
         with pytest.raises(ci.Refused):
             ci.selected_out(manifest)
+
+
+class TestTheAgentGuideAgrees:
+    """`documentation/running-tests.md` is where AGENTS.md sends every agent. Its envelope legend
+    once said a retryable exit 2 should be run again, which reruns a failed test away."""
+
+    GUIDE = REPO_ROOT / "documentation" / "running-tests.md"
+
+    def test_the_legend_keys_on_verdict_and_never_reruns_a_failure(self):
+        text = " ".join(self.GUIDE.read_text().split())
+        assert "`verdict` first" in text
+        assert "never rerun it away" in text
+        assert "which is **not** a test result" not in text
+        assert "when `error.retryable` is true, run again" not in text
+
+    def test_a_reason_is_named_when_the_envelope_names_no_error(self):
+        assert "`interrupted`" in ci._why(130, {"verdict": "failed", "verdict_reason": "interrupted"})
 
 
 class _Response:

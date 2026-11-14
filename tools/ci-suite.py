@@ -30,9 +30,10 @@ What each stage does, and which of the two jobs can fail:
                                    a red job is the only thing that says so to the person who
                                    can fix it.
 
-Anything not known to be an outage is a refusal: the two are told apart by what the pool
-reports (`error.retryable`) or the console answers, and an end this file does not recognise
-fails the job rather than passing as a fallback nobody reads.
+Anything not known to be an outage is a refusal: the two are told apart by the `verdict` the
+pool's envelope carries (`unavailable` is an outage; a `failed` test is the tree's result, never
+retried) or by what the console answers, and an ending this file does not recognise fails the
+job rather than passing as a fallback nobody reads.
 
 The CLI is the pool's own published build, fetched from its console with the job's key.
 Testament's source is private, so a public repository's job cannot install it from source, and
@@ -63,10 +64,20 @@ from typing import TextIO
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = REPO_ROOT / ".testament.toml"
-# The suite's own test paths, from the one place pytest reads them.
-TEST_PATHS = tuple(
-    tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["tool"]["pytest"]["ini_options"]["testpaths"]
-)
+PYPROJECT = REPO_ROOT / "pyproject.toml"
+
+
+def test_paths(pyproject: Path = PYPROJECT) -> list[str]:
+    """The suite's own test paths, from the one place pytest reads them. Read when needed, not
+    at import: a `pyproject.toml` this cannot read must refuse the selection (so the tests stage
+    runs the whole suite and fails), never stop the script before either stage starts."""
+    try:
+        paths = tomllib.loads(pyproject.read_text())["tool"]["pytest"]["ini_options"]["testpaths"]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise Refused(f"{pyproject.name}: `[tool.pytest.ini_options].testpaths` cannot be read ({e})") from e
+    if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+        raise Refused(f"{pyproject.name}: `testpaths` is not a list of paths")
+    return paths
 
 # Where the console serves the pool's current CLI build to a client key, and the header that
 # carries its sha256. The digest comes in the same HTTPS answer as the build, so checking it
@@ -179,11 +190,14 @@ def selected_out(manifest: Path) -> str | None:
     command = data.get("command")
     if not isinstance(command, list) or "pytest" not in command:
         raise Refused(f"{manifest.name}: `command` does not run pytest, so what it selects out is unknown")
+    if "PYTEST_ADDOPTS" in (data.get("env") or {}):
+        raise Refused(f"{manifest.name}: `[env]` sets PYTEST_ADDOPTS, which can narrow the pool's run unseen")
     paths = data.get("default_selection")
-    if paths is not None and [str(p).rstrip("/") for p in paths] != [p.rstrip("/") for p in TEST_PATHS]:
+    own = test_paths()
+    if paths is not None and [str(p).rstrip("/") for p in paths] != [p.rstrip("/") for p in own]:
         raise Refused(
             f"{manifest.name}: `default_selection` {paths} is not the suite's own test paths "
-            f"{list(TEST_PATHS)}, so the tests it leaves out would run in neither job"
+            f"{own}, so the tests it leaves out would run in neither job"
         )
     # After `pytest`: `python -m pytest` carries a `-m` of its own before it.
     selection = command[command.index("pytest") + 1 :]
@@ -335,6 +349,8 @@ def _why(code: int, envelope: dict | None) -> str:
         return f"`{error['code']}`" + (f": {error['message']}" if error.get("message") else "")
     if envelope is None:
         return f"`testament run` exited {code} and printed no result"
+    if envelope.get("verdict_reason"):
+        return f"`{envelope['verdict_reason']}` (`testament run` exited {code})"
     return f"`testament run` exited {code}"
 
 
