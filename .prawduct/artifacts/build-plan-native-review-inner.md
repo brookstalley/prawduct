@@ -1,0 +1,225 @@
+---
+artifact: build-plan
+version: 2
+scope: native-review-inner
+branch: feature/native-review-inner
+base: develop
+working-branches: []
+partition: "serial — 02 reads the record fields 01 adds (mode, stage, the range's kind), and both are small enough that a hand-off costs more than it saves"
+governed_by:
+  - artifact: architecture
+    dispositions:
+      - "an independent reviewer never mutates the session it reviews → conforms; an inner review's range is named by writing unreachable commit objects (`git commit-tree`) — no ref, index or working-tree change — and the native review still runs without `--fix`, `--comment` or `--post`"
+      - "authority fails closed; advice fails soft → conforms; a range that cannot be named, a sample that misses, or a native run that never lands changes no gate and costs the Critic nothing"
+      - "local-first → conforms; the range is named in the git object database, the record stays a per-clone ledger line, and no network surface is added"
+      - "the plugin writes nothing into a governed repo except its own state → conforms; the only write outside `.prawduct/` is unreachable objects in the git object database, which every review's tree capture (`evidence.capture_tree`) already writes"
+      - "written in Python, never specific to Python → conforms; nothing reads a language — `tree_moved` excludes `.prawduct/` by path, not by file type"
+      - "guides and reviews, never implements → conforms; measurement only"
+      - "goals and verification bind, method is advice → conforms; two planned methods were departed from and recorded under Decisions made mid-build (the re-raise reach, and the tree-moved predicate)"
+      - "every fact has one home → conforms; the pairing decision stays in `critic_consolidate.native_review_pairing`, the range in `native_review_range` beside it, and the re-raise reach calls `dispositions.prior_dispositions` rather than restating it"
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "review wall-clock is P0 → conforms; nothing waits for the native run at any stage, and naming the range is two local git calls"
+      - "review rigor is stage-keyed → conforms, and is why an inner run's findings are not put to the builder (DECISION under Goals): the inner stage blocks only on ships-broken, and a second unrated list beside a `verify-resolutions` pass would manufacture rounds"
+      - "proportionality ratchets both ways; a control names its expected yield and emits it → conforms; the yield is the per-stage table `compare.py` prints, and the inner sample ends with #1130's stop"
+      - "state-file growth is advisory → conforms; about eighty more ledger lines and text files a month, under the ledger's existing size advisory"
+  - artifact: data-model
+    dispositions:
+      - "no model in a fact's write path → conforms; mode, stage, the range's kind and whether the tree moved are all derived by code"
+      - "facts immutable and append-only → conforms; the `native.review` event gains fields, appended once per run as before"
+      - "derived views never authoritative → conforms; no gate reads the native record or `review-stats`' native block"
+      - "a governance document reaches a terminal state → inapplicable because no plan or record is archived or deleted"
+      - "every backlog issue conforms to the title rules on every write path → inapplicable because no backlog write path changes"
+      - "a newer-schema fact is surfaced, never dropped → inapplicable because the record stays a per-clone ledger event, not an evidence-store fact"
+      - "two stores, two lifetimes → conforms; the native record stays a per-clone measurement in the ledger, and `compare.py` reads the shared store's facts without writing them"
+      - "backlog_service_repo selects the authoritative backlog store → inapplicable because no backlog read changes"
+  - artifact: api-contract
+    dispositions:
+      - "whole-surface semantic versioning → conforms; no verb is added, and the changes ship at the plugin's version"
+      - "exit codes are the contract → inapplicable because no verb or exit code changes"
+      - "additive-first evolution → conforms; the event and `review-stats`' `native_review` block gain keys (`by_stage`), the manifest block appears on more modes, and no field is removed or renamed"
+depends_on:
+  - plugin/lib/critic_consolidate.py
+  - plugin/lib/native_review.py
+  - plugin/lib/evidence.py
+  - .prawduct/research/native-review-paired/compare.py
+  - .prawduct/research/native-review-paired/README.md
+  - plugin/docs/project-state-keys.md
+  - plugin/docs/governance-telemetry.md
+  - plugin/skills/critic/review-cycle.md
+last_validated: 2026-11-13
+---
+
+## Goals
+
+**Response taken:** Proceed, citing it. On 2026-11-13 the owner answered "1. yes file and build,
+and let's wait on 2" (`.prawduct/owner-rulings.md`) to a proposal to measure what #1130 does not:
+the severity of what each instrument misses (#1164), the inner stage where most correctness review
+happens (#1166), and the native review's re-raise rate (#1165). #1166 replaces #1130's scope-out of
+`chunk` and `verify-resolutions` reviews. The blind verification waits.
+
+**Product:** #1130's question, sharpened: can the native review own bug-hunting while the Critic
+keeps what it judges against plans, specs and test records? The first five paired reviews (all
+boundary) say the native review finds more code bugs and the Critic more plan and record defects,
+but the data cannot answer the hand-off: it has no severity split, it leaves out the Critic's
+observations (so a native finding the Critic demoted counts as native-only), it never sees the
+`chunk` and `verify-resolutions` reviews that are most of the Critic's correctness volume, and it
+cannot see a reviewer with no memory of dispositions raising the same finding again.
+
+**Architecture:** the Critic is unchanged. The native review stays a second instrument that rates
+and blocks nothing.
+
+**Constraints:**
+- An inner review usually reads a working tree, not a commit (`head_commit` is null), and the
+  native review takes a commit range. The range must still be the Critic's exact interval.
+- The native review reads source from the working tree, which the builder may edit after the
+  Critic consolidates. A short inner Critic pass (median measured 89s, `review-stats`) ends well
+  before a native `high` run (67-99s measured, plus the wrapper).
+- Cost. Over the four weeks to 2026-11-13, `prawduct` and `testrouter` ran about 500 inner Critic
+  reviews (`chunk` + `verify-resolutions`, `prawduct-hook review-stats --since 2026-10-16` in each).
+  Pairing all of them would roughly triple the experiment's native spend.
+
+**Tradeoffs accepted:** each sampled inner review costs a wrapper and a native fork, about the same
+as a boundary pairing (`fork_costs.py` over the host-facts session). Worth revisiting if a month's
+spend surprises; the sample rate is one constant.
+
+**Decisions made in planning:**
+- Inferred: sample one in six `chunk` and `verify-resolutions` reviews, chosen by the review id so
+  the choice is code's and reproducible. About eighty runs a month at the current rate. `final` reviews are not paired: they are rare and the
+  owner approved the two modes named. The sample is sized to collect its own sixty or so; inner
+  pairs do not count toward #1130's stop.
+- Inferred: when either end of the interval has no commit, the range is named by two unreachable
+  commits — the base tree's (or the real base commit) and the head tree's, parented on the base —
+  so `git diff base...head` is exactly the Critic's interval. The commit message names the review
+  id and nothing else. Commits are left to `git gc`; nothing reads them after the run.
+- [DECISION: an inner run's findings are not put to the builder — no `NEXT-ACTION` clause; its
+  text stays readable with `native-review show` | #1130 step 4 has the builder work from the union
+  so the experiment costs no missed finding, which the boundary pairing already secures for the
+  same code; at the inner stage a second unrated list beside a `verify-resolutions` pass would
+  manufacture rounds the stage norm forbids, and would make the next inner run measure the
+  builder's reaction to the last one | owner can veto]
+- Inferred: `record` notes whether the working tree still equals the reviewed tree when the native
+  run lands (`tree_moved`), and `compare.py` warns on each run where it moved, rather than refusing
+  the run: a moved tree is likely at the inner stage and still mostly comparable.
+- Inferred, the re-raise rule (#1165): a finding in paired review K is a re-raise candidate of an
+  earlier finding E when E is within K's reach (as amended mid-build, below: the Critic's own
+  prior-dispositions reach) and names one of the finding's files, and E is either a Critic finding
+  left accepted or filed, or a native finding of a boundary run (the builder saw it). A native
+  finding of an inner run is never E: the builder never saw it. Candidates go on the blind sheet;
+  the confirmed ones are re-raises. Both instruments are measured, so the Critic's rate is the
+  baseline the native one is read against.
+- Inferred: #1130's stop condition counts boundary pairs only, as it did; inner pairs are reported
+  beside it.
+
+**Decisions made mid-build:**
+- 01: `tree_moved` counts judgeable files only. Free surfaces (`.prawduct/` records, plain docs)
+  are written during any review — consolidation itself writes them — so counting them flagged every
+  run in a repo whose `.prawduct/` is tracked. Settled by "do it right": the warning exists to name
+  runs that read different code.
+- 01: the `review-cycle.md` manifest line was reworded to fit its recorded token count
+  (`tests/test_v5_methodology.py`), not raised.
+- 01: a run with every inner review forced to pair (`NATIVE_REVIEW_INNER_SAMPLE = 1`) over the
+  test files that dispatch a review passed, so no test depends on an inner review missing the
+  sample.
+- 02: the re-raise reach is the Critic's own prior-dispositions rule (`dispositions.
+  prior_dispositions`: same plan scope, any earlier review when K has none, and a cited file K
+  changes), replacing the planned commit-overlap rule. Measured in the end-to-end test: a bounded
+  cumulative never re-covers the earlier range's commits, while the native review reads whole
+  files, so commit overlap missed exactly the case #1165 asks about. Mirroring the rule the
+  Critic is handed also makes the Critic a fair baseline. Not settled by the goals: the owner
+  approved #1165 with "re-raise" undefined.
+- 02: a candidate offers every in-reach earlier finding on the file from the nearest review, and
+  the sheet asks whether the finding repeats one of them. Measured on the real pairs (2026-11-13):
+  the first-match form paired each later finding with whichever earlier finding came first on a
+  hot file, which would hide the one it repeats.
+- 02: a native finding matched to a Critic observation counts as shared in the goal table as well
+  as the severity table — the goal table had been calling those native-only.
+
+- Boundary review (rev-20261113T182019Z-a4ff9ded) and its paired native run, all fixed in one
+  pass: `tree_moved` now excludes only `.prawduct/` (R-2 — the judgeable-only predicate answered
+  the coverage gate's question and missed reviewed docs); `review-stats` reports native runs per
+  stage (R-3, native 4); the validator's new refusals are pinned (R-1); the re-raise reach calls
+  `prior_dispositions` over the store as it stood before the later review instead of restating it,
+  which brings its limit and its empty-`files_changed` rule (native 2, 3); the goal table counts a
+  match to an observation in its own column (native 5); a sidecar that cannot be read keeps the
+  boundary clause (native 6); the blind sheet carries no `line`, which only native findings had
+  (native 9); `compare.py` prints how many native findings fall outside the Critic's interval per
+  stage, the cheap measurement of native 1 (its recipe may add `git diff HEAD` on a dirty tree),
+  to read at the Level step below.
+- Inferred correction: the inner sample's size is its own (about sixty inner pairs in four weeks);
+  inner pairs never count toward #1130's stop, which the planning bullet above implied (native 7).
+
+**Level:** Medium. The synthetic range rests on git semantics (three-dot diff over unreachable
+commits) that are certain, and on the native review accepting any commit range, which the boundary
+pairing shows for real commits only. The cheapest step that raises it: one live paired inner review
+after the dev build advances, read with `native-review show` — the native text should describe the
+chunk's diff and nothing else.
+
+## Verification Strategy
+
+Chunk 01 by its tests and by naming a range in a scratch repo with a dirty tree: `git diff
+<base>...<head>` over the two synthetic commits must equal the diff from the base tree to the
+captured working tree. The live check is the Level's step above, after merge and the
+`../prawduct-live` advance. Chunk 02 by known-answer tests and a run over the paired reviews
+recorded so far, whose boundary table must agree with the previous run's.
+
+## Build Chunks
+
+### Chunk 01: A sample of inner reviews pairs a native review over the Critic's exact interval
+
+- **Description:**
+  - `native_review_pairing` pairs `chunk` and `verify-resolutions` reviews when the review id
+    falls in the one-in-six sample, as well as every `cumulative`. Released builds and the opt-out
+    are unchanged. An unsampled inner review says nothing new.
+  - One helper names the native range: the real commits when both exist; otherwise two unreachable
+    commits over the base and head trees. A failure to name one leaves the review unpaired with a
+    note, never an error.
+  - The sidecar and the `native.review` event carry the review's mode, its stage, whether the range
+    is synthetic, and (event only) whether the working tree had moved off the head tree when the
+    run was recorded. The event no longer claims every run was a boundary `cumulative`.
+  - `next_action_clause` is silent for an inner run (DECISION under Goals).
+  - Docs: `plugin/docs/project-state-keys.md` (what pairs), `plugin/docs/governance-telemetry.md`
+    (the event's new fields), `plugin/skills/critic/review-cycle.md` (the manifest's
+    `native_review` line).
+- **Depends on:** none
+- **Tests:** red first — a sampled `chunk` and `verify-resolutions` review gets a block, an
+  unsampled one none, `final` none; released build and opt-out still none at every mode; a dirty
+  tree's range diffs to exactly the captured tree; the event records the mode and stage it was
+  given; an inner run's clause is empty and a boundary run's unchanged.
+- **Acceptance criteria:** #1166's sample pairs with the Critic's interval; nothing changes on a
+  released build or with the opt-out; the reviewer payload budget tests stay green.
+- **Done when:**
+  1. Acceptance criteria met and the chunk's own tests pass
+  2. Committed
+
+### Chunk 02: The comparison reads severity, stage and re-raises
+
+- **Description:**
+  - `compare.py` matches each native finding against the Critic's findings first, then its
+    observations, and tallies per Critic severity (blocking, warning, observation) as well as per
+    goal, each split by stage (#1164).
+  - The stop condition counts boundary pairs; inner pairs and wall clock are reported per stage.
+  - Re-raise candidates by the rule under Goals, on the blind sheet as items asking whether the
+    finding repeats one of the earlier findings listed with it, whose key says which instrument
+    re-raised and what kind of earlier finding it repeats; the report prints candidate counts per
+    instrument (#1165).
+  - A warning naming each run whose tree moved before it was recorded.
+  - The README's monthly procedure and decision table read the new columns.
+- **Depends on:** 01
+- **Tests:** known-answer — a native finding matching only a Critic observation counts as shared
+  under `observation`; an inner pair does not advance the stop condition; a native finding in a
+  later review naming an in-reach earlier accepted finding's file is a candidate, and one out of
+  reach (another scope, or a file the later review does not change) is not.
+- **Done when:**
+  1. Known-answer tests green, and the script run over the paired reviews recorded so far
+  2. Committed
+
+### Chunk 03: The boundary review
+
+- **Type:** cumulative-final
+- **Description:** change fragment `.prawduct/changes/native-review-inner.md`; suite green on the
+  head, recorded; the boundary cumulative review.
+- **Depends on:** 01, 02
+- **Done when:**
+  1. Suite green on the head, recorded
+  2. Cumulative review with no unresolved blocking finding

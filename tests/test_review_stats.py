@@ -620,7 +620,13 @@ class TestJsonSchemaStability:
         # level. Added.
         # 12 -> 13 (native-review-paired Chunk 03): `native_review`, the paired
         # native review's runs reported apart from every Critic total. Added.
-        assert report["schema_version"] == 13
+        # 13 -> 14 (native-review-inner): `native_review` gained `by_stage`,
+        # inner and boundary native runs apart. A nested key change, pinned
+        # below so the next one is caught too.
+        assert report["schema_version"] == 14
+        assert list(report["native_review"]) == [
+            "runs", "duration_measured", "countable_runs", "findings", "by_stage",
+        ]
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -887,14 +893,14 @@ class TestDurationProvenanceSplit:
         """The control for the rendering change: `--json` is a published
         contract, so the older keys still carry the estimate over every review
         that had one. No key is repurposed, so the rendering change moved no
-        schema version; 9, 10 and 11 are later key additions, not this change."""
+        schema version; every version since is a later key addition, not this change."""
         repo = tmp_path / "repo"
         _write_ledger(repo, [
             _event(duration=600, dispatched_at="2026-06-10T11:56:00Z"),
             _event(duration=300),
         ])
         report = json.loads(_run(repo, "--json").stdout)
-        assert report["schema_version"] == 13
+        assert report["schema_version"] == 14
         assert report["overall"]["duration_total_seconds"] == 900
         assert report["overall"]["duration_median_seconds"] == 450
 

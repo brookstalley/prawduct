@@ -1,9 +1,10 @@
-"""A development build's boundary review starts the host's native review beside
-the Critic (#1130), and nothing else does.
+"""A development build's boundary review, and a sample of its inner ``chunk``
+and ``verify-resolutions`` reviews, start the host's native review beside the
+Critic (#1130, #1166), and nothing else does.
 
-``critic-begin`` decides the pairing once, in code: a ``cumulative`` review, a
-development build (``-dev`` in the plugin version), and no
-``native_review_pairing: false`` opt-out. When it pairs, the manifest carries a
+``critic-begin`` decides the pairing once, in code: a ``cumulative`` review or
+a sampled inner one, a development build (``-dev`` in the plugin version), and
+no ``native_review_pairing: false`` opt-out. When it pairs, the manifest carries a
 ``native_review`` block — the exact arguments, the wrapper prompt and the text
 path — that the coordinator dispatches verbatim. When it does not, the manifest
 has no block and the Critic dispatch is unchanged.
@@ -88,11 +89,43 @@ class TestDevelopmentBuild:
 
 
 class TestPairingDecision:
-    @pytest.mark.parametrize("mode", ["chunk", "final", "verify-resolutions"])
-    def test_only_the_boundary_review_pairs(self, tmp_path, mode):
-        paired, reason = cc.native_review_pairing(tmp_path, mode, version=DEV)
+    def test_final_never_pairs(self, tmp_path, monkeypatch):
+        """``final`` is an inner review the owner did not ask to sample — rare,
+        and not where the Critic's correctness volume is. Even an id the sample
+        would take does not pair it."""
+        monkeypatch.setattr(cc, "native_review_sampled", lambda _id: True)
+        paired, reason = cc.native_review_pairing(tmp_path, "final", version=DEV, review_id="rev-x")
         assert not paired
-        assert mode in reason
+        assert "final" in reason
+
+    @pytest.mark.parametrize("mode", ["chunk", "verify-resolutions"])
+    def test_an_unsampled_inner_review_does_not_pair(self, tmp_path, monkeypatch, mode):
+        monkeypatch.setattr(cc, "native_review_sampled", lambda _id: False)
+        paired, reason = cc.native_review_pairing(tmp_path, mode, version=DEV, review_id="rev-x")
+        assert not paired
+        assert "sample" in reason
+
+    @pytest.mark.parametrize("mode", ["chunk", "verify-resolutions"])
+    def test_a_sampled_inner_review_pairs(self, tmp_path, monkeypatch, mode):
+        monkeypatch.setattr(cc, "native_review_sampled", lambda _id: True)
+        assert cc.native_review_pairing(tmp_path, mode, version=DEV, review_id="rev-x") == (True, "paired")
+
+    @pytest.mark.parametrize("mode", ["chunk", "verify-resolutions"])
+    def test_a_sampled_inner_review_still_honours_release_and_opt_out(self, tmp_path, monkeypatch, mode):
+        monkeypatch.setattr(cc, "native_review_sampled", lambda _id: True)
+        assert not cc.native_review_pairing(tmp_path, mode, version=RELEASED, review_id="rev-x")[0]
+        (tmp_path / "project-state.yaml").write_text("native_review_pairing: false\n")
+        assert not cc.native_review_pairing(tmp_path, mode, version=DEV, review_id="rev-x")[0]
+
+    def test_the_sample_is_one_in_six_and_reproducible(self):
+        """Chosen from the review id, so the same review always gets the same
+        answer and no clock or random state decides what is measured."""
+        ids = [f"rev-20261113T{i:06d}Z-{i * 7919 % 16**8:08x}" for i in range(1200)]
+        taken = [i for i in ids if cc.native_review_sampled(i)]
+        assert cc.NATIVE_REVIEW_INNER_SAMPLE == 6
+        assert 140 <= len(taken) <= 260, len(taken)
+        assert [i for i in ids if cc.native_review_sampled(i)] == taken
+        assert not cc.native_review_sampled(None)
 
     def test_a_dev_cumulative_pairs(self, tmp_path):
         assert cc.native_review_pairing(tmp_path, "cumulative", version=DEV) == (True, "paired")
@@ -193,6 +226,21 @@ class TestManifestValidation:
         del manifest["native_review"][key]
         ok, reason = cc.validate_manifest(manifest)
         assert not ok and key in reason
+
+    @pytest.mark.parametrize("key, bad", [("mode", "final"), ("mode", "bogus"), ("synthetic_range", "yes")])
+    def test_a_mode_that_does_not_pair_or_a_non_boolean_range_kind_is_refused(
+        self, branch_repo, monkeypatch, key, bad,
+    ):
+        manifest = self._manifest(branch_repo, monkeypatch)
+        manifest["native_review"][key] = bad
+        ok, reason = cc.validate_manifest(manifest)
+        assert not ok and f"native_review.{key}" in reason
+
+    @pytest.mark.parametrize("mode", ["cumulative", "chunk", "verify-resolutions"])
+    def test_control_every_mode_that_pairs_is_valid(self, branch_repo, monkeypatch, mode):
+        manifest = self._manifest(branch_repo, monkeypatch)
+        manifest["native_review"].update(mode=mode, synthetic_range=True)
+        assert cc.validate_manifest(manifest) == (True, "")
 
     def test_no_block_is_valid(self, branch_repo, monkeypatch):
         manifest = self._manifest(branch_repo, monkeypatch)
@@ -504,7 +552,10 @@ class TestLedgerKind:
             [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "review-stats"],
             cwd=str(branch_repo), capture_output=True, text=True, timeout=60,
         ).stdout
-        assert "native review (paired, #1130; in no total here): 1 run(s)" in human, human
+        # Renegotiated with the inner sample: one line per stage, since pooled
+        # inner and boundary runs give a median that describes neither.
+        assert "native review, boundary (paired, #1130; in no total here): 1 run(s)" in human, human
+        assert after["native_review"]["by_stage"]["boundary"]["runs"] == 1
 
 
 class TestNextAction:
@@ -636,3 +687,243 @@ class TestSidecarFailure:
         assert result["status"] == "ok"
         assert "native_review" in result["manifest"]
         assert any("dispatch record was not written" in n and "disk full" in n for n in result["notes"]), result["notes"]
+
+
+# --- The inner sample (#1166) --------------------------------------------------
+
+
+def _inner(repo: Path, monkeypatch, mode: str = "chunk") -> dict:
+    """A sampled inner review of a dirty working tree: the shape most inner
+    reviews have, with no head commit to name."""
+    monkeypatch.setattr(cc, "native_review_sampled", lambda _id: True)
+    (repo / "src/app.py").write_text("x = 3\n")
+    (repo / "src/new.py").write_text("y = 1\n")  # untracked: the Critic's capture takes it in
+    return _begin(repo, mode, monkeypatch, DEV)
+
+
+def _range(args: str) -> "tuple[str, str]":
+    level, span = args.split()
+    assert level == "high"
+    base, head = span.split("...")
+    return base, head
+
+
+class TestInnerRange:
+    def test_a_dirty_tree_range_diffs_to_exactly_the_reviewed_interval(self, branch_repo, monkeypatch):
+        """The native review takes a commit range and an inner review usually
+        reads a working tree; the range must still be the Critic's interval,
+        untracked files included."""
+        result = _inner(branch_repo, monkeypatch)
+        manifest = result["manifest"]
+        assert manifest["head_commit"] is None  # the shape that needed naming
+        base, head = _range(manifest["native_review"]["args"])
+        assert manifest["native_review"]["synthetic_range"] is True
+        assert _git(branch_repo, "diff", f"{base}...{head}") == _git(
+            branch_repo, "diff", manifest["base_tree"], manifest["head_tree"]
+        )
+        changed = _git(branch_repo, "diff", "--name-only", f"{base}...{head}").split()
+        assert sorted(changed) == ["src/app.py", "src/new.py"]
+
+    def test_naming_the_range_moves_no_ref_index_or_file(self, branch_repo, monkeypatch):
+        """An independent reviewer never mutates the session it reviews: the two
+        commits are unreachable objects, nothing else."""
+        (branch_repo / "src/app.py").write_text("x = 3\n")
+        before = (
+            _git(branch_repo, "for-each-ref"), _git(branch_repo, "rev-parse", "HEAD"),
+            _git(branch_repo, "status", "--porcelain", "--untracked-files=all", "--", "src"),
+            _git(branch_repo, "stash", "list"),
+        )
+        manifest = _inner(branch_repo, monkeypatch)["manifest"]
+        # `_inner` wrote src/new.py, so the status after it differs by that file alone.
+        after = (
+            _git(branch_repo, "for-each-ref"), _git(branch_repo, "rev-parse", "HEAD"),
+            _git(branch_repo, "status", "--porcelain", "--untracked-files=all", "--", "src"),
+            _git(branch_repo, "stash", "list"),
+        )
+        assert before[:2] == after[:2] and before[3] == after[3]
+        status = lambda out: {line.strip() for line in out.splitlines()}  # noqa: E731
+        assert status(after[2]) == status(before[2]) | {"?? src/new.py"}
+        _base, head = _range(manifest["native_review"]["args"])
+        assert _git(branch_repo, "branch", "--contains", head) == ""
+
+    def test_a_base_with_no_commit_is_named_from_its_tree(self, branch_repo):
+        """``verify-resolutions`` after a ``chunk`` review starts from a dirty
+        tree the earlier review saw, which no commit holds."""
+        (branch_repo / "src/app.py").write_text("x = 5\n")
+        base_tree = _git(branch_repo, "write-tree")  # index unchanged: HEAD's tree
+        _git(branch_repo, "add", "src/app.py")
+        mid_tree = _git(branch_repo, "write-tree")
+        (branch_repo / "src/app.py").write_text("x = 6\n")
+        _git(branch_repo, "add", "src/app.py")
+        head_tree = _git(branch_repo, "write-tree")
+        _git(branch_repo, "reset", "--quiet")
+        got = cc.native_review_range(branch_repo, None, mid_tree, None, head_tree, "rev-t")
+        assert got["status"] == "ok", got
+        assert got["synthetic"] is True
+        assert _git(branch_repo, "diff", f"{got['base']}...{got['head']}") == _git(
+            branch_repo, "diff", mid_tree, head_tree
+        )
+        assert base_tree != mid_tree  # the fixture's base really is no commit's tree
+
+    def test_real_commits_are_passed_through(self, branch_repo):
+        base = _git(branch_repo, "rev-parse", "main")
+        head = _git(branch_repo, "rev-parse", "HEAD")
+        got = cc.native_review_range(branch_repo, base, "t", head, "t", "rev-t")
+        assert got == {"status": "ok", "base": base, "head": head, "synthetic": False}
+
+    def test_a_range_that_cannot_be_named_is_a_note_not_an_error(self, branch_repo, monkeypatch):
+        monkeypatch.setattr(
+            cc, "native_review_range", lambda *_a: {"status": "error", "reason": "commit-tree failed"}
+        )
+        result = _inner(branch_repo, monkeypatch)
+        assert "native_review" not in result["manifest"]
+        assert any("native review not paired" in n and "commit-tree failed" in n for n in result["notes"])
+
+    def test_a_bad_tree_reports_why(self, branch_repo):
+        got = cc.native_review_range(branch_repo, None, "0" * 40, None, "0" * 40, "rev-t")
+        assert got["status"] == "error" and got["reason"]
+
+    def test_control_an_unsampled_inner_review_writes_and_says_nothing(self, branch_repo, monkeypatch):
+        monkeypatch.setattr(cc, "native_review_sampled", lambda _id: False)
+        (branch_repo / "src/app.py").write_text("x = 3\n")
+        result = _begin(branch_repo, "chunk", monkeypatch, DEV)
+        assert "native_review" not in result["manifest"]
+        assert not [n for n in result["notes"] if "native review" in n], result["notes"]
+        assert not native_review.reviews_dir(branch_repo / ".prawduct").exists()
+
+
+class TestInnerRecord:
+    def test_the_event_says_what_kind_of_review_it_was_paired_with(self, branch_repo, monkeypatch):
+        result = _inner(branch_repo, monkeypatch, "chunk")
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert event["native"]["mode"] == "chunk"
+        assert event["native"]["stage"] == "inner"
+        assert event["native"]["synthetic_range"] is True
+        assert event["native"]["tree_moved"] is False
+
+    def test_a_boundary_event_is_unchanged(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert (event["native"]["mode"], event["native"]["stage"]) == ("cumulative", "boundary")
+        assert event["native"]["synthetic_range"] is False
+
+    def test_an_edit_to_a_reviewed_file_before_the_record_is_noted(self, branch_repo, monkeypatch):
+        """The native review reads source from the working tree, and an inner
+        Critic pass finishes well before it: a builder fixing a reviewed file in
+        between changes what the native run read."""
+        result = _inner(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        (branch_repo / "src/app.py").write_text("x = 4\n")
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert event["native"]["tree_moved"] is True
+
+    def test_control_an_edit_outside_the_interval_is_not_a_move(self, branch_repo, monkeypatch):
+        result = _inner(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        (branch_repo / "README.md").write_text("unrelated\n")
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert event["native"]["tree_moved"] is False
+
+    def test_an_edit_to_a_reviewed_doc_is_a_move(self, branch_repo, monkeypatch):
+        """The native review reads docs too: a plain doc in the interval, edited
+        before the run lands, is a move even though it is not judgeable."""
+        (branch_repo / "docs").mkdir()
+        (branch_repo / "docs/guide.md").write_text("one\n")
+        result = _inner(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        (branch_repo / "docs/guide.md").write_text("two\n")
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert event["native"]["tree_moved"] is True
+
+    def test_control_a_prawduct_record_written_during_the_run_is_not_a_move(self, branch_repo, monkeypatch):
+        """Consolidation and the builder write `.prawduct/` during any review;
+        this fixture tracks it (no `.gitignore`), so the record is in the
+        reviewed interval."""
+        (branch_repo / ".prawduct" / "notes.md").write_text("one\n")
+        result = _inner(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        (pd / "notes.md").write_text("two\n")
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert event["native"]["tree_moved"] is False
+
+    def test_a_sidecar_from_before_the_inner_sample_records_as_boundary(self, branch_repo, monkeypatch):
+        """A native run in flight across the upgrade has a sidecar with no mode
+        or stage; every such run was a boundary pairing."""
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        path = native_review.sidecar_path(pd, result["id"])
+        sidecar = json.loads(path.read_text())
+        for key in ("mode", "stage", "synthetic_range"):
+            sidecar.pop(key)
+        path.write_text(json.dumps(sidecar))
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert (event["native"]["mode"], event["native"]["stage"]) == ("cumulative", "boundary")
+        assert event["native"]["synthetic_range"] is False
+
+
+class TestInnerRunIsNotPutToTheBuilder:
+    def test_an_inner_run_adds_no_clause(self, branch_repo, monkeypatch):
+        """A second, unrated list beside an inner pass would manufacture rounds;
+        the boundary pairing puts the same code's native findings to the builder."""
+        result = _inner(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        assert native_review.next_action_clause(pd, result["id"]) == ""
+        # Still readable on request.
+        rc, text = native_review.show(pd, result["id"])
+        assert rc == 0 and "SECRET-SUMMARY-ONE" in text
+
+    def test_a_sidecar_that_cannot_be_read_still_names_the_list(self, branch_repo, monkeypatch):
+        """Only a sidecar that says inner silences the clause: one that exists
+        and cannot be read still means a native list was dispatched."""
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        native_review.sidecar_path(pd, result["id"]).write_text("{truncated")
+        assert "(3 finding(s))" in native_review.next_action_clause(pd, result["id"])
+
+    def test_control_a_boundary_run_adds_its_clause(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        assert "(3 finding(s))" in native_review.next_action_clause(pd, result["id"])
+
+
+class TestReviewStatsByStage:
+    def _event(self, stage, seconds, findings):
+        native = {"findings": [{"file": "a.py", "line": 1}] * findings, "findings_parsed": True}
+        if stage is not None:
+            native["stage"] = stage
+        return {"event": "native.review", "native": native, "duration_seconds": seconds}
+
+    def test_inner_and_boundary_runs_are_reported_apart(self, monkeypatch):
+        from lib import telemetry
+
+        monkeypatch.setattr(telemetry, "_measured_duration", lambda e: e["duration_seconds"])
+        block = telemetry._native_block([
+            self._event("inner", 60, 1), self._event("boundary", 300, 4), self._event(None, 280, 2),
+        ])
+        assert block["runs"] == 3
+        # An event from before the stage was recorded is a boundary run.
+        assert block["by_stage"]["boundary"]["runs"] == 2
+        assert block["by_stage"]["boundary"]["findings"] == 6
+        assert block["by_stage"]["inner"]["runs"] == 1
+        assert block["by_stage"]["inner"]["duration_measured"]["median_seconds"] == 60
+        lines = telemetry._native_line(block)
+        assert [line.split(" (")[0] for line in lines] == ["native review, boundary", "native review, inner"]

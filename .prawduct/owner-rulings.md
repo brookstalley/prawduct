@@ -27,6 +27,15 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-13.** "1. yes file and build, and let's wait on 2"
+In reply to two asks after the early Critic-vs-native comparison. It settles: file three follow-ups
+to #1130 (#1164, a severity breakdown in `compare.py`; #1166, pairing a sample of `chunk` and
+`verify-resolutions` reviews; #1165, the native review's re-raise rate) and build them. #1166
+replaces #1130's scope-out of `chunk` and `verify-resolutions` reviews for the pairing; the
+2026-11-10 ruling ("BOTH each time") still governs the boundary review. The blind verification of
+the comparison waits for more paired reviews (about twenty). Landed in
+`.prawduct/artifacts/build-plan-native-review-inner.md` Goals.
+
 **2026-11-12.** "and then 1161"
 Sent as #1130's PR was being opened: once that merge and the `../prawduct-live` advance are done,
 build #1161 (harden the native text parse before the first monthly comparison). Landed on
