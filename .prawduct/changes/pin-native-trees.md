@@ -13,10 +13,11 @@ temporary index, so nothing references it, and `git gc` prunes an unreferenced o
 could be gone by its stop-time verification.
 
 `native-review record` now pins both trees under `refs/prawduct/native-trees/<review-id>/`,
-including on a re-run for a review it already recorded, and the ledger event says whether it
-pinned. A pin that fails never blocks the record. The refs are clone-local and never pushed.
-`compare.py --pin` pins the trees of runs recorded before this, and `compare.py` warns about any
-review whose tree is already gone. The research README says how to release the refs at the
+including on a re-run for a review it already recorded. A pin that fails never blocks the
+record; its output says the trees could not be pinned. Whether a run is pinned is read from the
+refs, never stored. The refs are clone-local: prawduct's evidence sync pushes only its notes
+ref. `compare.py --pin` pins the trees of runs recorded before this, and `compare.py` warns
+about any review whose tree is gone or whose event names none. The research README says how to release the refs at the
 stop.
 
 ## Consumer note

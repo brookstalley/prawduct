@@ -256,6 +256,14 @@ class TestEndToEnd:
         printed = capsys.readouterr().out
         assert "WARNING: 1 review(s) whose reviewed tree is gone" in printed and review_id in printed
 
+    def test_a_review_whose_event_names_no_tree_is_told_apart_from_a_pruned_one(self, paired_repo, capsys):
+        repo, review_id = paired_repo
+        _rewrite_native_event(repo, lambda e: e["native"].pop("head_tree"))
+        assert compare.main([str(repo)]) == 0
+        printed = capsys.readouterr().out
+        assert "WARNING: 1 review(s) whose event names no reviewed tree" in printed
+        assert "whose reviewed tree is gone" not in printed
+
     def test_a_real_paired_review_compares(self, paired_repo, tmp_path, capsys):
         repo, review_id = paired_repo
         [pair] = compare.load_pairs(repo)

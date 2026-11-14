@@ -948,13 +948,17 @@ class TestTreePins:
         result = _inner(repo, monkeypatch)
         pd = repo / ".prawduct"
         native_review.text_path(pd, result["id"]).write_text(THREE)
-        assert native_review.record(repo, pd, result["id"])[0] == 0
+        rc, message = native_review.record(repo, pd, result["id"])
+        assert rc == 0, message
         [event] = _ledger_events(repo, "native.review")
+        self.message = message
         return result, event["native"]
 
-    def test_record_pins_both_trees_and_says_so(self, branch_repo, monkeypatch):
+    def test_record_pins_both_trees(self, branch_repo, monkeypatch):
         result, native = self._recorded(branch_repo, monkeypatch)
-        assert native["trees_pinned"] is True
+        assert "could not be pinned" not in self.message
+        # Read from the refs, never stored: a later pin is never contradicted.
+        assert "trees_pinned" not in native
         for name in ("base", "head"):
             ref = f"{native_review.PIN_PREFIX}/{result['id']}/{name}"
             assert _git(branch_repo, "rev-parse", ref) == native[f"{name}_tree"]
@@ -991,5 +995,16 @@ class TestTreePins:
             return real(project_dir, *args, **kw)
 
         monkeypatch.setattr(evidence, "run_git", failing)
-        _result, native = self._recorded(branch_repo, monkeypatch)
-        assert native["trees_pinned"] is False
+        result, _native = self._recorded(branch_repo, monkeypatch)
+        assert "could not be pinned" in self.message, "the one line the wrapper reports must say so"
+        # The re-run is the remedy the message names; it says so again while the pin still fails.
+        rc, again = native_review.record(branch_repo, branch_repo / ".prawduct", result["id"])
+        assert rc == 0 and "already recorded" in again and "could not be pinned" in again
+
+    def test_an_unsafe_review_id_pins_nothing(self, branch_repo):
+        # A name git accepts as a ref path but that is no review id: without the
+        # check it would write refs/prawduct/native-trees/heads/main/{base,head}.
+        tree = _git(branch_repo, "rev-parse", "HEAD^{tree}")
+        assert native_review.pin_trees(branch_repo, "heads/main", tree, tree) is False
+        listed = _git(branch_repo, "for-each-ref", "--format=%(refname)", native_review.PIN_PREFIX)
+        assert listed == "", listed
