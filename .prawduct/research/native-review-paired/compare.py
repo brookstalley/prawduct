@@ -382,8 +382,16 @@ def blind_sheet(
 
     def where(pair):
         native = (pair.get("native_event") or {}).get("native") or {}
-        return {"repo": pair.get("repo"), "base_tree": native.get("base_tree"),
-                "head_tree": native.get("head_tree")}
+        place = {"repo": pair.get("repo"), "base_tree": native.get("base_tree"),
+                 "head_tree": native.get("head_tree")}
+        # The native review reads the working tree; when a reviewed file moved
+        # before it landed, the code at head_tree is not quite what it read. Said
+        # of every item of that review, so it names no instrument.
+        if native.get("tree_moved"):
+            place["tree_moved"] = True
+        return place
+
+    at_review = {p.get("review_id"): where(p) for p in pairs}
 
     def critic_words(c):
         return {"files": c.get("files"), "text": f"{c.get('title', '')} — {c.get('recommendation', '')}"}
@@ -399,26 +407,27 @@ def blind_sheet(
         return native_words(f) if "file" in f else critic_words(f)
 
     for pair, m in zip(pairs, matches):
-        at = where(pair)
+        at = at_review[pair.get("review_id")]
         for c, n in m["shared"]:
             a, b = critic_words(c), native_words(n)
             first = "critic"
             if rng.random() < 0.5:
-                a, b, first = b, a, "native"
+                a, b, first = b, a, "native"  # the key's `first_source`; the sheet's `first` holds words
             ref = {"critic_fid": c["fid"]} if c.get("fid") else {"critic_oid": c.get("oid")}
             items.append({"ask": "same defect?", "first": a, "second": b, **at,
-                          "_key": {"review": pair["review_id"], "first": first, **ref}})
+                          "_key": {"review": pair["review_id"], "first_source": first, **ref}})
         for c in m["critic_only"]:
             items.append({"ask": UNIQUE_ASK, "finding": critic_words(c), **at,
                           "_key": {"review": pair["review_id"], "source": "critic", "fid": c.get("fid")}})
         for n in m["native_only"]:
             items.append({"ask": UNIQUE_ASK, "finding": native_words(n), **at,
                           "_key": {"review": pair["review_id"], "source": "native"}})
-    at_review = {p.get("review_id"): where(p) for p in pairs}
     for r in reraised or []:
         items.append({"ask": "does it repeat one of the earlier findings?", "finding": words(r["finding"]),
                       "earlier": [words(e) for e in r["earlier"]],
-                      **at_review.get(r["review"], {"repo": None, "base_tree": None, "head_tree": None}),
+                      **at_review[r["review"]],
+                      # The earlier findings were raised against their own review's code.
+                      "earlier_head_tree": (at_review.get(r["earlier_review"]) or {}).get("head_tree"),
                       "_key": {"review": r["review"], "reraise_by": r["by"],
                                "earlier_kind": r["earlier_kind"], "earlier_review": r["earlier_review"]}})
     rng.shuffle(items)

@@ -101,7 +101,8 @@ class TestBlindSheet:
         # Only these fields reach the verifier: the question, the words, the
         # place, and the trees the review read (so the verifier reads the code as
         # reviewed, not a later fix) — no source, no fid, no review id.
-        allowed = {"id", "ask", "finding", "first", "second", "earlier", "repo", "base_tree", "head_tree"}
+        allowed = {"id", "ask", "finding", "first", "second", "earlier", "repo", "base_tree", "head_tree",
+                   "earlier_head_tree", "tree_moved"}
         assert all(set(i) <= allowed for i in items), items
         for item in items:
             for words in (item.get("finding"), item.get("first"), item.get("second")):
@@ -126,11 +127,26 @@ class TestBlindSheet:
         critic = [_critic(f"R-{n}", "g", f"f{n}.py") for n in range(30)]
         native = [_native(f"f{n}.py") for n in range(30)]
         items, key = compare.blind_sheet([{"review_id": "rev-1"}], [compare.match(critic, native)])
-        firsts = {key[i["id"]]["first"] for i in items}
+        firsts = {key[i["id"]]["first_source"] for i in items}
         assert firsts == {"critic", "native"}, firsts
         for item in items:
-            critic_side = item["first"] if key[item["id"]]["first"] == "critic" else item["second"]
+            critic_side = item["first"] if key[item["id"]]["first_source"] == "critic" else item["second"]
             assert critic_side["text"].startswith("critic R-"), "the key names the side the Critic's words are on"
+
+    def test_a_reraise_item_names_its_reviews_trees_and_the_earlier_reviews(self):
+        later = {"review_id": "rev-2", "repo": "/r",
+                 "native_event": {"native": {"base_tree": "b" * 40, "head_tree": "h" * 40, "tree_moved": True}}}
+        earlier = {"review_id": "rev-1", "repo": "/r",
+                   "native_event": {"native": {"base_tree": "a" * 40, "head_tree": "e" * 40}}}
+        reraised = [{"review": "rev-2", "by": "native", "finding": _native("a.py"),
+                     "earlier": [_critic("R-1", "g", "a.py")], "earlier_kind": "finding",
+                     "earlier_review": "rev-1"}]
+        empty = compare.match([], [])
+        items, _ = compare.blind_sheet([later, earlier], [empty, empty], reraised=reraised)
+        [item] = items
+        assert (item["repo"], item["base_tree"], item["head_tree"]) == ("/r", "b" * 40, "h" * 40)
+        assert item["earlier_head_tree"] == "e" * 40
+        assert item["tree_moved"] is True
 
     def test_each_item_names_the_repo_and_the_trees_the_review_read(self):
         pair = {"review_id": "rev-1", "repo": "/r",
