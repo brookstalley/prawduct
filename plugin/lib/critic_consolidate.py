@@ -6298,6 +6298,55 @@ def select_branch_review(
     return max(on_branch, key=rank)[1]
 
 
+def settled_branch_review(project_dir: Path, facts: list[dict]) -> "dict | None":
+    """:func:`select_branch_review`'s answer for the checked-out branch when it
+    SETTLES the question, else ``None``. Read-only, over the same branch range
+    the cache writer and the verify dispatch choose over.
+
+    For a caller that relaxes something on the answer — the interval-extension
+    deferral and the boundary ``cumulative`` check
+    (``critic_mode._newest_branch_review``) — where any doubt must read as "no
+    review", so the relaxation does not happen. ``None`` when the branch range
+    cannot be listed (no merge base resolves, git fails), when no review
+    anchors on the range, and when the owner's answer is its merge-base
+    FALLBACK: a review at the merge base that was not recorded on this branch
+    (a sibling's arriving by ingest, a renamed branch, a fact older than
+    ``actor.branch``, a detached HEAD). The owner keeps that review as the
+    verify anchor because nothing better exists; it does not show this
+    lineage was reviewed. Past the merge base a commit is this branch's, so
+    depth settles it whatever branch name the review carries — which is how a
+    merged delegate branch's review and a nameless fact count."""
+    branch_range = evidence_notes._branch_commits(project_dir)
+    if branch_range.get("status") != "ok":
+        return None
+    ordered = branch_range["ordered"]
+    branch = gitstate.current_branch(project_dir)
+    fact = select_branch_review(facts, ordered, branch)
+    if fact is None:
+        return None
+    at_merge_base = evidence.review_anchor(fact.get("body")) == ordered[-1]
+    if at_merge_base and not (branch and _recorded_branch(fact) == branch):
+        return None
+    return fact
+
+
+def branch_review_record(prawduct_dir: Path, fact: dict, facts: list[dict]) -> dict:
+    """The findings record :func:`derive_branch_cache` renders for ``fact``,
+    built without writing it — for a reader that must show this branch's review
+    while the single-slot cache still names another (the session briefing).
+    A verify pass carries its anchor's unresolved blockers, as there."""
+    usable = _this_readers_facts(facts)
+    body = fact.get("body") or {}
+    carried = (
+        carried_blocking(usable, body.get("base_tree"), fact.get("id"))
+        if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
+        else []
+    )
+    return fact_to_cache_record(
+        fact, carried=carried, store={"facts": usable}, prawduct_dir=prawduct_dir
+    )
+
+
 def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "list[str]") -> dict:
     """Point ``.critic-findings.json`` at the newest review fact anchored on
     this branch, rendering it as consolidation would.
