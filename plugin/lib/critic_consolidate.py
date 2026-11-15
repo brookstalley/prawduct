@@ -3276,7 +3276,7 @@ def native_review_pairing(
     return True, "paired"
 
 
-def native_review_prompt(review_id: str, worktree: str, args: str, text_path: str) -> str:
+def native_review_prompt(review_id: str, worktree: str, args: str) -> str:
     """The wrapper subagent's whole instruction, rendered once so no skill file
     composes it. The wrapper exists because the native review runs on its
     caller's model and may come back in the background: it holds the model
@@ -3286,7 +3286,11 @@ def native_review_prompt(review_id: str, worktree: str, args: str, text_path: st
     its caller's directory and checks out the commit it reads, which in the
     session's checkout detached the session's HEAD. ``prepare`` runs first and
     refuses there; the record runs in the session's checkout, where its sidecar
-    is (``lib/native_review.py``)."""
+    is (``lib/native_review.py``). The text is written in the wrapper's OWN
+    tree, at the path ``prepare`` prints, because the harness refuses an
+    isolated agent's Write to the session's files; ``record`` copies it across.
+    The session-side path is deliberately not named here, so it cannot be
+    written to."""
     from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
     return (
@@ -3301,10 +3305,13 @@ def native_review_prompt(review_id: str, worktree: str, args: str, text_path: st
         "those, adding and changing nothing. If the result says it is running in the "
         "background, stay alive until its completion notification arrives (start a "
         "background `sleep 900`, and stop it once the notification lands). Then write the "
-        "review's complete text, everything after `Result:`, verbatim, to "
-        f"`{text_path}` with the Write tool, and run "
-        f"`{native_review_record_command(review_id, worktree)}`. Edit nothing else and fix "
-        "nothing. Report one line: that command's output."
+        "review's complete text, everything after `Result:`, verbatim, with the Write tool to "
+        f"the path `prepare` printed, `.prawduct/.native-reviews/{review_id}.md` under your own "
+        "worktree's root and never in the session's checkout (the harness refuses that Write "
+        "from your worktree), and run "
+        f"`{native_review_record_command(review_id, worktree)}`: it copies the text into the "
+        "session's checkout and records it. Edit nothing else and fix nothing. Report one "
+        "line: that command's output."
     )
 
 
@@ -3389,7 +3396,7 @@ def native_review_block(
         "args": args,
         "model": reviewer_model,
         "text_path": text_path,
-        "prompt": native_review_prompt(review_id, worktree, args, text_path),
+        "prompt": native_review_prompt(review_id, worktree, args),
         "dispatched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 

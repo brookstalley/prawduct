@@ -172,8 +172,13 @@ class TestManifestBlock:
         # its caller's model, so a fair comparison pins the two together.
         assert native["model"] == manifest["reviewer_model"]
         # The prompt is rendered once, here, and carries every value it names.
-        for value in (native["args"], native["text_path"], result["id"], str(branch_repo)):
+        for value in (native["args"], result["id"], str(branch_repo)):
             assert value in native["prompt"]
+        # But never the text's home in the session's checkout: the wrapper runs
+        # in a worktree of its own, where the harness refuses a Write to the
+        # session's files (the first live run, 2026-11-15). It writes in its own
+        # tree and `record` copies the text here (test_native_review_head.py).
+        assert native["text_path"] not in native["prompt"]
         assert cc.validate_manifest(manifest) == (True, "")
 
     def test_the_arguments_never_carry_a_fix_a_post_or_a_costly_level(self, branch_repo, monkeypatch):

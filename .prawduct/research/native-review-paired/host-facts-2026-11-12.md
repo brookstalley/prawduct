@@ -51,3 +51,23 @@ the likely reason. Re-derive it from the fork's subagent transcript (its `meta.j
 `code-review`, `spawnDepth` 3): the Bash calls carry the checkout. A caller cannot instruct the
 fork, which sees only the skill's recipe and its args, so the wrapper runs in a worktree of its
 own.
+
+## Added 2026-11-15: an isolated agent cannot Write into the session's checkout
+
+Observed in this repo's first isolated paired run, on Claude Code with Opus 5.5. The wrapper was
+dispatched with `isolation: "worktree"` and told to Write its text to the session checkout's
+`.prawduct/.native-reviews/`. The host refused the Write tool call with "This agent is isolated in
+the worktree <its tree>. Edit the worktree copy of this file instead of the shared-checkout path."
+The same wrapper's Bash calls ran python from its tree, and those did write the session's sidecar.
+So the refusal applies to the host's file tools, not to the filesystem. The host also refuses an
+isolated agent's Bash commands that it cannot prove stay in the agent's worktree. To re-derive
+this, read the wrapper's subagent transcript (its `meta.json` has `spawnedWithWorktree: true`,
+and its first prompt line names the review) and find the `tool_use_error` that follows its Write.
+The fix: the wrapper writes in its own tree, and `native-review record`, run from the session's
+checkout, copies the text across.
+
+The same run left the wrapper's worktree behind, locked. When the agent ended, `record` had failed
+before returning the tree, so the tree was still detached at the reviewed head. The Agent tool
+says a worktree is auto-cleaned if it is unchanged, and this one was changed. Whether the host
+removes a tree that is back on its branch at its creation point, with nothing in `git status`, is
+not yet observed.

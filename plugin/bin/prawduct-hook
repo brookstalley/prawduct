@@ -2808,14 +2808,18 @@ def _manifest_branch(path: Path) -> str | None:
 
 def cmd_native_review(project_dir: Path, argv: list[str]) -> int:
     """``native-review prepare <review id> <session checkout>`` |
-    ``native-review record <review id>`` | ``native-review show [<review id>]``.
+    ``native-review record <review id> [--text-file <path>]`` |
+    ``native-review show [<review id>]``.
 
     The paired native review's record (#1130, ``lib/native_review.py``).
     ``prepare`` is the wrapper's first step, run from its own worktree (here,
     ``project_dir``): it detaches that tree at the reviewed head (exit 0), or
     refuses — in the session's checkout above all — and checks nothing out
     (exit 1; #1177). ``record`` is run by the wrapper, from the session's
-    checkout, once it has written the review's text: it appends one
+    checkout, once it has written the review's text in its own worktree (the
+    harness refuses its Write to the session's files): it copies the text into
+    the session's ``.native-reviews/`` — from the wrapper's tree, which the
+    sidecar names, or from ``--text-file`` (an absolute path) — and appends one
     ``native.review`` ledger event (exit 0, also when already recorded) or says
     why there is nothing to record (exit 1). ``show`` prints a native review's
     text, the newest by default (exit 0), or why it cannot (exit 1). Exit 2 on a
@@ -2824,7 +2828,7 @@ def cmd_native_review(project_dir: Path, argv: list[str]) -> int:
 
     usage = (
         "usage: prawduct-hook native-review prepare <review id> <session checkout> | "
-        "record <review id> | show [<review id>]"
+        "record <review id> [--text-file <absolute path>] | show [<review id>]"
     )
     op = argv[0] if argv else None
     rest = argv[1:]
@@ -2833,6 +2837,8 @@ def cmd_native_review(project_dir: Path, argv: list[str]) -> int:
         rc, message = native_review.prepare(project_dir, Path(rest[1]), rest[0])
     elif op == "record" and len(rest) == 1:
         rc, message = native_review.record(project_dir, prawduct_dir, rest[0])
+    elif op == "record" and len(rest) == 3 and rest[1] == "--text-file" and rest[2]:
+        rc, message = native_review.record(project_dir, prawduct_dir, rest[0], text_file=Path(rest[2]))
     elif op == "show" and len(rest) <= 1:
         rc, message = native_review.show(prawduct_dir, rest[0] if rest else None)
     else:
@@ -11064,7 +11070,7 @@ _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--session-model <id>] [--scope <s>] [--chunks <id>[,<id>...]] [--force]|critic-end|critic-discard|"
     "critic-restore <review-id>|critic-consolidate|validate-partial <path>|"
-    "native-review prepare <review-id> <session-checkout>|native-review record <review-id>|native-review show [<review-id>]|"
+    "native-review prepare <review-id> <session-checkout>|native-review record <review-id> [--text-file <path>]|native-review show [<review-id>]|"
     "subagent-stop|"
     "stop|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
