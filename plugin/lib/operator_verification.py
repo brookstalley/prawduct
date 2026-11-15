@@ -42,7 +42,6 @@ from .core import (
     FLAG_UNREADABLE,
     atomic_write_text,
     read_bool_flag,
-    read_bool_yaml_key,
 )
 
 # Recognized status tokens. ``pending`` is the only status that blocks
@@ -510,25 +509,6 @@ def count_pending(entries: list[VerificationEntry]) -> int:
 
 def pending_entries(entries: list[VerificationEntry]) -> list[VerificationEntry]:
     return [e for e in entries if e.status == _STATUS_PENDING]
-
-
-def is_operator_verification_required(state_path: Path) -> bool:
-    """Read ``operator_verification_required`` from ``project-state.yaml``.
-
-    Column-0 scanner mirroring the convention shared with
-    ``coverage_required`` (see
-    ``core.read_bool_yaml_key``): only top-level keys count; commented-out
-    and indented occurrences are ignored. Defaults to ``False`` when the file
-    or key is absent — the explicit-opt-in posture for v1.4 enforcement features.
-
-    A file that EXISTS and cannot be read raises
-    :class:`core.StateFileUnreadable` instead of defaulting: absent means "never
-    opted in", unreadable means "unknown", and only the first may read as off.
-    :func:`run_check_operator_verification` reads the flag through
-    :func:`core.read_bool_flag` and reports that case as
-    :data:`QUEUE_STATE_UNREADABLE`.
-    """
-    return read_bool_yaml_key(state_path, "operator_verification_required")
 
 
 def _load_queue(queue_path: Path) -> tuple[str, list[VerificationEntry]]:

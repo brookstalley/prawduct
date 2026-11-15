@@ -230,31 +230,39 @@ class TestPendingHelpers:
 
 
 # =============================================================================
-# is_operator_verification_required (column-0 YAML scanner)
+# operator_verification_required read through core.read_bool_flag (column-0 scanner)
 # =============================================================================
+
+
+def _required(state_path: Path) -> bool:
+    """The flag's value as the check reads it (the function this class once
+    called directly was folded into ``core.read_bool_flag``, #777)."""
+    from lib import core
+
+    return core.read_bool_flag(state_path, "operator_verification_required")["value"]
 
 
 class TestIsOperatorVerificationRequired:
     def test_missing_file_is_false(self, tmp_path: Path):
         assert (
-            ov.is_operator_verification_required(tmp_path / "nope.yaml")
+            _required(tmp_path / "nope.yaml")
             is False
         )
 
     def test_missing_key_is_false(self, tmp_path: Path):
         state = tmp_path / "state.yaml"
         state.write_text("other_key: true\n")
-        assert ov.is_operator_verification_required(state) is False
+        assert _required(state) is False
 
     def test_true_value_recognized(self, tmp_path: Path):
         state = tmp_path / "state.yaml"
         state.write_text("operator_verification_required: true\n")
-        assert ov.is_operator_verification_required(state) is True
+        assert _required(state) is True
 
     def test_false_value_recognized(self, tmp_path: Path):
         state = tmp_path / "state.yaml"
         state.write_text("operator_verification_required: false\n")
-        assert ov.is_operator_verification_required(state) is False
+        assert _required(state) is False
 
     def test_indented_occurrence_ignored(self, tmp_path: Path):
         # Nested mention inside a YAML block must not count as the top-level
@@ -263,7 +271,7 @@ class TestIsOperatorVerificationRequired:
         state.write_text(
             "nested:\n  operator_verification_required: true\n"
         )
-        assert ov.is_operator_verification_required(state) is False
+        assert _required(state) is False
 
     def test_inline_comment_tolerated(self, tmp_path: Path):
         # Mirrors the Chunk 10 detector/mutator inline-comment lesson.
@@ -271,7 +279,7 @@ class TestIsOperatorVerificationRequired:
         state.write_text(
             "operator_verification_required: true  # F10 opt-in\n"
         )
-        assert ov.is_operator_verification_required(state) is True
+        assert _required(state) is True
 
 
 # =============================================================================
@@ -619,7 +627,7 @@ class TestQueueEncodingRoundTrip:
         # module is pinned to NOT read the state file itself again (a second
         # reader is how the fail-open copy came back).
         core_src = (REPO_ROOT / "lib" / "core.py").read_text(encoding="utf-8")
-        flag_reader = core_src[core_src.index("def read_bool_flag"):core_src.index("def read_bool_yaml_key")]
+        flag_reader = core_src[core_src.index("def read_bool_flag"):core_src.index("\ndef ", core_src.index("def read_bool_flag") + 1)]
         assert 'path.read_text(encoding="utf-8")' in flag_reader, (
             "the operator_verification_required read must decode utf-8"
         )

@@ -14,8 +14,6 @@ traceback, which ``api-contract.md`` § Error Model forbids.
 
 from __future__ import annotations
 
-import importlib.machinery
-import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -30,11 +28,6 @@ from lib import core  # noqa: E402
 from lib import operator_verification as ov  # noqa: E402
 
 HOOK_PATH = _PLUGIN / "bin" / "prawduct-hook"
-
-_hook_loader = importlib.machinery.SourceFileLoader("prawduct_hook_flags_closed", str(HOOK_PATH))
-_hook_spec = importlib.util.spec_from_loader("prawduct_hook_flags_closed", _hook_loader)
-_hook = importlib.util.module_from_spec(_hook_spec)
-_hook_loader.exec_module(_hook)
 
 _PENDING_QUEUE = "# Operator Verification Queue\n\n## VRF-001 — Chunk 1 — look\n\n**Status:** pending\n"
 
@@ -81,15 +74,6 @@ class TestPermissionDeniedStateFile:
         assert result["status"] == core.FLAG_UNREADABLE
         assert denied_state.name in result["reason"]
 
-    def test_bool_reader_raises(self, denied_state: Path):
-        with pytest.raises(core.StateFileUnreadable):
-            core.read_bool_yaml_key(denied_state, "coverage_required")
-
-    def test_hook_mirror_raises_the_same_error(self, denied_state: Path):
-        with pytest.raises(Exception) as exc:
-            _hook._read_bool_yaml_key(denied_state, "coverage_required")
-        assert type(exc.value).__name__ == core.StateFileUnreadable.__name__
-
 
 # --- core.read_bool_flag: the one owner --------------------------------------
 
@@ -128,39 +112,6 @@ class TestReadBoolFlag:
         }
 
 
-class TestReadBoolYamlKeyRaisesWhenUnreadable:
-    """``read_bool_yaml_key`` has a bool contract, so it cannot report; it raises."""
-
-    def test_raises_a_specific_error(self, unreadable_kinds):
-        for kind, path in unreadable_kinds.items():
-            with pytest.raises(core.StateFileUnreadable) as exc:
-                core.read_bool_yaml_key(path, "coverage_required")
-            assert path.name in str(exc.value), kind
-
-    def test_absent_still_false(self, tmp_path: Path):
-        assert core.read_bool_yaml_key(tmp_path / "nope.yaml", "coverage_required") is False
-
-    def test_the_error_is_not_an_oserror(self):
-        """A caller's ``except OSError`` is exactly the swallow this class removes."""
-        assert not issubclass(core.StateFileUnreadable, (OSError, ValueError))
-
-
-# --- the hook's inline mirror ------------------------------------------------
-
-
-class TestHookMirrorAgreesOnUnreadable:
-    def test_mirror_raises_where_core_raises(self, unreadable_kinds):
-        for kind, path in unreadable_kinds.items():
-            with pytest.raises(Exception) as hook_exc:
-                _hook._read_bool_yaml_key(path, "coverage_required")
-            with pytest.raises(core.StateFileUnreadable):
-                core.read_bool_yaml_key(path, "coverage_required")
-            assert type(hook_exc.value).__name__ == core.StateFileUnreadable.__name__, kind
-
-    def test_mirror_still_reads_absent_as_false(self, tmp_path: Path):
-        assert _hook._read_bool_yaml_key(tmp_path / "nope.yaml", "coverage_required") is False
-
-
 # --- operator verification: the flag read ------------------------------------
 
 
@@ -191,12 +142,6 @@ def _run_hook(product: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 class TestOperatorVerificationStateFileUnreadable:
-    def test_flag_reader_raises_on_unreadable(self, tmp_path: Path):
-        product = _product(tmp_path, b"operator_verification_required: true\n\xff\xfe\n")
-        state = product / ".prawduct" / "project-state.yaml"
-        with pytest.raises(core.StateFileUnreadable):
-            ov.is_operator_verification_required(state)
-
     def test_check_refuses_with_the_third_outcome_shape(self, tmp_path: Path):
         product = _product(tmp_path, b"operator_verification_required: true\n\xff\xfe\n", _PENDING_QUEUE)
         result = ov.run_check_operator_verification(product)
@@ -319,3 +264,50 @@ class TestOperatorVerificationQueueUnreadable:
         result = ov.run_check_operator_verification(product)
         assert result["queue_status"] == ov.QUEUE_OK
         assert result["pending"] == 1
+
+
+# --- verify-coverage: coverage_required on an unreadable state file ----------
+
+
+def _assert_blocking_refusal(proc: subprocess.CompletedProcess) -> None:
+    """A refusal in verify-coverage's own form: ``error: ...`` on stderr, exit 1.
+
+    Not a raw exception line from the dispatcher's floor
+    (``error: verify-coverage: StateFileUnreadable: ...``) and not a traceback.
+    """
+    assert proc.returncode == 1, (proc.returncode, proc.stdout, proc.stderr)
+    assert proc.stderr.startswith("error: "), proc.stderr
+    assert "project-state.yaml" in proc.stderr
+    assert "coverage_required" in proc.stderr
+    assert "StateFileUnreadable" not in proc.stderr
+    assert "Traceback" not in proc.stderr
+    assert "skipped" not in proc.stdout
+
+
+class TestVerifyCoverageStateFileUnreadable:
+    def test_a_garbled_state_file_is_a_blocking_refusal(self, tmp_path: Path):
+        product = _product(tmp_path, b"coverage_required: true\n\xff\xfe\x80\n")
+        _assert_blocking_refusal(_run_hook(product, "verify-coverage"))
+
+    @pytest.mark.non_root
+    def test_a_permission_denied_state_file_is_a_blocking_refusal(self, tmp_path: Path):
+        product = _product(tmp_path, "coverage_required: true\n")
+        state = product / ".prawduct" / "project-state.yaml"
+        _deny(state)
+        try:
+            proc = _run_hook(product, "verify-coverage")
+        finally:
+            _restore(state)
+        _assert_blocking_refusal(proc)
+
+    def test_an_absent_state_file_still_skips(self, tmp_path: Path):
+        product = tmp_path / "product"
+        (product / ".prawduct").mkdir(parents=True)
+        proc = _run_hook(product, "verify-coverage")
+        assert proc.returncode == 0, proc.stderr
+        assert "skipped: coverage_required is false" in proc.stdout
+
+    def test_a_readable_false_still_skips(self, tmp_path: Path):
+        proc = _run_hook(_product(tmp_path, "coverage_required: false\n"), "verify-coverage")
+        assert proc.returncode == 0, proc.stderr
+        assert "skipped: coverage_required is false" in proc.stdout

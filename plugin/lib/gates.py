@@ -32,8 +32,7 @@ checkout's binding),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
 (the one resolver for the rules layout the cross-check nudge names),
 ``standing_block`` (the close the Stop deferral and the clear checks read), and ``core``
-(``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
-mirror), plus the stdlib.
+(``read_bool_flag`` — the one reader of a boolean opt-in flag), plus the stdlib.
 """
 
 
@@ -61,7 +60,7 @@ from . import (
     verdict_cache,
     work_unit,
 )
-from .core import read_bool_yaml_key, suite_coupled_prefixes
+from .core import FLAG_UNREADABLE, read_bool_flag, suite_coupled_prefixes
 
 
 _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
@@ -3538,7 +3537,14 @@ def verify_coverage(project_dir: Path) -> int:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     state_path = prawduct_dir / "project-state.yaml"
 
-    if not read_bool_yaml_key(state_path, "coverage_required"):
+    flag = read_bool_flag(state_path, "coverage_required")
+    if flag["status"] == FLAG_UNREADABLE:
+        # A state file that exists and cannot be read leaves the opt-in unknown,
+        # which is not "false": refuse rather than skip a gate the repo may have
+        # turned on. Same form as this function's other refusals (exit 1).
+        print(f"error: {flag['reason']}", file=sys.stderr)
+        return 1
+    if not flag["value"]:
         print("skipped: coverage_required is false (default in v1.4)")
         return 0
 
