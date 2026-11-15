@@ -505,10 +505,9 @@ def read_preference_row(project_dir: Path, label: str, *, lower: bool = True) ->
 def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """Value of a top-level (column-0) ``key: value`` scalar, or None.
 
-    Mirrors the column-0 idiom used by :func:`read_bool_yaml_key` and
-    bin/prawduct-hook's ``_read_bool_yaml_key`` — no PyYAML dependency, fail-soft to None on a
-    missing/unreadable file or absent key. Surrounding quotes and inline ``#``
-    comments are stripped; an empty value, or the YAML null literal (``null`` /
+    Mirrors the column-0 idiom used by :func:`read_bool_flag` — no PyYAML
+    dependency, fail-soft to None on a missing/unreadable file or absent key.
+    Surrounding quotes and inline ``#`` comments are stripped; an empty value, or the YAML null literal (``null`` /
     ``~``, case-insensitive), reads as None — so ``active_build_plan: null`` means
     "unset", the same opt-out :func:`lib.plan_index.parse_build_plan_frontmatter_scope`
     already honors for ``scope:`` (VWS-7N3K). Without this, a literal ``null``
@@ -795,15 +794,6 @@ FLAG_OK = "ok"
 FLAG_UNREADABLE = "unreadable"
 
 
-class StateFileUnreadable(Exception):
-    """A state file that EXISTS could not be read, so a flag in it is unknown.
-
-    Deliberately not an ``OSError`` or ``ValueError`` subclass: the failure this
-    exists to stop was an ``except OSError`` folding "cannot read" into "flag
-    off", and a caller's reflexive catch of those must not swallow it again.
-    """
-
-
 def read_bool_flag(path: Path, key: str) -> dict:
     """The one reader of a top-level (column-0) boolean opt-in ``key``.
 
@@ -845,25 +835,6 @@ def read_bool_flag(path: Path, key: str) -> dict:
         value = line.split(":", 1)[1].strip().lower()
         return {"status": FLAG_OK, "value": value == "true", "reason": None}
     return {"status": FLAG_OK, "value": False, "reason": None}
-
-
-def read_bool_yaml_key(path: Path, key: str) -> bool:
-    """True if ``path`` has a top-level (column-0) ``key: true`` scalar.
-
-    The bool-returning face of :func:`read_bool_flag`, for a caller whose own
-    contract has no room for a status. A missing file, an absent key or an
-    indented line reads as False (opt-in by design). A file that exists and
-    cannot be read raises :class:`StateFileUnreadable` instead of reading as
-    False, because a bool has no way to say "unknown". Prefer
-    :func:`read_bool_flag` where the caller can return a refusal.
-
-    bin/prawduct-hook's ``_read_bool_yaml_key`` stays an inline mirror
-    (import-light hot path), pinned by a parity test.
-    """
-    result = read_bool_flag(path, key)
-    if result["status"] == FLAG_UNREADABLE:
-        raise StateFileUnreadable(result["reason"])
-    return result["value"]
 
 
 def pointer_plan_path(prawduct_dir: Path) -> Path | None:

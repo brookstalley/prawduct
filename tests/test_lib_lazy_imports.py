@@ -41,7 +41,7 @@ EXPECTED_FLAT_EXPORTS = frozenset({
     "infer_mode",
     # operator_verification
     "VerificationEntry", "count_pending", "format_operator_verification",
-    "is_operator_verification_required", "mark_accepted", "mark_verified",
+    "mark_accepted", "mark_verified",
     "parse_operator_verification", "pending_entries", "run_accept_pending",
     "run_check_operator_verification", "run_verify_entry",
 })

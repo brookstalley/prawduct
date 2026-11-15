@@ -16,10 +16,10 @@ unreadable or non-UTF-8 `operator-verification.md` is handled the same way inste
 with a Python traceback: the check exits 3, and `verify-operator-verification` and
 `accept-operator-verification` print an `error:` line and exit 1 without touching the file.
 
-The shared reader is `core.read_bool_flag`, which reports `ok` or `unreadable`.
-`core.read_bool_yaml_key` now raises `StateFileUnreadable` on an unreadable file, so the
-`verify-coverage` gate, which still calls it, stops with an attributed error line rather than
-reading `coverage_required` as off.
+The shared reader is `core.read_bool_flag`, which reports `ok` or `unreadable`. `verify-coverage`
+uses it too: with `coverage_required: true` and an unreadable state file it now prints an `error:`
+line naming the file and exits 1, instead of skipping the gate. The older bool-only
+`read_bool_yaml_key` and the hook's unused copy of it are gone.
 
 ## Consumer note
 If `check-operator-verification` or `verify-coverage` starts failing with "cannot read
