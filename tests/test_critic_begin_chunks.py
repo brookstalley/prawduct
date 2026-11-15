@@ -2,7 +2,7 @@
 
 The consolidator's handling of ``chunks`` (manifest, fact body, proposal
 warning) is ``critic_consolidate``'s and pinned in ``test_critic_consolidate``.
-This file pins the CLI half only: the flag's parse, its ``--chunk`` alias, and
+This file pins the CLI half only: the flag's parse, the retired ``--chunk`` alias's usage error, and
 the exact keyword the hook hands over. ``begin_review`` is replaced by a
 recorder, so the test reads the call, not a downstream effect that could come
 from somewhere else.
@@ -55,8 +55,7 @@ def recorded(tmp_path, monkeypatch):
     [
         (["--chunks", "01,03"], ["01", "03"]),
         (["--chunks", " 01 , 03 "], ["01", "03"]),
-        (["--chunks", "01", "--chunks", "03,01", "--chunk", "04"], ["01", "03", "04"]),
-        (["--chunk", "02"], ["02"]),
+        (["--chunks", "01", "--chunks", "03,01", "--chunks", "04"], ["01", "03", "04"]),
     ],
 )
 def test_the_chunks_reach_begin_review_as_a_list(recorded, argv, chunks):
@@ -80,7 +79,7 @@ def test_no_chunk_flag_passes_no_chunks_keyword(recorded):
 
 @pytest.mark.parametrize(
     "argv",
-    [["--chunks", "01,,03"], ["--chunks", ","], ["--chunk", " "], ["--chunks"]],
+    [["--chunks", "01,,03"], ["--chunks", ","], ["--chunks", " "], ["--chunks"]],
 )
 def test_an_empty_or_missing_id_is_refused_before_dispatch(recorded, argv, capsys):
     repo, calls = recorded
@@ -89,3 +88,33 @@ def test_an_empty_or_missing_id_is_refused_before_dispatch(recorded, argv, capsy
     assert calls == []
     err = capsys.readouterr().err
     assert "critic-begin:" in err and ("empty chunk id" in err or "requires a value" in err)
+
+
+def test_the_retired_chunk_alias_is_a_usage_error_naming_chunks(recorded, capsys):
+    repo, calls = recorded
+    rc = _hook.cmd_critic_begin(repo, ["--mode", "chunk", "--chunk", "02"])
+    assert rc == 1
+    assert calls == []  # refused at parse, before begin_review
+    err = capsys.readouterr().err
+    assert "--chunk is gone" in err and "--chunks" in err
+
+
+def test_the_private_live_declarations_alias_is_gone():
+    from lib import work_unit
+    assert hasattr(work_unit, "live_declarations")
+    assert not hasattr(work_unit, "_live_declarations")
+
+
+def test_chain_named_chunks_tolerates_a_fact_with_no_singular_chunk():
+    from lib import critic_mode
+    assert critic_mode.chain_named_chunks([{"body": {"chunks": ["02", "03"]}}]) == ["02", "03"]
+    # a fact written before `chunks` existed carries only `chunk`: still read
+    assert critic_mode.chain_named_chunks([{"body": {"chunk": "04"}}]) == ["04"]
+    assert critic_mode.chain_named_chunks([{"body": {"chunks": []}}]) == []
+
+
+def test_the_disposition_census_reads_chunks_and_the_legacy_chunk():
+    from lib import dispositions
+    assert dispositions._review_chunks_label({"chunks": ["01", "03"]}) == "01, 03"
+    assert dispositions._review_chunks_label({"chunk": "02"}) == "02"
+    assert dispositions._review_chunks_label({"chunks": []}) is None

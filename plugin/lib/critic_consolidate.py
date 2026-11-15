@@ -5977,10 +5977,12 @@ def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
 
 
 def _fact_chunk_fields(manifest: dict) -> dict:
-    """``chunks``, ``chunks_proposed`` and ``chunk`` for a review fact body.
+    """``chunks`` and ``chunks_proposed`` for a review fact body.
 
-    ``chunk`` is ``chunks[0]`` or ``None``. A manifest written before ``chunks``
-    existed gives ``{"chunk": <its chunk>}`` alone: inventing ``chunks`` from it
+    The singular ``chunk`` (``chunks[0]``) is no longer written; facts already
+    in a store keep theirs and :func:`plan_status.fact_chunks` still reads it.
+    A manifest written before ``chunks`` existed gives ``{"chunk": <its chunk>}``
+    alone: inventing ``chunks`` from it
     would claim a declaration nobody made, and
     :func:`plan_status.fact_chunks` reads the bare ``chunk`` the same way.
     """
@@ -5990,7 +5992,6 @@ def _fact_chunk_fields(manifest: dict) -> dict:
     return {
         "chunks": list(chunks),
         "chunks_proposed": list(manifest.get("chunks_proposed") or []),
-        "chunk": chunks[0] if chunks else None,
     }
 
 
