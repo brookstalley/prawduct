@@ -30,6 +30,8 @@ skipped both review gates.)
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -1792,14 +1794,18 @@ def check_change_log_entry(project_dir: Path) -> int:
         )
         return 0
 
-    fragment_verdict = _fragment_entry_verdict(project_dir, base, files, judgeable)
+    # The fragment verdict's stdout is held back until the committed-log check
+    # has answered: a passing fragment still meets the release's refusal of a
+    # pending legacy entry (so the gate and `check-releasability` agree), and
+    # a `fragment-present` line beside that refusal would contradict the exit.
+    held = io.StringIO()
+    with contextlib.redirect_stdout(held):
+        fragment_verdict = _fragment_entry_verdict(project_dir, base, files, judgeable)
     if fragment_verdict is not None:
-        if fragment_verdict != 0:
-            return fragment_verdict
-        # A passing fragment still meets the release's refusal of a pending
-        # legacy entry, so the gate and `check-releasability` agree.
-        pending = _committed_log_pending_verdict(project_dir)
-        return fragment_verdict if pending is None else pending
+        if fragment_verdict == 0 and _committed_log_pending_verdict(project_dir) is not None:
+            return 1
+        sys.stdout.write(held.getvalue())
+        return fragment_verdict
 
     if CHANGE_LOG_REL_PATH not in files:
         # A path git does not TRACK can never appear in a diff, so this silence

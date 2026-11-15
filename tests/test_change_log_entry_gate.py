@@ -833,6 +833,7 @@ def test_a_fragment_beside_a_branch_added_pending_entry_is_refused(tmp_path):
     result = _run_probe(repo)
     assert result.returncode == 1, result.stdout
     assert "legacy-pending-entry: '2026-06-10: new work'" in result.stderr
+    assert "fragment-present" not in result.stdout, "stdout must not contradict the refusal"
 
 
 def test_a_fragment_beside_a_preexisting_pending_entry_is_refused(tmp_path):
@@ -866,3 +867,12 @@ def test_a_fragment_beside_only_released_entries_passes(tmp_path):
     result = _run_probe(repo)
     assert result.returncode == 0, result.stderr
     assert "fragment-present" in result.stdout
+
+
+def test_a_fragment_alone_still_prints_fragment_present(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x"), "add fragment")
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "fragment-present: .prawduct/changes/x.md added" in result.stdout
