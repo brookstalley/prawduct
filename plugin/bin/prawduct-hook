@@ -4457,8 +4457,12 @@ def _parse_evidence_counts(tokens: list[str]) -> tuple[dict | None, str]:
     return vals, ""
 
 
-def _scope_refusal_remedy(cause: str | None) -> str:
-    """The way forward for ONE refusal cause from ``lib.report_scope``.
+def _scope_refusal_remedy(
+    cause: str | None, *, site: str, extra: "list[str] | tuple[str, ...]" = ()
+) -> str:
+    """The way forward for ONE refusal cause from ``lib.report_scope``, as seen
+    from the SITE that refused: ``"ingest"`` (``--from-junit``) or
+    ``"fallback"`` (the undeclared run path, whose own arguments are ``extra``).
 
     Six conditions refuse an ingest and they do not share a remedy. The first
     version of this message was written for `partial` and printed for all of
@@ -4468,8 +4472,45 @@ def _scope_refusal_remedy(cause: str | None) -> str:
     advice it crowded out is the one `docs/test-report-contract.md` gives for
     that case. The generalisation is the standing one: a gate folding several
     conditions into one answer must not also decide how hard to fail.
+
+    **And they do not share a remedy across sites (#848 R-2).** At ingest the
+    recorder is a real way forward: it runs a fresh suite instead of reading
+    the report in hand. On the fallback it is the command that just refused —
+    the repo's own producer wrote the record beside the recorder's temp report,
+    so running it again reads the same producer and refuses the same way. There
+    the remedies are the ones that change what the next run reads: drop the
+    arguments that narrowed it (named, when there were any), fix the producer,
+    or declare ``test_command`` so the declaration defines the suite and the
+    record is not consulted. The record itself is the recorder's temp file
+    there, so "do not delete it" is advice about a file the operator never sees
+    and is not given.
     """
     rs = _report_scope()
+    if site == "fallback":
+        declare = (
+            "declare `test_command` in .prawduct/project-state.yaml, so the "
+            "declaration defines the suite and this record is not consulted"
+        )
+        if cause == rs.CAUSE_NARROWED:
+            if extra:
+                return (
+                    "  The reason above says what narrowed the run. Where it was the "
+                    f"arguments you passed ({' '.join(extra)}), run `prawduct-hook "
+                    "test-evidence record` again without them, so the fallback runs "
+                    f"the whole suite. Otherwise, fix what narrowed it, or {declare}."
+                )
+            return (
+                "  You passed no arguments, so the narrowing came from the runner's "
+                "own configuration or from a run that did not finish (the reason "
+                "above says which). Fix that before recording again, or "
+                f"{declare}."
+            )
+        return (
+            "  The record was written by this repo's own producer beside the report "
+            "this run just wrote, so recording again would read the same producer's "
+            "record and refuse the same way. Fix the producer (its contract is "
+            f"`docs/test-report-contract.md`), or {declare}."
+        )
     recorder = "    prawduct-hook test-evidence record\n"
     if cause == rs.CAUSE_NARROWED:
         return (
@@ -4495,6 +4536,79 @@ def _scope_refusal_remedy(cause: str | None) -> str:
         + "  Deleting the record to get past this is not a way forward: it "
         "makes the run's scope unknown rather than known-good."
     )
+
+
+def _void_test_evidence(evidence_path: Path, attempt: str) -> dict:
+    """Mark the standing record void before a record attempt runs anything (#679).
+
+    ``record`` rewrites ``.test-evidence.json`` only when a record LANDS. Every
+    refusal returns before that write, and a killed or hung run never reaches
+    one, so without this a previous green went on vouching for a tree whose
+    latest run failed or never finished. Written AHEAD of the run rather than
+    on each exit-2 path, because that one site covers every refusal and the
+    killed run too, which no refusal path reaches. A record that lands replaces
+    the void whole; anything else leaves it standing.
+
+    **The shape is one every reader already refuses.** Every freshness reader
+    (``test-status``, the Stop gate, ``/prawduct:pr``, ``/prawduct:critic``,
+    release readiness) goes through ``gates.run_refusal``, and that refuses a
+    record carrying a non-empty ``degraded`` — so the void is written there,
+    and no reader had to learn a new key. Three more edits make it hold:
+
+    * ``timestamp`` is now, so the void is the newest candidate in
+      ``gates._store_run_vouching``'s sort and a green ``test-run`` fact for this
+      tree from another worktree cannot answer over it;
+    * ``evidence_tree`` is removed, so the void claims no tree, and a refused run
+      with no tree denies there ("cannot tell" counts as met when refused);
+    * ``void`` names the attempt. No gate reads it; the restamp does, and refuses
+      a void record rather than carrying its counts onto a fresh tree.
+
+    The counts, command and every other field are kept, so the record still
+    passes the schema and says which run its counts came from. No record, or
+    one that cannot be read as a JSON object, is left alone: both already read
+    not current. Returns ``{"status": "voided" | "absent" | "unreadable" |
+    "error", "reason"?}``; the caller proceeds either way, because a void that
+    could not be written leaves the reader exactly where it was before.
+    """
+    if not evidence_path.is_file():
+        return {"status": "absent"}
+    try:
+        prior = json.loads(evidence_path.read_text())
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        return {"status": "unreadable", "reason": str(exc)}
+    if not isinstance(prior, dict):
+        return {"status": "unreadable", "reason": "not a JSON object"}
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    already_void = isinstance(prior.get("void"), str) and bool(prior["void"].strip())
+    counts_from = prior.get("void_counts_from") if already_void else prior.get("timestamp")
+    if not isinstance(counts_from, str) or not counts_from:
+        counts_from = "(unknown)"
+    void = f"record attempt at {now} ({attempt}) did not complete"
+    degraded = (
+        f"{void}, so the counts here, from the run recorded at {counts_from}, are "
+        "not the latest word on this tree. Run the suite through the recorder, or "
+        "ingest the report of a whole-suite run, and let that record land"
+    )
+    prior_degraded = prior.get("degraded")
+    if not already_void and isinstance(prior_degraded, str) and prior_degraded.strip():
+        degraded += f"; that run was already reported degraded: {prior_degraded.strip()}"
+    voided = {k: v for k, v in prior.items() if k != "evidence_tree"}
+    voided.update(
+        timestamp=now, void=void, void_counts_from=counts_from, degraded=degraded
+    )
+    tmp = evidence_path.with_name(evidence_path.name + ".tmp")
+    try:
+        tmp.write_text(json.dumps(voided, indent=2, sort_keys=True) + "\n")
+        os.replace(tmp, evidence_path)
+    except OSError as exc:
+        print(
+            f"warning: could not mark the standing test evidence void before this "
+            f"record attempt ({exc}); if the attempt does not land, the previous "
+            "record keeps vouching.",
+            file=sys.stderr,
+        )
+        return {"status": "error", "reason": str(exc)}
+    return {"status": "voided"}
 
 
 #: How many failing ids a record keeps. The names exist so a reader can go
@@ -5135,12 +5249,27 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``) — with two
-    carve-outs, both refused with exit 2 and nothing written. An
+    carve-outs, both refused with exit 2 and no counts recorded. An
     interpreter-fallback run with zero passes and nonzero failures/errors
     (skips may accompany — the incident that taught this had 35) is a
     launch-environment error (see below). And a command that exited nonzero
     while its own report shows no failing test is a run the report does not
     account for, so its counts would record a failed run as green.
+
+    **A refusal does not leave the previous record vouching (#679).** Once the
+    arguments are validated and before a suite runs or a report is read, the
+    standing record is marked void (``_void_test_evidence``): it keeps its
+    counts, loses its tree, and carries ``degraded`` and ``void``, so every
+    reader reads it stale. A record that lands replaces it whole; every
+    refusal from there on, and a run killed before it records, leaves the void
+    standing. Usage errors refuse before that point and leave a good record
+    alone. ``--from-counts`` and ``--no-rerun`` run nothing and do not void,
+    and ``--no-rerun`` refuses a void record rather than restamp its counts.
+
+    **An ingest stamps a tree only when the report is at least as new as every
+    file the suite reads (#848).** A report proves a run happened, never which
+    tree it met; ``evidence.report_predates_tree`` owns the question, and a
+    report it faults records as session-fresh only, with no ``test-run`` fact.
 
     Gate-soundness ch.2 — two optional ``project-state.yaml`` knobs remove the
     one-repo-shape assumption that forced products (scriob) into wrapper
@@ -5511,6 +5640,23 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             return 2
         rerun_templates = templates
 
+    # Write-ahead void (#679): every argument and declaration check is behind
+    # us, so a refusal from here on is about the run or the report, not the
+    # invocation — and from here on the standing record must stop vouching
+    # until a new one lands. Usage errors above leave a good record untouched.
+    # A restamp and --from-counts run nothing and read no report, so they do
+    # not void. A scratch worktree writes no per-worktree record (DG2), so
+    # there is nothing of its own to void.
+    if (will_run or from_junits) and scratch_kind is None:
+        _void_test_evidence(
+            evidence_path,
+            "--from-junit " + " ".join(from_junits)
+            if from_junits
+            else " ; ".join(declared_commands)
+            if declared_commands
+            else " ".join(["python3 -m pytest -q", *extra]).strip(),
+        )
+
     roots: list = []  # parsed JUnit roots (run or --from-junit); empty for counts/restamp
     failed_ids: list[str] = []  # failing leaf ids, report order; empty when none were visible
     flaky: list[dict] = []  # tests that passed only after failing (`_flaky_entry`)
@@ -5547,6 +5693,20 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             print(
                 f"error: existing evidence is missing valid counts ({exc}); run a "
                 "full record.",
+                file=sys.stderr,
+            )
+            return 2
+        # A void record (#679) holds counts from a run a later attempt failed
+        # to supersede. Restamping it would put those counts on a fresh
+        # timestamp and the current tree, which is the void laundered.
+        prior_void = prior.get("void")
+        if isinstance(prior_void, str) and prior_void.strip():
+            print(
+                f"error: --no-rerun/--restamp cannot reuse this record: the last "
+                f"{prior_void.strip()}, so its counts are not the latest word on "
+                "this tree. Run the suite, or ingest a report you already have:\n"
+                "    prawduct-hook test-evidence record\n"
+                "    prawduct-hook test-evidence record --from-junit <report.xml>",
                 file=sys.stderr,
             )
             return 2
@@ -5643,7 +5803,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             if not verdict.ok:
                 print(
                     f"error: refusing to record {from_junit} as suite evidence "
-                    f"— {verdict.reason}.\n" + _scope_refusal_remedy(verdict.cause),
+                    f"— {verdict.reason}.\n"
+                    + _scope_refusal_remedy(verdict.cause, site="ingest"),
                     file=sys.stderr,
                 )
                 return 2
@@ -5738,7 +5899,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                         print(
                             "error: refusing to record this run as suite "
                             f"evidence — {verdict.reason}.\n"
-                            + _scope_refusal_remedy(verdict.cause),
+                            + _scope_refusal_remedy(
+                                verdict.cause, site="fallback", extra=extra
+                            ),
                             file=sys.stderr,
                         )
                         return 2
@@ -5757,6 +5920,17 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 # producer-wired repo writes one next to this temp file too;
                 # leaving it behind would litter the temp directory once per
                 # recorded run. Best-effort, like the report's own unlink.
+                #
+                # On the DECLARED path it is deleted unread, and that is the
+                # design, not a verdict thrown away (#848 R-1/R-6): the
+                # declaration defines the suite, so a deliberately narrow
+                # declared command is taken at its word and extra args are
+                # refused above; and completeness there is owned by the
+                # exit-status check below, which refuses a command that
+                # exited nonzero while its own report shows no failure (a run
+                # cut short with failures recorded stays red, never a false
+                # green). Only the undeclared fallback, which no declaration
+                # stands behind, consults the record (above).
                 for leftover in (junit, junit_scope):
                     try:
                         leftover.unlink()
@@ -5993,7 +6167,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # after writing it, or something outside the tests failed the command.
         # Recording those counts would put a green on a red run, and `failed`
         # is what `tests_are_current` and every gate after it read. Refused
-        # rather than marked `degraded`, which only a coordinator asserts.
+        # rather than recorded as `degraded`, which a coordinator asserts about
+        # a run's coverage (the write-ahead void also carries it, #679 — the
+        # standing record is void by now, so this refusal leaves it stale).
         # Judged per command, because another command's real failure says
         # nothing about why this one exited nonzero. Live runs only: one root
         # per command, in order. Ingest has no exit status to disagree with.
@@ -6028,8 +6204,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # by `affects_test_outcome` path rather than raw equality, because every run
     # writes caches and reports of its own — says the tree captured before the
     # first command still holds at the end. "Cannot tell" (a failed capture or
-    # diff) omits it too. That never marks the record `degraded` (a coordinator's assertion,
-    # never derived) and never makes it stale this session; it only withholds the
+    # diff) omits it too. That never marks the record `degraded` (a coordinator's assertion
+    # about coverage, or the write-ahead void's about an attempt that did not land — never
+    # derived from the tree) and never makes it stale this session; it only withholds the
     # tree clause, so no later session or other worktree reuses the run for a
     # tree it may not have exercised. Ingest and restamp have no run to bracket.
     evidence_tree = None
@@ -6059,7 +6236,26 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     elif from_counts is None:
         from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
         _cap = _evidence_mod.capture_tree(project_dir)
-        if _cap.get("status") == "ok":
+        # An ingested report proves a run happened with the scope its record
+        # states; it never proved WHICH tree that run met (#848 R-4). The
+        # current tree is stamped — and so becomes a `test-run` fact every
+        # worktree reuses — only when nothing the suite reads is newer than
+        # the report. Otherwise the record stays current this session only.
+        # A restamp keeps its own posture (the guard above), unchanged.
+        predates = (
+            _evidence_mod.report_predates_tree(project_dir, from_junits)
+            if from_junits and _cap.get("status") == "ok"
+            else None
+        )
+        if predates:
+            print(
+                f"warning: {predates}, so this record vouches for no tree — it stays "
+                "current this session only. To let a later session reuse a run, "
+                "ingest the report of a run made after your last edit, or run the "
+                "suite through the recorder.",
+                file=sys.stderr,
+            )
+        elif _cap.get("status") == "ok":
             evidence_tree = _cap.get("tree")
 
     # Judge the flakes against the branch. A restamp carries entries judged

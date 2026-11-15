@@ -49,7 +49,9 @@ and the tests the pool selects out because runners have no git history or backlo
 
 A run that reaches no result leaves no report, and the recorder refuses to record it. So does a
 command that exits non-zero while its report shows no failing test, which is what a pool run
-reporting `population_mismatch` looks like.
+reporting `population_mismatch` looks like. A refused or interrupted record does not leave the
+previous green in place: the recorder marks the standing record void before it runs anything, so
+`test-status` reads stale until a record lands.
 
 Recording needs `testament` and node installed: any command that cannot start fails the whole
 record. On a machine without testament, run the two suites yourself and ingest both reports in

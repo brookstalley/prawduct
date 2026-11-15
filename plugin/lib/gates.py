@@ -131,10 +131,14 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # stating, because the next field will not have one. That rule exists for
     # the removed content-hash and ``git_sha`` mechanisms, which DERIVED
     # staleness from the tree and so produced false positives nobody asked for.
-    # This field derives nothing: it is present only because a coordinator
-    # wrote it, so it cannot fire on its own and there is no false-stale class
-    # for it to reintroduce. The only way to a wrong stale here is to assert a
-    # degradation that did not happen.
+    # This field derives nothing from the tree. It is present only because a
+    # coordinator wrote it, or because ``test-evidence record`` wrote it ahead
+    # of a record attempt that then did not land (the write-ahead void, #679:
+    # an observation of the recorder's own run, kept with the earlier counts).
+    # Neither fires on the tree's say-so, so there is no false-stale class for
+    # it to reintroduce. The only ways to a wrong stale here are to assert a
+    # degradation that did not happen, or to begin a record attempt and abandon
+    # it, which one record that lands clears.
     "degraded": (str,),
 }
 

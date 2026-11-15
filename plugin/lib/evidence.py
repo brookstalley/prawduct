@@ -1506,6 +1506,129 @@ def capture_tree(project_dir: Path) -> dict:
                 pass  # already absent — git may never have created it
 
 
+def _split_z(out: str) -> list[str]:
+    return [p for p in out.split("\0") if p]
+
+
+def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str | None":
+    """Why the working tree may hold content these reports never ran against,
+    or ``None`` when every report is at least as new as every file the suite
+    reads (#848 R-4).
+
+    ``--from-junit`` stamps the CURRENT tree onto the run it ingests, and that
+    stamp is what lets a later session or another worktree reuse the run. A
+    report's existence licenses "a run happened, with the scope its record
+    states"; it never licensed "against this tree", so the ingest stamps only
+    what this check cannot fault. Asked of mtimes — the reader's own
+    observation — never of the report's ``at`` or ``timestamp``, which the
+    producer wrote.
+
+    Three questions, each over the paths ``coverage_algebra.affects_test_outcome``
+    keeps (with the repo's ``suite_coupled_prefixes``), the predicate the tree
+    clause itself judges by:
+
+    1. **Edits.** A tracked or untracked (not ignored) file newer than the oldest
+       report.
+    2. **Uncommitted deletions.** A file in the index but gone from disk, or
+       deleted relative to ``HEAD``. A deleted file has no mtime; the directory
+       it left does, so each is dated by its nearest existing ancestor.
+    3. **Deletions that moved with ``HEAD``.** A commit, merge, checkout or
+       reset after the report takes a file out of both of the above. Where
+       ``HEAD`` was when the report was written (its reflog) is diffed against
+       ``HEAD`` now, and each path that left is dated the same way — so a
+       deletion made before the run and committed after it does not count.
+
+    **Directories are consulted only for deletions, deliberately.** A bound over
+    every ancestor directory reads every entry created beside a test-affecting
+    file as a change to it: the producer's scope record is replaced in
+    ``.prawduct/`` after the JUnit writer runs, and ``.prawduct/`` holds
+    ``project-state.yaml``, so that bound withholds the stamp on every ingest of
+    the conventional report path — the double run the stamp exists to save.
+
+    **Blind spots, both toward a stamp:** a tool that preserves old mtimes
+    (``rsync -a``, archive extraction) makes new content look old; and an
+    untracked file removed after the report is in no listing to miss. A
+    filesystem whose mtime resolution is coarse can tie an edit with the report
+    it follows, and a tie stamps. Every failure to ask (git, a stat) returns a
+    reason, which withholds the stamp: the safe direction costs a later re-run,
+    never a false green.
+    """
+    from . import core, coverage_algebra  # noqa: PLC0415 — lazy: leaf modules, ingest-only
+
+    if not reports:
+        return None
+    try:
+        report_ns = min(Path(r).stat().st_mtime_ns for r in reports)
+    except OSError as exc:
+        return f"a report's modification time could not be read ({exc})"
+    root = Path(project_dir)
+    prefixes = core.suite_coupled_prefixes(gitstate.get_prawduct_dir(project_dir))
+
+    def coupled(paths: "list[str]") -> "list[str]":
+        return coverage_algebra.suite_coupled_files(sorted(set(paths)), prefixes)
+
+    rc, out, err = run_git(
+        project_dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard",
+        strip=False,
+    )
+    if rc != 0:
+        return f"the files the suite reads could not be listed ({err or 'git ls-files failed'})"
+    gone: list[str] = []
+    for rel in coupled(_split_z(out)):
+        try:
+            mtime = (root / rel).lstat().st_mtime_ns
+        except FileNotFoundError:
+            gone.append(rel)
+            continue
+        except OSError as exc:
+            return f"{rel} could not be read ({exc})"
+        if mtime > report_ns:
+            return f"{rel}, a file the suite reads, changed after this report was written"
+
+    rc, head, _ = run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+    head = head if rc == 0 else ""
+    if head:
+        rc, out, err = run_git(
+            project_dir, "diff", "-z", "--no-renames", "--diff-filter=D", "--name-only",
+            "HEAD", strip=False,
+        )
+        if rc != 0:
+            return f"deletions since HEAD could not be listed ({err or 'git diff failed'})"
+        gone += _split_z(out)
+        # One second earlier than the report, because the reflog keeps whole
+        # seconds: a HEAD move in the report's own second must count as after.
+        when = report_ns // 1_000_000_000 - 1
+        rc, then, err = run_git(
+            project_dir, "rev-parse", "--verify", "-q", f"HEAD@{{@{when} +0000}}"
+        )
+        if rc != 0 or not then:
+            return (
+                "where HEAD stood when this report was written is not in the reflog "
+                f"({err or 'no entry'}), so a file removed by a later commit or "
+                "checkout cannot be ruled out"
+            )
+        if then != head:
+            rc, out, err = run_git(
+                project_dir, "diff", "-z", "--no-renames", "--diff-filter=D",
+                "--name-only", then, head, strip=False,
+            )
+            if rc != 0:
+                return f"what HEAD's move removed could not be listed ({err or 'git diff failed'})"
+            gone += _split_z(out)
+
+    for rel in coupled(gone):
+        parent = (root / rel).parent
+        while not parent.exists() and parent != root:
+            parent = parent.parent
+        try:
+            mtime = parent.stat().st_mtime_ns
+        except OSError as exc:
+            return f"the directory {rel} was deleted from could not be read ({exc})"
+        if mtime > report_ns:
+            return f"{rel}, a file the suite reads, was deleted after this report was written"
+    return None
+
+
 def tree_diff(
     project_dir: Path, tree_a: str, tree_b: str, paths: "list[str] | None" = None
 ) -> "list[str] | None":
