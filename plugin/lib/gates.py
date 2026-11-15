@@ -40,6 +40,7 @@ mirror), plus the stdlib.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import datetime, timezone
 import re
 import shlex
@@ -52,6 +53,7 @@ from . import (
     coverage_algebra,
     evidence,
     gitstate,
+    host,
     learnings_files,
     plan_status,
     standing_block,
@@ -1273,7 +1275,9 @@ def _session_untracked_paths(
 
 
 def session_work_span(
-    project_dir: Path, status_output: "str | None" = None
+    project_dir: Path,
+    status_output: "str | None" = None,
+    transcript_path: "str | None" = None,
 ) -> dict:
     """What this session CHANGED, committed work included.
 
@@ -1283,9 +1287,12 @@ def session_work_span(
     at session start) against the WORKING TREE, so a session that commits its
     work is still holding that work — which the porcelain span, empty the
     moment you commit, is not. Paths that differ only because a pull, merge,
-    branch switch or reset brought in history the session did not write are
-    dropped (:func:`_session_authored_paths`), so the span holds what the
-    session AUTHORED, never more than the base-tree diff. ``judgeable`` is
+    branch switch or reset brought in history the session did not write, or
+    because another session in the same checkout committed while this one had
+    no tool call running, are dropped (:func:`_session_authored_paths`; the
+    second needs ``transcript_path``, the Stop payload's, and without it those
+    commits count), so the span holds what the session AUTHORED, never more
+    than the base-tree diff. ``judgeable`` is
     ``coverage_algebra.judgeable_files`` over the non-metadata paths: the one
     judgeability predicate, never a second copy of it.
 
@@ -1300,8 +1307,11 @@ def session_work_span(
 
     **Cost bound: one ``git status`` and one ``git diff`` when nothing changed,
     one ``rev-parse`` more when HEAD's tree has not moved, and a reflog read,
-    one batched ``diff-tree`` and one ``git diff`` beyond that only when it has;
-    never a temp-index capture.** This runs on every Stop, which is every turn.
+    one ``log``, one batched ``diff-tree`` and one ``git diff`` beyond that only
+    when it has; never a temp-index capture.** A ``transcript_path`` adds, when
+    HEAD's tree has moved, one listing of the transcript folder, and a read of
+    this session's transcript only when another session wrote beside it.
+    This runs on every Stop, which is every turn.
     ``evidence.capture_tree`` — which writes an index file and walks the whole
     tree — is deliberately not used: it belongs to the review data plane, whose
     callers run once per review rather than once per turn. ``status_output`` is
@@ -1345,7 +1355,9 @@ def session_work_span(
     changed += [p for p in untracked if p not in changed]
     changed = [f for f in changed if not gitstate._is_metadata_path(f)]
     authored = (
-        _session_authored_paths(project_dir, prawduct_dir, base, untracked)
+        _session_authored_paths(
+            project_dir, prawduct_dir, base, untracked, transcript_path=transcript_path
+        )
         if changed
         else None
     )
@@ -1396,12 +1408,39 @@ def _session_started_epoch(prawduct_dir: Path) -> "tuple[str, int] | None":
     return stamp, int(when.timestamp())
 
 
+def _made_by_another_session(
+    transcript_path: "str | None", started_at: int
+) -> "Callable[[int], bool] | None":
+    """A test of whether a HEAD move or commit at a given epoch second was made
+    by another session, or ``None`` when nothing can be told.
+
+    Two pieces of positive evidence are both required. Another session's
+    transcript was written in this checkout since this session started
+    (``host.other_session_wrote_since``), and this session's own transcript
+    was read in full (``host.session_tool_activity``). The test then answers
+    ``True`` only for a moment that transcript covers and at which this
+    session had no tool call running. git runs in this session only from a
+    tool call, and a call that can outlast its result (a background command or
+    agent) stays open, so a moment between calls is one this session did not
+    act in. Everything short of that keeps the commit this session's.
+    """
+    if not transcript_path:
+        return None
+    if not host.other_session_wrote_since(transcript_path, started_at):
+        return None
+    activity = host.session_tool_activity(transcript_path)
+    if activity is None:
+        return None
+    return lambda when: activity.acting_at(when) is False
+
+
 def _session_authored_paths(
     project_dir: Path,
     prawduct_dir: Path,
     base: str,
     untracked: "list[str]",
     why: "list[str] | None" = None,
+    transcript_path: "str | None" = None,
 ) -> "set[str] | None":
     """The paths this session wrote, or ``None`` when that cannot be told —
     the caller then keeps the whole base-tree span.
@@ -1415,6 +1454,13 @@ def _session_authored_paths(
     making, even ones HEAD has since moved away from; the paths a merge it
     concluded by hand resolved; and whatever the working tree holds against
     HEAD now.
+
+    A second session working in the same checkout moves the same HEAD, so its
+    commits look like this session's in both the reflog and the log. Given
+    ``transcript_path`` (the Stop payload's), a commit or merge is dropped
+    when :func:`_made_by_another_session` says it was made while another
+    session was writing beside this one and this session had no tool call
+    running. Without that evidence every commit above still counts.
 
     The walk is bounded by ``.session-start`` and must reach an entry older than
     it, or the reflog does not cover the session and cannot vouch for it. Every
@@ -1431,7 +1477,9 @@ def _session_authored_paths(
     Cost: one ``rev-parse`` when HEAD's tree has not moved since session start
     — the common case, which returns at once — else a reflog read, one ``log``,
     a batched ``diff-tree`` per kind of commit the session made, and one
-    ``diff``.
+    ``diff``. A ``transcript_path`` adds one listing of the transcript folder,
+    and a read of this session's transcript only when another session wrote
+    beside it.
     """
     def _cannot_tell(reason: str) -> None:
         if why is not None:
@@ -1452,8 +1500,10 @@ def _session_authored_paths(
     )
     if rc != 0:
         return _cannot_tell("the HEAD reflog could not be read")
-    commits: list[str] = []
-    merges: list[str] = []
+    # (sha, epoch) pairs: when HEAD moved, for a reflog entry; when it was
+    # committed, for a commit HEAD reaches.
+    commits: list[tuple[str, int]] = []
+    merges: list[tuple[str, int]] = []
     reached_start = False
     for line in out.splitlines():
         sha, selector, subject = (line.split("\0") + ["", ""])[:3]
@@ -1470,20 +1520,28 @@ def _session_authored_paths(
                 f"a HEAD reflog subject this reader does not recognise ({shown!r})"
             )
         if kind == "authored":
-            commits.append(sha)
+            commits.append((sha, int(moved_at.group(1))))
         elif kind == "merge-commit":
-            merges.append(sha)
+            merges.append((sha, int(moved_at.group(1))))
     if not reached_start:
         return _cannot_tell("the HEAD reflog does not reach back to the session start")
     authored: set[str] = set(untracked)
     rc, out, _err = evidence.run_git(
-        project_dir, "log", "--no-merges", f"--since={stamp}", "--format=", "--name-only",
-        "-z", "HEAD",
+        project_dir, "log", "--no-merges", f"--since={stamp}", "--format=%H %ct", "HEAD",
     )
     if rc != 0:
         return _cannot_tell("the session's commits could not be listed")
-    authored.update(p for p in out.split("\0") if p)
-    for shas, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
+    for line in out.splitlines():
+        sha, _, committed_at = line.partition(" ")
+        if not (gitstate.is_object_id(sha) and committed_at.isdigit()):
+            return _cannot_tell("the session's commits could not be listed")
+        commits.append((sha, int(committed_at)))
+    made_elsewhere = _made_by_another_session(transcript_path, started_at)
+    if made_elsewhere is not None:
+        commits = [c for c in commits if not made_elsewhere(c[1])]
+        merges = [m for m in merges if not made_elsewhere(m[1])]
+    for moves, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
+        shas = list(dict.fromkeys(sha for sha, _when in moves))
         if not shas:
             continue
         rc, out, _err = evidence.run_git(
@@ -2339,9 +2397,10 @@ def _merge_base_verdict(
     unwedging fallback (see :func:`session_review_verdict`). ``None`` when
     the merge base cannot be resolved (the primary verdict then stands).
 
-    ``key_fn`` is required, not defaulted: a ``None`` key sends ``_find_path``
-    down the pairwise free-edge branch, which :func:`_tree_key_fn` measures on
-    this repo's store at ~5.6k ``git diff`` subprocesses. It used to default,
+    ``key_fn`` is required, not defaulted: a ``None`` key makes the evidence
+    graph (``coverage_algebra._EvidenceGraph.steps_from``, which every coverage
+    search walks) probe free edges pairwise, which :func:`_tree_key_fn`
+    measures on this repo's store at ~5.6k ``git diff`` subprocesses. It used to default,
     unreachably — the sole caller passes it — and an unreachable default for a
     silent slow path is a hang waiting for its first caller.
 

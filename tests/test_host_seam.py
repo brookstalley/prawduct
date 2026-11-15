@@ -43,7 +43,10 @@ _SCANNED_DIRS = ("bin", "lib", "hooks")
 _HOST_VARIABLE = re.compile(r"""["']CLAUDE_[A-Z_]+["']""")
 # Payload keys read off a dict, by `.get` or subscript: every key the seam
 # itself reads, taken from the seam so a key it gains is scanned for too.
-_PAYLOAD_KEYS = (host._MESSAGE_KEY, host._TASKS_KEY, host._CWD_KEY, host._AGENT_TYPE_KEY)
+_PAYLOAD_KEYS = (
+    host._MESSAGE_KEY, host._TASKS_KEY, host._CWD_KEY, host._AGENT_TYPE_KEY,
+    host._TRANSCRIPT_KEY,
+)
 _PAYLOAD_READ = re.compile(
     r"""(\.get\(\s*|\[\s*)["'](""" + "|".join(map(re.escape, _PAYLOAD_KEYS)) + r""")["']"""
 )
@@ -196,6 +199,105 @@ class TestReadEvent:
     def test_an_unknown_event_is_a_caller_bug(self):
         with pytest.raises(ValueError):
             host.read_event("pre_tool_use", {})
+
+    def test_the_transcript_path_is_kept_as_sent_and_garbage_is_none(self):
+        event = host.read_event("stop", {"transcript_path": " /t/s.jsonl"})
+        assert event.transcript_path == " /t/s.jsonl"
+        assert host.read_event("stop", {"transcript_path": 3}).transcript_path is None
+        assert host.read_event("stop", {}).transcript_path is None
+
+
+def _record(kind: str, when: str, *blocks: dict) -> str:
+    """One transcript line in the shape Claude Code writes: these keys and
+    nesting were read off a real transcript (2026-11); the fields the reader
+    ignores are left out."""
+    return json.dumps({
+        "type": kind, "timestamp": when, "isSidechain": False,
+        "message": {"role": kind, "content": list(blocks)},
+    }) + "\n"
+
+
+class TestTheSessionRecord:
+    """`host.session_tool_activity` and `host.other_session_wrote_since`: the
+    reads #1071's span narrowing stands on."""
+
+    def test_a_call_runs_from_its_use_to_its_result(self, tmp_path):
+        transcript = tmp_path / "s.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "user", "timestamp": "2026-11-15T10:00:00.000Z",
+                        "message": {"role": "user", "content": "hi"}}) + "\n"
+            + _record("assistant", "2026-11-15T10:01:00.500Z",
+                      {"type": "tool_use", "id": "a", "name": "Bash", "input": {}})
+            + _record("user", "2026-11-15T10:01:30.000Z",
+                      {"type": "tool_result", "tool_use_id": "a", "content": "ok"})
+            # A record with no timestamp (the host's request blobs) is skipped.
+            + json.dumps({"type": "api-request-blob", "message": {"content": [
+                {"type": "tool_use", "id": "z", "name": "Bash", "input": {}}]}}) + "\n"
+        )
+        activity = host.session_tool_activity(str(transcript))
+        start = 1794736860.5  # 2026-11-15T10:01:00.5Z
+        assert activity is not None
+        assert activity.windows == ((start, start + 29.5),)
+        assert activity.covered_from == start - 60.5
+        assert activity.acting_at(start + 10) is True
+        assert activity.acting_at(start + 29.5 + host.ACTIVITY_SLACK_SECONDS) is True
+        assert activity.acting_at(start + 40) is False
+        assert activity.acting_at(start - 600) is None
+
+    def test_a_background_call_never_closes(self, tmp_path):
+        transcript = tmp_path / "s.jsonl"
+        transcript.write_text(
+            _record("assistant", "2026-11-15T10:01:00Z", {
+                "type": "tool_use", "id": "a", "name": "Agent",
+                "input": {"run_in_background": True}})
+            + _record("user", "2026-11-15T10:01:01Z",
+                      {"type": "tool_result", "tool_use_id": "a", "content": "launched"})
+        )
+        activity = host.session_tool_activity(str(transcript))
+        assert activity.acting_at(1794736860 + 86400) is True
+
+    def test_nothing_timestamped_or_nothing_there_is_none(self, tmp_path):
+        transcript = tmp_path / "s.jsonl"
+        transcript.write_text('{"type": "user"}\n')
+        assert host.session_tool_activity(str(transcript)) is None
+        assert host.session_tool_activity(str(tmp_path / "missing.jsonl")) is None
+
+    def test_a_transcript_it_does_not_understand_is_none(self, tmp_path):
+        """Read as idle throughout, an unrecognised format would disown the
+        session's own commits, so it says nothing instead."""
+        transcript = tmp_path / "s.jsonl"
+        prompt = json.dumps({"type": "user", "timestamp": "2026-11-15T10:00:00Z",
+                             "message": {"role": "user", "content": "hi"}}) + "\n"
+        transcript.write_text(prompt)
+        assert host.session_tool_activity(str(transcript)) is None  # no call at all
+        transcript.write_text(
+            prompt + _record("user", "2026-11-15T10:01:01Z",
+                             {"type": "tool_result", "tool_use_id": "a", "content": "ok"})
+        )
+        assert host.session_tool_activity(str(transcript)) is None  # result, no use
+
+    def test_a_sibling_written_since_counts_and_older_or_nested_ones_do_not(
+        self, tmp_path
+    ):
+        ours = tmp_path / "ours.jsonl"
+        ours.write_text("")
+        (tmp_path / "old.jsonl").write_text("")
+        os.utime(tmp_path / "old.jsonl", (1000, 1000))
+        (tmp_path / "ours").mkdir()
+        (tmp_path / "ours" / "agent.jsonl").write_text("")  # a subagent's
+        os.utime(ours, (5000, 5000))
+        assert host.other_session_wrote_since(str(ours), 2000) is False
+        (tmp_path / "theirs.jsonl").write_text("")
+        os.utime(tmp_path / "theirs.jsonl", (3000, 3000))
+        assert host.other_session_wrote_since(str(ours), 2000) is True
+        # Within the slack of the start is the boundary, not a second session.
+        assert host.other_session_wrote_since(
+            str(ours), 3000 - host.ACTIVITY_SLACK_SECONDS
+        ) is False
+
+    def test_no_own_transcript_is_no_evidence(self, tmp_path):
+        (tmp_path / "theirs.jsonl").write_text("")
+        assert host.other_session_wrote_since(str(tmp_path / "ours.jsonl"), 0) is None
 
 
 class TestGatesReadTheEvent:
