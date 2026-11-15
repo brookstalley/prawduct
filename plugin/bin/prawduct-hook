@@ -2216,7 +2216,13 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     `guard-refusal` fact, which no gate reads); exit 4 = round budget
     exhausted (census on stdout); exit 6 = verify-resolutions refused because
     the evidence store is unreadable or holds newer-schema records — a store or
-    plugin problem that no demoted review can repair; exit 1 = any other
+    plugin problem that no demoted review can repair; exit 7 =
+    verify-resolutions refused because saved test evidence exists and is stale,
+    red or degraded (`test-status`'s verdict, on stdout) — checked before
+    anything is derived, so no manifest and no marker; run the suite and
+    re-dispatch the same mode (`--force` dispatches anyway; one inert
+    `guard-refusal` fact is appended; absent evidence does not refuse);
+    exit 1 = any other
     dispatch failure (reason on stderr). The scheme these cite is prawduct's own API contract — its
     Error Model section, in the framework repo rather than in yours.
 
@@ -2397,6 +2403,24 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         for note in result.get("notes") or []:
             print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         return 3
+    if result["status"] == "precondition-failed":
+        # Exit 7 (#724). Not 1: the skill's exit-1 row on verify-resolutions
+        # DEMOTES, and a wider mode would review the same tree over the same
+        # stale suite. Not 3: there IS something to review. Not 5: withdrawn
+        # with #167 and left unclaimed (api-contract.md, Error Model). Stdout,
+        # because like a 3 it is a normal outcome the caller acts on.
+        print(
+            "PRAWDUCT: verify-resolutions refused — the saved test evidence does "
+            f"not vouch for this tree: {result['reason']}.\n"
+            "  A verify pass rates only BLOCKING findings, so the reviewer would "
+            "spend the round reporting this. Run the declared suite and record it "
+            "(`prawduct-hook test-status` exits 0 once it is current), then "
+            "re-dispatch `/prawduct:critic verify-resolutions` — the same mode, "
+            "never a demotion.\n"
+            "  To review anyway (only if the user asks): "
+            "`/prawduct:critic verify-resolutions --force`."
+        )
+        return 7
     if result["status"] != "ok":
         # Notes first, then the reason: a failed dispatch still learned things
         # about the tree, and the reason is what the reader acts on. Most error

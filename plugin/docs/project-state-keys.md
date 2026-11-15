@@ -378,7 +378,7 @@ refuses the same way instead of crashing. Same rule for `coverage_required`.
 ## review_round_budget (on by default, 6)
 
 The most full review rounds one body of work may buy before `critic-begin` refuses another (exit
-4). `verify-resolutions` is never refused and never counted — it is how a BLOCKING finding clears,
+4). `verify-resolutions` is never refused by the budget and never counted — it is how a BLOCKING finding clears,
 so a ceiling that ate it would strand findings with no command that resolves them.
 
 The unit is the build-plan SCOPE, not the branch: a branch may carry two scopes (one would charge
