@@ -112,7 +112,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from . import buildplan_refs, coverage_algebra, gitstate, plan_status, risk, work_unit
 from .coverage import _resolve_base_branch
@@ -331,7 +331,12 @@ def infer_mode(
         # now, not one to defer to.
         return None if clean_tree and kind == OWED_BOUNDARY else why
 
-    if _rule_verify_resolutions_fires(prawduct_dir, project_dir, progress):
+    # Asked once: rules 1 and 1b judge the same record, and deriving it re-reads
+    # the findings cache, walks history (`verify_anchor`) and may read the fact
+    # store, none of which changes between the two rules.
+    prior_record = _verify_prior_record(prawduct_dir, project_dir, progress)
+
+    if _rule_verify_resolutions_fires(prawduct_dir, project_dir, progress, prior_record):
         ext = _extension()
         if ext:
             return MODE_DEFERRED, f"extension-deferred (fix in progress): {ext}"
@@ -342,7 +347,9 @@ def infer_mode(
             "subset of prior files_reviewed (builder is mid-fix)"
         )
 
-    postfix_reason = _rule_postfix_fix_fires(prawduct_dir, project_dir, progress)
+    postfix_reason = _rule_postfix_fix_fires(
+        prawduct_dir, project_dir, progress, prior_record
+    )
     if postfix_reason:
         return "verify-resolutions", (
             f"rule-1b verify-resolutions (post-cumulative fix): {postfix_reason}"
@@ -994,13 +1001,21 @@ def _verify_prior_record(
     return data
 
 
+_UNSET: Any = object()  # "no precomputed prior record": derive it
+
+
 def _rule_verify_resolutions_fires(
-    prawduct_dir: Path, project_dir: Path, progress=None
+    prawduct_dir: Path, project_dir: Path, progress=None, prior_record: Any = _UNSET
 ) -> bool:
     """Rule 1: prior findings + anchor resolves + diff ⊆ prior scope. The prior
     findings are :func:`_verify_prior_record`'s — the review the dispatch would
-    anchor to, asked read-only."""
-    data = _verify_prior_record(prawduct_dir, project_dir, progress)
+    anchor to, asked read-only; ``infer_mode`` derives it once and passes it in
+    as ``prior_record``."""
+    data = (
+        _verify_prior_record(prawduct_dir, project_dir, progress)
+        if prior_record is _UNSET
+        else prior_record
+    )
     if data is None:
         return False
 
@@ -1080,7 +1095,9 @@ def _cumulative_anchor(data: dict) -> str | None:
     return None
 
 
-def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path, progress=None) -> str:
+def _rule_postfix_fix_fires(
+    prawduct_dir: Path, project_dir: Path, progress=None, prior_record: Any = _UNSET
+) -> str:
     """Rule 1b (CRT-4J8W): a committed fix after a cumulative review.
 
     Fires when the working tree is clean, the prior record
@@ -1108,7 +1125,11 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path, progress=None
         return ""
     # The review the verify dispatch would anchor to, as rule 1 reads it — not
     # whatever the slot last named on another branch.
-    data = _verify_prior_record(prawduct_dir, project_dir, progress)
+    data = (
+        _verify_prior_record(prawduct_dir, project_dir, progress)
+        if prior_record is _UNSET
+        else prior_record
+    )
     if data is None:
         return ""
     anchor = _cumulative_anchor(data)

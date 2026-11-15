@@ -2929,3 +2929,37 @@ def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
     assert not misread, "\n".join(misread)
     assert not lost, "\n".join(lost)
     assert not noisy, "\n".join(noisy)
+
+
+class TestPriorRecordDerivedOncePerInference:
+    """Rules 1 and 1b judge the same prior record, so one ``infer_mode`` derives
+    it once: ``verify_anchor`` walks history and may read the fact store."""
+
+    @pytest.mark.parametrize("answer_fact", [None, {"fact_id": "f1"}])
+    def test_verify_anchor_runs_once_per_infer_mode(
+        self, tmp_path: Path, monkeypatch, answer_fact
+    ):
+        from lib import critic_consolidate  # noqa: PLC0415
+
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "x = 1\n")
+        sha = _commit(tmp_path, "base")
+        prawduct = tmp_path / ".prawduct"
+        _write_findings(
+            prawduct, mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=sha, files_reviewed=["src/app.py"], severity="warning",
+        )
+        path = prawduct / ".critic-findings.json"
+        record = json.loads(path.read_text())
+        record["fact_id"] = "f1"
+        path.write_text(json.dumps(record))
+
+        calls: list[int] = []
+
+        def counting(*_a, **_k):
+            calls.append(1)
+            return {"fact": answer_fact, "rederived": False}
+
+        monkeypatch.setattr(critic_consolidate, "verify_anchor", counting)
+        infer_mode(tmp_path, None)
+        assert len(calls) == 1, f"verify_anchor ran {len(calls)} times in one infer_mode"
