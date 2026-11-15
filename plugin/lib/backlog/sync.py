@@ -341,18 +341,9 @@ def absorb_issue(
     """
     stamp = (now or datetime.now(timezone.utc)).isoformat()
 
-    # Tagged so a caller can tell "there is no mirror here" from "the mirror is
-    # broken" without matching on message text. The first is silent at the write
-    # site — every read already reports it, with the command that fixes it — and
-    # the second is worth saying, because a store that answers reads and refuses
-    # writes is the surprising case.
-    absent = cache.cache_path(project_dir)
-    if absent is None or not absent.exists():
-        return error(
-            "unavailable",
-            "the backlog cache has not been built yet; run `prawduct-hook backlog sync`",
-            details={"mirror": MIRROR_ABSENT},
-        )
+    absent = _mirror_absent(project_dir)
+    if absent is not None:
+        return absent
 
     try:
         rows, out_of_scope = _rows_from_issues([issue], owner, repo)
@@ -363,6 +354,65 @@ def absorb_issue(
         )
         return error("unavailable", "the backlog cache could not decode the written issue")
 
+    conn = _open_scoped_store(project_dir, owner, repo)
+    if isinstance(conn, dict):
+        return conn
+    try:
+        return cache.absorb_rows(conn, rows, fetched_at=stamp, evict=out_of_scope)
+    finally:
+        conn.close()
+
+
+def evict_gone(project_dir: Path, *, owner: str, repo: str, number: int) -> dict:
+    """Drop one item the provider has proven is **hard-deleted** from the store.
+
+    The one deletion signal the cache ever receives: incremental sync reads only
+    what changed since the watermark, and a deletion never shows up there (Cache
+    Spec §6 accepts having no deletion sweep). A single-id read that gets 410 Gone
+    is first-hand proof for exactly one id, so this evicts exactly that id and
+    nothing else, and touches neither the cursor nor the coverage stamp for the
+    reason :func:`cache.absorb_rows` gives. Never raises; shares the mirror's
+    store guards (absent / unsynced / out-of-scope) with :func:`absorb_issue`, so
+    the same three conditions answer the same way. ``data["evicted"]`` is the
+    number of rows actually removed (0 when the id was never cached)."""
+    absent = _mirror_absent(project_dir)
+    if absent is not None:
+        return absent
+    conn = _open_scoped_store(project_dir, owner, repo)
+    if isinstance(conn, dict):
+        return conn
+    try:
+        stamp = datetime.now(timezone.utc).isoformat()
+        return cache.absorb_rows(
+            conn, [], fetched_at=stamp, evict=[f"{owner}/{repo}#{number}"]
+        )
+    finally:
+        conn.close()
+
+
+def _mirror_absent(project_dir: Path) -> dict | None:
+    """The tagged "no store here" error, or ``None`` when a store file exists.
+
+    Tagged so a caller can tell "there is no mirror here" from "the mirror is
+    broken" without matching on message text. The first is silent at the write
+    site — every read already reports it, with the command that fixes it — and
+    the second is worth saying, because a store that answers reads and refuses
+    writes is the surprising case."""
+    absent = cache.cache_path(project_dir)
+    if absent is None or not absent.exists():
+        return error(
+            "unavailable",
+            "the backlog cache has not been built yet; run `prawduct-hook backlog sync`",
+            details={"mirror": MIRROR_ABSENT},
+        )
+    return None
+
+
+def _open_scoped_store(project_dir: Path, owner: str, repo: str):
+    """Open the store for a single-item local write, or return the dict that
+    answers instead: the open failure, an unreadable store, an unsynced store
+    (tagged absent), or the ok ``skipped: out-of-scope`` for a store that holds
+    some other scope. The caller owns closing a returned connection."""
     conn = cache.open_store(project_dir, create=False)
     if isinstance(conn, dict):
         return conn  # absent, unreadable, or schema-mismatched — say so, build nothing
@@ -373,9 +423,11 @@ def absorb_issue(
             # Readable enough to open, not readable enough to answer. Saying
             # "run a sync" here would send an operator to repair a store whose
             # problem a sync does not address.
+            conn.close()
             return error("unavailable", "the backlog cache could not be read")
         if scope not in covered:
             if not covered:
+                conn.close()
                 return error(
                     "unavailable",
                     "the backlog cache has not been synced yet; "
@@ -385,13 +437,16 @@ def absorb_issue(
             # The store is fine and this item simply is not its business.
             # Same key set as the mirror's other ok exits, plus the reason —
             # a consumer reading `written` must not have to know which exit it got.
-            return ok(
+            result = ok(
                 {"written": 0, "evicted": 0, "fts": cache.has_fts(conn),
                  "skipped": "out-of-scope"}
             )
-        return cache.absorb_rows(conn, rows, fetched_at=stamp, evict=out_of_scope)
-    finally:
+            conn.close()
+            return result
+    except BaseException:
         conn.close()
+        raise
+    return conn
 
 
 def _watermark_from(issues: list[dict], *, floor: str | None) -> str | None:

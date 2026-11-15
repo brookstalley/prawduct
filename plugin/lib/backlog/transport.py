@@ -999,6 +999,14 @@ class GhTransport(Transport):
             return TransportError("auth", "GitHub authentication is required or invalid", details=details)
         if http == 404:
             return TransportError("not_found", "the requested GitHub resource was not found", details=details)
+        if http == 410:
+            # Hard-deleted: GitHub answers 410 Gone for a deleted issue. Terminal,
+            # like 404 (a retry cannot bring it back) — falling through to the
+            # retryable `unavailable` floor kept a deleted item open in the cache
+            # forever (#1080). `details["http_status"] == 410` is what a caller
+            # reads to tell "deleted" from the ambiguous 404 (which also covers
+            # no-access): only the former is proof enough to evict a cached row.
+            return TransportError("not_found", "the requested GitHub resource is gone (deleted)", details=details)
         if http == 422:
             return TransportError("validation", "GitHub rejected the request as invalid", details=details)
         if _looks_like_network(scrubbed):

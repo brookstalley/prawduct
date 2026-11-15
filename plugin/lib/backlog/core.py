@@ -67,6 +67,12 @@ def error(
     }
 
 
+def is_gone(exc: TransportError) -> bool:
+    """Whether ``exc`` is the provider's 410 Gone — a hard-deleted resource, as
+    distinct from the ambiguous 404 (never existed, or no access)."""
+    return exc.code == "not_found" and exc.details.get("http_status") == 410
+
+
 def from_transport_error(exc: TransportError) -> dict:
     return error(exc.code, exc.message, retryable=exc.retryable, details=exc.details)
 
@@ -301,9 +307,16 @@ def get_item(
     default_repo: tuple[str, str] | None = None,
     settle_retries: int = 0,
     sleeper=None,
+    on_gone: Callable[[str, str, int], None] | None = None,
 ) -> dict:
     """Fetch one item by any accepted ID spelling **or a hand-minted ``PFX`` alias**;
     decode into the item shape.
+
+    ``on_gone`` (``(owner, repo, number) -> None``) is offered the item's
+    coordinates when the provider answers **410 Gone** — proof the issue was
+    hard-deleted — so a caller holding a local cache can evict the ghost (#1080).
+    It fires on 410 only: a 404 also means "no access", which is not proof of
+    deletion. The error envelope is the same with or without it.
 
     A ``PFX`` (e.g. ``BKL-0QR1``) is resolved via its ``id:PFX`` alias label against
     ``default_repo`` (``--repo``); see :func:`resolve_ref` for the not-found /
@@ -314,6 +327,7 @@ def get_item(
     not-found stays fast and the never-block floor is never diluted with retries on
     real absences.
     """
+    nid = None
     try:
         nid = resolve_ref(
             transport, id_raw, default_owner=default_owner, default_repo=default_repo
@@ -324,6 +338,11 @@ def get_item(
             transport, nid.owner, nid.repo, nid.number, settle_retries, sleeper
         )
     except TransportError as exc:
+        # Only the single-item read above is proof of deletion: a 410 from the
+        # alias search in `resolve_ref` (nid still unresolved) says nothing about
+        # one item, so `nid.ok` gates the callback.
+        if on_gone is not None and is_gone(exc) and nid is not None and nid.ok:
+            on_gone(nid.owner, nid.repo, nid.number)
         return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
         log_diag(f"unexpected transport failure on get: {type(exc).__name__}")
