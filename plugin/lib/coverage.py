@@ -30,6 +30,8 @@ skipped both review gates.)
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -1465,6 +1467,48 @@ def _legacy_pending_refused(content: str) -> bool:
     return bool(refusals)
 
 
+def _committed_log_pending_verdict(project_dir: Path) -> int | None:
+    """Exit 1 when the committed change-log holds an unreleased entry, else ``None``.
+
+    The release refuses such an entry whatever else the branch adds (#1125), so
+    both paths of :func:`check_change_log_entry` ask it: a fragment does not
+    launder a pending legacy entry, whether this branch added it or it was
+    already there. A log absent at ``HEAD`` has nothing to refuse.
+    """
+    listed = subprocess.run(
+        ["git", "ls-tree", "--name-only", "HEAD", "--", CHANGE_LOG_REL_PATH],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if listed.returncode != 0:
+        print(
+            f"git-failed: git ls-tree HEAD {CHANGE_LOG_REL_PATH} failed: {listed.stderr.strip()}."
+            " Check the change-log by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    if not listed.stdout.strip():
+        return None
+    shown = subprocess.run(
+        ["git", "show", f"HEAD:{CHANGE_LOG_REL_PATH}"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        errors="surrogateescape",
+        timeout=30,
+    )
+    if shown.returncode != 0:
+        print(
+            f"git-failed: git show HEAD:{CHANGE_LOG_REL_PATH} failed: {shown.stderr.strip()}."
+            " Check the change-log by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    return 1 if _legacy_pending_refused(shown.stdout) else None
+
+
 def _entry_check_without_history(project_dir: Path) -> int:
     """The legacy-log verdict when the change-log is untracked. It never passes.
 
@@ -1690,7 +1734,9 @@ def check_change_log_entry(project_dir: Path) -> int:
 
     When the branch touches ``.prawduct/changes/``, the fragment checks of
     :func:`_fragment_entry_verdict` answer instead: exit 0 ``fragment-present``,
-    or exit 1 ``fragment-invalid`` / ``fragment-edited-not-added``.
+    or exit 1 ``fragment-invalid`` / ``fragment-edited-not-added``. A fragment
+    exit 0 is still refused (``legacy-pending-entry``) when the committed log
+    holds an unreleased entry, as the release would.
 
     Exit 1 otherwise, with a named reason on stderr (``no-entry``,
     ``entry-edited-not-added``, ``retired-key``, ``legacy-pending-entry``,
@@ -1748,8 +1794,17 @@ def check_change_log_entry(project_dir: Path) -> int:
         )
         return 0
 
-    fragment_verdict = _fragment_entry_verdict(project_dir, base, files, judgeable)
+    # The fragment verdict's stdout is held back until the committed-log check
+    # has answered: a passing fragment still meets the release's refusal of a
+    # pending legacy entry (so the gate and `check-releasability` agree), and
+    # a `fragment-present` line beside that refusal would contradict the exit.
+    held = io.StringIO()
+    with contextlib.redirect_stdout(held):
+        fragment_verdict = _fragment_entry_verdict(project_dir, base, files, judgeable)
     if fragment_verdict is not None:
+        if fragment_verdict == 0 and _committed_log_pending_verdict(project_dir) is not None:
+            return 1
+        sys.stdout.write(held.getvalue())
         return fragment_verdict
 
     if CHANGE_LOG_REL_PATH not in files:
@@ -1837,23 +1892,9 @@ def check_change_log_entry(project_dir: Path) -> int:
     # Judged as committed, as the fragment checks are: the release refuses an
     # unreleased entry in the live log (#1125), so a branch adding one is refused
     # here with the same lines, before it merges, rather than at the release.
-    shown = subprocess.run(
-        ["git", "show", f"HEAD:{CHANGE_LOG_REL_PATH}"],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        errors="surrogateescape",
-        timeout=30,
-    )
-    if shown.returncode != 0:
-        print(
-            f"git-failed: git show HEAD:{CHANGE_LOG_REL_PATH} failed: {shown.stderr.strip()}."
-            " Check the change-log by hand.",
-            file=sys.stderr,
-        )
-        return 1
-    if _legacy_pending_refused(shown.stdout):
-        return 1
+    pending = _committed_log_pending_verdict(project_dir)
+    if pending is not None:
+        return pending
 
     print(
         f"entry-present: {CHANGE_LOG_REL_PATH} adds a new entry in {base}...HEAD, "

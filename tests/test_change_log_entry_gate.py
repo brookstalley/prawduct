@@ -809,3 +809,70 @@ def test_a_committed_fragment_that_is_not_utf8_is_refused_not_a_traceback(tmp_pa
     result = _run_probe(repo)
     assert "Traceback" not in result.stderr
     assert result.returncode in (0, 1) and ("fragment-" in result.stdout + result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# A fragment does not launder a pending legacy entry in the committed log: the
+# gate agrees with `check-releasability` on BOTH paths.
+# ---------------------------------------------------------------------------
+
+_PENDING_ENTRY = (
+    "## 2026-06-10: new work\n<!-- prawduct: type=fix | scope=x -->\n\nBody.\n\n"
+)
+
+
+def test_a_fragment_beside_a_branch_added_pending_entry_is_refused(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x"), "add fragment")
+    _commit_file(
+        repo, CHANGE_LOG,
+        "# Change Log\n\n" + _PENDING_ENTRY + "## 2026-06-01: baseline entry\n\nBody.\n",
+        "add pending entry",
+    )
+    result = _run_probe(repo)
+    assert result.returncode == 1, result.stdout
+    assert "legacy-pending-entry: '2026-06-10: new work'" in result.stderr
+    assert "fragment-present" not in result.stdout, "stdout must not contradict the refusal"
+
+
+def test_a_fragment_beside_a_preexisting_pending_entry_is_refused(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _git(repo, "checkout", "-q", "main")
+    _commit_file(
+        repo, CHANGE_LOG,
+        "# Change Log\n\n" + _PENDING_ENTRY + "## 2026-06-01: baseline entry\n\nBody.\n",
+        "main carries a pending entry",
+    )
+    _git(repo, "checkout", "-q", "feature/x")
+    _git(repo, "merge", "-q", "main")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x"), "add fragment")
+    result = _run_probe(repo)
+    assert result.returncode == 1, result.stdout
+    assert "legacy-pending-entry: '2026-06-10: new work'" in result.stderr
+
+
+def test_a_fragment_beside_only_released_entries_passes(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x"), "add fragment")
+    _commit_file(
+        repo, CHANGE_LOG,
+        "# Change Log\n\n## 2026-06-10: shipped\n"
+        "<!-- prawduct: type=fix | scope=x | release=v1.0.0 -->\n\nBody.\n\n"
+        "## 2026-06-01: baseline entry\n\nBody.\n",
+        "add released entry",
+    )
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "fragment-present" in result.stdout
+
+
+def test_a_fragment_alone_still_prints_fragment_present(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x"), "add fragment")
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "fragment-present: .prawduct/changes/x.md added" in result.stdout
