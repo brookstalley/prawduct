@@ -1718,28 +1718,28 @@ def boundary_cumulative_still_owed(
 
 
 def _newest_branch_review(project_dir: Path, facts: "dict | None" = None) -> "dict | None":
-    """The most recent ``review`` fact recorded on the checked-out branch, or ``None``.
+    """The newest review covering this branch's lineage, or ``None`` when no
+    review settles that — the review the deferral and the boundary check stand
+    on.
 
-    Read from the clone-wide store and filtered by the ``actor.branch`` each fact
-    carries, so a sibling worktree's reviews of another branch never answer for
-    this one. Its tree need not be committed: a review of uncommitted work is
-    exactly the case where the tree it judged exists nowhere in the history.
-    ``facts`` is the caller's ``read_facts`` result; read here when absent.
+    The answer is ``critic_consolidate.select_branch_review``'s, the one owner
+    of "which review is this branch's", which the findings cache, the verify
+    dispatch and mode inference also choose by — asked through
+    ``settled_branch_review``, which keeps it only when it settles the
+    question. Both callers RELAX on it (a fix defers to a later review; a
+    standing ``cumulative`` discharges the boundary), so every case the owner
+    leaves in doubt — no branch range, no review anchored on it, or only its
+    merge-base fallback to a review recorded elsewhere — reads as no review,
+    and the review stays owed. Its tree need not be committed: a dirty-tree
+    review anchors on the commit it was dispatched from. ``facts`` is the
+    caller's ``read_facts`` result; read here when absent.
     """
-    branch = gitstate.current_branch(project_dir)
-    if not branch:
-        return None
     read = _facts_for(project_dir, None, facts)
     if read.get("status") == "error":
         return None
-    reviews = [
-        f for f in read.get("facts") or []
-        if f.get("kind") == "review" and (f.get("actor") or {}).get("branch") == branch
-    ]
-    # The store is append-only, so its order IS the recording order; `ts` has
-    # one-second resolution and two reviews can share it. Position breaks the
-    # tie — a timestamp alone picks arbitrarily between same-second reviews.
-    return reviews[-1] if reviews else None
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
+
+    return critic_consolidate.settled_branch_review(project_dir, read.get("facts") or [])
 
 
 def review_chain(facts: list[dict], newest: dict) -> list[dict]:

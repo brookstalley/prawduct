@@ -1739,8 +1739,50 @@ def _git_session_commits(project_dir: Path) -> list[str]:
     return []
 
 
-def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
-    """Extract a brief summary from .critic-findings.json.
+def _this_branchs_record(prawduct_dir: Path, project_dir: Path, data: object) -> "tuple[str, object]":
+    """``(lead, record)``: the findings record to summarize for the checked-out
+    branch, and the line that goes before it — ``""`` when the record is the
+    cache's own and is confirmed as this branch's, or carries no ``fact_id``
+    to confirm by. :func:`_summarize_critic_findings` says why."""
+    fact_id = data.get("fact_id") if isinstance(data, dict) else None
+    if not isinstance(fact_id, str) or not fact_id.strip():
+        return "", data
+    try:
+        from . import critic_consolidate  # noqa: PLC0415 — lazy; the briefing renders without it
+
+        store = evidence.read_facts(project_dir)
+        answer = critic_consolidate.verify_anchor(project_dir, prawduct_dir, store)
+        fact = answer["fact"]
+        if fact is None:
+            return (
+                f"Could not confirm review {fact_id}, which the findings cache names, is "
+                f"this branch's ({answer['reason']}) — what follows may be another "
+                "branch's review.",
+                data,
+            )
+        if fact.get("id") == fact_id:
+            return "", data
+        record = critic_consolidate.branch_review_record(
+            prawduct_dir, fact, store.get("facts") or []
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- display only: a lookup that fails must leave the cache's record shown, with the doubt named
+        return (
+            f"Could not confirm review {fact_id}, which the findings cache names, is "
+            f"this branch's ({type(exc).__name__}: {str(exc)[:80]}) — what follows "
+            "may be another branch's review.",
+            data,
+        )
+    return (
+        f"Showing review {fact.get('id')}, this branch's newest. The findings cache "
+        f"still names review {fact_id}: {answer['reason']}.",
+        record,
+    )
+
+
+def _summarize_critic_findings(
+    prawduct_dir: Path, project_dir: "Path | None" = None
+) -> str | None:
+    """Summarize this branch's newest review, starting from .critic-findings.json.
 
     ``None`` means there is nothing to report — no record, or one that
     parsed and held neither a summary nor findings. A record that EXISTS
@@ -1748,17 +1790,33 @@ def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
     two are different answers and the caller renders them in the same
     slot (see the except clause for why that difference decides whether a
     round gets run).
+
+    **Which review is summarized is not the cache's to say.** The single slot
+    survives a branch switch, so after one it names the other branch's review.
+    A record naming a review fact is checked against
+    ``critic_consolidate.verify_anchor`` — the read-only question the verify
+    dispatch and mode inference ask, answered by the one owner
+    (``select_branch_review``) — and when that answer is a different review,
+    it is the one summarized, rendered as the cache writer would render it,
+    and named, with the review the cache holds beside it. Nothing is written:
+    re-pointing the slot is the dispatch's and ingest's job. When the
+    question cannot be answered, the record is shown as written with the
+    reason it could not be confirmed as this branch's. A record with no
+    ``fact_id`` (written before the evidence store) is shown as written.
     """
     findings_path = prawduct_dir / ".critic-findings.json"
     if not findings_path.is_file():
         return None
     try:
         data = json.loads(findings_path.read_text())
+        lead, data = _this_branchs_record(
+            prawduct_dir, project_dir or prawduct_dir.parent, data
+        )
         summary = data.get("summary", "")
         findings = data.get("findings", [])
         if not summary and not findings:
             return None
-        parts = []
+        parts = [lead] if lead else []
         # FIRST, for the same reason `_mark_cache_superseded` writes the marker
         # keys first: everything below describes the review this record names,
         # and a newer one was dispatched after it. Without this the marker
@@ -2142,7 +2200,7 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
                 reflection_state = NOTES_EMPTY
 
     # 3. Critic findings summary
-    critic_summary = _summarize_critic_findings(prawduct_dir)
+    critic_summary = _summarize_critic_findings(prawduct_dir, project_dir)
     if critic_summary:
         sections.append("## Critic Findings")
         sections.append(critic_summary)
