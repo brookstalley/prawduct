@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -37,15 +36,12 @@ _hook_spec = importlib.util.spec_from_loader("prawduct_hook_flags_closed", _hook
 _hook = importlib.util.module_from_spec(_hook_spec)
 _hook_loader.exec_module(_hook)
 
-_RUNNING_AS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
-
 _PENDING_QUEUE = "# Operator Verification Queue\n\n## VRF-001 — Chunk 1 — look\n\n**Status:** pending\n"
 
 
 def _deny(path: Path) -> None:
-    """Make ``path`` unreadable, skipping where chmod cannot (root reads anything)."""
-    if _RUNNING_AS_ROOT:
-        pytest.skip("root reads a chmod 000 file; the unreadable case cannot be built")
+    """Make ``path`` unreadable. Callers carry ``pytest.mark.non_root``: root reads
+    a mode-000 file, and conftest skips marked tests under root."""
     path.chmod(0o000)
 
 
@@ -56,19 +52,43 @@ def _restore(path: Path) -> None:
 
 @pytest.fixture
 def unreadable_kinds(tmp_path: Path):
-    """The three ways an existing state file can fail to be read, as paths."""
-    denied = tmp_path / "denied.yaml"
-    denied.write_text("coverage_required: true\noperator_verification_required: true\n")
+    """The ways an existing state file can fail to be read that root cannot read
+    through, as paths. The permission-denied kind is separate (see
+    ``TestPermissionDeniedStateFile``) because it needs ``non_root``."""
     garbled = tmp_path / "garbled.yaml"
     garbled.write_bytes(b"coverage_required: true\n\xff\xfe\x80 not utf-8\n")
     directory = tmp_path / "dir.yaml"
     directory.mkdir()
-    kinds = {"garbled": garbled, "directory": directory}
-    if not _RUNNING_AS_ROOT:
-        _deny(denied)
-        kinds["denied"] = denied
-    yield kinds
+    return {"garbled": garbled, "directory": directory}
+
+
+@pytest.fixture
+def denied_state(tmp_path: Path):
+    """A state file with ``chmod 000``. Use only from a ``non_root`` test."""
+    denied = tmp_path / "denied.yaml"
+    denied.write_text("coverage_required: true\noperator_verification_required: true\n")
+    _deny(denied)
+    yield denied
     _restore(denied)
+
+
+@pytest.mark.non_root
+class TestPermissionDeniedStateFile:
+    """The issue's own repro kind: the file is there, mode 000."""
+
+    def test_core_reports_unreadable(self, denied_state: Path):
+        result = core.read_bool_flag(denied_state, "coverage_required")
+        assert result["status"] == core.FLAG_UNREADABLE
+        assert denied_state.name in result["reason"]
+
+    def test_bool_reader_raises(self, denied_state: Path):
+        with pytest.raises(core.StateFileUnreadable):
+            core.read_bool_yaml_key(denied_state, "coverage_required")
+
+    def test_hook_mirror_raises_the_same_error(self, denied_state: Path):
+        with pytest.raises(Exception) as exc:
+            _hook._read_bool_yaml_key(denied_state, "coverage_required")
+        assert type(exc.value).__name__ == core.StateFileUnreadable.__name__
 
 
 # --- core.read_bool_flag: the one owner --------------------------------------
@@ -201,6 +221,7 @@ class TestOperatorVerificationStateFileUnreadable:
         assert "project-state.yaml" in proc.stderr
         assert "Traceback" not in proc.stderr
 
+    @pytest.mark.non_root
     def test_cli_exits_3_on_a_permission_denied_state_file(self, tmp_path: Path):
         """The issue's repro: ``chmod 000`` with the flag on exited 0 silently."""
         product = _product(tmp_path, "operator_verification_required: true\n")
@@ -247,6 +268,7 @@ class TestOperatorVerificationQueueUnreadable:
         assert "Traceback" not in proc.stderr
         assert "operator-verification.md" in proc.stderr
 
+    @pytest.mark.non_root
     def test_cli_check_exits_3_on_a_permission_denied_queue(self, tmp_path: Path):
         product = _product(tmp_path, "operator_verification_required: true\n", _PENDING_QUEUE)
         queue = product / ".prawduct" / "operator-verification.md"
