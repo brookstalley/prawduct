@@ -3267,8 +3267,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Gate 1: Reflection
     # - Fires on THIS SESSION'S WORK SPAN — judgeable code changed between the
-    #   session base tree and the working tree, committed work included and
-    #   history a pull, merge or branch switch brought in excluded. No
+    #   session base tree and the working tree, committed work included;
+    #   history a pull, merge or branch switch brought in, and commits another
+    #   session in this checkout made while this one was idle (read from the
+    #   payload's transcript), excluded. No
     #   build-plan conjunct: a planless session that shipped code is exactly the
     #   session whose lesson never got written down, and the old plan conjunct
     #   made that the silent case. There is no advisory branch any more, because
@@ -3280,7 +3282,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     #   its trigger, so a session whose committed work is all docs does not
     #   fire. A carveout read from the session porcelain, which is empty once
     #   work is committed, would make exactly that session fire.
-    reflection_span = _gates().session_work_span(project_dir, status_output)
+    reflection_span = _gates().session_work_span(
+        project_dir, status_output, transcript_path=event.transcript_path
+    )
     # The Critic composition gate (Gate 2) reads the same span, read once here:
     # its trigger is `changed` and its doc-only carveout is `not judgeable`.
     critic_has_work = bool(reflection_span["changed"])
@@ -3394,8 +3398,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # if no later turn of that session ended dirty, the rule was never charged
     # and never recorded. `session_work_span` diffs the session's base tree
     # against the working tree, less history older than the session that a
-    # pull, merge or branch switch brought in, so committed work is still this
-    # session's work.
+    # pull, merge or branch switch brought in and less another session's
+    # commits in this checkout, so committed work is still this session's work.
     #
     # Reused rather than recomputed: the call costs git calls and Stop runs
     # every turn. The name upstream is its first consumer, not the span's

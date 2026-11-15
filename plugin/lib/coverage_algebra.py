@@ -780,7 +780,8 @@ def _reach(
     connect it, in forward order: ``start → node`` when ``reverse`` is False,
     ``node → start`` when it is True. The graph :func:`_find_path` searches —
     one :class:`_EvidenceGraph`, so the two cannot disagree on an edge — asked
-    as a closure instead of a single path."""
+    as a closure instead of a single path. A key-form free step carries no
+    ``files`` here; the caller attributes the one path it returns."""
     graph = _EvidenceGraph(edges, start, other_end, diff_fn, key_fn)
     reached: dict[str, list[dict]] = {start: []}
     queue: deque[str] = deque([start])
@@ -838,6 +839,10 @@ def excused_gap_verdict(
       | {"status": "uncovered", "gap": {"src", "dst", "files"} | None,
          "capped": True}   # ``capped`` present only when the cap cut a phase
 
+    The ``path`` steps other than the gap have :func:`coverage_verdict`'s shape,
+    a free step's ``files`` included in both free-edge forms: a returned path is
+    a found path, attributed by :func:`_attribute_free_steps` as that one is.
+
     For ``uncovered``, ``gap`` is the smallest unexcused interval found (the one
     whose files a message should name), or ``None`` when no pair could be
     diffed; ``capped`` says pairs went unasked, so a caller can tell "nothing
@@ -877,9 +882,15 @@ def excused_gap_verdict(
             path = forward[f] + [{"kind": "gap", **gap}] + backward[r]
             unresolved = _unresolved_at_nodes(facts, resolved, _path_nodes(base_tree, path))
             if not unresolved:
-                return {"status": "covered", "path": path, "gap": gap}
+                return {
+                    "status": "covered", "path": _attribute_free_steps(path, diff_fn),
+                    "gap": gap,
+                }
             if blocked is None:
-                blocked = {"status": "blocked", "path": path, "unresolved": unresolved, "gap": gap}
+                blocked = {
+                    "status": "blocked", "path": _attribute_free_steps(path, diff_fn),
+                    "unresolved": unresolved, "gap": gap,
+                }
     if blocked is not None:
         return blocked
     uncovered: dict = {"status": "uncovered", "gap": smallest}

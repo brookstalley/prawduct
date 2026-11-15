@@ -11,6 +11,10 @@ than a patch at every call site:
   :class:`HostEvent`. It is the only reader of host payload keys.
 - **Roots.** :func:`plugin_root`, :func:`project_dir_hint`, :func:`config_home`
   and :func:`config_roots` are the only readers of the host's environment.
+- **The session's record.** :func:`other_session_wrote_since` and
+  :func:`session_tool_activity` read the host's transcript of the session
+  (the ``transcript_path`` a Stop payload names): whether a second session
+  wrote beside it, and when this one had a tool call running.
 - **Responses.** :func:`emit_session_context`, :func:`emit_stop_advisory` and
   :func:`block` are the only writers of structured hook responses and of the
   Stop hook's blocking exit.
@@ -39,9 +43,11 @@ is.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 #: The variable a host adapter sets to name its host.
@@ -63,6 +69,7 @@ _MESSAGE_KEY = "last_assistant_message"
 _TASKS_KEY = "background_tasks"
 _CWD_KEY = "cwd"
 _AGENT_TYPE_KEY = "agent_type"
+_TRANSCRIPT_KEY = "transcript_path"
 
 #: Longest background-task label kept; a description or command can be long.
 _TASK_LABEL_CHARS = 80
@@ -113,6 +120,10 @@ class HostEvent:
     ``background_tasks`` is the in-flight harness tasks as ``<type>:<ident>``
     labels: ``None`` when the payload had no such field, empty when it had one
     with no usable entry.
+
+    ``transcript_path`` is where the host keeps this session's own record of
+    what it did, kept exactly as sent; :func:`other_session_wrote_since` and
+    :func:`session_tool_activity` are its readers.
     """
 
     event: str
@@ -120,6 +131,7 @@ class HostEvent:
     background_tasks: tuple[str, ...] | None = None
     cwd: str | None = None
     agent_type: str | None = None
+    transcript_path: str | None = None
     fields_present: frozenset[str] = field(default_factory=frozenset)
 
 
@@ -141,6 +153,7 @@ def read_event(event: str, raw: object) -> HostEvent:
         background_tasks=_task_labels(payload) if _TASKS_KEY in payload else None,
         cwd=_path_text(payload.get(_CWD_KEY)),
         agent_type=_text(payload.get(_AGENT_TYPE_KEY)),
+        transcript_path=_path_text(payload.get(_TRANSCRIPT_KEY)),
         fields_present=frozenset(k for k in payload if isinstance(k, str)),
     )
 
@@ -180,6 +193,149 @@ def _task_labels(payload: dict) -> tuple[str, ...]:
                 break
         labels.append((f"{ttype}:{ident}" if ident else ttype)[:_TASK_LABEL_CHARS])
     return tuple(labels)
+
+
+# --- the session's own record ------------------------------------------------
+
+#: Seconds either side of a moment still read as the same moment. git stamps a
+#: commit or a HEAD move in whole seconds, the host stamps a tool call when it
+#: records the request rather than when the command runs, and a transcript
+#: written within this of the session's start belongs to the boundary itself
+#: (the previous session's last lines at a ``/clear``), not to a second session.
+ACTIVITY_SLACK_SECONDS = 2
+
+
+@dataclass(frozen=True)
+class ToolActivity:
+    """When a session was acting, from its own transcript.
+
+    ``covered_from`` is the transcript's first timestamped record: it says
+    nothing about any moment before it. ``windows`` holds one ``(start, end)``
+    pair of epoch seconds per tool call; ``end`` is ``math.inf`` for a call that
+    can still be acting, which is a background call or one with no result
+    recorded yet.
+    """
+
+    covered_from: float
+    windows: tuple[tuple[float, float], ...]
+
+    def acting_at(self, when: float) -> bool | None:
+        """``True`` when a tool call was running at ``when``, ``False`` when
+        none was, and ``None`` when the transcript does not cover ``when``."""
+        slack = ACTIVITY_SLACK_SECONDS
+        if when < self.covered_from - slack:
+            return None
+        return any(start - slack <= when <= end + slack for start, end in self.windows)
+
+
+def other_session_wrote_since(transcript_path: str, since: float) -> bool | None:
+    """Whether another session's transcript in this session's transcript
+    folder was written after ``since`` (epoch seconds).
+
+    Claude Code keeps one folder of top-level ``*.jsonl`` transcripts per
+    launch directory, so a sibling written since this session started is a
+    second session working in the same checkout. Only modification times are
+    read. A subagent's transcript sits in a subfolder and is not a sibling.
+    ``None`` when this session's own transcript is not there or the folder
+    cannot be listed: that is no evidence either way.
+    """
+    own = Path(transcript_path)
+    try:
+        if not own.is_file():
+            return None
+        with os.scandir(own.parent) as entries:
+            for entry in entries:
+                if entry.name == own.name or not entry.name.endswith(".jsonl"):
+                    continue
+                if not entry.is_file():
+                    continue
+                if entry.stat().st_mtime > since + ACTIVITY_SLACK_SECONDS:
+                    return True
+    except OSError:
+        return None
+    return False
+
+
+def session_tool_activity(transcript_path: str) -> ToolActivity | None:
+    """This session's tool calls, read from its Claude Code transcript.
+
+    A ``tool_use`` block in a timestamped record opens a call and the
+    ``tool_result`` naming its id closes it. A call whose input sets
+    ``run_in_background`` stays open, since its command outlives the call.
+    ``None`` when the transcript cannot be read, holds no timestamped record
+    or no tool call, has a result for a call it never opened, or has an
+    unparseable line before its last one. Only a final line can be mid-write;
+    a broken one earlier may have hidden a call, and a missing call would read
+    as a moment the session was idle.
+    """
+    starts: dict[str, float] = {}
+    ends: dict[str, float] = {}
+    background: set[str] = set()
+    first: float | None = None
+    broken = False
+    try:
+        with open(transcript_path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                if broken:
+                    return None
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    broken = True
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                when = _epoch(record.get("timestamp"))
+                if when is None:
+                    continue
+                first = when if first is None else min(first, when)
+                message = record.get("message")
+                content = message.get("content") if isinstance(message, dict) else None
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "tool_use" and isinstance(block.get("id"), str):
+                        call = block["id"]
+                        starts[call] = min(starts.get(call, when), when)
+                        args = block.get("input")
+                        if isinstance(args, dict) and args.get("run_in_background"):
+                            background.add(call)
+                    elif block.get("type") == "tool_result" and isinstance(
+                        block.get("tool_use_id"), str
+                    ):
+                        call = block["tool_use_id"]
+                        ends[call] = max(ends.get(call, when), when)
+    except (OSError, ValueError):  # ValueError: a path with a NUL in it
+        return None
+    # No call at all, or a result naming a call never seen, is a transcript
+    # this reader does not understand (the host's format moved), not a
+    # session that never acted: read as idle throughout, it would disown the
+    # session's own commits.
+    if first is None or not starts or not ends.keys() <= starts.keys():
+        return None
+    windows = tuple(
+        (start, math.inf if call in background or call not in ends else ends[call])
+        for call, start in starts.items()
+    )
+    return ToolActivity(covered_from=first, windows=windows)
+
+
+def _epoch(value: object) -> float | None:
+    """Epoch seconds of an ISO 8601 timestamp, read as UTC when it names no
+    zone; ``None`` for anything else."""
+    if not isinstance(value, str):
+        return None
+    try:
+        when = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when.timestamp()
 
 
 # --- roots -------------------------------------------------------------------
