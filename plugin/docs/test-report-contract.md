@@ -78,9 +78,15 @@ written by one user (a container, a CI runner) has to stay readable by whoever r
 ## What prawduct does with it
 
 `test-evidence record --from-junit <report>` reads `<report>.scope.json` before parsing the
-report, and applies these rules in order. Every refusal exits 2 and writes nothing — the previous
-evidence record survives untouched, which is the point of refusing rather than recording something
-degraded on top of it.
+report, and applies these rules in order. Every refusal exits 2 and records nothing from the
+report: its counts never become the suite's, which is the point of refusing rather than recording
+it. The standing evidence record does not survive as it was, though. Every `record` that runs a
+suite or reads a report first marks the standing record void, and only a record that lands
+replaces it. So after a refusal, or a run killed before it recorded, `test-status` reads stale and
+names the attempt. An earlier green does not go on vouching for a tree whose latest attempt
+failed. The void is carried as `degraded`, the field every reader already refuses. It keeps the
+earlier counts, so the record still says what was last measured, and `--no-rerun` refuses to
+restamp it. Usage errors refuse before the void, and leave a good record alone.
 
 | Condition | Result |
 |---|---|
@@ -93,18 +99,26 @@ degraded on top of it.
 | `scope: "partial"` | **Refuse**, quoting `why` and `at`. |
 | `scope: "full"` | **Proceed.** |
 
-A refusal names the two honest ways forward — run the declared command through the recorder
-(`prawduct-hook test-evidence record`), or ingest a report from a run that was not narrowed.
-Deleting or editing the scope record is not one of them: it buys a silent false green, which is
-the thing this contract exists to prevent.
+A refusal at ingest names the two honest ways forward — run the declared command through the
+recorder (`prawduct-hook test-evidence record`), or ingest a report from a run that was not
+narrowed. Deleting or editing the scope record is not one of them: it buys a silent false green,
+which is the thing this contract exists to prevent.
+
+A refusal on the undeclared fallback (below) names different ones, because there the recorder is
+the command that just refused: the repo's own producer wrote the record, so running it again reads
+the same producer and refuses the same way. A run narrowed by the arguments passed to `record` is
+told to drop those arguments, which it names. Any other refusal there is told to fix the producer,
+or to declare `test_command` so the declaration defines the suite.
 
 The record is consulted on **ingest, and on the undeclared-run fallback**. Where the repo declares
 a `test_command` / `test_commands`, that declaration *is* the definition of the suite on the run
 path and is not second-guessed by this — a repo whose canonical command is deliberately narrow is
-taken at its word. Where it declares none, the recorder runs its own pytest fallback and *does*
-consult the record, because there is no declaration standing behind that invocation: the fallback
-is the reader's own guess at the suite, so the scope it actually selected is the only evidence of
-what it covered.
+taken at its word. The record is not needed for completeness there either: a declared command
+that exits nonzero while its report shows no failing test is refused, and a run cut short after
+recording failures stays red, which is never a false green. Where it declares none, the recorder
+runs its own pytest fallback and *does* consult the record, because there is no declaration
+standing behind that invocation: the fallback is the reader's own guess at the suite, so the scope
+it actually selected is the only evidence of what it covered.
 
 A report that marks a runner's own retries, Surefire's `<flakyFailure>`/`<flakyError>`, is read as
 a pass that carries a flake. It is recorded in the evidence's `flaky` list and judged against the
@@ -255,10 +269,18 @@ advisory that fails *silently* manufactures the confidence it exists to check.
 - **A run that *could* stop early is `partial` even if it did not.** `-x` on a green whole-suite
   run produces a complete report and is still recorded as narrowed, because the producer classifies
   the invocation rather than measuring the result. Drop the flag to record the run.
-- **It says nothing about *when* the run happened.** Ingesting any old report stamps today's tree
-  onto that run, which is the standing posture of `--from-junit` and not something this changes; the
-  boundary deletion above is what keeps it from becoming routine. `at`, where a producer writes
-  it, is for an operator to check, and the reader does not compare it.
+- **A report proves a run happened, with the scope its record states. It never proves which tree
+  that run met.** `--from-junit` stamps the current tree onto the run it ingests, and that stamp
+  is what lets a later session or another worktree reuse the run. So the stamp is given only when
+  every report is at least as new as every file the suite reads. "Every file" covers tracked and
+  untracked files the suite can depend on, plus files deleted since. A deleted file is dated by
+  the directory it left, including one removed by a commit or checkout after the report. Otherwise
+  the record is written without a tree. It stays current this session only, and a `warning:` names
+  the file. The bound reads modification times, the reader's own observation. It never compares
+  `at` or the report's own timestamp, which the producer wrote; `at` is for an operator to check.
+  Its blind spots all lean toward a stamp. A tool that preserves old modification times (`rsync -a`,
+  archive extraction) makes new content look old. An untracked file removed after the report is in
+  no listing. A filesystem with coarse timestamps can tie an edit with the report it follows.
 - **A report carried away from where it was produced, WITH its record, is refused.** The record
   names the report it describes by absolute path, so a report and record downloaded from CI and
   ingested on a developer's machine do not match and the ingest refuses. That is deliberate — a

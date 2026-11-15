@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,7 @@ HOOK = PLUGIN_ROOT / "bin" / "prawduct-hook"
 
 sys.path.insert(0, str(PLUGIN_ROOT))
 
-from lib import report_scope  # noqa: E402
+from lib import evidence, report_scope  # noqa: E402
 
 from conftest import (  # noqa: E402
     FULL,
@@ -242,19 +243,27 @@ class TestTheCliRefusal:
         assert res.returncode == 0, res.stderr
         assert json.loads(self._evidence(repo))["passed"] == 2
 
-    def test_a_partial_record_refuses_and_leaves_the_prior_record_alone(self, repo_with_report):
+    def test_a_partial_record_refuses_records_no_subset_and_voids_the_prior_green(
+        self, repo_with_report
+    ):
+        """Renegotiated by #679. This test once asserted the prior record
+        survived byte-for-byte, which was the defect: a green that outlives a
+        refused attempt keeps vouching for a tree whose latest run did not
+        record. What still holds is the reason it refuses — the subset's counts
+        are never written as the suite's. What changed is that the standing
+        green is now voided, so the readers see stale rather than green."""
         repo, report = repo_with_report
-        before = self._evidence(repo)
         _record_beside(report, scope=PARTIAL, why="-k 'billing' narrowed the selection")
 
         res = _run_hook(repo, "test-evidence", "record", "--from-junit", str(report))
 
         assert res.returncode == 2, res.stdout + res.stderr
         assert "billing" in res.stderr
-        # Refusing rather than recording something degraded is the whole design:
-        # a partial ingest would overwrite a green record with counts covering
-        # less than they appear to.
-        assert self._evidence(repo) == before
+        after = json.loads(self._evidence(repo))
+        assert after["passed"] == 9, "the narrowed report's counts were recorded as the suite's"
+        assert after.get("void") and after.get("degraded"), (
+            "the prior green still vouches after a refused record attempt"
+        )
 
     def test_the_refusal_names_a_remedy_that_reaches_the_state(self, repo_with_report):
         repo, report = repo_with_report
@@ -270,14 +279,17 @@ class TestTheCliRefusal:
         repo, report = repo_with_report
         second = repo / "report2.xml"
         second.write_text(report.read_text())
-        before = self._evidence(repo)
         _record_beside(second, scope=PARTIAL, why="-m 'smoke' narrowed the selection")
 
         res = _run_hook(repo, "test-evidence", "record",
                         "--from-junit", str(report), "--from-junit", str(second))
 
         assert res.returncode == 2, res.stdout + res.stderr
-        assert self._evidence(repo) == before
+        # The good report's counts are not recorded either (no partial
+        # evidence); the prior green is voided rather than kept vouching (#679).
+        after = json.loads(self._evidence(repo))
+        assert after["passed"] == 9
+        assert after.get("void")
 
 
 class TestTheRefusalSpeaksForItsOwnCause:
@@ -884,3 +896,285 @@ class TestLifetimeProseMatchesTheSingleSlot:
         text = " ".join(self.SURFACES[0].read_text(encoding="utf-8").split())
         stated = "next invocation" in text
         assert stated, "test-report-contract.md must say the report lives until the next invocation"
+
+
+# =============================================================================
+# The incompleteness verdict, consumed where it is produced (#848)
+# =============================================================================
+#
+# One class, three sites: a warrant narrower than the claim it licenses. A
+# report's existence licenses "a run happened, with the scope its record
+# states"; it never licenses "against this tree" (R-4). A refusal's remedy has
+# to work from where it was printed (R-2). And the declared run path's
+# deliberate non-read of the record has to say why (R-1/R-6).
+
+
+def _git_in(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        cwd=repo, capture_output=True, check=True,
+    )
+
+
+def _test_runs(repo: Path) -> list[dict]:
+    return evidence.facts_of_kind(evidence.read_facts(repo), "test-run")
+
+
+@pytest.fixture
+def ingest_repo(tmp_path) -> tuple[Path, Path]:
+    """A committed repo with a test-affecting tree and a full-scope report whose
+    mtime is set in the PAST but after every file, so each test moves exactly
+    one thing after it and asserts what that one thing does to the stamp."""
+    repo = tmp_path / "ingest"
+    (repo / ".prawduct").mkdir(parents=True)
+    (repo / ".prawduct" / "project-state.yaml").write_text("project_name: ingest\n")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_a.py").write_text("def test_a():\n    assert True\n")
+    (repo / "tests" / "test_b.py").write_text("def test_b():\n    assert True\n")
+    (repo / "mod.py").write_text("X = 1\n")
+    _git_in(repo, "init", "-b", "main")
+    _git_in(repo, "add", "-A")
+    _git_in(repo, "commit", "-m", "c1")
+    report = repo / ".prawduct" / ".test-report.xml"
+    report.write_text(
+        '<testsuites><testsuite name="pytest" time="1.0"><testcase name="a"/>'
+        '<testcase name="b"/></testsuite></testsuites>\n'
+    )
+    _record_beside(report)
+    # Every file and directory the suite reads predates the report by an hour;
+    # the report itself is ten minutes old. Set explicitly because a fixture
+    # written in one instant would otherwise tie, and a tie stamps.
+    past = time.time() - 3600
+    for path in sorted(repo.rglob("*"), reverse=True):
+        if ".git" not in path.relative_to(repo).parts and path != report:
+            os.utime(path, (past, past))
+    os.utime(repo, (past, past))
+    os.utime(report, (past + 3000, past + 3000))
+    return repo, report
+
+
+class TestIngestStampsATreeOnlyWhenTheReportIsNewer:
+    def _ingest(self, repo: Path, report: Path) -> subprocess.CompletedProcess:
+        return _run_hook(repo, "test-evidence", "record", "--from-junit", str(report))
+
+    def _withheld(self, repo: Path, res) -> None:
+        assert res.returncode == 0, res.stdout + res.stderr
+        record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" not in record, (
+            "a report older than the tree was stamped with the current tree"
+        )
+        assert _test_runs(repo) == [], (
+            "the ingest put a test-run fact for a tree its run never met on the "
+            "clone-shared store, where every worktree reuses it"
+        )
+        assert "after this report was written" in res.stderr
+
+    def test_a_report_newer_than_every_file_still_stamps_the_tree(self, ingest_repo):
+        """The regression guard on the double-run fix: a stamp withheld here
+        costs every declared-command repo its second suite run per session."""
+        repo, report = ingest_repo
+        res = self._ingest(repo, report)
+        assert res.returncode == 0, res.stderr
+        record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" in record, res.stderr
+        assert len(_test_runs(repo)) == 1
+
+    def test_an_edit_after_the_report_withholds_the_tree(self, ingest_repo):
+        repo, report = ingest_repo
+        (repo / "mod.py").write_text("X = 2\n")
+        self._withheld(repo, self._ingest(repo, report))
+
+    def test_a_tracked_test_deleted_after_the_report_withholds_the_tree(self, ingest_repo):
+        """A deletion leaves no file to date; its directory's mtime is the only
+        trace it leaves."""
+        repo, report = ingest_repo
+        (repo / "tests" / "test_b.py").unlink()
+        self._withheld(repo, self._ingest(repo, report))
+
+    def test_a_git_rm_after_the_report_withholds_the_tree(self, ingest_repo):
+        repo, report = ingest_repo
+        _git_in(repo, "rm", "-q", "tests/test_b.py")
+        self._withheld(repo, self._ingest(repo, report))
+
+    def test_a_deletion_committed_after_the_report_withholds_the_tree(self, ingest_repo):
+        """Once committed, the deletion is in neither the index nor a diff
+        against HEAD; HEAD's own movement since the report is what shows it."""
+        repo, report = ingest_repo
+        _git_in(repo, "rm", "-q", "tests/test_b.py")
+        _git_in(repo, "commit", "-q", "-m", "drop b")
+        self._withheld(repo, self._ingest(repo, report))
+
+    def test_a_commit_after_the_report_that_deletes_nothing_still_stamps(self, ingest_repo):
+        """Run, commit, ingest is the ordinary flow. HEAD moved after the
+        report, but every file it carries predates it, so the stamp holds."""
+        repo, report = ingest_repo
+        (repo / "notes.txt").write_text("x\n")
+        past = report.stat().st_mtime - 60
+        os.utime(repo / "notes.txt", (past, past))
+        _git_in(repo, "add", "notes.txt")
+        _git_in(repo, "commit", "-q", "-m", "notes")
+        res = self._ingest(repo, report)
+        assert res.returncode == 0, res.stderr
+        record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" in record, res.stderr
+
+    def test_the_real_producers_flow_still_stamps_the_tree(self, tmp_path):
+        """Drives real pytest with this repo's own producer, writing the
+        conventional `.prawduct/.test-report.xml`, then ingests it — nothing
+        hand-dated. The producer replaces its scope record AFTER the JUnit
+        writer runs, so `.prawduct/`'s own mtime is newer than the report; a
+        bound over every ancestor directory would withhold the stamp on the
+        very path the contract makes routine."""
+        repo = tmp_path / "real"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: real\n")
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_a.py").write_text("def test_a():\n    assert True\n")
+        (repo / "pyproject.toml").write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+        shutil.copy(REPO_ROOT / "tests" / "conftest.py", repo / "conftest.py")
+        (repo / ".gitignore").write_text(
+            ".prawduct/.test-report.xml*\n__pycache__/\n.pytest_cache/\n"
+        )
+        _git_in(repo, "init", "-b", "main")
+        _git_in(repo, "add", "-A")
+        _git_in(repo, "commit", "-m", "c1")
+        run = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:randomly",
+             "--junit-xml=.prawduct/.test-report.xml"],
+            cwd=repo, capture_output=True, text=True, timeout=120,
+            env={**os.environ, "PRAWDUCT_ALLOW_ANY_PYTHON": "1"},
+        )
+        assert run.returncode == 0, run.stdout + run.stderr
+        report = repo / ".prawduct" / ".test-report.xml"
+        assert json.loads(report_scope.record_path(report).read_text())["scope"] == FULL
+        assert (repo / ".prawduct").stat().st_mtime_ns > report.stat().st_mtime_ns, (
+            "precondition: the producer's late write must leave the report's own "
+            "directory newer than the report, or this proves nothing"
+        )
+        res = _run_hook(repo, "test-evidence", "record", "--from-junit", str(report))
+        assert res.returncode == 0, res.stderr
+        record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" in record, res.stderr
+
+
+#: A producer that writes whatever scope record its environment names, so one
+#: fixture can drive every cause the fallback's remedy branches on.
+_FALLBACK_PRODUCER = '''\
+import json, os
+from pathlib import Path
+
+def pytest_sessionfinish(session, exitstatus):
+    xml = getattr(session.config.option, "xmlpath", None)
+    if not xml:
+        return
+    report = Path(xml).resolve()
+    target = report.with_name(report.name + ".scope.json")
+    mode = os.environ.get("PRODUCER_MODE", "full")
+    if mode == "malformed":
+        target.write_text("{not json")
+        return
+    record = {"v": 1, "scope": "full", "report": str(report)}
+    if mode == "mismatch":
+        record["report"] = str(report.with_name("some-other-report.xml"))
+    if mode == "partial":
+        record.update(scope="partial", why="pytest exited 5, so the report may be truncated")
+    if mode == "narrowed-by-args" and session.config.option.keyword:
+        record.update(scope="partial",
+                      why=f"-k {session.config.option.keyword!r} narrowed the selection")
+    target.write_text(json.dumps(record))
+'''
+
+
+class TestTheFallbacksRemedyWorksFromTheFallback:
+    """On the undeclared fallback the scope record is written by the repo's own
+    producer beside the recorder's temp report. Re-running the recorder reads
+    the same producer's record and refuses the same way, so a remedy printed
+    there that offers the recorder as the way forward sends the operator in a
+    circle (#848 R-2)."""
+
+    @pytest.fixture
+    def fallback_repo(self, tmp_path) -> Path:
+        repo = tmp_path / "fallback"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: fallback\n")
+        (repo / "conftest.py").write_text(_FALLBACK_PRODUCER)
+        (repo / "test_two.py").write_text(
+            "def test_a():\n    assert True\n\n\ndef test_b():\n    assert True\n"
+        )
+        _git_in(repo, "init", "-b", "main")
+        _git_in(repo, "add", "-A")
+        _git_in(repo, "commit", "-m", "c1")
+        return repo
+
+    def test_the_fixture_records_a_full_run(self, fallback_repo):
+        """The control: every refusal below is the mode it names, not a
+        fallback that cannot run here at all."""
+        res = _run_hook(fallback_repo, "test-evidence", "record", PRODUCER_MODE="full")
+        assert res.returncode == 0, res.stdout + res.stderr
+
+    def test_a_narrowing_argument_is_named_and_dropping_it_is_the_way_forward(self, fallback_repo):
+        res = _run_hook(fallback_repo, "test-evidence", "record", "-k", "test_a",
+                        PRODUCER_MODE="narrowed-by-args")
+        assert res.returncode == 2, res.stdout + res.stderr
+        remedy = res.stderr.split("did not cover the whole suite", 1)[1]
+        assert "-k test_a" in remedy, "the remedy must name the arguments that narrowed the run"
+        assert "without" in remedy and "test_command" in remedy
+        assert "run the suite through the recorder" not in remedy, (
+            "the ingest-site advice was printed at the site that just refused"
+        )
+
+    def test_a_partial_record_with_no_narrowing_argument_is_not_told_to_drop_one(
+        self, fallback_repo
+    ):
+        res = _run_hook(fallback_repo, "test-evidence", "record", PRODUCER_MODE="partial")
+        assert res.returncode == 2, res.stdout + res.stderr
+        remedy = res.stderr.split("did not cover the whole suite", 1)[1]
+        assert "no arguments" in remedy, remedy
+        assert "test_command" in remedy
+        assert "prawduct-hook test-evidence record\n" not in remedy
+
+    @pytest.mark.parametrize("mode", ["malformed", "mismatch"])
+    def test_a_record_defect_offers_no_recorder_command(self, fallback_repo, mode):
+        res = _run_hook(fallback_repo, "test-evidence", "record", PRODUCER_MODE=mode)
+        assert res.returncode == 2, res.stdout + res.stderr
+        assert "refusing to record this run" in res.stderr
+        assert "prawduct-hook test-evidence record" not in res.stderr, (
+            "a producer defect on the fallback refuses again on every re-run; "
+            "offering the recorder is the circle"
+        )
+        assert "Fix the producer" in res.stderr and "test_command" in res.stderr
+
+    def test_the_ingest_site_keeps_its_recorder_remedy(self, repo_with_report):
+        """The other site, unchanged: at ingest the recorder is a real way
+        forward, because it runs a fresh suite instead of reading this record."""
+        repo, report = repo_with_report
+        report_scope.record_path(report).write_text("{not json")
+        res = _run_hook(repo, "test-evidence", "record", "--from-junit", str(report))
+        assert res.returncode == 2
+        assert "prawduct-hook test-evidence record\n" in res.stderr
+
+
+class TestTheDeclaredPathSaysWhyItDoesNotReadTheRecord:
+    """R-1/R-6: the declared run path resolves the record's path and deletes it
+    unread. That is correct — the declaration defines the suite, and the
+    exit-status check owns completeness there — but two reviewers flagged it as
+    a verdict computed and thrown away, because nothing said so."""
+
+    def test_the_cleanup_comment_cites_the_exit_status_check(self):
+        text = HOOK.read_text(encoding="utf-8")
+        end = text.index("for leftover in (junit, junit_scope):")
+        comment = " ".join(text[text.rindex("finally:", 0, end):end].split())
+        assert "declaration defines the suite" in comment
+        assert "exited nonzero while its own report shows no failure" in comment
+
+    def test_the_contract_says_it_too(self):
+        text = " ".join(
+            (PLUGIN_ROOT / "docs" / "test-report-contract.md").read_text(encoding="utf-8").split()
+        )
+        assert "exits nonzero while its report shows no failing test" in text
+
+
+def test_the_pr_skill_no_longer_licenses_currency_from_existence():
+    text = " ".join((PLUGIN_ROOT / "skills" / "pr" / "SKILL.md").read_text(encoding="utf-8").split())
+    assert "covers the hand-run case completely" not in text
+    assert "withholds the tree stamp" in text
