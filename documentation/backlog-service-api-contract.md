@@ -93,7 +93,7 @@ tier (§7).
 ### 2.3 Relationships
 | Op | Idem | Purpose | Parent |
 |---|---|---|---|
-| `link` / `unlink` | **yes** | set/clear a typed edge: `blocks`/`blocked-by` (native deps), parent/child (sub-issues), `related` | DM3 |
+| `link` / `unlink` | **yes** | set/clear a typed edge: `blocks`/`blocked-by` (native deps), parent/child (sub-issues), `related`. **`related` has no native GitHub edge, so it is written on both items' blocks** (source, then target; each side idempotent, each mirrored with its own owner/repo). A failed target write after the source landed is never silent: a **retryable** error returns the error envelope with `details.partial: true`, `written` (the source) and `unwritten` (the target) — replaying the same command completes only the target; a **permanent** one (`auth`, `not_found`, `validation`: typically a cross-repo target this identity cannot write) returns `ok` with `data.target_written: false` and a warning, because a retry would fail forever and an error would make cross-repo links unusable. The source write is never rolled back. The result's `data.target_written` is `true` whenever the target end is consistent | DM3 |
 | `merge` | **yes** | fold A→B: preserve both bodies, leave a **`superseded-by:` redirect** (nothing hard-deleted) | AU3, DM7 |
 | `split` | **keyed** | create linked children from one item (idempotent on the `split-op:` token — §2.3) | AU3 |
 
@@ -268,7 +268,7 @@ restate the numbers, correctly, because a third copy is a third drift source.
 | `code` | Meaning | retryable | Parent |
 |---|---|---|---|
 | `validation` | malformed input (an *unknown soft-enum* is **not** this — it is a `warning`, DM1) | no | DM1 |
-| `not_found` | no such item / alias | no | – |
+| `not_found` | no such item / alias, or a hard-deleted issue (GitHub 410 Gone, `details.http_status: 410`; `get` also evicts the cached row — cache spec §6) | no | – |
 | `ambiguous_id` | short `repo#number` resolves to >1 under federation | no | D4, DM §5 |
 | `alias_collision` | a second item claims an existing `id:` alias — rejected so refs can't be hijacked | no | DM §5, Sec §5/F3 |
 | `conflict` | optimistic CAS failed (state/`updated_at` moved) → re-read & retry | caller-retry | CC2 |
