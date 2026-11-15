@@ -22,7 +22,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -1047,11 +1046,30 @@ class TestIngestStampsATreeOnlyWhenTheReportIsNewer:
         assert run.returncode == 0, run.stdout + run.stderr
         report = repo / ".prawduct" / ".test-report.xml"
         assert json.loads(report_scope.record_path(report).read_text())["scope"] == FULL
-        assert (repo / ".prawduct").stat().st_mtime_ns > report.stat().st_mtime_ns, (
+        # Not older, rather than strictly newer: a filesystem stamping from a coarse
+        # clock (Linux takes mtimes from a tick of a few ms) gives the late write
+        # and the report the SAME mtime, and a strict precondition then failed only
+        # on such runners. The stamp must survive the tie as well as the lead.
+        assert (repo / ".prawduct").stat().st_mtime_ns >= report.stat().st_mtime_ns, (
             "precondition: the producer's late write must leave the report's own "
-            "directory newer than the report, or this proves nothing"
+            "directory no older than the report, or this proves nothing"
         )
         res = _run_hook(repo, "test-evidence", "record", "--from-junit", str(report))
+        assert res.returncode == 0, res.stderr
+        record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" in record, res.stderr
+
+    def test_a_coarse_clock_tie_with_the_report_still_stamps_the_tree(self, ingest_repo):
+        """The coarse-clock case pinned on a fine-clock machine: a tracked source
+        file and the report's directory carry exactly the report's mtime, as they
+        do when a Linux tick lands the writes in one stamp. A tie is not "newer
+        than the report", so the stamp survives it."""
+        repo, report = ingest_repo
+        ns = report.stat().st_mtime_ns
+        os.utime(repo / "mod.py", ns=(ns, ns))
+        os.utime(report.parent, ns=(ns, ns))
+        assert (repo / "mod.py").stat().st_mtime_ns == ns, "precondition: the tie must hold"
+        res = self._ingest(repo, report)
         assert res.returncode == 0, res.stderr
         record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert "evidence_tree" in record, res.stderr
