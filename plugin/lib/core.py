@@ -991,26 +991,148 @@ def write_template(src: Path, dst: Path, subs: dict[str, str], *, overwrite: boo
     return True
 
 
-def _contract_diff(existing_lines: set[str]) -> dict:
-    """Pure gitignore-contract diff for a set of existing ``.gitignore`` lines.
+#: Appended to a directory entry (``.prawduct/.critic-partials/``) to name a file
+#: inside it. A directory entry is satisfied when the files INSIDE it are ignored,
+#: by its own rule or by a broader one, so that is the path git is asked about.
+_DIR_ENTRY_PROBE = "prawduct-probe"
+
+
+def _entry_probe_path(entry: str) -> str:
+    return entry + _DIR_ENTRY_PROBE if entry.endswith("/") else entry
+
+
+def _shared_ignore_matches(
+    target: Path, content: str, paths: list[str]
+) -> dict[str, tuple[str, int, str]] | None:
+    """Which of ``paths`` a SHARED ``.gitignore`` rule ignores, asked of git.
+
+    Returns ``{path: (source, line, pattern)}`` for the paths ignored by a
+    non-negated rule in a ``.gitignore`` file, or ``None`` when git could not be
+    asked at all (the caller then falls back to literal lines and says so).
+
+    **Why git is asked rather than the file parsed.** gitignore semantics (parent
+    directory exclusion, ``*``/``**``, anchoring, negation order, nested files) are
+    exactly what a re-implementation gets subtly wrong, and the failure is the one
+    this function exists to prevent: a confident wrong answer about what git hides.
+
+    **Two ways to ask.** In a work tree, of the repo itself (so a nested
+    ``.gitignore`` counts). Where there is no work tree (the ``onboard`` case
+    before the repo exists), in a scratch repo holding only the ``.gitignore``
+    text; that evaluates the same rules without a repo to ask. ``None`` only when
+    git is missing or fails both ways.
+
+    **Only ``.gitignore`` files count.** The contract is about what travels with
+    the repo. A rule from ``.git/info/exclude`` or the global excludes file is this
+    machine's, not another clone's, so it neither satisfies a session entry nor
+    makes a managed file a hazard.
+    """
+    from . import gitstate  # noqa: PLC0415 — lazy: keeps core's import surface unchanged
+
+    rules = gitstate.git_ignore_rules(target, paths)
+    if rules is None:
+        import subprocess  # noqa: PLC0415
+        import tempfile  # noqa: PLC0415
+
+        # A scratch repo must not inherit GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE
+        # (set while a git hook runs): creating it would then act on THAT repo.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        with tempfile.TemporaryDirectory(prefix="prawduct-gitignore-") as scratch:
+            try:
+                subprocess.run(
+                    ["git", "init", "-q", "."],
+                    cwd=scratch, env=env, check=True, capture_output=True, timeout=10,
+                )
+                (Path(scratch) / ".gitignore").write_text(content, encoding="utf-8")
+            except (OSError, subprocess.SubprocessError):
+                return None
+            rules = gitstate.git_ignore_rules(Path(scratch), paths, env=env)
+        if rules is None:
+            return None
+    return {
+        path: rule
+        for path, rule in rules.items()
+        if Path(rule[0]).name == ".gitignore" and not rule[2].startswith("!")
+    }
+
+
+def _contract_diff(target: Path, content: str) -> dict:
+    """Gitignore-contract diff for the ``.gitignore`` text ``content`` of ``target``.
 
     The single source of truth for what "satisfies the session-file contract"
     means, shared by :func:`update_gitignore` (which reads it to decide what to
-    write) and the ``gitignore`` advisory probe (which reads
-    :func:`gitignore_contract_drift` to decide whether to nudge) — so the nudge
-    can never disagree with the fix. Returns
-    ``{"missing", "incorrectly_ignored"}``: session entries that SHOULD be ignored
-    but aren't, and managed/retired entries that ARE ignored but shouldn't be.
-    Both empty ⇔ :func:`update_gitignore` makes no change (its ``modified``
-    condition is exactly ``missing or incorrectly_ignored``). The two entry sets
-    are disjoint (session files to ignore vs. managed files to commit), so the
-    order in which the fixer removes then adds never affects either set.
+    write), the ``gitignore`` advisory probe (via :func:`gitignore_contract_drift`),
+    and ``init_product``'s onboarding — so the nudge can never disagree with the fix.
+
+    **What git would ignore, not which lines are present (#762).** Comparing
+    literal lines fails both ways against a wholesale rule such as ``.prawduct/``:
+    every session entry reads "missing" although all are ignored, and files that
+    must be committed are ignored and go unnoticed. So the comparison asks git
+    (:func:`_shared_ignore_matches`). Returns:
+
+    * ``missing`` — session entries that SHOULD be ignored and are not: not a
+      literal line, and not ignored by any shared rule.
+    * ``incorrectly_ignored`` — managed/retired paths with a LITERAL line in the
+      file. The fixer removes exactly these lines, and only these: a line is
+      removed only when it names the path itself.
+    * ``ignored_by_rule`` — managed/retired paths ignored by a rule the fixer will
+      NOT touch (``{"path", "source", "line", "pattern"}``): a wholesale
+      ``.prawduct/``, ``.claude/``, a glob. Those are the owner's own rules, so
+      this is reported, never repaired. Git names only the LAST matching rule per
+      path, so a path a literal line also hides can surface here one run later,
+      after the literal is stripped.
+    * ``basis`` — ``"git"``, or ``"literal"`` when git could not be asked at all.
+      Then ``missing`` and ``incorrectly_ignored`` are the old literal comparison
+      and ``ignored_by_rule`` is empty: a wholesale rule is invisible. That is the
+      boundary, and callers say so rather than present it as a clean bill.
+
+    ``missing`` and ``incorrectly_ignored`` are disjoint (session files vs.
+    managed files), and ``update_gitignore``'s ``modified`` is exactly
+    ``missing or incorrectly_ignored``: ``ignored_by_rule`` never makes it write.
+    A literally present entry is never ``missing`` even if a later negation
+    un-ignores it, so a repaired file stays repaired (the fixer would otherwise
+    append the same line on every run).
     """
-    missing = [e for e in GITIGNORE_ENTRIES if e not in existing_lines]
-    incorrectly_ignored = sorted(
+    existing_lines = set(content.splitlines())
+    not_literal = [e for e in GITIGNORE_ENTRIES if e not in existing_lines]
+    literal_managed = sorted(
         e for e in (*MANAGED_FILES, *RETIRED_GITIGNORE_ENTRIES) if e in existing_lines
     )
-    return {"missing": missing, "incorrectly_ignored": incorrectly_ignored}
+    must_commit = sorted({*MANAGED_FILES, *RETIRED_GITIGNORE_ENTRIES})
+    probes = [_entry_probe_path(e) for e in not_literal]
+    matches = _shared_ignore_matches(target, content, [*probes, *must_commit])
+    if matches is None:
+        return {
+            "missing": not_literal,
+            "incorrectly_ignored": literal_managed,
+            "ignored_by_rule": [],
+            "basis": "literal",
+        }
+    missing = [e for e in not_literal if _entry_probe_path(e) not in matches]
+    removable = set(literal_managed)
+    ignored_by_rule = [
+        {
+            "path": path,
+            "source": matches[path][0],
+            "line": matches[path][1],
+            "pattern": matches[path][2],
+        }
+        for path in must_commit
+        if path in matches and matches[path][2] not in removable
+    ]
+    return {
+        "missing": missing,
+        "incorrectly_ignored": literal_managed,
+        "ignored_by_rule": ignored_by_rule,
+        "basis": "git",
+    }
+
+
+def _read_gitignore(target: Path) -> str:
+    """``target/.gitignore`` text; a missing or unreadable file reads as empty."""
+    try:
+        return (target / ".gitignore").read_text()
+    except OSError:
+        return ""
 
 
 def gitignore_contract_drift(target: Path) -> dict:
@@ -1020,14 +1142,78 @@ def gitignore_contract_drift(target: Path) -> dict:
     every session entry then counts as ``missing``) and returns the
     :func:`_contract_diff` result. Never mutates and never raises on a missing
     file — the ``gitignore`` advisory probe calls this on every session start, so
-    it must be cheap and side-effect-free.
+    it must be cheap (one git subprocess) and side-effect-free.
     """
-    gitignore = target / ".gitignore"
-    try:
-        existing_lines = set(gitignore.read_text().splitlines())
-    except OSError:
-        existing_lines = set()
-    return _contract_diff(existing_lines)
+    return _contract_diff(target, _read_gitignore(target))
+
+
+def gitignore_covers(target: Path, rel_path: str) -> bool:
+    """True when ``target``'s ``.gitignore`` already ignores ``rel_path``.
+
+    A literal line, or any shared rule git says matches. For writers that add one
+    entry (the version marker) and must not append a line a broader rule already
+    makes redundant. When git cannot be asked, only the literal line counts.
+    """
+    content = _read_gitignore(target)
+    if rel_path in content.splitlines():
+        return True
+    matches = _shared_ignore_matches(target, content, [rel_path])
+    return matches is not None and rel_path in matches
+
+
+def _directory_rule(pattern: str) -> str | None:
+    """The directory a wholesale rule excludes (``.prawduct/``, ``/.prawduct``,
+    ``.prawduct/*``, ``.prawduct/**``), else ``None`` for any other shape."""
+    base = pattern
+    for suffix in ("/**", "/*", "/"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    base = base.lstrip("/")
+    if not base or any(c in base for c in "*?[]\\!"):
+        return None
+    return base
+
+
+def describe_ignored_by_rule(entries: list[dict]) -> list[str]:
+    """One plain sentence per offending rule: what it hides, and the exact lines.
+
+    The fixer never edits the owner's rule (#762), so this is the repair: for a
+    wholesale directory rule, either delete it (the session entries prawduct
+    manages already ignore what should not be committed) or replace it with
+    ``dir/*`` and one ``!`` re-include per file directly inside it, or per
+    top-level subdirectory for a file nested deeper (``!dir/artifacts/``: git will
+    not re-include a file whose parent directory is excluded). A bare ``dir/`` rule
+    cannot be negated, which is why it is replaced, not appended to.
+    """
+    groups: dict[tuple[str, int, str], list[str]] = {}
+    for e in entries:
+        groups.setdefault((e["source"], e["line"], e["pattern"]), []).append(e["path"])
+    out: list[str] = []
+    for (source, line, pattern), paths in groups.items():
+        many = len(paths) > 1
+        sentence = (
+            f"{', '.join(f'`{p}`' for p in paths)} {'are' if many else 'is'} ignored by "
+            f"`{pattern}` ({source}:{line}), but prawduct needs {'them' if many else 'it'} "
+            "committed. Prawduct will not edit your rule. Delete that line"
+        )
+        directory = _directory_rule(pattern)
+        under = [p for p in paths if directory and p.startswith(directory + "/")]
+        if directory and len(under) == len(paths):
+            reincludes: list[str] = []
+            for p in paths:
+                rest = p[len(directory) + 1 :]
+                head, sep, _ = rest.partition("/")
+                line_ = f"!{directory}/{head}{sep}"
+                if line_ not in reincludes:
+                    reincludes.append(line_)
+            sentence += ", or replace it with these lines: " + ", ".join(
+                f"`{x}`" for x in [f"{directory}/*", *reincludes]
+            )
+        else:
+            sentence += f", or add a `!` re-include line after it for {'each' if many else 'the'} file"
+        out.append(sentence + ".")
+    return out
 
 
 def update_gitignore(target: Path, dry_run: bool = False) -> dict:
@@ -1039,7 +1225,14 @@ def update_gitignore(target: Path, dry_run: bool = False) -> dict:
     removed from .gitignore (caller should advise user to git-add these), and
     'missing' list of session entries that were added.
 
-    ``dry_run=True`` computes the same three answers and skips the write, so a
+    Two more keys report what this function will NOT repair (#762):
+    ``ignored_by_rule`` lists managed files hidden by a rule of the owner's own
+    (a wholesale ``.prawduct/``; see :func:`describe_ignored_by_rule` for the exact
+    lines to offer), and ``basis`` is ``"git"`` or ``"literal"`` (git could not be
+    asked, so a wholesale rule was invisible). A user's rule is never rewritten or
+    deleted here: ``ignored_by_rule`` does not make ``modified`` true.
+
+    ``dry_run=True`` computes the same answers and skips the write, so a
     caller can PREVIEW the reconcile. The whole point is that the preview and
     the repair share one body: a separate "what would change" implementation is
     free to drift from the fixer, and a preview that disagrees with the fix is
@@ -1047,12 +1240,7 @@ def update_gitignore(target: Path, dry_run: bool = False) -> dict:
     """
     gitignore = target / ".gitignore"
 
-    if gitignore.is_file():
-        content = gitignore.read_text()
-        existing_lines = set(content.splitlines())
-    else:
-        content = ""
-        existing_lines = set()
+    content = gitignore.read_text() if gitignore.is_file() else ""
 
     modified = False
     unignored: list[str] = []
@@ -1061,7 +1249,7 @@ def update_gitignore(target: Path, dry_run: bool = False) -> dict:
     # managed/retired entries wrongly ignored, and session entries still missing.
     # The sets are disjoint, so computing both up front (before the removal
     # mutates the file) yields the same result as the sequential passes below.
-    diff = _contract_diff(existing_lines)
+    diff = _contract_diff(target, content)
     incorrectly_ignored = set(diff["incorrectly_ignored"])
     missing = diff["missing"]
 
@@ -1091,4 +1279,10 @@ def update_gitignore(target: Path, dry_run: bool = False) -> dict:
     if modified and not dry_run:
         gitignore.write_text(content)
 
-    return {"modified": modified, "unignored": unignored, "missing": list(missing)}
+    return {
+        "modified": modified,
+        "unignored": unignored,
+        "missing": list(missing),
+        "ignored_by_rule": diff["ignored_by_rule"],
+        "basis": diff["basis"],
+    }
