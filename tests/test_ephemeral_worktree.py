@@ -1113,8 +1113,12 @@ class TestScratchWorktreeArmsNoCriticGate:
 # DG2 (#1051): `test-evidence record` from a scratch tree → shared store only
 # ---------------------------------------------------------------------------
 
+#: `time="0.0"`: the report is written right after the tree is checked out, and
+#: the ingest bounds the tree by the run's START (mtime less duration). A run
+#: claiming to have begun half a second before its report would have begun
+#: before the checkout, so the stamp would rightly be withheld.
 _JUNIT_GREEN = (
-    '<?xml version="1.0" encoding="utf-8"?>\n<testsuites><testsuite name="s" time="0.5">'
+    '<?xml version="1.0" encoding="utf-8"?>\n<testsuites><testsuite name="s" time="0.0">'
     '<testcase classname="tests.test_a" name="t1"/><testcase classname="tests.test_a" name="t2"/>'
     '<testcase classname="tests.test_a" name="t3"/></testsuite></testsuites>\n'
 )

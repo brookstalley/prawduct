@@ -52,9 +52,11 @@ command that exits non-zero while its report shows no failing test, which is wha
 reporting `population_mismatch` looks like. A refused or interrupted record does not leave the
 previous green in place: the recorder marks the standing record void before it runs anything.
 While that run is going, `test-status` prints `running:` with the elapsed time and an estimate
-from the last run; wait for it with `prawduct-hook test-status --wait` (exit 75 if its timeout
-passes first) rather than starting a second run. If the recorder dies without recording,
-`test-status` prints `stale (interrupted):`.
+from the last run, a worktree's first run included; wait for it with `prawduct-hook test-status
+--wait` (exit 75 if its timeout passes first) rather than starting a second run. If the recorder
+dies without recording, `test-status` prints `stale (interrupted):`. A run on another machine,
+whose process this one cannot check, reads as interrupted once it is three times the last run's
+duration old (at least 30 minutes).
 
 Recording needs `testament` and node installed: any command that cannot start fails the whole
 record. On a machine without testament, run the two suites yourself and ingest both reports in

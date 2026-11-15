@@ -38,6 +38,44 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 
+
+def as_just_run(report: Path) -> Path:
+    """Date a hand-written JUnit report as a run that STARTED just now — after
+    every file the fixture wrote — and ended its stated duration later.
+
+    The ingest bounds the tree by the run's start, read as the report's mtime
+    less its duration (#848, native finding at `report_predates_tree`). A report
+    written in the same instant as the fixture's files and claiming a run of a
+    second or more would have started before those files existed, so its stamp
+    is rightly withheld. Real runs start after their files; this makes the
+    fixture's report say so. The duration is read here independently of the
+    reader: the `<testsuites>` `time`, else the sum of the `<testsuite>` times."""
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+
+    root = ET.parse(report).getroot()
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+    total = root.get("time") if root.tag == "testsuites" else None
+    duration = float(total) if total else sum(float(s.get("time") or 0) for s in suites)
+    end = datetime.now(timezone.utc).timestamp() + duration + 0.05
+    os.utime(report, (end, end))
+    return report
+
+
+def _assert_only_the_attempts_stub(repo: Path) -> None:
+    """A refused record attempt persisted no evidence: only the void stub it
+    wrote ahead of its run (#1178 R-8), carrying no counts and refused by every
+    reader. Renegotiated from "no `.test-evidence.json` at all": the stub is
+    what lets `test-status` show a first run in progress, and it can never
+    vouch — the invariant those tests protected."""
+    record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+    assert record.get("void") and record.get("degraded"), record
+    assert (record["passed"], record["failed"], record["skipped"]) == (0, 0, 0), record
+    assert "evidence_tree" not in record and "failed_tests" not in record, record
+    status = _run_in(repo, "test-status")
+    assert status.returncode == 1, status.stdout
+    assert status.stdout.startswith("stale (interrupted):"), status.stdout
+
+
 class TestPluginHookStructure:
     def test_hook_exists_and_executable(self):
         assert HOOK.is_file(), "bin/prawduct-hook must exist"
@@ -2037,7 +2075,7 @@ class TestJunitLeafCounting:
         junit = self._write(repo, "<testsuites></testsuites>\n")
         res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
         assert res.returncode == 2, res.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        _assert_only_the_attempts_stub(repo)
 
 
     # #963: a failing case two <testsuite> levels deep — the shape the report
@@ -2410,10 +2448,13 @@ class TestNoRerunRestamp:
         """
         repo = self._repo(tmp_path)
         junit = repo / "r.xml"
+        # Suite `time="0.0"`: written right after the repo, so a run claiming a
+        # second's duration would have started before its files existed, and
+        # the ingest (bounded by the run's start, #848) would withhold the tree.
         junit.write_text(
             '<?xml version="1.0"?><testsuites><testsuite name="s" tests="1" '
-            'failures="0" errors="0" skipped="0" time="1.0">'
-            '<testcase classname="t" name="test_a" time="1.0"/>'
+            'failures="0" errors="0" skipped="0" time="0.0">'
+            '<testcase classname="t" name="test_a" time="0.0"/>'
             "</testsuite></testsuites>"
         )
         assert _run_in(repo, "test-evidence", "record", "--from-junit", str(junit)).returncode == 0
@@ -4280,8 +4321,7 @@ class TestDeclaredCommandEnvironments:
         assert r.returncode == 2, r.stderr
         assert "refusing to record" in r.stderr
         assert "test_command" in r.stderr  # the migration guidance names the knob
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists(), \
-            "a wrong-environment run must never persist evidence"
+        _assert_only_the_attempts_stub(repo)  # a wrong-environment run persists no evidence
 
     def test_fallback_pass_records_and_nudges(self, tmp_path):
         repo = self._repo(tmp_path, "fallbackok")
@@ -4348,7 +4388,7 @@ class TestDeclaredCommandEnvironments:
         assert r.returncode == 2, r.stderr
         assert "refusing to record" in r.stderr
         assert "--from-junit" in r.stderr  # the escape for a report known complete
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        _assert_only_the_attempts_stub(repo)
 
     def test_the_disagreement_is_judged_per_command(self, tmp_path):
         # Another command's real failure must not cover for this one: summed,
@@ -4362,7 +4402,7 @@ class TestDeclaredCommandEnvironments:
         r = _run_in(repo, "test-evidence", "record")
         assert r.returncode == 2, r.stderr
         assert "refusing to record" in r.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        _assert_only_the_attempts_stub(repo)
 
     def test_fallback_run_that_collected_nothing_is_refused(self, tmp_path):
         # No declared command, so the hook runs pytest itself, and the repo has
@@ -4373,7 +4413,7 @@ class TestDeclaredCommandEnvironments:
         r = _run_in(repo, "test-evidence", "record")
         assert r.returncode == 2, r.stderr
         assert "the pytest fallback exited 5" in r.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        _assert_only_the_attempts_stub(repo)
 
     def test_node_root_level_failure_records_from_a_live_run(self, tmp_path):
         # The #912 reproduction end to end: one describe plus a failing
@@ -4424,8 +4464,7 @@ class TestDeclaredCommandEnvironments:
         r = _run_in(repo, "test-evidence", "record")
         assert r.returncode == 2
         assert "could not launch" in r.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists(), \
-            "no partial multi-environment evidence"
+        _assert_only_the_attempts_stub(repo)  # no partial multi-environment evidence
 
     def test_from_counts_rejected_with_declared_list(self, tmp_path):
         repo = self._repo(
@@ -4482,7 +4521,7 @@ class TestDeclaredCommandEnvironments:
         r = _run_in(repo, "test-evidence", "record")
         assert r.returncode == 2
         assert "could not parse" in r.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        _assert_only_the_attempts_stub(repo)
 
     def test_repeated_from_junit_aggregates(self, tmp_path):
         # The ingest on-ramp scales with test_commands: run each command

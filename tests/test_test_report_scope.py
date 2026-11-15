@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -372,9 +373,13 @@ class TestTheUndeclaredRunPath:
         res = _run_hook(undeclared_repo, "test-evidence", "record", "-k", "test_a")
         assert res.returncode == 2, res.stdout + res.stderr
         assert "did not cover the whole suite" in res.stderr
-        assert not (undeclared_repo / ".prawduct" / ".test-evidence.json").exists(), (
-            "a refused run must write no evidence at all"
-        )
+        # A refused run writes no evidence: only the void stub its attempt left
+        # (#1178 R-8), with no counts, which no reader lets vouch.
+        stub = json.loads((undeclared_repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert stub.get("void") and (stub["passed"], stub["failed"]) == (0, 0), stub
+        from lib import gates  # noqa: PLC0415
+
+        assert gates.run_refusal(stub), "a refused run's record must not vouch"
 
 
 #: A minimal producer-wired runner: emits the JUnit report the recorder asked
@@ -966,7 +971,7 @@ class TestIngestStampsATreeOnlyWhenTheReportIsNewer:
             "the ingest put a test-run fact for a tree its run never met on the "
             "clone-shared store, where every worktree reuses it"
         )
-        assert "after this report was written" in res.stderr
+        assert "after the run behind this report started" in res.stderr
 
     def test_a_report_newer_than_every_file_still_stamps_the_tree(self, ingest_repo):
         """The regression guard on the double-run fix: a stamp withheld here
@@ -1059,20 +1064,100 @@ class TestIngestStampsATreeOnlyWhenTheReportIsNewer:
         record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert "evidence_tree" in record, res.stderr
 
-    def test_a_coarse_clock_tie_with_the_report_still_stamps_the_tree(self, ingest_repo):
-        """The coarse-clock case pinned on a fine-clock machine: a tracked source
-        file and the report's directory carry exactly the report's mtime, as they
-        do when a Linux tick lands the writes in one stamp. A tie is not "newer
-        than the report", so the stamp survives it."""
+    def test_a_coarse_clock_tie_with_the_runs_start_still_stamps_the_tree(self, ingest_repo):
+        """The coarse-clock case pinned on a fine-clock machine. Renegotiated
+        with the native finding at evidence.py ~1585: the bound is now the
+        run's START, so the tie that must stamp is a source file stamped at
+        exactly that start (the last edit and the run's first tick landing in
+        one stamp). The report's directory ties with the report itself, as it
+        does when the producer's late write shares the report's tick; that
+        still stamps, because directories date deletions only."""
         repo, report = ingest_repo
         ns = report.stat().st_mtime_ns
-        os.utime(repo / "mod.py", ns=(ns, ns))
+        start_ns = ns - 1_000_000_000  # the fixture report's `time="1.0"`
+        os.utime(repo / "mod.py", ns=(start_ns, start_ns))
         os.utime(report.parent, ns=(ns, ns))
-        assert (repo / "mod.py").stat().st_mtime_ns == ns, "precondition: the tie must hold"
+        assert (repo / "mod.py").stat().st_mtime_ns == start_ns, "precondition: the tie must hold"
         res = self._ingest(repo, report)
         assert res.returncode == 0, res.stderr
         record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert "evidence_tree" in record, res.stderr
+
+    def test_a_report_kept_in_the_tree_is_not_an_edit_to_it(self, ingest_repo):
+        """The run's own output is written after the run started by
+        construction; a report (and its scope record) kept untracked in the tree
+        must not read as a file the suite reads changing mid-run."""
+        repo, report = ingest_repo
+        inside = repo / "report.xml"
+        inside.write_text(report.read_text())
+        _record_beside(inside)
+        ns = report.stat().st_mtime_ns
+        os.utime(inside, ns=(ns, ns))
+        os.utime(report_scope.record_path(inside), ns=(ns + 10**9, ns + 10**9))
+        res = self._ingest(repo, inside)
+        record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" in record, res.stderr
+
+    @staticmethod
+    def _rewrite(report: Path, suite_attrs: str) -> int:
+        """Replace the report's `<testsuite>` attributes, keeping its mtime;
+        returns that mtime in ns."""
+        ns = report.stat().st_mtime_ns
+        report.write_text(
+            f'<testsuites><testsuite name="pytest" {suite_attrs}><testcase name="a"/>'
+            '<testcase name="b"/></testsuite></testsuites>\n'
+        )
+        os.utime(report, ns=(ns, ns))
+        return ns
+
+    def test_an_edit_while_the_suite_ran_withholds_the_tree(self, ingest_repo):
+        """Native finding at evidence.py ~1585: the report's mtime is when the
+        run ENDED, so an edit made mid-run predates it and was stamped as if
+        the run had read it. A ten-minute run, an edit five minutes in."""
+        repo, report = ingest_repo
+        ns = self._rewrite(report, 'time="600.0"')
+        mid = ns - 300 * 1_000_000_000
+        (repo / "mod.py").write_text("X = 2\n")
+        os.utime(repo / "mod.py", ns=(mid, mid))
+        self._withheld(repo, self._ingest(repo, report))
+
+    def test_an_edit_before_the_run_started_still_stamps(self, ingest_repo):
+        """The control for the mid-run case: same ten-minute report, the edit
+        a minute before it began."""
+        repo, report = ingest_repo
+        ns = self._rewrite(report, 'time="600.0"')
+        before = ns - 660 * 1_000_000_000
+        (repo / "mod.py").write_text("X = 2\n")
+        os.utime(repo / "mod.py", ns=(before, before))
+        res = self._ingest(repo, report)
+        record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" in record, res.stderr
+
+    def test_the_suites_own_timestamp_bounds_the_start_when_it_is_earlier(self, ingest_repo):
+        """pytest writes `<testsuite timestamp=...>`, the run's start with its
+        offset. Where it is earlier than end-minus-duration (collection the
+        `time` did not count, a slow write), the earlier one bounds."""
+        repo, report = ingest_repo
+        ns = report.stat().st_mtime_ns
+        started = datetime.fromtimestamp(ns / 1e9 - 600, timezone.utc).astimezone()
+        self._rewrite(report, f'time="1.0" timestamp="{started.isoformat()}"')
+        mid = ns - 300 * 1_000_000_000
+        (repo / "mod.py").write_text("X = 2\n")
+        os.utime(repo / "mod.py", ns=(mid, mid))
+        self._withheld(repo, self._ingest(repo, report))
+
+    @pytest.mark.parametrize("attrs", ["", 'timestamp="2026-01-01T00:00:00"'])
+    def test_a_report_naming_no_start_withholds_the_tree(self, ingest_repo, attrs):
+        """No `time`, and no timestamp carrying its offset (a naive one is a
+        local time on an unknown clock): when the run started cannot be read,
+        so the stamp is withheld rather than guessed."""
+        repo, report = ingest_repo
+        self._rewrite(report, attrs)
+        res = self._ingest(repo, report)
+        assert res.returncode == 0, res.stdout + res.stderr
+        record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" not in record, res.stderr
+        assert "when the run behind this report started" in res.stderr, res.stderr
 
 
 #: A producer that writes whatever scope record its environment names, so one

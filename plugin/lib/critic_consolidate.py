@@ -2902,29 +2902,13 @@ def _stale_test_evidence(project_dir: Path) -> "str | None":
 
 
 #: The closed set ``critic-dispatch-stale-evidence`` records as its ``reason``
-#: slug: this worktree's saved run is red, or reports itself degraded, or —
-#: everything else the verdict refuses — it (or the clone's store) does not
-#: vouch for this tree.
-STALE_EVIDENCE_REASONS = ("failing", "degraded", "not-current")
-
-
-def _stale_evidence_slug(project_dir: Path) -> str:
-    """Which :data:`STALE_EVIDENCE_REASONS` member a refusal records, read off
-    this worktree's saved run; ``not-current`` when it is green or absent."""
-    record = gitstate.get_prawduct_dir(project_dir) / ".test-evidence.json"
-    try:
-        run = json.loads(record.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return "not-current"
-    if not isinstance(run, dict):
-        return "not-current"
-    failed = run.get("failed")
-    if isinstance(failed, int) and not isinstance(failed, bool) and failed > 0:
-        return "failing"
-    degraded = run.get("degraded")
-    if isinstance(degraded, str) and degraded.strip():
-        return "degraded"
-    return "not-current"
+#: slug — ``gates.suite_remedy``'s states, so the slug and the remedy printed
+#: beside it are one reading of the record: a record attempt still running or
+#: interrupted, a saved run that is red or reports itself degraded, or —
+#: everything else the verdict refuses — one (or the clone's store) that does
+#: not vouch for this tree. Before #1178 R-4 this module classified the record
+#: itself, and filed an in-flight run's void as ``degraded`` or ``failing``.
+STALE_EVIDENCE_REASONS = gates.SUITE_STATES
 
 
 def working_tree_interval_base(
@@ -3503,7 +3487,8 @@ def begin_review(
     guard, so nothing is derived, written or marked; one ``guard-refusal``
     fact is appended. Distinct from ``no-review-needed``: there is something
     to review, which a reviewer would only report the suite stale on. The
-    remedy is the same mode after the suite runs; ``force=True`` dispatches
+    refusal carries ``remedy`` (``gates.suite_remedy``'s: wait for a run in
+    progress, else run the suite), then the same mode again; ``force=True`` dispatches
     anyway. Absent evidence does not refuse. A refusal also carries ``anchor`` (the tree
     it graded, in words) and ``excluded_wip`` (judgeable uncommitted files that
     tree does not contain) — without them "no judgeable file" is true of the
@@ -3608,15 +3593,19 @@ def begin_review(
     if mode_token == "verify-resolutions" and not force:
         stale = _stale_test_evidence(project_dir)
         if stale is not None:
+            # What to do about it, and the slug, come from one owner
+            # (`gates.suite_remedy`): a run in progress is told to wait, never
+            # to start a second suite on top of the first (#1178 R-4).
+            step = gates.suite_remedy(project_dir)
             # `reason` is the sink's slug from a closed set (what `stats`
             # groups on); the verdict's prose rides as `verdict`, never there.
             _record_guard_refusal(
                 project_dir, "critic-dispatch-stale-evidence",
                 {"mode": mode_token, "verdict": stale,
                  "branch": gitstate.current_branch(project_dir)},
-                reason=_stale_evidence_slug(project_dir),
+                reason=step.state,
             )
-            return {"status": "precondition-failed", "reason": stale}
+            return {"status": "precondition-failed", "reason": stale, "remedy": step.remedy}
 
     # Which unit this review is OF: the dispatch's explicit override, else the
     # checkout's work-unit binding — computed in code (`work_unit.resolve`), the

@@ -136,7 +136,7 @@ The anchor must also be **this branch's**. The findings cache is single-slot and
 **Not a demotion.** Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it
 reviewed: **exit 3, no review needed — stop.** There is no wider mode to fall back to, and
 re-dispatching one spends a full round on a bundle the gate already passes. Nor is stale or red
-saved test evidence: **exit 7** — run the suite, then this mode again (no evidence never refuses).
+saved test evidence: **exit 7** — its printed remedy, then this mode again (no evidence never refuses).
 
 **When NOT to use verify-resolutions.** Not as a chunk's first review (it's a re-review mode). Not after long drift unrelated to the original findings — the scope-widening threshold exists for exactly that.
 

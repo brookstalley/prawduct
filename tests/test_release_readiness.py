@@ -1704,6 +1704,29 @@ class TestTheSuiteMustBeProvenGreen:
         assert "unproven-suite:" in err
         assert "predates session" in err
 
+    def test_a_run_in_progress_is_told_to_wait_not_to_start_another(self, tmp_path, capsys):
+        """R-4: the line appended its own "run the suite and record it" to a
+        verdict saying a run was already going — a second suite on the first."""
+        import os  # noqa: PLC0415
+        from datetime import datetime, timezone  # noqa: PLC0415
+
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+        from lib import record_progress  # noqa: PLC0415
+
+        record_progress.forget()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        project = self._project(tmp_path, evidence=_evidence(
+            timestamp=now, void="record attempt did not complete",
+            degraded="record attempt did not complete",
+            in_progress=record_progress.stamp("pytest", now) | {"pid": os.getpid()},
+        ))
+        assert release_readiness.check_releasability(project) == 1
+        line = next(
+            ln for ln in capsys.readouterr().err.splitlines() if ln.startswith("unproven-suite:")
+        )
+        assert "test-status --wait" in line, line
+        assert "run the suite and record it" not in line, line
+
     def test_recording_a_green_run_is_what_lifts_the_refusal(self, tmp_path, capsys):
         """**The refusal's EFFECT, with the un-recorded case as the control.**
 

@@ -46,6 +46,7 @@ import shlex
 import sys
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 from . import (
     buildplan_refs,
@@ -136,7 +137,8 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # This field derives nothing from the tree. It is present only because a
     # coordinator wrote it, or because ``test-evidence record`` wrote it ahead
     # of a record attempt that then did not land (the write-ahead void, #679:
-    # an observation of the recorder's own run, kept with the earlier counts).
+    # an observation of the recorder's own run, kept with the earlier counts,
+    # or a zero-count stub where no usable record stood).
     # Neither fires on the tree's say-so, so there is no false-stale class for
     # it to reintroduce. The only ways to a wrong stale here are to assert a
     # degradation that did not happen, or to begin a record attempt and abandon
@@ -335,32 +337,119 @@ RUNNING_LABEL = "running"
 INTERRUPTED_LABEL = "stale (interrupted)"
 
 
-def record_in_progress(run: dict) -> "tuple[str, str] | None":
-    """``(state, reason)`` for a record carrying the recorder's ``in_progress``
-    stamp, or ``None`` when it carries none. ``state`` is
-    ``record_progress.RUNNING``, ``ELSEWHERE`` (another host's, which cannot be
-    checked and is treated as running) or ``GONE``. One owner for the sentence,
-    so the refusal every gate prints and ``test-status``'s line say the same."""
+#: What to do about a suite verdict, by the state of this worktree's record —
+#: :func:`suite_remedy`'s ``state``, and the closed set the stale-evidence
+#: guard records as its ``reason`` slug.
+SUITE_RUNNING = "running"
+SUITE_INTERRUPTED = "interrupted"
+SUITE_FAILING = "failing"
+SUITE_DEGRADED = "degraded"
+SUITE_NOT_CURRENT = "not-current"
+SUITE_STATES = (
+    SUITE_RUNNING, SUITE_INTERRUPTED, SUITE_FAILING, SUITE_DEGRADED, SUITE_NOT_CURRENT,
+)
+
+#: The two remedies, stated once (#1178 R-4). Lower-case imperative clauses: a
+#: caller capitalises or embeds them, never rewords them.
+RUN_AND_RECORD = (
+    "run the suite and record it (`prawduct-hook test-evidence record`, or ingest "
+    "the report of a whole-suite run with `--from-junit`)"
+)
+WAIT_FOR_RUN = (
+    "wait for it to record — `prawduct-hook test-status --wait`, which exits 75 if "
+    "its timeout passes first (then wait again) — and do not start another run"
+)
+
+
+class SuiteStep(NamedTuple):
+    """:func:`suite_remedy`'s answer: which :data:`SUITE_STATES` member the
+    record is in, and the remedy clause for it."""
+
+    state: str
+    remedy: str
+
+
+def _cap(clause: str) -> str:
+    return clause[:1].upper() + clause[1:]
+
+
+def _in_progress_parts(run: dict) -> "tuple[str, str, str] | None":
+    """``(state, finding, remedy)`` for a record carrying the recorder's
+    ``in_progress`` stamp, or ``None`` when it carries none. The one place the
+    in-flight sentence is composed: :func:`record_in_progress` joins the two
+    halves for the refusal, :func:`suite_remedy` hands the remedy to callers
+    that write their own lead."""
     stamp = run.get("in_progress")
     if stamp is None:
         return None
     from . import record_progress  # noqa: PLC0415 — lazy: only an in-flight record needs it
 
-    state, why = record_progress.recorder_state(stamp)
+    previous = run.get("duration_seconds")
+    state, why = record_progress.recorder_state(stamp, previous)
     who = record_progress.describe(stamp)
     if state == record_progress.GONE:
         return state, (
             f"the record attempt ({who}) did not land, and its recorder is no longer "
-            f"running ({why}): it was refused, failed, or was killed. Run the suite "
-            "through the recorder again, or ingest the report of a whole-suite run"
-        )
+            f"running ({why}): it was refused, failed, or was killed"
+        ), RUN_AND_RECORD
     where = f" ({why})" if why else ""
-    return state, (
+    finding = (
         f"a suite run is in progress ({who}; "
-        f"{record_progress.progress(stamp, run.get('duration_seconds'))}){where}. "
-        "Wait for it to record — `prawduct-hook test-status --wait` — and do not "
-        "start another"
+        f"{record_progress.progress(stamp, previous)}){where}"
     )
+    if state == record_progress.ELSEWHERE:
+        host = stamp.get("host") if isinstance(stamp.get("host"), str) else ""
+        return state, finding, (
+            f"{WAIT_FOR_RUN}; or, if no run is going on {host or 'that machine'}, "
+            f"{RUN_AND_RECORD} now"
+        )
+    return state, finding, (
+        f"{WAIT_FOR_RUN} (if it hangs, stop pid {stamp.get('pid')}: it then reads "
+        "as interrupted)"
+    )
+
+
+def record_in_progress(run: dict) -> "tuple[str, str] | None":
+    """``(state, reason)`` for a record carrying the recorder's ``in_progress``
+    stamp, or ``None`` when it carries none. ``state`` is
+    ``record_progress.RUNNING``, ``ELSEWHERE`` (another machine's, which cannot
+    be checked: treated as running until ``record_progress.unverified_bound``,
+    then as gone) or ``GONE``. One owner for the sentence, so the refusal every
+    gate prints and ``test-status``'s line say the same."""
+    parts = _in_progress_parts(run)
+    if parts is None:
+        return None
+    state, finding, remedy = parts
+    return state, f"{finding}. {_cap(remedy)}"
+
+
+def suite_remedy(project_dir: Path) -> SuiteStep:
+    """What to do about this worktree's suite verdict — the ONE owner (#1178 R-4).
+
+    Every caller that prints a remedy after :func:`tests_are_current`,
+    :func:`suite_vouches_for_tree` or :func:`run_refusal` takes it from here
+    rather than writing its own "run the suite": a record attempt in progress is
+    told to wait, and a reader that wrapped the verdict in its own remedy told
+    it to start a second suite on top of the first. The state is read off this
+    worktree's record in the order :func:`run_refusal` refuses it, so the two
+    cannot disagree about which condition answers.
+    """
+    record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+    if record is None:
+        return SuiteStep(SUITE_NOT_CURRENT, RUN_AND_RECORD)
+    parts = _in_progress_parts(record)
+    if parts is not None:
+        from . import record_progress  # noqa: PLC0415 — lazy, as in _in_progress_parts
+
+        state = SUITE_INTERRUPTED if parts[0] == record_progress.GONE else SUITE_RUNNING
+        return SuiteStep(state, parts[2])
+    failed = record.get("failed")
+    if isinstance(failed, int) and not isinstance(failed, bool) and failed > 0:
+        return SuiteStep(SUITE_FAILING, f"fix the failing test(s), then {RUN_AND_RECORD}")
+    degraded = record.get("degraded")
+    if isinstance(degraded, str) and degraded.strip():
+        return SuiteStep(SUITE_DEGRADED, f"{RUN_AND_RECORD}, uncontended")
+    return SuiteStep(SUITE_NOT_CURRENT, RUN_AND_RECORD)
 
 
 def run_refusal(run: dict) -> str:
@@ -2516,7 +2605,7 @@ def _merge_base_verdict(
     tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
     if not tests_ok:
         verdict["transfer_note"] = transfer_remedy(
-            transfer, tests_reason, in_progress=_suite_run_in_progress(project_dir)
+            transfer, tests_reason, suite_step=suite_remedy(project_dir)
         )
         return verdict
     # Recording is OPT-IN, and the reason is the second caller. This verdict is
@@ -2642,14 +2731,6 @@ def _repo_relative(project_dir: Path, path: Path) -> str:
         return path.as_posix()
 
 
-def _suite_run_in_progress(project_dir: Path) -> bool:
-    """True while this worktree's recorder is running (or on another host)."""
-    from . import record_progress  # noqa: PLC0415 — lazy, as in record_in_progress
-
-    progress = _in_progress_now(project_dir)
-    return progress is not None and progress[0] != record_progress.GONE
-
-
 def _in_progress_now(project_dir: Path) -> "tuple[str, str] | None":
     """:func:`record_in_progress` for this worktree's saved record, or None."""
     record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
@@ -2695,6 +2776,9 @@ def test_status(
     if wait:
         deadline = time.monotonic() + limit
         while True:
+            # Each poll asks the process table afresh: the probe is memoised
+            # per verdict, and a wait spans many.
+            record_progress.forget()
             progress = _in_progress_now(project_dir)
             if progress is None or progress[0] == record_progress.GONE:
                 break
@@ -2702,12 +2786,15 @@ def test_status(
                 timed_out = True
                 break
             time.sleep(record_progress.WAIT_POLL_SECONDS)
+        record_progress.forget()
     progress = _in_progress_now(project_dir)
     if progress is not None:
         state, reason = progress
         label = INTERRUPTED_LABEL if state == record_progress.GONE else RUNNING_LABEL
         print(f"{label}: {reason}")
         if timed_out:
+            # Ends: a recorder this machine can check ends when its process
+            # does, and one it cannot reads as interrupted past its bound.
             print(
                 f"timed out after waiting {limit:g}s with the run still in progress — "
                 "wait again (a longer --timeout if need be); do not start another run"
@@ -2798,13 +2885,14 @@ def transfer_remedy(
     *,
     untracked: "list[str] | None" = None,
     index_deleted: "list[str] | None" = None,
-    in_progress: bool = False,
+    suite_step: "SuiteStep | None" = None,
 ) -> str:
     """The remedy prose for a base-advance transfer that did not grant.
 
-    ``in_progress`` (#1178): a suite run is already under way in this worktree,
-    so the remedy is to wait for its record and re-run the gate — telling the
-    reader to run the suite would start a second one on top of it.
+    ``suite_step`` is :func:`suite_remedy`'s answer for this worktree (#1178).
+    When a suite run is already under way, its remedy — wait, from the one
+    owner — replaces "run the suite", which would start a second run on top of
+    the first; then the reader re-runs the gate.
 
     Both gates that attempt the transfer render this — the PR gate's `uncovered`
     block and the Stop gate's ``transfer_note`` — so the wording has one home
@@ -2853,11 +2941,11 @@ def transfer_remedy(
         "condition denying the transfer is that no saved suite run has met this "
         f"tree ({tests_reason})."
     )
-    if in_progress:
+    if suite_step is not None and suite_step.state == SUITE_RUNNING:
         return (
-            f"{lead} Wait for that run to record (`prawduct-hook test-status --wait`), "
-            "then re-run this gate: if the run met this tree, the coverage transfers "
-            "and no review is needed. Do not start another run."
+            f"{lead} A suite run is already under way: {suite_step.remedy}. Then "
+            "re-run this gate: if the run met this tree, the coverage transfers and "
+            "no review is needed."
         )
     if uncommitted:
         flag = "--include-untracked" if untracked else ""
@@ -3505,7 +3593,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
                 explained.get("uncommitted"),
                 untracked=explained.get("untracked"),
                 index_deleted=explained.get("index_deleted"),
-                in_progress=_suite_run_in_progress(project_dir),
+                suite_step=suite_remedy(project_dir),
             ),
             file=sys.stderr,
         )

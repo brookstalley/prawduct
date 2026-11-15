@@ -231,11 +231,23 @@ class TestTheVoidIsWrittenAhead:
         assert "void" not in landed and "degraded" not in landed
         assert _run_in(repo, "test-status").returncode == 0
 
-    def test_no_record_on_disk_stays_no_record(self, tmp_path):
+    def test_no_record_on_disk_gets_a_stub_that_never_vouches(self, tmp_path):
+        """Renegotiated (#1178 R-8). This used to pin "no record stays no
+        record", which left a first run with nowhere to carry its in-progress
+        stamp: invisible to `test-status`, and `--wait` returned at once. The
+        attempt now leaves a void-shaped stub — schema-valid, carrying no
+        counts, refused through `degraded` like every void — so a refused first
+        attempt reads as interrupted, never as green."""
         repo = _repo(tmp_path)
         res = _run_in(repo, "test-evidence", "record", "--from-junit", "missing.xml")
         assert res.returncode == 2
-        assert not _evidence_path(repo).exists()
+        stub = _record(repo)
+        ok, why = gates._validate_evidence_schema(stub)
+        assert ok, why
+        assert stub["passed"] == 0 and stub["failed"] == 0 and stub.get("void")
+        assert "evidence_tree" not in stub
+        assert "no record had landed" in stub["degraded"], stub["degraded"]
+        _assert_voided(repo, res)
 
 
 class TestWhatDoesNotVoid:

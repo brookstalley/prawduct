@@ -2408,15 +2408,18 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         # DEMOTES, and a wider mode would review the same tree over the same
         # stale suite. Not 3: there IS something to review. Not 5: withdrawn
         # with #167 and left unclaimed (api-contract.md, Error Model). Stdout,
-        # because like a 3 it is a normal outcome the caller acts on.
+        # because like a 3 it is a normal outcome the caller acts on. The
+        # remedy is `gates.suite_remedy`'s, never written here: a run already
+        # in progress is told to wait, not to start a second (#1178 R-4).
+        remedy = result.get("remedy") or _gates().RUN_AND_RECORD
         print(
             "PRAWDUCT: verify-resolutions refused — the saved test evidence does "
             f"not vouch for this tree: {result['reason']}.\n"
             "  A verify pass rates only BLOCKING findings, so the reviewer would "
-            "spend the round reporting this. Run the declared suite and record it "
-            "(`prawduct-hook test-status` exits 0 once it is current), then "
-            "re-dispatch `/prawduct:critic verify-resolutions` — the same mode, "
-            "never a demotion.\n"
+            f"spend the round reporting this. {remedy[:1].upper()}{remedy[1:]}. "
+            "Then re-dispatch `/prawduct:critic verify-resolutions` "
+            "(`prawduct-hook test-status` exits 0 once the evidence is current) — "
+            "the same mode, never a demotion.\n"
             "  To review anyway (only if the user asks): "
             "`/prawduct:critic verify-resolutions --force`."
         )
@@ -4625,38 +4628,71 @@ def _void_test_evidence(evidence_path: Path, attempt: str) -> dict:
       still going (wait) from one that died (interrupted) — #1178.
 
     The counts, command and every other field are kept, so the record still
-    passes the schema and says which run its counts came from. No record, or
-    one that cannot be read as a JSON object, is left alone: both already read
-    not current. Returns ``{"status": "voided" | "absent" | "unreadable" |
-    "error", "reason"?}``; the caller proceeds either way, because a void that
-    could not be written leaves the reader exactly where it was before.
+    passes the schema and says which run its counts came from.
+
+    **With no usable record, a stub stands in (#1178 R-8).** No record, one that
+    cannot be read as a JSON object, or one the schema refuses has nowhere to
+    carry ``in_progress`` that a reader would see: every reader parses and
+    schema-checks before it looks for the stamp. Leaving it alone made a fresh
+    worktree's first run invisible — ``test-status`` said stale, ``--wait``
+    returned at once, and the reader started a second suite. So the void is
+    written as a stub instead: schema-valid, zero counts, ``degraded`` and
+    ``void`` set like any void, no tree. A refused first attempt therefore reads
+    as interrupted rather than as no evidence, and the clone's store cannot
+    vouch over it — the attempt is this worktree's newest word, as with any void.
+
+    Returns ``{"status": "voided" | "stubbed" | "error", "reason"?}``; the
+    caller proceeds either way, because a void that could not be written leaves
+    the reader exactly where it was before.
     """
-    if not evidence_path.is_file():
-        return {"status": "absent"}
-    try:
-        prior = json.loads(evidence_path.read_text())
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
-        return {"status": "unreadable", "reason": str(exc)}
-    if not isinstance(prior, dict):
-        return {"status": "unreadable", "reason": "not a JSON object"}
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    already_void = isinstance(prior.get("void"), str) and bool(prior["void"].strip())
-    counts_from = prior.get("void_counts_from") if already_void else prior.get("timestamp")
-    if not isinstance(counts_from, str) or not counts_from:
-        counts_from = "(unknown)"
     void = f"record attempt at {now} ({attempt}) did not complete"
-    degraded = (
-        f"{void}, so the counts here, from the run recorded at {counts_from}, are "
-        "not the latest word on this tree. Run the suite through the recorder, or "
-        "ingest the report of a whole-suite run, and let that record land"
+    prior, why_no_prior = None, "no record had landed in this worktree"
+    if evidence_path.is_file():
+        try:
+            prior = json.loads(evidence_path.read_text())
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+            prior, why_no_prior = None, f"the record on disk was unreadable ({exc})"
+        if prior is not None and not isinstance(prior, dict):
+            prior, why_no_prior = None, "the record on disk was not a JSON object"
+    if prior is not None:
+        ok, schema_err = _gates()._validate_evidence_schema(prior)
+        if not ok:
+            prior, why_no_prior = None, f"the record on disk was not usable ({schema_err})"
+    already_void = prior is not None and isinstance(prior.get("void"), str) and bool(
+        prior["void"].strip()
     )
-    prior_degraded = prior.get("degraded")
-    if not already_void and isinstance(prior_degraded, str) and prior_degraded.strip():
-        degraded += f"; that run was already reported degraded: {prior_degraded.strip()}"
-    voided = {k: v for k, v in prior.items() if k != "evidence_tree"}
-    voided.update(
-        timestamp=now, void=void, void_counts_from=counts_from, degraded=degraded
-    )
+    if prior is None or (already_void and prior.get("void_counts_from") is None):
+        # A stub, or a void of one: no run's counts to carry.
+        voided = {
+            "passed": 0, "failed": 0, "skipped": 0, "duration_seconds": 0,
+            "command": attempt, "verifier": "none (no record has landed)",
+            "tests_executed": [], "changes_referenced": [], "coverage_level": "referenced",
+        }
+        degraded = (
+            f"{void}, and {why_no_prior if prior is None else 'no record had landed before it'}, "
+            "so this record carries no counts. Run the suite through the recorder, or "
+            "ingest the report of a whole-suite run, and let that record land"
+        )
+        voided.update(timestamp=now, void=void, void_counts_from=None, degraded=degraded)
+        status = "stubbed"
+    else:
+        counts_from = prior.get("void_counts_from") if already_void else prior.get("timestamp")
+        if not isinstance(counts_from, str) or not counts_from:
+            counts_from = "(unknown)"
+        degraded = (
+            f"{void}, so the counts here, from the run recorded at {counts_from}, are "
+            "not the latest word on this tree. Run the suite through the recorder, or "
+            "ingest the report of a whole-suite run, and let that record land"
+        )
+        prior_degraded = prior.get("degraded")
+        if not already_void and isinstance(prior_degraded, str) and prior_degraded.strip():
+            degraded += f"; that run was already reported degraded: {prior_degraded.strip()}"
+        voided = {k: v for k, v in prior.items() if k != "evidence_tree"}
+        voided.update(
+            timestamp=now, void=void, void_counts_from=counts_from, degraded=degraded
+        )
+        status = "voided"
     # Who is running, so a reader can tell this attempt still going from one
     # that died (#1178): `test-status` says `running` and the gates say to
     # wait while the recorder lives, and `stale (interrupted)` once it is gone.
@@ -4677,14 +4713,18 @@ def _void_test_evidence(evidence_path: Path, attempt: str) -> dict:
         tmp.write_text(json.dumps(voided, indent=2, sort_keys=True) + "\n")
         os.replace(tmp, evidence_path)
     except OSError as exc:
+        consequence = (
+            "if the attempt does not land, the previous record keeps vouching"
+            if status == "voided"
+            else "test-status will not show this run as in progress"
+        )
         print(
             f"warning: could not mark the standing test evidence void before this "
-            f"record attempt ({exc}); if the attempt does not land, the previous "
-            "record keeps vouching.",
+            f"record attempt ({exc}); {consequence}.",
             file=sys.stderr,
         )
         return {"status": "error", "reason": str(exc)}
-    return {"status": "voided"}
+    return {"status": status}
 
 
 #: How many failing ids a record keeps. The names exist so a reader can go
