@@ -13,8 +13,11 @@ Two layers, each pinned here:
   (``isolation: "worktree"``) and runs ``native-review prepare`` before the
   review: that refuses when it is standing in the session's checkout, and
   otherwise detaches its OWN tree at the reviewed head, so the review reads the
-  reviewed code there and has nothing to check out. ``record`` returns that tree
-  to the commit it started on, so the harness can clean it up.
+  reviewed code there and has nothing to check out. The wrapper writes its text
+  in that tree (the harness refuses its Write to the session's files), and
+  ``record``, run from the session's checkout, copies it across, deletes the
+  tree's copy and returns the tree to the commit it started on, so the harness
+  can clean it up. A tree left behind anyway is named, with a guarded removal.
 - **Detection.** A HEAD that left the review's branch is reported, with the
   command that recovers it, on the surfaces the builder and the wrapper read:
   the review's ``NEXT-ACTION``, ``native-review record``'s output, and
@@ -277,6 +280,209 @@ class TestPrepareAtTheCli:
 THREE = '[{"file": "a.py", "line": 3, "summary": "s", "failure_scenario": "f"}]\n'
 
 
+# --- The text handoff: written in the wrapper's tree, copied by record -------
+
+
+class TestTextHandoffAcrossWorktrees:
+    """The first live run (2026-11-15): the wrapper, isolated in its own
+    worktree, was told to Write its text to the session checkout's
+    ``.native-reviews/``, and the harness refused — "This agent is isolated in
+    the worktree <tree>. Edit the worktree copy of this file instead of the
+    shared-checkout path." So the text is written in the wrapper's OWN tree,
+    and ``record`` (run from the session's checkout) copies it across: a read
+    crosses worktrees, a harness-tool write does not."""
+
+    def _prepared(self, branch_repo, monkeypatch) -> "tuple[dict, Path]":
+        result = _paired(branch_repo, monkeypatch)
+        tree = _agent_tree(branch_repo)
+        assert native_review.prepare(tree, branch_repo, result["id"])[0] == 0
+        return result, tree
+
+    def test_the_prompt_never_writes_into_the_sessions_checkout(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch)
+        native = result["manifest"]["native_review"]
+        prompt = native["prompt"]
+        assert native["text_path"] not in prompt
+        sentence = next(s for s in prompt.split(". ") if "Write tool" in s)
+        assert "your own worktree" in sentence and "prepare" in sentence, sentence
+
+    def test_prepare_names_the_path_in_its_own_tree(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch)
+        tree = _agent_tree(branch_repo)
+        rc, message = native_review.prepare(tree, branch_repo, result["id"])
+        assert rc == 0, message
+        own = native_review.own_text_path(tree, result["id"])
+        assert own.is_relative_to(tree)
+        assert f"`{own}`" in message
+        assert _sidecar(branch_repo, result["id"])["review_tree"]["text"] == str(own)
+
+    def test_record_copies_the_text_from_the_review_tree(self, branch_repo, monkeypatch):
+        """No ``--text-file``: the sidecar says where the wrapper's tree is."""
+        result, tree = self._prepared(branch_repo, monkeypatch)
+        own = native_review.own_text_path(tree, result["id"])
+        own.parent.mkdir(parents=True)
+        own.write_text(THREE)
+        pd = branch_repo / ".prawduct"
+        rc, message = native_review.record(branch_repo, pd, result["id"])
+        assert rc == 0, message
+        assert "1 finding(s)" in message
+        assert native_review.text_path(pd, result["id"]).read_text() == THREE
+        assert not own.exists()  # moved, so the tree is unchanged for the harness
+
+    def test_record_takes_an_explicit_text_file(self, branch_repo, monkeypatch, tmp_path):
+        """A text saved anywhere else (the live run's scratchpad) is copied and
+        left where it was: only a file in the review tree is the record's to move."""
+        result, _tree = self._prepared(branch_repo, monkeypatch)
+        elsewhere = tmp_path / "scratch" / "native.md"
+        elsewhere.parent.mkdir()
+        elsewhere.write_text(THREE)
+        pd = branch_repo / ".prawduct"
+        rc, message = native_review.record(branch_repo, pd, result["id"], text_file=elsewhere)
+        assert rc == 0, message
+        assert native_review.text_path(pd, result["id"]).read_text() == THREE
+        assert elsewhere.read_text() == THREE
+
+    def test_a_relative_or_missing_text_file_is_refused(self, branch_repo, monkeypatch):
+        result, _tree = self._prepared(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        rc, message = native_review.record(branch_repo, pd, result["id"], text_file=Path("x.md"))
+        assert rc == 1 and "absolute" in message
+        rc, message = native_review.record(branch_repo, pd, result["id"], text_file=branch_repo / "nope.md")
+        assert rc == 1 and "nope.md" in message
+        assert not native_review.text_path(pd, result["id"]).exists()
+
+    def test_no_text_anywhere_names_where_it_was_looked_for(self, branch_repo, monkeypatch):
+        result, tree = self._prepared(branch_repo, monkeypatch)
+        rc, message = native_review.record(branch_repo, branch_repo / ".prawduct", result["id"])
+        assert rc == 1
+        assert str(native_review.own_text_path(tree, result["id"])) in message
+
+    def test_at_the_cli_from_the_sessions_checkout(self, branch_repo, monkeypatch):
+        """The live shape: ``cd <session> && prawduct-hook native-review record
+        <id> --text-file <path in the wrapper's tree>``."""
+        result, tree = self._prepared(branch_repo, monkeypatch)
+        own = native_review.own_text_path(tree, result["id"])
+        own.parent.mkdir(parents=True)
+        own.write_text(THREE)
+        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(branch_repo)}
+        env.pop("CLAUDE_PLUGIN_ROOT", None)
+        proc = subprocess.run(
+            [sys.executable, str(HOOK), "native-review", "record", result["id"], "--text-file", str(own)],
+            cwd=str(branch_repo), capture_output=True, text=True, env=env, timeout=60,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert native_review.text_path(branch_repo / ".prawduct", result["id"]).read_text() == THREE
+        assert _branch(tree) == "worktree-agent-a1b2c3d4e5f60718"
+
+
+# --- A review tree the harness left behind -----------------------------------
+
+
+def _run_sh(command: str, cwd: Path) -> subprocess.CompletedProcess:
+    """Run a printed shell one-liner as a person pasting it would."""
+    return subprocess.run(["sh", "-c", command], cwd=str(cwd), capture_output=True, text=True, timeout=30)
+
+
+class TestLeftoverReviewTree:
+    """The second failure of the live run: the wrapper's tree outlived it,
+    locked. The harness keeps a tree that is not as it made it when its agent
+    ends; there, it was still detached because record had failed. Whatever the
+    cause, a review tree still on disk once the text has landed is named, with
+    a removal command guarded to fire only on a clean tree at its creation
+    point — never one holding work."""
+
+    def _recorded(self, branch_repo, monkeypatch) -> "tuple[dict, Path]":
+        result = _paired(branch_repo, monkeypatch)
+        tree = _agent_tree(branch_repo)
+        _git(branch_repo, "worktree", "lock", str(tree))  # as the harness leaves it
+        assert native_review.prepare(tree, branch_repo, result["id"])[0] == 0
+        native_review.text_path(branch_repo / ".prawduct", result["id"]).write_text(THREE)
+        assert native_review.record(branch_repo, branch_repo / ".prawduct", result["id"])[0] == 0
+        return result, tree
+
+    def test_a_clean_leftover_is_named_with_its_removal(self, branch_repo, monkeypatch):
+        result, tree = self._recorded(branch_repo, monkeypatch)
+        clause = native_review.next_action_clause(branch_repo / ".prawduct", result["id"])
+        command = native_review.cleanup_command(branch_repo, native_review.leftover_tree(
+            branch_repo, _sidecar(branch_repo, result["id"])))
+        assert str(tree) in clause and f"`{command}`" in clause
+        proc = _run_sh(command, branch_repo)
+        assert proc.returncode == 0, proc.stderr
+        assert not tree.exists()
+        assert "worktree-agent-a1b2c3d4e5f60718" not in _git(branch_repo, "branch", "--list")
+        # The session's own branch and checkout are untouched.
+        assert _branch(branch_repo) == BRANCH
+        # Gone, it is no longer named.
+        assert str(tree) not in native_review.next_action_clause(branch_repo / ".prawduct", result["id"])
+
+    def test_record_names_the_removal_too(self, branch_repo, monkeypatch):
+        """Record runs inside the wrapper, before the harness's check; its
+        output — the wrapper's one-line report — carries the command for the
+        case the harness keeps the tree anyway."""
+        result = _paired(branch_repo, monkeypatch)
+        tree = _agent_tree(branch_repo)
+        assert native_review.prepare(tree, branch_repo, result["id"])[0] == 0
+        native_review.text_path(branch_repo / ".prawduct", result["id"]).write_text(THREE)
+        rc, message = native_review.record(branch_repo, branch_repo / ".prawduct", result["id"])
+        assert rc == 0
+        assert "git -C" in message and "worktree remove" in message
+
+    def test_a_leftover_with_work_is_named_and_never_removed(self, branch_repo, monkeypatch):
+        result, tree = self._recorded(branch_repo, monkeypatch)
+        (tree / "notes.txt").write_text("someone's work\n")
+        clause = native_review.next_action_clause(branch_repo / ".prawduct", result["id"])
+        assert str(tree) in clause
+        assert "worktree remove" not in clause
+        left = native_review.leftover_tree(branch_repo, _sidecar(branch_repo, result["id"]))
+        assert left is not None and left["clean"] is False
+
+    def test_the_guard_refuses_a_tree_that_gained_work_after_it_was_printed(self, branch_repo, monkeypatch):
+        """The printed command re-checks when it runs: a commit or a new file
+        made since keeps the tree and its branch."""
+        result, tree = self._recorded(branch_repo, monkeypatch)
+        command = native_review.cleanup_command(branch_repo, native_review.leftover_tree(
+            branch_repo, _sidecar(branch_repo, result["id"])))
+        (tree / "src/app.py").write_text("y = 9\n")
+        _git(tree, "commit", "--quiet", "-am", "work")
+        _run_sh(command, branch_repo)
+        assert tree.exists()
+        assert "worktree-agent-a1b2c3d4e5f60718" in _git(branch_repo, "branch", "--list")
+        _git(tree, "reset", "--quiet", "--hard", "HEAD~1")
+        (tree / "untracked.txt").write_text("new\n")
+        _run_sh(command, branch_repo)
+        assert (tree / "untracked.txt").exists()
+
+    def test_the_guard_keeps_a_branch_that_moved_on(self, branch_repo, monkeypatch):
+        """HEAD back at the start but the branch elsewhere holding commits: the
+        branch delete would lose them, so nothing is removed."""
+        result, tree = self._recorded(branch_repo, monkeypatch)
+        command = native_review.cleanup_command(branch_repo, native_review.leftover_tree(
+            branch_repo, _sidecar(branch_repo, result["id"])))
+        start = _git(tree, "rev-parse", "HEAD")
+        (tree / "src/app.py").write_text("y = 9\n")
+        _git(tree, "commit", "--quiet", "-am", "work")
+        _git(tree, "checkout", "--quiet", "--detach", start)
+        _run_sh(command, branch_repo)
+        assert "worktree-agent-a1b2c3d4e5f60718" in _git(branch_repo, "branch", "--list")
+
+    def test_control_a_run_still_in_flight_names_no_leftover(self, branch_repo, monkeypatch):
+        """Before the text lands the wrapper is still working in its tree."""
+        result = _paired(branch_repo, monkeypatch)
+        tree = _agent_tree(branch_repo)
+        assert native_review.prepare(tree, branch_repo, result["id"])[0] == 0
+        clause = native_review.next_action_clause(branch_repo / ".prawduct", result["id"])
+        assert "may still be running" in clause and str(tree) not in clause
+
+    def test_an_inner_review_names_its_leftover_too(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch, mode="chunk")
+        tree = _agent_tree(branch_repo)
+        assert native_review.prepare(tree, branch_repo, result["id"])[0] == 0
+        native_review.text_path(branch_repo / ".prawduct", result["id"]).write_text(THREE)
+        assert native_review.record(branch_repo, branch_repo / ".prawduct", result["id"])[0] == 0
+        clause = native_review.next_action_clause(branch_repo / ".prawduct", result["id"])
+        assert str(tree) in clause and "work from both lists" not in clause
+
+
 class TestRecordReturnsTheReviewTree:
     def test_the_review_tree_goes_back_to_its_branch(self, branch_repo, monkeypatch):
         """So the harness finds it as it made it, and cleans it up."""
@@ -301,6 +507,26 @@ class TestRecordReturnsTheReviewTree:
         assert rc == 0, message
         assert _branch(tree) is None
         assert str(tree) in message and "left" in message
+
+    def test_the_tree_is_left_as_the_harness_made_it(self, branch_repo, monkeypatch):
+        """The leftover of the first live run: the harness removes an isolated
+        agent's worktree only when it is unchanged as the agent ends. After a
+        full handoff — text written in the wrapper's own tree, recorded from the
+        session's checkout — the tree is back at its creation point with
+        nothing in it, ignored files included."""
+        result = _paired(branch_repo, monkeypatch)
+        tree = _agent_tree(branch_repo)
+        created = _git(tree, "rev-parse", "HEAD")
+        assert native_review.prepare(tree, branch_repo, result["id"])[0] == 0
+        own = native_review.own_text_path(tree, result["id"])
+        own.parent.mkdir(parents=True, exist_ok=True)
+        own.write_text(THREE)
+        rc, message = native_review.record(branch_repo, branch_repo / ".prawduct", result["id"])
+        assert rc == 0, message
+        assert _git(tree, "rev-parse", "HEAD") == created
+        assert _branch(tree) == "worktree-agent-a1b2c3d4e5f60718"
+        assert _git(tree, "status", "--porcelain", "--ignored", "--untracked-files=all") == ""
+        assert not own.parent.exists()
 
     def test_a_prepared_run_read_its_own_tree_so_nothing_moved_under_it(self, branch_repo, monkeypatch):
         """``tree_moved`` asks whether the code the native run read changed

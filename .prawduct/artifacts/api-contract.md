@@ -175,11 +175,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   — exit 0 prints `ok`, exit 1 prints the parse error with its line and column or the validation
   reason (fix the file), exit 3 means nothing can check it: no manifest owns it, or it is keyed to
   another review (stop), exit 2 is a usage error; a reviewer runs it on its own file before
-  returning), `native-review record <review-id>` (mutating; the paired native review's wrapper
-  runs it after saving the text: appends one `native.review` ledger event from the sidecar
-  `critic-begin` wrote and the text, exit 0 — also when already recorded — exit 1 with the reason
-  when there is no sidecar or no text, or the id could leave `.prawduct/.native-reviews/`, exit 2
-  on a usage error), `native-review show [<review-id>]` (read-only; prints a native review's text,
+  returning), `native-review record <review-id> [--text-file <absolute path>]` (mutating; the
+  paired native review's wrapper runs it from the session's checkout after saving the text in its
+  own worktree: copies the text into `.prawduct/.native-reviews/` from that worktree, which the
+  sidecar names, or from `--text-file`, deletes the copy in the review worktree, and appends one
+  `native.review` ledger event from the sidecar `critic-begin` wrote and the text, exit 0 — also
+  when already recorded — exit 1 with the reason when there is no sidecar or no text, the
+  `--text-file` is not an absolute path to a file, or the id could leave
+  `.prawduct/.native-reviews/`, exit 2 on a usage error), `native-review show [<review-id>]` (read-only; prints a native review's text,
   the newest by default, exit 0, or exit 1 with why), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
