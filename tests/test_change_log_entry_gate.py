@@ -92,7 +92,11 @@ def _run_probe(repo: Path) -> subprocess.CompletedProcess:
 # ---------------------------------------------------------------------------
 
 
-def test_code_change_with_new_entry_passes(tmp_path):
+def test_a_new_pending_legacy_entry_is_refused_naming_doctor(tmp_path):
+    """Was `test_code_change_with_new_entry_passes`. Releases read fragments only
+    and refuse a release-pending entry in the live log (#1125), so the PR gate
+    refuses the same entry, with the release's own line and remedy, rather than
+    pass a branch its next release will stop on."""
     repo = _make_branched_repo(tmp_path)
     _commit_file(repo, "app.py", "print(2)\n", "code change")
     _commit_file(
@@ -101,6 +105,25 @@ def test_code_change_with_new_entry_passes(tmp_path):
         "<!-- prawduct: type=fix | scope=x -->\n\n"
         "## 2026-06-01: baseline entry\n\nBody.\n",
         "add entry",
+    )
+    result = _run_probe(repo)
+    assert result.returncode == 1, result.stdout
+    assert "entry-present" not in result.stdout
+    line = next(x for x in result.stderr.splitlines() if "legacy-pending-entry:" in x)
+    assert "'2026-06-10: new work'" in line and "/prawduct:doctor" in line
+
+
+def test_an_added_entry_already_tagged_released_passes(tmp_path):
+    """The release accepts shipped history in the live log, so an added entry
+    already carrying `release=` (a trunk branch re-run after Step 1d) passes."""
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(
+        repo, CHANGE_LOG,
+        "# Change Log\n\n## 2026-06-10: new work\n"
+        "<!-- prawduct: type=fix | scope=x | release=v1.0.0 -->\n\n"
+        "## 2026-06-01: baseline entry\n\nBody.\n",
+        "add released entry",
     )
     result = _run_probe(repo)
     assert result.returncode == 0, result.stderr
@@ -146,8 +169,11 @@ def test_a_retired_key_in_history_does_not_fail_a_new_clean_entry(tmp_path):
         "add entry",
     )
     result = _run_probe(repo)
-    assert result.returncode == 0, result.stderr
-    assert "entry-present" in result.stdout
+    # A retired key in history is still no `retired-key`; the new entry is
+    # refused for what the release refuses it for.
+    assert result.returncode == 1, result.stdout
+    assert "retired-key" not in result.stderr
+    assert "legacy-pending-entry: '2026-06-10: new work'" in result.stderr
 
 
 def test_doc_only_branch_exempt(tmp_path):
@@ -308,6 +334,11 @@ def test_code_change_without_entry_fails(tmp_path):
     assert result.returncode == 1
     assert "no-entry" in result.stderr
     assert "app.py" in result.stderr
+    # The remedy must be one the release accepts: a fragment, reached through
+    # doctor in a repo not yet on fragments, never "add a change-log entry".
+    assert "/prawduct:doctor" in result.stderr
+    assert ".prawduct/changes/<scope>.md" in result.stderr
+    assert "add a change-log entry" not in result.stderr
 
 
 def test_entry_edited_but_not_added_fails(tmp_path):
@@ -389,8 +420,12 @@ def _make_untracked_log_repo(tmp_path: Path, log_body: str | None) -> Path:
     return repo
 
 
-def test_untracked_log_with_entries_passes_on_the_weaker_check(tmp_path):
-    """The defect this family exists for: a real log, on disk, read as absent."""
+def test_an_untracked_log_no_longer_passes_and_points_at_doctor(tmp_path):
+    """Was `test_untracked_log_with_entries_passes_on_the_weaker_check`. A log
+    on disk is not a record any release reads (#1125), so the weaker check has
+    nothing left to pass on. The remedy must still be one that can clear the
+    gate: doctor moves the repo onto fragments, and an ignored fragment
+    directory gets its own weaker check."""
     repo = _make_untracked_log_repo(
         tmp_path,
         "# Change Log\n\n## 2026-06-10: this branch's work\n\nBody.\n"
@@ -401,11 +436,23 @@ def test_untracked_log_with_entries_passes_on_the_weaker_check(tmp_path):
     assert not _git(repo, "log", "--all", "--", CHANGE_LOG).stdout.strip()
 
     result = _run_probe(repo)
-    assert result.returncode == 0, result.stderr
-    assert "entry-present-untracked" in result.stdout
-    # The message must not claim the strong check ran, and must not repeat the
-    # unfollowable remedy.
-    assert "no-entry" not in result.stdout + result.stderr
+    assert result.returncode == 1, result.stdout
+    assert "entry-present-untracked" not in result.stdout
+    assert "no-entry:" in result.stderr and "/prawduct:doctor" in result.stderr
+    assert "add a change-log entry" not in result.stderr.lower()
+
+
+def test_an_untracked_log_with_a_pending_entry_is_refused_like_the_release(tmp_path):
+    repo = _make_untracked_log_repo(
+        tmp_path,
+        "# Change Log\n\n## 2026-06-10: this branch's work\n\n"
+        "<!-- prawduct: type=fix | scope=x -->\n\nBody.\n",
+    )
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1, result.stdout
+    line = next(x for x in result.stderr.splitlines() if "legacy-pending-entry:" in x)
+    assert "2026-06-10: this branch's work" in line and "/prawduct:doctor" in line
 
 
 def test_untracked_log_missing_from_disk_still_fails(tmp_path):
@@ -473,12 +520,23 @@ PR_SKILL = SOURCE / "skills" / "pr" / "SKILL.md"
 _VERDICT_RE = re.compile(r"""["'](?:\s*)([a-z][a-z0-9]*(?:-[a-z0-9]+)+):\s""")
 
 
+RELEASE_READINESS_PY = SOURCE / "lib" / "release_readiness.py"
+
+
 def _probe_source() -> str:
-    """The two functions that emit this gate's verdicts, and nothing else."""
+    """The functions that emit this gate's verdicts, and nothing else.
+
+    The ``legacy-pending-entry`` lines are the release's own, printed verbatim
+    from ``release_readiness.legacy_pending_refusals`` (#1125), so that
+    function's source is part of what this gate emits.
+    """
     text = COVERAGE_PY.read_text(encoding="utf-8")
     start = text.index("def _entry_check_without_history")
     end = text.index("\ndef ", text.index("def check_change_log_entry"))
-    return text[start:end]
+    release = RELEASE_READINESS_PY.read_text(encoding="utf-8")
+    r_start = release.index("def legacy_pending_refusals")
+    r_end = release.index("\ndef ", r_start + 1)
+    return text[start:end] + release[r_start:r_end]
 
 
 def _step_1c() -> str:
@@ -548,7 +606,7 @@ def test_untracked_log_holding_only_shipped_entries_still_fails(tmp_path):
     _commit_file(repo, "app.py", "print(2)\n", "code change")
     result = _run_probe(repo)
     assert result.returncode == 1
-    assert "no release-pending entry" in result.stderr
+    assert "no-entry:" in result.stderr and "/prawduct:doctor" in result.stderr
 
 
 def test_a_failed_tracked_probe_is_git_failed_not_the_weak_check(tmp_path, monkeypatch):
@@ -633,13 +691,17 @@ def test_an_edit_beside_an_added_fragment_passes(tmp_path):
     assert "fragment-present: .prawduct/changes/x.md" in result.stdout
 
 
-def test_without_fragments_the_legacy_verdict_is_unchanged(tmp_path):
+def test_without_fragments_no_entry_sends_the_repo_onto_fragments(tmp_path):
+    """Was `test_without_fragments_the_legacy_verdict_is_unchanged`, which pinned
+    the remedy "add a change-log entry". Since #1125 following that remedy is
+    refused at the release, so the remedy is doctor, then a fragment."""
     repo = _make_branched_repo(tmp_path)
     _commit_file(repo, "app.py", "print(2)\n", "code change")
     result = _run_probe(repo)
     assert result.returncode == 1
     assert "no-entry:" in result.stderr
-    assert "fragment" not in result.stderr
+    assert "/prawduct:doctor" in result.stderr
+    assert "add a change-log entry" not in result.stderr
 
 
 def test_an_uncommitted_fix_does_not_pass_a_broken_committed_fragment(tmp_path):
@@ -666,7 +728,9 @@ def test_a_repo_with_fragments_is_told_to_add_a_fragment(tmp_path):
     assert "change-log.md is untouched" not in result.stderr
 
 
-def test_a_legacy_entry_still_passes_in_a_repo_with_fragments(tmp_path):
+def test_a_legacy_entry_is_refused_in_a_repo_with_fragments_too(tmp_path):
+    """Was `test_a_legacy_entry_still_passes_in_a_repo_with_fragments` (the
+    dual-shape window, closed by #1125)."""
     repo = _make_branched_repo(tmp_path)
     _git(repo, "checkout", "-q", "main")
     _commit_file(repo, f"{FRAGMENT_DIR}/other.md", _fragment("other"), "repo records fragments")
@@ -681,8 +745,8 @@ def test_a_legacy_entry_still_passes_in_a_repo_with_fragments(tmp_path):
         "add entry",
     )
     result = _run_probe(repo)
-    assert result.returncode == 0, result.stderr
-    assert "entry-present" in result.stdout
+    assert result.returncode == 1, result.stdout
+    assert "legacy-pending-entry: '2026-06-10: new work'" in result.stderr
 
 
 # ---------------------------------------------------------------------------

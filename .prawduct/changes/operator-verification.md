@@ -4,9 +4,7 @@ type: fix
 scope: operator-verification
 date: 2026-11-15
 title: A queue headed "## [VRF-001] title" is now read, and an unreadable queue is reported the same way everywhere
-closes:
-  - brookstalley/prawduct#811
-  - brookstalley/prawduct#801
+closes: [brookstalley/prawduct#811, brookstalley/prawduct#801]
 ---
 A queue whose entries were headed `## [VRF-001] title` (the id in brackets) was read as having no
 entries at all. The gate, accept and verify each reacted differently: accept refused with advice that
