@@ -12022,8 +12022,9 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
     severity down. Where a notice goes is `_emit_pre_dispatch_notice`'s policy,
     shared with the ephemeral guard: SessionStart (`_SKEW_REPORTING_HOOK`) says
     it once, in hook terms and on stdout, and the `stop`/`subagent-stop` verbs
-    stay silent whoever invokes them, rather than repeat it every turn. A lib-only skew under `--session-start` is not a hook
-    (a hook runs its own plugin's script and lib), so it gets the ordinary note.
+    stay silent whoever invokes them, rather than repeat it every turn. A
+    lib-only skew under `--session-start` is not a hook (a hook runs its own
+    plugin's script and lib), so it gets the ordinary note.
     """
     skew = _binary_skew(project_dir)
     kind = "binary"
