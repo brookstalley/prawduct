@@ -347,8 +347,8 @@ def init_product(
         if would_edit:
             (edited if gitignore_existed else created).append(".gitignore")
 
-    # Files prawduct needs committed that a rule of the owner's own still ignores (a
-    # wholesale `.prawduct/`, #762). Never repaired here; surfaced so onboard can say so.
+    # Files a v2 repo commits (`core.V2_COMMITTED_PATHS`) that a rule of the owner's own still
+    # ignores (a wholesale `.prawduct/`, #762). Never repaired here; surfaced so onboard can say so.
     ignored_by_rule = core.gitignore_contract_drift(project_dir)["ignored_by_rule"]
 
     return {
@@ -363,7 +363,7 @@ def init_product(
         # entries like the tracked-by-default build plan — gate-soundness
         # ch.3). The caller (onboard/doctor) should advise `git add` on these.
         "unignored": unignored,
-        # Managed files hidden by an ignore rule onboarding will not edit: the rule
+        # Committed-by-contract files hidden by an ignore rule onboarding will not edit: the rule
         # is the owner's. `describe_ignored_by_rule` words the exact lines to offer.
         "ignored_by_rule": ignored_by_rule,
         # The day-one Issues backend. On apply this is read BACK from

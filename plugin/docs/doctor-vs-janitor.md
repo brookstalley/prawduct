@@ -52,7 +52,7 @@ different questions at different altitudes — that is why they are not duplicat
   (craft — across ~8 dimensions, of which versioning is one). The recorded decision is the only
   gated part (Critic + the `api-versioning` advisory); the janitor theme is a survey.
 - **gitignore.** doctor Health-Check #8 checks the prawduct *contract*, by what git would ignore (session-file
-  entries covered, including by a wholesale rule; no rule hiding a file that must be committed;
+  entries covered, including by a wholesale rule, and only by a `.gitignore` in the repo, never a global excludes file; no rule hiding a file a plugin-governed repo commits (`core.V2_COMMITTED_PATHS`);
   the retired `build-plan.md` entry not re-added). The janitor Version Control Hygiene
   theme checks *general* hygiene (build artifacts, editor files, secrets). Different objects, same
   file.

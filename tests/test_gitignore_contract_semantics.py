@@ -4,7 +4,9 @@
 as ``.prawduct/`` subsumes every session entry and matches none of them literally, so the
 contract failed in BOTH directions: it called ignored session files "missing" (and the fixer
 then appended redundant lines forever), and it never noticed that files prawduct needs
-COMMITTED (``MANAGED_FILES``) were being ignored by that same rule.
+COMMITTED were being ignored by that same rule. "Needs committed" is the v2 product repo's own
+state (``core.V2_COMMITTED_PATHS``), NOT ``MANAGED_FILES``: that is the 1.x file-sync registry
+``migrate_plugin`` deletes, so a plugin-governed repo never has those files.
 
 The fixtures here use the issue's own repro, a ``.gitignore`` of exactly ``.prawduct/`` and
 ``__pycache__/``, in two worlds: a real git repo, and a directory with no repo at all (the
@@ -23,27 +25,96 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 sys.path.insert(0, str(ROOT))
 
+from lib import (  # noqa: E402
+    change_fragments,
+    change_log,
+    change_log_archive,
+    consumer_digest,
+    init_product,
+)
 from lib import gitignore_probes as gp  # noqa: E402
 from lib.advisory_store import Codebase, ProjectState, clear_registry  # noqa: E402
 from lib.core import (  # noqa: E402
     GITIGNORE_ENTRIES,
     MANAGED_FILES,
-    RETIRED_GITIGNORE_ENTRIES,
+    V2_COMMITTED_PATHS,
     describe_ignored_by_rule,
     gitignore_contract_drift,
+    gitignore_covers,
     update_gitignore,
 )
 
 # `.claude/settings.local.json` is the one session entry outside `.prawduct/`.
 OUTSIDE = ".claude/settings.local.json\n__pycache__/\n"
 WHOLESALE = ".prawduct/\n" + OUTSIDE
-# Everything under `.prawduct/` the contract needs COMMITTED: managed files, plus the
-# retired entries (the build plan is a tracked artifact, one directory down).
-PRAWDUCT_MANAGED = sorted(
-    p for p in {*MANAGED_FILES, *RETIRED_GITIGNORE_ENTRIES} if p.startswith(".prawduct/")
-)
+# What a plugin-governed (v2) product repo commits, written out by hand from
+# documentation/project-structure.md ("Product repos") and what `init_product` scaffolds. It is an
+# INDEPENDENT copy of `core.V2_COMMITTED_PATHS`: `test_the_committed_set_is_the_v2_set` pins the
+# two together, so neither can drift alone. A directory ends in "/".
+V2_ALWAYS = [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".claude/settings.json",
+    ".claude/rules/",
+    ".prawduct/project-state.yaml",
+    ".prawduct/backlog.md",
+    ".prawduct/changes/",
+    ".prawduct/artifacts/",
+]
+V2_ON_DEMAND = [
+    ".prawduct/change-log.md",
+    ".prawduct/change-log-archive/",
+    ".prawduct/releases/",
+    ".prawduct/release-headline.md",
+    ".prawduct/operator-verification.md",
+    ".prawduct/owner-rulings.md",
+    ".prawduct/runbooks/",
+]
+V2_ALL = [*V2_ALWAYS, *V2_ON_DEMAND]
+# Under a wholesale `.prawduct/` rule in a tree where nothing optional exists yet, these are
+# reported; with every optional path on disk, PRAWDUCT_ALL is.
+PRAWDUCT_ALWAYS = sorted(p for p in V2_ALWAYS if p.startswith(".prawduct/"))
+PRAWDUCT_ALL = sorted(p for p in V2_ALL if p.startswith(".prawduct/"))
 # The lines that re-include all of it under a `.prawduct/*` rule.
-REINCLUDE = ["!.prawduct/artifacts/", *(f"!{p}" for p in PRAWDUCT_MANAGED if p.count("/") == 1)]
+REINCLUDE = [f"!.prawduct/{p.split('/')[1]}{'/' if p.count('/') > 1 else ''}" for p in PRAWDUCT_ALL]
+# 1.x file-sync files `migrate_plugin` deletes: a v2 repo never has them, so the advisory must
+# never name them as files prawduct "needs committed".
+V1_ONLY = sorted(
+    p for p in MANAGED_FILES if p not in V2_ALL and p not in ("tools/product-hook",)
+)
+
+
+def _sample(rel: str) -> str:
+    """A path git is asked about for a committed entry: the file, or a file inside a directory."""
+    return rel + "x.md" if rel.endswith("/") else rel
+
+
+def _materialize(root: Path, rels=V2_ALL) -> None:
+    for rel in rels:
+        path = root / _sample(rel)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x\n", encoding="utf-8")
+
+
+def _git_ignores(repo: Path, rel: str) -> bool:
+    """Independent of the code under test: ask git directly whether `rel` would be ignored."""
+    proc = subprocess.run(  # noqa: S603
+        ["git", "check-ignore", "--no-index", "-q", _sample(rel)],
+        cwd=repo, capture_output=True, timeout=30,
+    )
+    assert proc.returncode in (0, 1), proc.stderr
+    return proc.returncode == 0
+
+
+def _advice_lines(entries) -> list[str]:
+    """The lines the owner is told to paste, parsed from the printed sentences."""
+    out: list[str] = []
+    for sentence in describe_ignored_by_rule(entries):
+        for marker in ("replace it with these lines: ", "add these lines after it: "):
+            if marker in sentence:
+                tail = sentence.split(marker)[1].rstrip(".")
+                out += [part.strip("` ") for part in tail.split(", ")]
+    return out
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -72,8 +143,40 @@ def _write(root: Path, text: str) -> Path:
 
 
 def test_fixture_is_not_vacuous():
-    assert PRAWDUCT_MANAGED, "MANAGED_FILES holds no .prawduct/ path; the wholesale fixtures prove nothing"
-    assert len(PRAWDUCT_MANAGED) >= 2
+    assert len(PRAWDUCT_ALWAYS) >= 3 and len(PRAWDUCT_ALL) > len(PRAWDUCT_ALWAYS)
+    assert V1_ONLY, "no 1.x-only managed path to prove the advisory stays off them"
+
+
+def test_the_committed_set_is_the_v2_set():
+    """The named constant is the hand-written v2 list above, not MANAGED_FILES (the 1.x
+    migration registry), and each entry says whether a scaffolded repo always has it."""
+    got = {c.path: c.always for c in V2_COMMITTED_PATHS}
+    assert got == {**{p: True for p in V2_ALWAYS}, **{p: False for p in V2_ON_DEMAND}}
+
+
+def test_the_committed_set_agrees_with_the_modules_that_write_it():
+    """The paths other modules own, read from them: a rename there fails here."""
+    paths = {c.path for c in V2_COMMITTED_PATHS}
+    assert f"{change_fragments.FRAGMENT_DIR_REL}/" in paths
+    assert f"{change_log_archive.ARCHIVE_DIR_REL}/" in paths
+    assert change_log.CHANGE_LOG_REL_PATH in paths
+    assert f"{consumer_digest.RELEASES_DIR_REL}/" in paths
+    assert consumer_digest.HEADLINE_FILE_REL in paths
+    assert consumer_digest.STATE_FILE_REL in paths
+    # every file init_product places is either committed state or under a committed directory
+    for dst, _tpl in init_product._STATE_TEMPLATES:
+        assert dst in paths or any(dst.startswith(p) for p in paths if p.endswith("/")), dst
+
+
+def test_a_v1_only_file_is_never_named_as_needing_commit(world):
+    _write(world, WHOLESALE)
+    _materialize(world)
+    named = {e["path"] for e in gitignore_contract_drift(world)["ignored_by_rule"]}
+    assert named, "control: the wholesale rule must report something"
+    assert named.isdisjoint(V1_ONLY), sorted(named & set(V1_ONLY))
+    for sentence in describe_ignored_by_rule(gitignore_contract_drift(world)["ignored_by_rule"]):
+        for v1 in V1_ONLY:
+            assert v1 not in sentence
 
 
 # --- the false "missing" direction ------------------------------------------------
@@ -110,7 +213,7 @@ def test_wholesale_rule_ignoring_managed_files_is_reported(world):
     _write(world, WHOLESALE)
     drift = gitignore_contract_drift(world)
     by_rule = {e["path"]: e for e in drift["ignored_by_rule"]}
-    assert sorted(by_rule) == PRAWDUCT_MANAGED
+    assert sorted(p for p in by_rule if p.startswith(".prawduct/")) == PRAWDUCT_ALWAYS
     for entry in by_rule.values():
         assert entry["pattern"] == ".prawduct/"
         assert entry["line"] == 1
@@ -125,7 +228,7 @@ def test_update_gitignore_reports_but_never_edits_a_wholesale_rule(world):
     result = update_gitignore(world)
     assert result["modified"] is False
     assert result["unignored"] == []
-    assert sorted(e["path"] for e in result["ignored_by_rule"]) == PRAWDUCT_MANAGED
+    assert sorted(e["path"] for e in result["ignored_by_rule"] if e["path"].startswith(".prawduct/")) == PRAWDUCT_ALWAYS
     assert gi.read_bytes() == before, "a user-authored wholesale rule was rewritten without consent"
 
 
@@ -134,7 +237,7 @@ def test_dry_run_is_byte_identical_and_reports_the_same(world):
     before = gi.read_bytes()
     preview = update_gitignore(world, dry_run=True)
     assert gi.read_bytes() == before
-    assert sorted(e["path"] for e in preview["ignored_by_rule"]) == PRAWDUCT_MANAGED
+    assert sorted(e["path"] for e in preview["ignored_by_rule"] if e["path"].startswith(".prawduct/")) == PRAWDUCT_ALWAYS
 
 
 def test_negated_reinclusion_satisfies_the_contract(world):
@@ -148,23 +251,24 @@ def test_negated_reinclusion_satisfies_the_contract(world):
 
 
 def test_partial_reinclusion_reports_only_what_is_still_ignored(world):
-    kept = ".prawduct/critic-review.md"
-    rest = [p for p in PRAWDUCT_MANAGED if p != kept]
-    assert kept in PRAWDUCT_MANAGED and rest
+    kept = ".prawduct/project-state.yaml"
+    rest = [p for p in PRAWDUCT_ALWAYS if p != kept]
+    assert kept in PRAWDUCT_ALWAYS and rest
     _write(world, f".prawduct/*\n!{kept}\n" + OUTSIDE)
     drift = gitignore_contract_drift(world)
-    assert sorted(e["path"] for e in drift["ignored_by_rule"]) == sorted(rest)
+    assert sorted(e["path"] for e in drift["ignored_by_rule"] if e["path"].startswith(".prawduct/")) == sorted(rest)
 
 
 def test_star_form_of_the_wholesale_rule_is_caught_too(world):
     _write(world, ".prawduct/*\n" + OUTSIDE)
     drift = gitignore_contract_drift(world)
-    assert sorted(e["path"] for e in drift["ignored_by_rule"]) == PRAWDUCT_MANAGED
+    assert sorted(e["path"] for e in drift["ignored_by_rule"] if e["path"].startswith(".prawduct/")) == PRAWDUCT_ALWAYS
     assert drift["missing"] == []
 
 
 def test_literal_managed_entry_is_still_removed_and_not_double_reported(world):
-    managed = PRAWDUCT_MANAGED[0]
+    managed = ".claude/settings.json"  # in MANAGED_FILES (stripped) and committed in v2 (reported)
+    assert managed in MANAGED_FILES
     gi = _write(world, f"{managed}\n")
     drift = gitignore_contract_drift(world)
     assert drift["incorrectly_ignored"] == [managed]
@@ -174,21 +278,93 @@ def test_literal_managed_entry_is_still_removed_and_not_double_reported(world):
     assert managed not in gi.read_text().splitlines()
 
 
-@pytest.mark.parametrize("rule", [".prawduct/", ".prawduct/*", "/.prawduct", ".prawduct/**"])
-def test_the_advised_lines_actually_resolve_it(world, rule):
-    """Follow the advice (the effect, not the advisory object): paste the lines the
-    owner is offered and the drift is gone; leave the rule and it is not."""
-    _write(world, f"{rule}\n" + OUTSIDE)
-    before = gitignore_contract_drift(world)
+@pytest.mark.parametrize(
+    "rules",
+    [
+        [".prawduct/"],
+        [".prawduct/*"],
+        ["/.prawduct"],
+        [".prawduct/**"],
+        [".claude/"],
+        [".claude/*"],
+        [".prawduct/", ".claude/"],  # two rules, two sentences, pasted together
+        ["*.md"],  # not a directory rule: the advice is per-file `!` lines after it
+    ],
+)
+def test_the_advised_lines_leave_every_v2_path_unignored(tmp_path, rules):
+    """Follow the advice and ask GIT, not the advisory, about every v2 committed path.
+
+    Clearing the advisory is not the goal; the files being committable is. The old advice cleared
+    the advisory while project-state.yaml and the change fragments stayed hidden, so this pastes
+    what the owner is offered and asserts, path by path, that git no longer ignores any of them.
+    Session files must still be ignored afterwards (the rule was narrowed, not deleted)."""
+    _git(tmp_path, "init", "-q", ".")
+    _materialize(tmp_path)
+    prefix = "\n".join(rules) + "\n"
+    _write(tmp_path, prefix + OUTSIDE)
+    before = gitignore_contract_drift(tmp_path)
     assert before["ignored_by_rule"], "control: the rule must be reported before the advice is followed"
-    (sentence,) = describe_ignored_by_rule(before["ignored_by_rule"])
-    offered = sentence.split("replace it with these lines:")[1].rstrip(".")
-    lines = [part.strip("` ") for part in offered.split(", ")]
-    assert lines[0] == ".prawduct/*" and len(lines) > 2
-    _write(world, "\n".join(lines) + "\n" + OUTSIDE)
-    after = gitignore_contract_drift(world)
+    assert any(_git_ignores(tmp_path, p) for p in V2_ALL), "control: the rule must really hide a v2 path"
+    lines = _advice_lines(before["ignored_by_rule"])
+    assert lines, "the printed advice carries no lines to paste"
+    # A wholesale directory rule is REPLACED by the advice; any other rule stays and the lines follow it.
+    kept = [r for r in rules if not r.rstrip("/*").lstrip("/") in (".prawduct", ".claude")]
+    _write(tmp_path, "\n".join([*kept, *lines]) + "\n" + OUTSIDE)
+    still = [p for p in V2_ALL if _git_ignores(tmp_path, p)]
+    assert still == [], f"following the advice left these ignored: {still}"
+    after = gitignore_contract_drift(tmp_path)
     assert after["ignored_by_rule"] == []
-    assert after["missing"] == []
+    if ".prawduct/" in rules:  # only then does a rule stand in for the session entries
+        assert after["missing"] == []
+        assert _git_ignores(tmp_path, ".prawduct/.critic-active")
+
+
+def test_a_literal_line_naming_a_v2_file_is_advised_by_deleting_it(tmp_path):
+    # CLAUDE.md is a stripped MANAGED line, so use files the fixer does not own.
+    _git(tmp_path, "init", "-q", ".")
+    _materialize(tmp_path)
+    _write(tmp_path, "AGENTS.md\n.prawduct/backlog.md\n" + OUTSIDE)
+    entries = gitignore_contract_drift(tmp_path)["ignored_by_rule"]
+    assert sorted(e["path"] for e in entries) == [".prawduct/backlog.md", "AGENTS.md"]
+    for sentence in describe_ignored_by_rule(entries):
+        assert "Delete that line" in sentence and "these lines" not in sentence
+    _write(tmp_path, OUTSIDE)  # the advice, followed
+    assert [p for p in V2_ALL if _git_ignores(tmp_path, p)] == []
+
+
+def test_a_rule_that_is_the_directory_itself_is_advised_by_deleting_it(world):
+    # `!dir/` cannot re-include a directory a rule excludes, so no replacement lines are offered.
+    _write(world, ".prawduct/artifacts/\n" + OUTSIDE)
+    entries = gitignore_contract_drift(world)["ignored_by_rule"]
+    assert [e["path"] for e in entries] == [".prawduct/artifacts/"]
+    (sentence,) = describe_ignored_by_rule(entries)
+    assert "Delete that line" in sentence and "these lines" not in sentence
+
+
+def test_optional_state_is_reported_only_when_it_exists(world):
+    """`.prawduct/releases/` exists only in a repo that declares `consumer_digest:`. A repo
+    without it must not be told that prawduct needs it committed."""
+    _write(world, WHOLESALE)
+    absent = {e["path"] for e in gitignore_contract_drift(world)["ignored_by_rule"]}
+    assert absent == set(V2_ALWAYS) & {e for e in absent} and ".prawduct/releases/" not in absent
+    _materialize(world, [".prawduct/releases/", ".prawduct/operator-verification.md"])
+    present = {e["path"] for e in gitignore_contract_drift(world)["ignored_by_rule"]}
+    assert {".prawduct/releases/", ".prawduct/operator-verification.md"} <= present
+    assert ".prawduct/runbooks/" not in present
+
+
+def test_the_replacement_reincludes_optional_state_that_does_not_exist_yet(world):
+    # The cut will create `.prawduct/releases/` later; pasting the advice must not hide it then.
+    _write(world, WHOLESALE)
+    lines = _advice_lines(gitignore_contract_drift(world)["ignored_by_rule"])
+    assert "!.prawduct/releases/" in lines and "!.prawduct/release-headline.md" in lines
+
+
+def test_a_claude_rule_does_not_ask_to_unignore_personal_skills(world):
+    _write(world, ".claude/\n" + OUTSIDE)
+    sentences = " ".join(describe_ignored_by_rule(gitignore_contract_drift(world)["ignored_by_rule"]))
+    assert "`.claude/*`" in sentences and "!.claude/settings.json" in sentences
+    assert "skills" not in sentences
 
 
 # --- the contract is the SHARED .gitignore, not this machine's excludes -----------
@@ -205,6 +381,60 @@ def test_a_per_clone_exclude_does_not_satisfy_the_contract(tmp_path):
     assert ".prawduct/.critic-active" in drift["missing"]
     # ...and a managed file hidden only on this machine is not a committed-file hazard.
     assert drift["ignored_by_rule"] == []
+
+
+@pytest.fixture
+def global_excludes(tmp_path_factory, monkeypatch):
+    """A user-level excludes file NAMED `.gitignore` (the common `~/.gitignore`), outside the repo.
+
+    Env-scoped: HOME points at a scratch home holding its own `.gitconfig`, so the real user's
+    config is never read or written. Returns the file."""
+    home = tmp_path_factory.mktemp("home")
+    gfile = home / ".gitignore"
+    gfile.write_text(
+        ".claude/settings.local.json\n.prawduct/.critic-active\n.prawduct/.prawduct-version\n"
+        "CLAUDE.md\n.prawduct/project-state.yaml\n",
+        encoding="utf-8",
+    )
+    (home / ".gitconfig").write_text(f"[core]\n\texcludesFile = {gfile}\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / "xdg"))
+    monkeypatch.delenv("GIT_CONFIG_GLOBAL", raising=False)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    return gfile
+
+
+def test_a_global_excludes_file_named_dot_gitignore_is_not_shared(world, global_excludes):
+    """`core.excludesFile=~/.gitignore` shares a NAME with the repo's file and nothing else.
+
+    It was counted as shared because the source's basename was `.gitignore`, so the user's own
+    rules satisfied the repo's contract (session entries never written, the version marker never
+    added) and hid the v2 files from the report. The decision is by PATH: a `.gitignore` inside
+    the repo's work tree."""
+    _write(world, "")
+    # Control: git really does apply the global file here, and names it as the source.
+    if (world / ".git").is_dir():
+        proc = subprocess.run(
+            ["git", "check-ignore", "--no-index", "-v", ".prawduct/.critic-active"],
+            cwd=world, capture_output=True, text=True, timeout=30,
+        )
+        assert str(global_excludes) in proc.stdout, proc.stdout
+    drift = gitignore_contract_drift(world)
+    assert ".prawduct/.critic-active" in drift["missing"]
+    assert ".claude/settings.local.json" in drift["missing"]
+    assert drift["ignored_by_rule"] == []  # CLAUDE.md / project-state.yaml hidden only by the user's file
+    assert gitignore_covers(world, ".prawduct/.prawduct-version") is False
+    result = update_gitignore(world)
+    assert ".prawduct/.critic-active" in result["missing"]
+    assert ".prawduct/.critic-active" in (world / ".gitignore").read_text().splitlines()
+
+
+def test_a_gitignore_in_the_work_tree_still_counts_with_a_global_file_present(world, global_excludes):
+    # The control for the path decision: same rule text, but in the repo's own `.gitignore`.
+    _write(world, ".prawduct/.critic-active\n")
+    assert ".prawduct/.critic-active" not in gitignore_contract_drift(world)["missing"]
+    _write(world, ".prawduct/.prawduct-version\n")
+    assert gitignore_covers(world, ".prawduct/.prawduct-version") is True
 
 
 def test_a_nested_gitignore_in_the_repo_counts(tmp_path):
@@ -343,7 +573,7 @@ def test_onboard_reports_the_rule_it_will_not_edit(world, capsys):
     _write(world, WHOLESALE)
     assert run([str(world), "--name", "P", "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
-    assert sorted(e["path"] for e in result["ignored_by_rule"]) == PRAWDUCT_MANAGED
+    assert sorted(e["path"] for e in result["ignored_by_rule"]) == PRAWDUCT_ALWAYS
     assert run([str(world), "--name", "P"]) == 0
     out = capsys.readouterr().out
     assert "cannot fix automatically:" in out and "`.prawduct/`" in out

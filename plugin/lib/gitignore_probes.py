@@ -2,7 +2,8 @@
 
 One probe: it nudges reconciliation when a repo's ``.gitignore`` has drifted from
 the framework's session-file contract (``lib.core.GITIGNORE_ENTRIES`` /
-``RETIRED_GITIGNORE_ENTRIES`` / ``MANAGED_FILES``). Drift is **cause-agnostic** —
+``RETIRED_GITIGNORE_ENTRIES`` / ``V2_COMMITTED_PATHS``; ``MANAGED_FILES`` only for the literal
+lines the fixer strips). Drift is **cause-agnostic** —
 it arises from a prawduct upgrade that extended the contract, a fresh clone, a
 hand-edited ``.gitignore``, or a botched onboard — because the probe checks the
 *drifted state itself*, not the upgrade event. That is deliberately stronger than
@@ -33,8 +34,8 @@ the nudge can never outlive the fix.
 
 **Judged by git, not by line equality (#762).** That drift is what git would ignore,
 so a wholesale ``.prawduct/`` rule neither reads as a pile of missing entries nor
-passes unseen. When a rule of the owner's own hides a file the contract needs
-committed, ``contract-ignored-by-rule`` fires instead. It is a second advisory
+passes unseen. When a rule of the owner's own hides a file a v2 product repo commits
+(``core.V2_COMMITTED_PATHS``, NOT the 1.x ``MANAGED_FILES``, which a plugin repo never has), ``contract-ignored-by-rule`` fires instead. It is a second advisory
 because the fixer will never edit the owner's rule: offering ``update-gitignore`` there
 would be a nudge no run could clear. It resolves when the rule is narrowed.
 
@@ -92,7 +93,7 @@ def _ignored_by_rule_candidate(ignored_by_rule: list[dict]) -> AdvisoryCandidate
         # move as the offending set shrinks under a partial fix.
         evidence=(
             ".gitignore carries a rule that ignores files prawduct needs committed "
-            "(lib/core.py MANAGED_FILES)",
+            "(lib/core.py V2_COMMITTED_PATHS)",
         ),
         trigger_summary=" ".join(describe_ignored_by_rule(ignored_by_rule)),
         owner_action=(
