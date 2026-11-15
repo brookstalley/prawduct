@@ -3,7 +3,7 @@ schema: 1
 type: feature
 scope: release-fragments-only
 date: 2026-11-15
-title: releases read change fragments only and refuse a change log with unreleased entries, and a pruned release declares its collateral before the cut
+title: releases and the PR gate read change fragments only and refuse a change log with unreleased entries, and a pruned release declares its collateral before the cut
 closes: [brookstalley/prawduct#1125, brookstalley/prawduct#1022, brookstalley/prawduct#1024]
 ---
 Two changes to the release tooling.
@@ -32,6 +32,28 @@ and the log entries it read as history.
 The `change-log-fragments-available` advisory moves from `info` to `warn`, and says that releases
 now refuse the old log. Its id is unchanged.
 
+The PR gate agrees with the release. `check-change-log-entry` refused nothing a release would
+later refuse: a branch could add an unreleased change-log entry and merge, and its next release
+stopped on it. The gate now refuses that entry with the release's own `legacy-pending-entry:` lines.
+An untracked log no longer passes on the copy on disk (`entry-present-untracked` is gone), and every
+`no-entry` remedy names a fragment and `/prawduct:doctor` instead of "add a change-log entry",
+which the release would refuse. An added entry already tagged `release=` still passes, as the
+release accepts it. `init-product` on a repo that keeps the log still leaves it there, because the
+move is the owner's to confirm, and now says so in a warning that names `/prawduct:doctor`.
+
+### Live fragments are checked, and a block-list `closes:` is read
+
+No test read this repo's own pending fragments, so two broken ones merged unnoticed, either of
+which would have stopped the next release: one wrote `closes:` as a YAML block list, and two named a
+scope that was not their filename. A test now validates every file in `.prawduct/changes/` against
+the repo's plans, as the release does. The two fragments are renamed to the scopes they declare
+(`operator-verification.md`, `backlog-service.md`), and `closes:` is in the flow form.
+
+The fragment parser now reads a block list (`closes:` then `  - item` lines) exactly as the flow form
+(`closes: [a, b]`). An agent writes the block form naturally, the two cannot mean different things,
+and refusing it stopped a release over spelling. Any other indented frontmatter line is still
+refused, and the refusal now shows both accepted forms.
+
 ### A pruned release declares its collateral before the cut (#1024)
 
 On a pruned release, work that merged at or before the cut point stays on `develop` with the
@@ -49,9 +71,10 @@ that work. For collateral already archived by mistake, they name a recovery: a `
 that ships with the release that carries the code.
 
 ## Consumer note
-Move your change record onto fragments before your next release. If `.prawduct/change-log.md`
-still holds an entry that has not shipped, `check-releasability` and `cut-change-log` now refuse
-with a `legacy-pending-entry:` line for each one, naming `/prawduct:doctor`. Run it (check #22),
+Move your change record onto fragments before your next PR. If `.prawduct/change-log.md`
+still holds an entry that has not shipped, `check-releasability`, `cut-change-log` and the PR gate
+(`check-change-log-entry`) now refuse with a `legacy-pending-entry:` line for each one, naming
+`/prawduct:doctor`, and the PR gate no longer accepts a new change-log entry as a branch's record. Run it (check #22),
 review the dry run, and apply: each unreleased entry becomes its own file in
 `.prawduct/changes/`, and released history stays where it is. The session briefing's
 `change-log-fragments-available` advisory now shows at `warn` until you do.

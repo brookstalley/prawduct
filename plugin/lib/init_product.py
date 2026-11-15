@@ -223,17 +223,28 @@ def init_product(
     # a new product gets the directory and no shared log. The `.gitkeep` is what
     # makes it survive a clone: git drops an empty directory, and readers decide
     # that a repo records fragments by the directory existing. A repo that
-    # already keeps the single-file log is left on it; `migrate-change-log`
-    # converts it, and scaffolding the directory here would split its record.
+    # already keeps the single-file log is not converted here: the move is
+    # `migrate-change-log`, owner-confirmed, one revertable commit, and it may
+    # need the owner's `--default-type`. Scaffolding the directory beside the log
+    # would split the record instead. But since #1125 releases and the PR gate
+    # read only fragments, so the owner is told now rather than at the first PR.
     from . import change_fragments  # noqa: PLC0415 — lazy keeps this module's import surface small
     from .change_log import CHANGE_LOG_REL_PATH  # noqa: PLC0415 — same reason
 
     keep_rel = f"{change_fragments.FRAGMENT_DIR_REL}/.gitkeep"
-    if not (project_dir / CHANGE_LOG_REL_PATH).is_file() and not (project_dir / keep_rel).is_file():
+    on_legacy_log = (project_dir / CHANGE_LOG_REL_PATH).is_file()
+    if not on_legacy_log and not (project_dir / keep_rel).is_file():
         created.append(keep_rel)
         if apply:
             (project_dir / keep_rel).parent.mkdir(parents=True, exist_ok=True)
             (project_dir / keep_rel).write_text("", encoding="utf-8")
+    if on_legacy_log and not (project_dir / change_fragments.FRAGMENT_DIR_REL).is_dir():
+        warnings.append(
+            f"This repo records changes in {CHANGE_LOG_REL_PATH}. Releases and the PR gate read "
+            f"only {change_fragments.FRAGMENT_DIR_REL}/ and refuse an unreleased entry in that log, "
+            "so move it onto fragments before the next PR: /prawduct:doctor (check #22) runs "
+            "`prawduct-hook migrate-change-log` as a dry run first."
+        )
 
     # Learnings starter — a `.claude/rules/` file, so the harness loads it and no
     # prawduct code sits on the read path. `scaffold_core` owns the header

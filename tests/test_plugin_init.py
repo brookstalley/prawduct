@@ -180,6 +180,17 @@ def test_a_repo_already_on_the_single_file_log_is_left_on_it(tmp_path: Path):
     assert ".prawduct/changes/.gitkeep" not in result["created"]
     assert not (target / ".prawduct" / "changes").exists()
     assert log.read_text(encoding="utf-8") == "# Change Log\n"
+    # Left on the log, but told: since #1125 releases and the PR gate read only
+    # fragments, so the repo's next PR would be refused with no word at onboarding.
+    told = [w for w in result["warnings"] if ".prawduct/change-log.md" in w]
+    assert len(told) == 1, result["warnings"]
+    assert "/prawduct:doctor" in told[0] and "migrate-change-log" in told[0]
+
+
+def test_a_repo_with_no_log_gets_no_log_warning(scaffolded: Path):
+    """Control for the warning above: a fresh product starts on fragments."""
+    result = run_init(scaffolded, "Again", "--apply")
+    assert not [w for w in result["warnings"] if "change-log.md" in w]
 
 
 @pytest.mark.parametrize("bad", FORBIDDEN)
