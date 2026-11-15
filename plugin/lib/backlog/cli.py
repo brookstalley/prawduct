@@ -168,10 +168,12 @@ _OP_USAGE: dict[str, str] = {
     "link": (
         "  link     <id> --edge blocks|blocked-by|parent|child|related "
         "--to <target-id> [--repo owner/repo]\n"
+        "           `related` is written on both items\n"
     ),
     "unlink": (
         "  unlink   <id> --edge blocks|blocked-by|parent|child|related "
         "--to <target-id> [--repo owner/repo]\n"
+        "           `related` is written on both items\n"
     ),
     "provision": "  provision --repo owner/repo\n",
     # GV6. The id stays here, out of the operator's way: text emitted into a

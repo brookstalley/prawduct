@@ -263,7 +263,9 @@ Route by what changed:
   block edit landed". A body carrying NO block is not reported — "I deleted it" and "I never pasted
   one" are the same text.
 - **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
-  `unlink …`.
+  `unlink …`. `related` is written on both items; if the second write fails retryably the error
+  carries `details.partial: true` (`written`/`unwritten`) and re-running the same command completes
+  it, and a permanent failure on the target returns ok with `target_written: false` and a warning.
 - **a free note** → `comment <id> --body B`.
 
 The optional `--if-updated-at <ts>` optimistic-concurrency guard takes the item's `data.updated_at`

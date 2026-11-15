@@ -1402,9 +1402,30 @@ def _mutate_edge(
             # index here — `pick` reads dependencies live, permanently — so
             # mirroring them would be mirroring nothing. `related` lives in the
             # body block, which the store does hold and index.
+            #
+            # Two independent body writes, owned by this one call so the edge can
+            # never be visible from one end only (#835). The source goes first and
+            # is mirrored before the target is attempted, so a target failure
+            # leaves the cache true to what actually landed.
             written = _related(transport, nid, tid.canonical, add=add)
             if written is not None:
                 _mirror(absorb, written, nid.owner, nid.repo)
+            try:
+                written = _related(transport, tid, nid.canonical, add=add)
+            except TransportError as exc:
+                return _related_target_failed(exc, nid, tid, add=add)
+            except (OSError, json.JSONDecodeError) as exc:  # ERR-6
+                log_diag(
+                    f"unexpected transport failure on {verb} (target side): {type(exc).__name__}"
+                )
+                return _related_target_failed(
+                    TransportError(
+                        "unavailable", "the backend request failed unexpectedly"
+                    ),
+                    nid, tid, add=add,
+                )
+            if written is not None:
+                _mirror(absorb, written, tid.owner, tid.repo)
     except TransportError as exc:
         return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
@@ -1412,8 +1433,56 @@ def _mutate_edge(
         log_diag(f"unexpected transport failure on {verb}: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
+    data = {"item": nid.canonical, "edge": edge, "target": tid.canonical, "linked": add}
+    if edge == "related":
+        data["target_written"] = True
+    return ok(data)
+
+
+def _related_target_failed(
+    exc: TransportError, nid, tid, *, add: bool
+) -> dict:
+    """The ``related`` target write failed **after** the source side was done.
+
+    Never silent, and the shape depends on whether a retry can ever succeed:
+
+    * **Retryable** (``rate_limited``, ``unavailable``, ``conflict``): an error
+      envelope, because the edge is half-present and a retry-driver must see it.
+      ``details`` carries ``partial: true`` with the ``written`` side and the
+      ``unwritten`` one. A replay is safe and completes only the missing side,
+      since each side is idempotent on its own.
+    * **Permanent** (``auth``, ``not_found``, ``validation`` — typically a
+      cross-repo target this identity cannot write): ``ok`` with
+      ``data.target_written: false`` and a warning. Retrying would fail forever,
+      and failing the call would make ``related`` links from a product to an
+      upstream issue unusable; the source side is still useful.
+
+    The source write is never rolled back: a rollback is a third write that can
+    itself fail, and either half-state is repairable by replaying the call."""
+    if exc.retryable:
+        details = dict(exc.details)
+        details.update({"partial": True, "written": nid.canonical, "unwritten": tid.canonical})
+        verb = "recorded on" if add else "removed from"
+        return error(
+            exc.code,
+            f"{exc.message}; `related` was {verb} {nid.canonical} only — "
+            f"re-run the same command to complete {tid.canonical}",
+            retryable=True,
+            details=details,
+        )
+    verb = "recorded on" if add else "removed from"
     return ok(
-        {"item": nid.canonical, "edge": edge, "target": tid.canonical, "linked": add}
+        {
+            "item": nid.canonical,
+            "edge": "related",
+            "target": tid.canonical,
+            "linked": add,
+            "target_written": False,
+        },
+        [
+            f"`related` {verb} {nid.canonical} only — {tid.canonical} is not "
+            f"writable by this identity ({exc.code})"
+        ],
     )
 
 
