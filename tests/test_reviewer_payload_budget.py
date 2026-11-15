@@ -280,7 +280,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
     # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
     # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
-    "single-pass-inner": 5733,
+    # +38 on 2026-11-15 (verify-resolutions-lineage, #724), DECLARED: SKILL.md's exit table gains the
+    # `critic-begin` 7 row (stale or red test evidence on `verify-resolutions`: stop, never demote) and the
+    # exit-4 row's "never refused" is qualified "by the budget", which 7 made false. Priced against the SUM:
+    # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
+    "single-pass-inner": 5771,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -398,7 +402,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
     # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
     # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
-    "single-pass-full": 10104,
+    # +38 on 2026-11-15 (verify-resolutions-lineage, #724), DECLARED: SKILL.md's exit table gains the
+    # `critic-begin` 7 row (stale or red test evidence on `verify-resolutions`: stop, never demote) and the
+    # exit-4 row's "never refused" is qualified "by the budget", which 7 made false. Priced against the SUM:
+    # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
+    "single-pass-full": 10142,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -611,7 +619,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
     # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
     # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
-    "coordinator-fork": 10774,
+    # +38 on 2026-11-15 (verify-resolutions-lineage, #724), DECLARED: SKILL.md's exit table gains the
+    # `critic-begin` 7 row (stale or red test evidence on `verify-resolutions`: stop, never demote) and the
+    # exit-4 row's "never refused" is qualified "by the budget", which 7 made false. Priced against the SUM:
+    # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
+    "coordinator-fork": 10812,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -637,7 +649,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
     # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
     # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
-    "coordinator-fork-inner": 6403,
+    # +38 on 2026-11-15 (verify-resolutions-lineage, #724), DECLARED: SKILL.md's exit table gains the
+    # `critic-begin` 7 row (stale or red test evidence on `verify-resolutions`: stop, never demote) and the
+    # exit-4 row's "never refused" is qualified "by the budget", which 7 made false. Priced against the SUM:
+    # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
+    "coordinator-fork-inner": 6441,
     # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
     # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
@@ -659,11 +675,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5734,
-    "single-pass-full": 10105,
+    "single-pass-inner": 5772,
+    "single-pass-full": 10143,
     "dispatched-reviewer": 9592,
-    "coordinator-fork": 10775,
-    "coordinator-fork-inner": 6404,
+    "coordinator-fork": 10813,
+    "coordinator-fork-inner": 6442,
     "dispatched-reviewer-inner": 5221,
 }
 

@@ -903,6 +903,12 @@ Fail-direction is deliberate and per-purpose:
   a plugin; a demoted one would append its fact to a store nothing can parse. **5 is withdrawn,
   not free:** #167's `self-inflicted-refusal` held it on `develop` until its 2026-09-20 revert,
   and never shipped in a release, so it is left unclaimed rather than given a new meaning;
+  `critic-begin` **7** = `verify-resolutions` refused on saved test evidence that exists and is
+  stale, red or degraded (added 2026-11-15, #724) — `gates.tests_are_current`'s reason on stdout,
+  checked before anything is derived (no manifest, no marker, one `guard-refusal` fact). Distinct
+  from **1** because exit 1 on `verify-resolutions` demotes, and a wider mode reviews the same tree
+  over the same stale suite; the remedy is the suite, then the same mode. Absent evidence does not
+  refuse. `--force` dispatches anyway;
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command went inert and was
   then removed (#303), so those two meanings were removed rather than given new ones. Retiring a
@@ -934,7 +940,7 @@ Fail-direction is deliberate and per-purpose:
   BLOCKING findings still need `verify-resolutions`". Folded into 1 it would read as a dispatch
   failure and invite a retry in another mode, which is the round it exists to refuse. The refusal
   auto-ACCEPTs the outstanding **non-blocking** findings, renders the census to stdout, and appends
-  one `guard-refusal` fact; `verify-resolutions` is never counted and never refused, and no BLOCKING
+  one `guard-refusal` fact; `verify-resolutions` is never counted and never refused by the budget, and no BLOCKING
   finding is ever swept — so the budget can end a review loop and can never open a gate. `--force`
   dispatches anyway. No session state is written, so a 4 needs no `critic-end`. It is checked
   BELOW the free-interval refusal, so an interval that needs no review still answers 3: "the loop

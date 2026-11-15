@@ -1115,7 +1115,12 @@ LAST_MEASURED_TOKENS = {
     # +29 on 2026-11-12 (native-review-paired Chunk 01, #1130), DECLARED: the manifest key list names
     # `native_review`, the paired native review's wrapper. This list is the manifest's described
     # schema, and a key it omits is one no reader knows exists; no reviewer loads this file.
-    "skills/critic/review-cycle.md": 8186,
+    # +69 on 2026-11-15 (verify-resolutions-lineage, #1150/#1116/#724), DECLARED: the anchoring
+    # paragraph says a cached anchor that is not this branch's yields to the branch's newest review
+    # (its "both demote" sentence became false), the lineage demotion row says when it still fires,
+    # and "Not a demotion" names exit 7 (stale or red test evidence). Compressed in place before
+    # declaring; no reviewer loads this file.
+    "skills/critic/review-cycle.md": 8255,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1312,7 +1317,11 @@ LAST_MEASURED_TOKENS = {
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
     # +7 on 2026-11-12 (review-round-cost merge review), DECLARED: the single-pass write step says what the fork does when `validate-partial` exits 3 (stop), R-1/R-3.
-    "skills/critic/SKILL.md": 3227,
+    # +38 on 2026-11-15 (verify-resolutions-lineage, #724), DECLARED: the step-4 exit table's row for
+    # `critic-begin` 7 (stale or red test evidence on verify-resolutions: stop, never demote), and the
+    # exit-4 row's "never refused" qualified "by the budget", which exit 7 made false. Priced in
+    # `test_reviewer_payload_budget.py`.
+    "skills/critic/SKILL.md": 3265,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -6353,7 +6362,8 @@ class TestCriticSkillRoutesByMode:
         # LOWERED 3204 -> 3189 (review-round-cost Critic round, R-8) with the reading.
         # RAISED 3178 -> 3221 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
         # RAISED 3221 -> 3228 (review-round-cost merge review, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3228, f"SKILL.md is ~{tokens} tokens, should be <3228"
+        # RAISED 3228 -> 3266 (verify-resolutions-lineage, #724, 2026-11-15) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3266, f"SKILL.md is ~{tokens} tokens, should be <3266"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6696,7 +6706,8 @@ class TestReviewCycle:
         # RAISED 8048 -> 8153 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
         # RAISED 8153 -> 8158 (review-round-cost merge review, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 8158 -> 8187 (native-review-paired Chunk 01, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 8187, f"review-cycle.md is ~{tokens} tokens, should be <8187"
+        # RAISED 8187 -> 8256 (verify-resolutions-lineage, #1150/#1116/#724, 2026-11-15) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 8256, f"review-cycle.md is ~{tokens} tokens, should be <8256"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

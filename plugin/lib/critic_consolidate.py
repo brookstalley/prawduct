@@ -2330,12 +2330,15 @@ def _store_unusable(store: dict) -> "str | None":
 def _prior_review_fact(
     project_dir: Path, prawduct_dir: Path, store: dict
 ) -> tuple[dict | None, str]:
-    """The review fact a verify-resolutions pass anchors to, located via the
-    derived cache's ``fact_id`` pointer (D7 — this is what the pointer is
-    for). Returns ``(fact, "")`` or ``(None, reason)`` — the caller fails
-    loud, and the skill's exit table routes the refusal: a missing or
-    unreachable anchor demotes, an unusable store (:func:`_store_unusable`)
-    stops.
+    """The review fact a verify-resolutions pass anchors to: the derived cache's
+    ``fact_id`` pointer (D7 — this is what the pointer is for) when it names
+    this branch's review, else this branch's newest review as
+    :func:`derive_branch_cache` selects it. Returns ``(fact, note)`` or
+    ``(None, reason)``. On success ``note`` is ``""`` unless the anchor was
+    re-derived, when it says from which review to which, for the dispatch's
+    notes. On failure the caller fails loud, and the skill's exit table routes
+    the refusal: a missing or unreachable anchor demotes, an unusable store
+    (:func:`_store_unusable`) stops.
 
     ``store`` is the caller's :func:`evidence.read_facts` result, REQUIRED
     rather than defaulted: the dispatch's prior-dispositions block reads the
@@ -2346,8 +2349,17 @@ def _prior_review_fact(
     branch switch, and a sibling branch's anchor still *resolves* in the shared
     object store — so without this the pass would anchor to a tree off this
     lineage and diff across the divergence, producing phantom findings over work
-    this branch never touched. Fails closed: not-an-ancestor and any git failure
-    both refuse, because an anchor we cannot place is one we cannot trust.
+    this branch never touched. Not-an-ancestor and any git failure both reject
+    the pointer, because an anchor we cannot place is one we cannot trust.
+
+    **A rejected pointer is a stale view, not a missing review (#1150).** The
+    slot names whichever review this clone last consolidated or ingested, on
+    any branch; the store holds every branch's. So a pointer that is not this
+    branch's — off its lineage, or a sibling's review at the merge base the two
+    share (#1116) — defers to :func:`derive_branch_cache`, the one owner of
+    "which review is this branch's", which re-points the slot (the verify
+    reviewer reads its prior findings from it). Only when that finds nothing
+    does the pass refuse, with the pointer's own reason first.
     """
     cache = prawduct_dir / ".critic-findings.json"
     try:
@@ -2372,20 +2384,80 @@ def _prior_review_fact(
     for fact in evidence.facts_of_kind(store, "review"):
         if fact.get("id") != fact_id:
             continue
-        body = fact.get("body") or {}
-        anchor = evidence.review_anchor(body)
-        if anchor:
-            from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
-
-            if not critic_mode._commit_is_ancestor(project_dir, anchor):
-                return None, (
-                    f"prior review fact {fact_id!r} anchors at {anchor[:12]}, "
-                    "which is not an ancestor of HEAD — it belongs to another "
-                    "lineage (a branch switch, or rewritten history), so the "
-                    "delta from it would span the divergence"
-                )
-        return fact, ""
+        not_ours = _not_this_branchs(project_dir, fact)
+        if not_ours is None:
+            return fact, ""
+        return _rederived_prior(project_dir, prawduct_dir, store, fact, not_ours)
     return None, f"prior review fact {fact_id!r} not found in the evidence store"
+
+
+def _not_this_branchs(project_dir: Path, fact: dict) -> "str | None":
+    """Why the cached review fact cannot stand as this branch's verify anchor
+    without asking :func:`derive_branch_cache`, or ``None`` when it can. Two
+    ways: its anchor is off this lineage, or it was recorded on another branch
+    and sits at the merge base this branch shares with that one — the one
+    commit where :func:`_newest_branch_review` prefers a review recorded here.
+    The branch-name comparison runs first, so the common case (a review of this
+    branch) lists no commit range."""
+    fact_id = fact.get("id")
+    anchor = evidence.review_anchor(fact.get("body") or {})
+    if not anchor:
+        return None
+    from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
+
+    if not critic_mode._commit_is_ancestor(project_dir, anchor):
+        return (
+            f"prior review fact {fact_id!r} anchors at {anchor[:12]}, "
+            "which is not an ancestor of HEAD — it belongs to another "
+            "lineage (a branch switch, or rewritten history), so the "
+            "delta from it would span the divergence"
+        )
+    recorded = _recorded_branch(fact)
+    branch = gitstate.current_branch(project_dir)
+    if recorded is None or branch is None or recorded == branch:
+        return None
+    branch_range = evidence_notes._branch_commits(project_dir)
+    if branch_range.get("status") != "ok" or branch_range["ordered"][-1] != anchor:
+        return None
+    return (
+        f"prior review fact {fact_id!r} was recorded on {recorded!r} and anchors "
+        f"at {anchor[:12]}, the merge base {branch!r} shares with it"
+    )
+
+
+def _rederived_prior(
+    project_dir: Path, prawduct_dir: Path, store: dict, cached: dict, not_ours: str
+) -> tuple[dict | None, str]:
+    """The verify anchor when the cached pointer is not this branch's: this
+    branch's newest review, through the one owner of that answer
+    (:func:`derive_branch_cache`, which also re-points the slot). The cached
+    fact stands when the owner names it too — the merge-base preference is a
+    preference, so a sibling's review with none of this branch's beside it is
+    still the answer."""
+    branch_range = evidence_notes._branch_commits(project_dir)
+    if branch_range.get("status") != "ok":
+        return None, (
+            f"{not_ours}; this branch's own review could not be looked up "
+            f"({branch_range.get('reason')})"
+        )
+    derived = derive_branch_cache(prawduct_dir, store.get("facts", []), branch_range["ordered"])
+    review = derived.get("review")
+    if derived.get("status") not in ("derived", "current") or not review:
+        return None, (
+            f"{not_ours}; no review of this branch's could replace it "
+            f"({derived.get('reason') or derived.get('status')})"
+        )
+    if review == cached.get("id"):
+        return cached, ""
+    for fact in evidence.facts_of_kind(store, "review"):
+        if fact.get("id") == review:
+            return fact, (
+                f"verify anchored on review {review}, the newest on this branch, "
+                f"not on the findings cache's: {not_ours}. "
+                ".prawduct/.critic-findings.json now names "
+                f"{review}, so the prior findings you verify are this branch's"
+            )
+    return None, f"{not_ours}; review {review!r} was selected but is not in the store read"
 
 
 #: How many excluded/free paths a message names before it summarises the rest.
@@ -2755,7 +2827,18 @@ def _record_no_review_needed(project_dir: Path, guard: str, body: dict) -> bool:
     lands, and a firing that vanishes leaves that question looking answered at
     zero. Sink ruling and its four reasons: `evidence.append_guard_refusal`.
     """
-    recorded = evidence.append_guard_refusal(project_dir, guard, body)
+    return _record_guard_refusal(project_dir, guard, body)
+
+
+def _record_guard_refusal(
+    project_dir: Path, guard: str, body: dict, *, reason: "str | None" = None
+) -> bool:
+    """Record one ``critic-begin`` refusal; True when the guard-refusal fact
+    landed. SOFT but never silent, for every refusal in the class: the refusal
+    is correct whether or not the record lands, and a lost one makes the
+    guard's yield query read low. ``reason`` is the sink's slug
+    (``evidence.append_guard_refusal``)."""
+    recorded = evidence.append_guard_refusal(project_dir, guard, body, reason=reason)
     if recorded.get("status") == "appended":
         return True
     print(
@@ -2766,6 +2849,57 @@ def _record_no_review_needed(project_dir: Path, guard: str, body: dict) -> bool:
         file=sys.stderr,
     )
     return False
+
+
+def _stale_test_evidence(project_dir: Path) -> "str | None":
+    """Why the saved test evidence cannot vouch for this tree — the
+    :func:`gates.tests_are_current` reason, verbatim — or ``None`` when it is
+    current or when there is NO evidence at all.
+
+    Absent is not stale here. A product with no suite has no
+    ``.test-evidence.json`` and records no ``test-run`` fact, and refusing
+    there would put ``verify-resolutions`` — the only command that clears a
+    BLOCKING finding — permanently behind ``--force``. "Evidence exists" is
+    this worktree's record on disk (a red or degraded one included: those are
+    what this refuses) or a whole-suite ``test-run`` fact anywhere in the
+    clone's store, which the verdict also consults. A narrowed scratch run is
+    not counted: the verdict neither vouches nor denies on one."""
+    record = gitstate.get_prawduct_dir(project_dir) / ".test-evidence.json"
+    if not record.exists():
+        runs = evidence.facts_of_kind(evidence.read_facts(project_dir), "test-run")
+        if not any(
+            isinstance(f.get("body"), dict) and f["body"].get("narrowed") is not True
+            for f in runs
+        ):
+            return None
+    current, reason, _clause = gates.tests_are_current(project_dir)
+    return None if current else reason
+
+
+#: The closed set ``critic-dispatch-stale-evidence`` records as its ``reason``
+#: slug: this worktree's saved run is red, or reports itself degraded, or —
+#: everything else the verdict refuses — it (or the clone's store) does not
+#: vouch for this tree.
+STALE_EVIDENCE_REASONS = ("failing", "degraded", "not-current")
+
+
+def _stale_evidence_slug(project_dir: Path) -> str:
+    """Which :data:`STALE_EVIDENCE_REASONS` member a refusal records, read off
+    this worktree's saved run; ``not-current`` when it is green or absent."""
+    record = gitstate.get_prawduct_dir(project_dir) / ".test-evidence.json"
+    try:
+        run = json.loads(record.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "not-current"
+    if not isinstance(run, dict):
+        return "not-current"
+    failed = run.get("failed")
+    if isinstance(failed, int) and not isinstance(failed, bool) and failed > 0:
+        return "failing"
+    degraded = run.get("degraded")
+    if isinstance(degraded, str) and degraded.strip():
+        return "degraded"
+    return "not-current"
 
 
 def working_tree_interval_base(
@@ -3317,9 +3451,19 @@ def begin_review(
     :func:`_round_budget_verdict` for what bounds the count when lineage cannot. The
     outstanding non-blocking findings are auto-accepted and a census is rendered
     with the refusal; BLOCKING is untouched and still blocks, and
-    ``verify-resolutions`` is never refused, so the loop can end but the gate
-    can never be opened by ending it.
-    ``force=True`` dispatches anyway. A refusal also carries ``anchor`` (the tree
+    ``verify-resolutions`` is never refused by the round budget, so the loop
+    can end but the gate can never be opened by ending it.
+    ``force=True`` dispatches anyway.
+
+    ``{"status": "precondition-failed", "reason"}`` — the CLI exits 7 — when
+    ``mode_token == "verify-resolutions"`` and saved test evidence exists but
+    is not current (:func:`_stale_test_evidence`; ``reason`` is
+    ``gates.tests_are_current``'s, verbatim). Checked right after the in-flight
+    guard, so nothing is derived, written or marked; one ``guard-refusal``
+    fact is appended. Distinct from ``no-review-needed``: there is something
+    to review, which a reviewer would only report the suite stale on. The
+    remedy is the same mode after the suite runs; ``force=True`` dispatches
+    anyway. Absent evidence does not refuse. A refusal also carries ``anchor`` (the tree
     it graded, in words) and ``excluded_wip`` (judgeable uncommitted files that
     tree does not contain) — without them "no judgeable file" is true of the
     interval and silent about the repo, which reads as "nothing to do" when it
@@ -3411,6 +3555,27 @@ def begin_review(
             "kind": "review-in-flight",
             "reason": active_dispatch_refusal(prawduct_dir, age_s, active),
         }
+
+    # STALE-EVIDENCE PRECONDITION (#724) — verify-resolutions only, and BEFORE
+    # anything is derived: no scope, no tree capture, no anchor read, no
+    # manifest, no marker. That mode rates new findings from the inner BLOCKING
+    # set only, so a stale or red suite the reviewer would report (SKILL.md step
+    # 5) costs a whole round to learn what `test-status` knows for free. The
+    # verdict is `gates.tests_are_current`, the one `test-status` prints — no
+    # second notion of stale is written here. `chunk`/`final`/`cumulative`
+    # review code whose value does not hang on the suite, and are untouched.
+    if mode_token == "verify-resolutions" and not force:
+        stale = _stale_test_evidence(project_dir)
+        if stale is not None:
+            # `reason` is the sink's slug from a closed set (what `stats`
+            # groups on); the verdict's prose rides as `verdict`, never there.
+            _record_guard_refusal(
+                project_dir, "critic-dispatch-stale-evidence",
+                {"mode": mode_token, "verdict": stale,
+                 "branch": gitstate.current_branch(project_dir)},
+                reason=_stale_evidence_slug(project_dir),
+            )
+            return {"status": "precondition-failed", "reason": stale}
 
     # Which unit this review is OF: the dispatch's explicit override, else the
     # checkout's work-unit binding — computed in code (`work_unit.resolve`), the
@@ -3644,6 +3809,10 @@ def begin_review(
                 )
     else:  # verify-resolutions
         prior, reason = _prior_review_fact(project_dir, prawduct_dir, read_store())
+        if prior is not None and reason:
+            # A re-derived anchor (#1150): said, so a builder whose cache named
+            # another branch's review knows which findings this pass verifies.
+            notes.append(reason)
         if prior is None:
             refusal = {"status": "error", "reason": f"no prior review to verify: {reason}"}
             if _store_unusable(read_store()) is not None:
@@ -6034,6 +6203,52 @@ def _uncertified_open_chunks(
     return (mode, open_ids) if open_ids else None
 
 
+def _recorded_branch(fact: dict) -> "str | None":
+    """The branch a fact's writer had checked out (``actor.branch``), or
+    ``None`` when it recorded none — a detached HEAD, a pre-3.8 fact, or a
+    malformed field, all of which ``evidence.append_fact`` and its readers
+    treat as one absent state."""
+    actor = fact.get("actor")
+    branch = actor.get("branch") if isinstance(actor, dict) else None
+    return branch if isinstance(branch, str) and branch else None
+
+
+def _newest_branch_review(
+    facts: list[dict], branch_commits: "list[str]", branch: "str | None"
+) -> "dict | None":
+    """The newest review fact on this branch, or ``None`` when none anchors on
+    it. ``branch_commits`` is newest first with the merge base LAST
+    (:func:`evidence_notes._branch_commits`'s ``ordered``); ``branch`` is the
+    checked-out branch's name, ``None`` on a detached HEAD.
+
+    Ranked by how far along the branch the anchor sits, then — **at the merge
+    base only** — by whether the review was recorded on ``branch``, then by
+    ``ts`` and store order. The merge base is the one commit in the range that
+    every sibling cut from the same base shares, and a fresh branch's first
+    dirty-tree review anchors there, so commit range alone cannot tell this
+    branch's review from a sibling's that arrived by ingest (#1116). Further
+    along, a commit belongs to this branch and depth decides, whatever branch
+    name a review carries. A preference, not a filter: with no review of its
+    own at the merge base — a renamed branch, a review recorded before
+    ``actor.branch`` existed — the sibling's still answers, as it always did."""
+    depth = {commit: i for i, commit in enumerate(branch_commits)}
+    merge_base = branch_commits[-1] if branch_commits else None
+    on_branch = [
+        (i, f) for i, f in enumerate(evidence.facts_of_kind({"facts": facts}, "review"))
+        if evidence.review_anchor(f.get("body")) in depth
+    ]
+    if not on_branch:
+        return None
+
+    def rank(item: "tuple[int, dict]") -> tuple:
+        index, fact = item
+        anchor = evidence.review_anchor(fact.get("body"))
+        ours = bool(branch) and anchor == merge_base and _recorded_branch(fact) == branch
+        return (-depth[anchor], ours, str(fact.get("ts") or ""), index)
+
+    return max(on_branch, key=rank)[1]
+
+
 def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "list[str]") -> dict:
     """Point ``.critic-findings.json`` at the newest review fact anchored on
     this branch, rendering it as consolidation would.
@@ -6061,22 +6276,20 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
     order can say that alone — ``ts`` is to the second, and ingest appends in
     the order it reads notes, not the order reviews ran — so they only break
     ties between reviews on one commit. Only records of this reader's schema
-    are considered; a newer plugin's record is not this function's to render."""
+    are considered; a newer plugin's record is not this function's to render.
+
+    **The one answer to "which review is this branch's".** The verify dispatch
+    defers here whenever the cached pointer is not this branch's
+    (:func:`_prior_review_fact`), so ingest and dispatch cannot pick two
+    different reviews; the selection itself is :func:`_newest_branch_review`."""
     if critic_marker.review_active(prawduct_dir)[0]:
         return {"status": "skipped", "review": None, "reason": "a review is in flight"}
     usable = [f for f in facts if isinstance(f, dict) and f.get("schema") == evidence.SCHEMA_VERSION]
-    depth = {commit: i for i, commit in enumerate(branch_commits)}
-    on_branch = [
-        (i, f) for i, f in enumerate(evidence.facts_of_kind({"facts": usable}, "review"))
-        if evidence.review_anchor(f.get("body")) in depth
-    ]
-    if not on_branch:
+    fact = _newest_branch_review(
+        usable, branch_commits, gitstate.current_branch(prawduct_dir.parent)
+    )
+    if fact is None:
         return {"status": "none", "review": None, "reason": "no review anchors on this branch"}
-    fact = max(
-        on_branch,
-        key=lambda item: (-depth[evidence.review_anchor(item[1].get("body"))],
-                          str(item[1].get("ts") or ""), item[0]),
-    )[1]
     review = str(fact.get("id"))
     findings_path = prawduct_dir / ".critic-findings.json"
     try:
