@@ -370,6 +370,11 @@ live-integration changes that automated tests can't fully cover. Drain via
 `/prawduct:pr create --accept-pending-verification "rationale"`. Default off — opt in by setting
 `operator_verification_required: true`.
 
+An absent file or key reads as off. A `project-state.yaml` that exists but cannot be read (no
+permission, not UTF-8) does NOT read as off: `check-operator-verification` refuses with exit 3 and
+names the file, so a repo that opted in is never told its gate is off. An unreadable queue file
+refuses the same way instead of crashing. Same rule for `coverage_required`.
+
 ## review_round_budget (on by default, 6)
 
 The most full review rounds one body of work may buy before `critic-begin` refuses another (exit
