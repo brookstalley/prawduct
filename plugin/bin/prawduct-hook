@@ -6606,6 +6606,9 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
 
     result = ov.run_check_operator_verification(project_dir)
     if not result["required"]:
+        # Never gated, but an unreadable queue is worth one stderr line.
+        if result.get("note"):
+            print("NOTE: " + result["note"], file=sys.stderr)
         return 0
     # Order matters: an unreadable queue reports `pending: 0` because nothing
     # was parsed, so testing pending first would let the exact failure this
