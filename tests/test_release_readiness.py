@@ -79,7 +79,16 @@ def _make_project(
     session_start: str | None = "2000-01-01T00:00:00Z",
 ) -> Path:
     project = tmp_path / "proj"
-    _write(project / ".prawduct" / "change-log.md", "# Change Log\n\n" + entries)
+    # Since #1125 pending work is a fragment and the live log is history, so
+    # `entries` is routed the way `migrate-change-log` leaves a repo: each
+    # release-pending scoped entry becomes its scope's fragment, and everything
+    # else (shipped, untagged) stays in the log. A test about the refusal of a
+    # pending legacy entry writes the log itself (`_legacy_log_project`).
+    history, pending = _route_entries(entries)
+    _write(project / ".prawduct" / "change-log.md", "# Change Log\n\n" + history)
+    (project / ".prawduct" / "changes").mkdir(parents=True, exist_ok=True)
+    for scope in pending:
+        _add_fragment(project, scope)
     # A green run by default: the gate refuses over the code as well as over the
     # bookkeeping, so every fixture that is not *about* the suite has to state
     # that the suite passed. `evidence=None` writes no record — the missing-
@@ -122,6 +131,25 @@ def _make_project(
     return project
 
 
+def _route_entries(entries: str) -> tuple[str, list[str]]:
+    """``(log history, pending scopes)`` for fixture ``entries``.
+
+    A tagged entry with a ``scope=`` and no ``release=`` is pending and becomes
+    one fragment per scope; every other entry stays in the log verbatim.
+    """
+    history: list[str] = []
+    pending: list[str] = []
+    for block in re.split(r"(?m)^(?=## )", entries):
+        tag = re.search(r"<!-- prawduct: (.*?) -->", block)
+        scope = re.search(r"\bscope=([^\s|>]+)", tag.group(1)) if tag else None
+        if tag and scope and "release=" not in tag.group(1):
+            if scope.group(1) not in pending:
+                pending.append(scope.group(1))
+        else:
+            history.append(block)
+    return "".join(history), pending
+
+
 def _entry(title: str, scope: str, *, release: str | None = None) -> str:
     tag = f"<!-- prawduct: type=fix | scope={scope}"
     if release:
@@ -147,20 +175,23 @@ def _shipped_item(item_id: str) -> str:
     return f"- **[{item_id}]** A closed thing\n  `effort: M · impact: L · area: x · status: shipped`\n\n"
 
 
-class TestReleasePendingScopes:
+class TestReleasePendingEntries:
+    """``release_pending_entries`` is the legacy log's one pending predicate,
+    kept for the refusal and the size archive; it enumerates no scope (#1022)."""
+
     def test_release_tagged_entries_are_not_pending(self):
         from lib import change_log
 
         content = _entry("A", "alpha") + _entry("B", "beta", release="v3.1.2")
-        scopes = release_readiness.release_pending_scopes(change_log.parse_change_log(content))
-        assert scopes == ["alpha"], "a release= tag means the code already shipped"
+        pending = release_readiness.release_pending_entries(change_log.parse_change_log(content))
+        assert [e.title for e in pending] == ["A"], "a release= tag means the code already shipped"
 
     def test_untagged_entries_are_invisible(self):
         from lib import change_log
 
         content = "## Historical entry\n\nNo tag line at all.\n\n" + _entry("A", "alpha")
-        scopes = release_readiness.release_pending_scopes(change_log.parse_change_log(content))
-        assert scopes == ["alpha"]
+        pending = release_readiness.release_pending_entries(change_log.parse_change_log(content))
+        assert [e.title for e in pending] == ["A"]
 
 
 class TestGatePasses:
@@ -772,47 +803,38 @@ class TestPartitionIsExact:
 
 
 class TestChangeLogTagsAreRefusedHere:
-    """The rehomed tag checks — the guard that hid a branch from v3.2.8.
+    """The guard that hid a branch from v3.2.8, under the fragments-only gate.
 
-    `release_pending_scopes` skips any entry carrying a `release=` value and
-    cannot tell a version from a placeholder, so `release=unreleased` removes
-    its whole scope from the pending set and this gate answers "nothing to cut"
-    while the work never ships. The check existed, but its only caller was the
-    derived-view regenerator — a command a release does not run. These tests
-    pin it to the gate that a release DOES run.
+    A ``release=`` that is not a version (``release=unreleased``) makes an
+    unshipped legacy entry look shipped, so a reader keyed on the absence of
+    ``release=`` cannot see it. Before #1125 the gate refused it as
+    ``bad-change-log-tag``; now the live log is read only to refuse what is
+    still pending there, and this shape is refused under the same
+    ``legacy-pending-entry`` code, through the migration's own converter.
     """
 
     def test_placeholder_release_is_refused_and_named(self, tmp_path, capsys):
-        project = _make_project(
+        project = _legacy_log_project(
             tmp_path,
-            entries=_entry("A", "alpha").replace(
-                "| scope=alpha", "| scope=alpha | release=unreleased"
-            ),
+            _entry("A", "alpha").replace("| scope=alpha", "| scope=alpha | release=unreleased"),
             classification="| alpha | ships | |\n",
         )
         assert release_readiness.check_releasability(project) == 1
         err = capsys.readouterr().err
-        assert "bad-change-log-tag" in err
-        assert "unreleased" in err
-        assert "delete the tag" in err
+        line = next(x for x in err.splitlines() if "unreleased-placeholder" in x)
+        assert line.startswith("legacy-pending-entry:")
+        assert "'unreleased'" in line
+        assert "delete the tag" in line
 
-    def test_the_placeholder_would_otherwise_read_as_nothing_to_cut(self, tmp_path, capsys):
-        """The failure this prevents, demonstrated rather than asserted.
-
-        Without the guard the same change log produces exit 0 and the words
-        "nothing to classify" — a green gate on a branch that never ships. The
-        test pins the *shape* of that failure by showing the pending set is
-        empty once the malformed tag is accepted.
-        """
+    def test_the_placeholder_would_otherwise_read_as_nothing_to_cut(self):
+        """Why the refusal runs the migration's converter as well as the
+        pending predicate: the predicate alone is blind to this entry."""
         from lib import change_log
 
-        content = _entry("A", "alpha").replace(
-            "| scope=alpha", "| scope=alpha | release=unreleased"
-        )
-        entries = change_log.parse_change_log(content)
-        assert release_readiness.release_pending_scopes(entries) == []
-        errors, _warnings = change_log.validate_change_log_tags(entries)
-        assert len(errors) == 1
+        content = _entry("A", "alpha").replace("| scope=alpha", "| scope=alpha | release=unreleased")
+        assert release_readiness.release_pending_entries(change_log.parse_change_log(content)) == []
+        refusals = release_readiness.legacy_pending_refusals(content)
+        assert any("unreleased-placeholder" in r for r in refusals), refusals
 
     def test_a_real_version_still_passes(self, tmp_path):
         project = _make_project(
@@ -824,7 +846,7 @@ class TestChangeLogTagsAreRefusedHere:
 
     def test_a_four_part_product_releases(self, tmp_path):
         """History stamped with four-part versions, and a four-part release
-        being cut: both the tag guard and the already-shipped match accept it."""
+        being cut: the history reader and the already-shipped match accept it."""
         project = _make_project(
             tmp_path,
             entries=_entry("A", "alpha")
@@ -836,16 +858,14 @@ class TestChangeLogTagsAreRefusedHere:
         assert release_readiness.check_releasability(project) == 0
 
     def test_a_five_part_release_is_refused_and_named(self, tmp_path, capsys):
-        project = _make_project(
+        project = _legacy_log_project(
             tmp_path,
-            entries=_entry("A", "alpha").replace(
-                "| scope=alpha", "| scope=alpha | release=v1.2.3.4.5"
-            ),
+            _entry("A", "alpha").replace("| scope=alpha", "| scope=alpha | release=v1.2.3.4.5"),
             classification="| alpha | ships | |\n",
         )
         assert release_readiness.check_releasability(project) == 1
         err = capsys.readouterr().err
-        assert "bad-change-log-tag" in err
+        assert "legacy-pending-entry:" in err
         assert "v1.2.3.4.5" in err
 
     def test_this_repos_own_change_log_passes_the_guard(self):
@@ -864,47 +884,35 @@ class TestChangeLogTagsAreRefusedHere:
 
 
 class TestScopelessPendingEntryIsRefused:
-    """A release-pending entry with no ``scope=`` stops being invisible.
+    """A release-pending entry with no ``scope=`` stays visible.
 
-    The gate enumerates *scopes*, and an entry carrying none contributes nothing
-    to enumerate: it reaches no row of the classification table, so it can be
-    neither shipped nor withheld, and Phase 0 certified `releasable` over work it
-    had never seen. The code already knew — the no-pending branch named this
-    blindness in a comment and returned 0 anyway. What is pinned here is that the
-    accounting now exists on BOTH branches and that the mismatch REFUSES: this is
-    a releasability verdict over unclassifiable work, and an authority gate fails
-    closed.
+    It reaches no row of a scope-keyed table, so it was refused as
+    ``unclassifiable-pending-entry`` while the gate read the legacy log. The gate
+    now reads fragments only and refuses every release-pending legacy entry, so a
+    scopeless one is refused by the same ``legacy-pending-entry`` line, by name.
     """
 
     def test_a_scopeless_pending_entry_refuses_and_is_named(self, tmp_path, capsys):
-        project = _make_project(
+        project = _legacy_log_project(
             tmp_path,
-            entries=_entry("A", "alpha") + _scopeless_entry("An unscoped change"),
+            _scopeless_entry("An unscoped change"),
+            fragments=("alpha",),
             classification="| alpha | ships | |\n",
         )
         assert release_readiness.check_releasability(project) == 1
         err = capsys.readouterr().err
-        assert "unclassifiable-pending-entry" in err
+        line = next(x for x in err.splitlines() if "An unscoped change" in x)
         # Named, because the remedy is mechanical only if the operator knows
-        # which entry to edit. A count alone sends them reading 364 entries.
-        assert "An unscoped change" in err
-        assert "change-log line" in err
-        assert "`scope=`" in err
+        # which entry to move. A count alone sends them reading the whole log.
+        assert line.startswith("legacy-pending-entry: 'An unscoped change'")
+        assert ".prawduct/change-log.md line" in line
 
     def test_it_refuses_where_the_gate_would_otherwise_certify_a_pass(self, tmp_path, capsys):
-        """The blindness itself, not a variation on it.
-
-        When the scopeless entry is the ONLY release-pending work, the pending
-        set is empty, so the old code took the no-pending return and printed
-        `releasable: … nothing to classify` — a green verdict over unclassified
-        work, with no release plan ever opened. That is why the reconciliation
-        runs BEFORE that return and not after it.
-        """
-        project = _make_project(
+        """The blindness itself: the scopeless entry is the only unreleased work,
+        the fragment set is empty, and the no-pending return must not be reached."""
+        project = _legacy_log_project(
             tmp_path,
-            entries=_entry("A", "alpha", release="v3.1.2")
-            + _scopeless_entry("The only unreleased work"),
-            classification=None,
+            _entry("A", "alpha", release="v3.1.2") + _scopeless_entry("The only unreleased work"),
         )
         assert release_readiness.check_releasability(project) == 1
         captured = capsys.readouterr()
@@ -912,52 +920,28 @@ class TestScopelessPendingEntryIsRefused:
         assert "The only unreleased work" in captured.err
 
     def test_every_offending_entry_is_named_not_just_the_first(self, tmp_path, capsys):
-        """'Refuse and name them' is worth nothing if it names one of three.
-
-        The remedy is per-entry, so a message that stops at the first sends the
-        operator through as many re-runs as there are entries — and each re-run
-        looks like a fresh failure.
-        """
-        project = _make_project(
+        """'Refuse and name them' is worth nothing if it names one of three."""
+        project = _legacy_log_project(
             tmp_path,
-            entries=_scopeless_entry("First unscoped")
-            + _entry("A", "alpha")
+            _scopeless_entry("First unscoped")
             + _scopeless_entry("Second unscoped")
             + _scopeless_entry("Third unscoped"),
-            classification="| alpha | ships | |\n",
         )
         assert release_readiness.check_releasability(project) == 1
         err = capsys.readouterr().err
-        assert "First unscoped" in err
-        assert "Second unscoped" in err
-        assert "Third unscoped" in err
-        assert "3 release-pending change-log entries" in err
-        assert "4 change-log entries, 4 tagged, 4 release-pending across 1 scope(s), 3 unclassifiable" in err
+        named = [x for x in err.splitlines() if x.startswith("legacy-pending-entry: '")]
+        assert len(named) == 3, err
+        assert "First unscoped" in err and "Second unscoped" in err and "Third unscoped" in err
 
     def test_the_refusal_uses_exit_1_not_3(self, tmp_path, capsys):
-        """3 means the gate's SUBJECT could not be read. Here it read fine.
-
-        The change log parsed, the entry parsed, its tag line parsed — which is
-        what the message *demonstrates* by naming the entry and its line number,
-        and what makes 3 the wrong code. What cannot be evaluated is the WORK,
-        and that is what exit 1 already means everywhere else in this gate;
-        `no-release-plan` reaches it the same way. A new code would split one
-        meaning across two values.
-        """
-        project = _make_project(
-            tmp_path,
-            entries=_scopeless_entry("An unscoped change"),
-            classification=None,
-        )
+        """3 means the gate's SUBJECT could not be read. Here it read fine: the
+        message can only print a title and a line number by having parsed it."""
+        project = _legacy_log_project(tmp_path, _scopeless_entry("An unscoped change"))
         assert release_readiness.check_releasability(project) == 1
         err = capsys.readouterr().err
-        # The subject read fine, and this is the evidence: the gate could only
-        # print a title and a line number by having parsed the entry.
         assert "An unscoped change" in err
-        # A real line number, not the dataclass default: an entry the parser
-        # never located would print 0 and read as parsed anyway.
-        assert re.search(r"change-log line [1-9]\d*\)", err)
-        assert "1 release-pending change-log entry with no `scope=`" in err
+        # A real line number, not the dataclass default.
+        assert re.search(r"change-log\.md line [1-9]\d*\)", err)
 
     def test_a_scoped_only_log_refuses_nothing(self, tmp_path, capsys):
         project = _make_project(
@@ -966,61 +950,43 @@ class TestScopelessPendingEntryIsRefused:
             classification="| alpha | ships | |\n| beta | ships | |\n",
         )
         assert release_readiness.check_releasability(project) == 0
-        assert "unclassifiable-pending-entry" not in capsys.readouterr().err
+        assert "legacy-pending-entry" not in capsys.readouterr().err
 
     def test_a_scopeless_entry_that_already_shipped_is_not_pending(self, tmp_path, capsys):
-        """`release=` settles it, scope or no scope.
-
-        Historical entries predating the `scope=` convention carry a release tag
-        and nothing else; this repo has dozens. Refusing on those would fail the
-        gate on every past release forever, which is the difference between a
-        control and an obstacle.
-        """
-        project = _make_project(
+        """`release=` settles it, scope or no scope: refusing shipped history
+        would fail the gate on every past release forever."""
+        project = _legacy_log_project(
             tmp_path,
-            entries=_scopeless_entry("Ancient history", release="v1.0.0")
-            + _entry("A", "alpha"),
+            _scopeless_entry("Ancient history", release="v1.0.0"),
+            fragments=("alpha",),
             classification="| alpha | ships | |\n",
         )
         assert release_readiness.check_releasability(project) == 0, capsys.readouterr().err
 
     def test_an_untagged_entry_is_still_invisible(self, tmp_path, capsys):
-        """Predating the tag convention is not being tagged wrong.
-
-        The gate has never claimed authority over untagged history, and this
-        refusal must not quietly extend it there — an entry with no tag line is
-        not a release-pending entry missing its scope.
-        """
-        project = _make_project(
+        """Predating the tag convention is not being tagged wrong."""
+        project = _legacy_log_project(
             tmp_path,
-            entries="## Historical entry\n\nNo tag line at all.\n\n" + _entry("A", "alpha"),
+            "## Historical entry\n\nNo tag line at all.\n\n",
+            fragments=("alpha",),
             classification="| alpha | ships | |\n",
         )
         assert release_readiness.check_releasability(project) == 0, capsys.readouterr().err
 
-    def test_the_pending_branch_reports_entries_AND_scopes(self, tmp_path, capsys):
-        """The accounting the branch never had: two entries, one scope.
-
-        Entry count and scope count differ for an ordinary reason — several
-        entries per scope — so the emission has to carry both or it cannot show
-        the gap the reconciliation exists to measure.
-        """
+    def test_the_pending_branch_names_fragments_and_history(self, tmp_path, capsys):
         project = _make_project(
             tmp_path,
-            entries=_entry("A", "alpha") + _entry("B", "alpha") + _entry("C", "beta", release="v3.1.2"),
+            entries=_entry("A", "alpha") + _entry("C", "beta", release="v3.1.2"),
             classification="| alpha | ships | |\n",
         )
         assert release_readiness.check_releasability(project) == 0
         out = capsys.readouterr().out
-        assert "3 change-log entries, 3 tagged, 2 release-pending across 1 scope(s), 0 unclassifiable" in out
+        assert (
+            "scanned: 1 change fragment(s) in .prawduct/changes/, 1 release-pending scope(s); "
+            "1 .prawduct/change-log.md entries read as shipped history." in out
+        )
 
-    def test_the_no_pending_branch_accounting_is_unchanged(self, tmp_path, capsys):
-        """The branch that always had the accounting keeps it verbatim.
-
-        This chunk adds an emission to the other branch; it does not renegotiate
-        this one. The re-run diagnosis that depends on it — `N scope(s) already
-        tagged` — is pinned separately in TestIdempotentAcrossItsOwnRunbook.
-        """
+    def test_the_no_pending_branch_names_the_same_denominator(self, tmp_path, capsys):
         project = _make_project(
             tmp_path,
             entries=_entry("A", "alpha", release="v3.1.2"),
@@ -1029,48 +995,29 @@ class TestScopelessPendingEntryIsRefused:
         assert release_readiness.check_releasability(project) == 0
         out = capsys.readouterr().out
         assert "releasable: no release-pending scopes — nothing to classify" in out
-        assert "1 change-log entries scanned, 1 tagged" in out
+        assert "0 change fragment(s) in .prawduct/changes/" in out
+        assert "1 .prawduct/change-log.md entries read as shipped history" in out
 
 
 class TestReconciliationAgainstTheRealChangeLog:
-    """One test reads this repo's real log, and it asserts the INVARIANT.
+    """One test reads this repo's real log, and it asserts the INVARIANT, not the
+    phase: every release-pending entry the predicate finds is named by the
+    refusal. Whether there are any is the repo's state, not this test's claim."""
 
-    Six `TestAgainstTheReal*` guards died together at v3.3.0 because they pinned
-    the repo's current release PHASE — and a release is the event that ends that
-    phase, so they went red under exactly the pressure that makes relaxing them
-    tempting. So this states WHICH emptiness it rejects: a change log that
-    parsed to nothing. An empty *pending* set is not rejected — that is what a
-    just-tagged release looks like, and it is a pass.
-    """
-
-    def _entries(self):
+    def test_every_pending_entry_is_named_by_the_refusal(self):
         from lib import change_log
 
         log = Path(__file__).resolve().parents[1] / ".prawduct" / "change-log.md"
         if not log.is_file():
             pytest.skip("no .prawduct/change-log.md in this checkout")
-        return change_log.parse_change_log(log.read_text(encoding="utf-8"))
-
-    def test_entries_and_scopes_reconcile(self):
-        entries = self._entries()
+        text = log.read_text(encoding="utf-8")
+        entries = change_log.parse_change_log(text)
         assert entries, "the change log parsed to zero entries — the parser, not the log"
         assert any(e.tag_line_count > 0 for e in entries), "no tagged entries parsed"
 
-        pending = release_readiness.release_pending_entries(entries)
-        scopes = release_readiness.release_pending_scopes(entries)
-        unclassifiable = release_readiness.unclassifiable_pending_entries(entries)
-
-        # Entries >= scopes always: several entries share one scope, and never
-        # the reverse. A scope count that outran the entries would mean the two
-        # collectors disagree about what release-pending means.
-        assert len(pending) >= len(scopes)
-
-        unclassifiable_ids = {id(e) for e in unclassifiable}
-        classified = [e for e in pending if id(e) not in unclassifiable_ids]
-        assert len(classified) + len(unclassifiable) == len(pending)
-        assert {e.tags["scope"] for e in classified} == set(scopes), (
-            "every classified pending entry's scope must be one the gate enumerates"
-        )
+        refusals = release_readiness.legacy_pending_refusals(text, entries)
+        for entry in release_readiness.release_pending_entries(entries):
+            assert any(f"{entry.title!r} (" in r for r in refusals), entry.title
 
 
 class TestPlanCoverageIsReportedNotFatal:
@@ -1901,27 +1848,8 @@ def _add_fragment(project: Path, scope: str, text: str | None = None) -> None:
 
 
 class TestFragmentsJoinThePendingSet:
-    """A pending scope recorded as a fragment counts exactly as a legacy entry does.
-
-    Wave 1 of #1012 keeps both shapes readable, so the verdict must not depend on
-    which shape a scope happens to be recorded in. Each test pairs the fragment
-    case with the legacy case it must agree with.
-    """
-
-    def test_a_fragment_scope_is_classified_like_a_legacy_one(self, tmp_path, capsys):
-        legacy = _make_project(
-            tmp_path / "legacy", entries=_entry("A", "alpha"), classification="| alpha | ships | |\n"
-        )
-        assert release_readiness.check_releasability(legacy) == 0
-        legacy_out = capsys.readouterr().out
-        fragment = _make_project(
-            tmp_path / "fragment", entries="", classification="| alpha | ships | |\n"
-        )
-        _add_fragment(fragment, "alpha")
-        assert release_readiness.check_releasability(fragment) == 0
-        fragment_out = capsys.readouterr().out
-        verdict = "1 release-pending scope(s), 1 shipping, 0 withheld"
-        assert verdict in legacy_out and verdict in fragment_out
+    """The fragments are the pending set (#1125). Each test here pins one way a
+    fragment, or the record beside it, changes the verdict."""
 
     def test_an_unclassified_fragment_scope_is_refused_by_name(self, tmp_path, capsys):
         project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification="| alpha | ships | |\n")
@@ -1938,11 +1866,17 @@ class TestFragmentsJoinThePendingSet:
         assert "bad-change-fragment: alpha.md: bad-type" in captured.err
         assert "releasable" not in captured.out
 
-    def test_a_scope_pending_in_both_shapes_is_refused(self, tmp_path, capsys):
-        project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification="| alpha | ships | |\n")
-        _add_fragment(project, "alpha")
+    def test_a_scope_pending_as_a_fragment_and_a_legacy_entry_refuses_the_entry(self, tmp_path, capsys):
+        """Was `scope-in-both-shapes`. The fragment is the record; the legacy
+        entry is a pending entry no release reads, refused like any other."""
+        project = _legacy_log_project(
+            tmp_path, _dated_entry("alpha again", "alpha"), fragments=("alpha",),
+            classification="| alpha | ships | |\n",
+        )
         assert release_readiness.check_releasability(project) == 1
-        assert "scope-in-both-shapes: 'alpha'" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "legacy-pending-entry: '2026-10-18: alpha again'" in err
+        assert "scope-in-both-shapes" not in err
 
     def test_a_fragments_only_repo_needs_no_single_file_log(self, tmp_path, capsys):
         project = _make_project(tmp_path, entries="", classification="| alpha | ships | |\n")
@@ -1954,41 +1888,235 @@ class TestFragmentsJoinThePendingSet:
     def test_no_log_and_no_fragment_directory_is_still_a_missing_input(self, tmp_path, capsys):
         project = _make_project(tmp_path, entries="", classification=None)
         (project / ".prawduct" / "change-log.md").unlink()
+        (project / ".prawduct" / "changes").rmdir()
         assert release_readiness.check_releasability(project) == 1
         assert "no-change-log:" in capsys.readouterr().err
-
-    def test_the_accounting_line_is_unchanged_without_fragments(self, tmp_path, capsys):
-        project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification="| alpha | ships | |\n")
-        assert release_readiness.check_releasability(project) == 0
-        out = capsys.readouterr().out
-        assert "change fragment" not in out
-        assert "1 change-log entries, 1 tagged, 1 release-pending across 1 scope(s)" in out
 
 
 class TestPendingScopesIsTheOneOwner:
     """`pending_scopes` is what every reader of the pending set calls (#1012 D6)."""
 
-    def test_the_union_lists_legacy_scopes_then_fragment_scopes_once_each(self, tmp_path):
+    def test_the_scopes_are_the_fragments_and_nothing_else(self, tmp_path):
         project = _make_project(
-            tmp_path, entries=_entry("A", "alpha") + _entry("B", "beta"), classification=None
+            tmp_path, entries=_entry("A", "alpha") + _entry("B", "beta", release="v3.1.0"), classification=None
         )
         _add_fragment(project, "gamma")
         pending = release_readiness.pending_scopes(project)
-        assert pending.legacy_scopes == ["alpha", "beta"]
-        assert pending.fragment_scopes == ["gamma"]
-        assert pending.scopes == ["alpha", "beta", "gamma"]
+        assert pending.fragment_scopes == ["alpha", "gamma"]
+        assert pending.scopes == ["alpha", "gamma"]
         assert pending.refusals == [] and pending.read_error is None
 
-    def test_both_kinds_of_untrustworthy_union_are_refusals(self, tmp_path):
-        project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification=None)
-        _add_fragment(project, "alpha")
+    def test_both_kinds_of_untrustworthy_set_are_refusals(self, tmp_path):
+        project = _legacy_log_project(tmp_path, _dated_entry("old", "alpha"))
         _add_fragment(project, "beta", _fragment("beta").replace("schema: 1", "schema: 9"))
         refusals = release_readiness.pending_scopes(project).refusals
         assert any(r.startswith("bad-change-fragment: beta.md: schema-ahead") for r in refusals)
-        assert any(r.startswith("scope-in-both-shapes: 'alpha'") for r in refusals)
+        assert any(r.startswith("legacy-pending-entry: '2026-10-18: old'") for r in refusals)
 
     def test_an_unreadable_log_is_a_read_error_even_beside_fragments(self, tmp_path):
         project = _make_project(tmp_path, entries="", classification=None)
         (project / ".prawduct" / "change-log.md").write_bytes(b"\xff\xfe not utf-8")
         _add_fragment(project, "alpha")
         assert release_readiness.pending_scopes(project).read_error is not None
+
+
+def _dated_entry(title: str, scope: str, *, release: str | None = None) -> str:
+    """A legacy entry in the shape `migrate-change-log` converts (dated header)."""
+    tag = f"<!-- prawduct: type=fix | scope={scope}"
+    if release:
+        tag += f" | release={release}"
+    tag += " -->"
+    return f"## 2026-10-18: {title}\n\n{tag}\n\nBody.\n\n"
+
+
+def _legacy_log_project(tmp_path: Path, log_entries: str, *, fragments=(), classification=None) -> Path:
+    """A project whose live log holds ``log_entries`` verbatim, beside ``fragments``."""
+    project = _make_project(tmp_path, entries="", classification=classification)
+    _write(project / ".prawduct" / "change-log.md", "# Change Log\n\n" + log_entries)
+    for scope in fragments:
+        _add_fragment(project, scope)
+    return project
+
+
+class TestALegacyPendingEntryIsRefused:
+    """A repo with a release-pending legacy entry gets a refusal naming
+    `/prawduct:doctor`, and the entry is never counted, never dropped."""
+
+    def test_a_pending_legacy_entry_beside_a_fragment_refuses_naming_it_and_doctor(self, tmp_path, capsys):
+        project = _legacy_log_project(
+            tmp_path,
+            _dated_entry("old way", "oldway"),
+            fragments=("alpha",),
+            classification="| alpha | ships | |\n| oldway | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        captured = capsys.readouterr()
+        line = next(x for x in captured.err.splitlines() if x.startswith("legacy-pending-entry:"))
+        assert "'2026-10-18: old way'" in line and "line 3" in line
+        assert "/prawduct:doctor" in line and "migrate-change-log" in line
+        # Refused before any verdict: no scope list, no pass.
+        assert "releasable" not in captured.out
+        assert "scanned:" not in captured.out
+
+    def test_a_pending_legacy_entry_alone_is_not_nothing_to_cut(self, tmp_path, capsys):
+        """The silent-drop direction: with fragments read only, a legacy-only
+        pending set would otherwise read as empty and pass."""
+        project = _legacy_log_project(tmp_path, _dated_entry("old way", "oldway"))
+        assert release_readiness.check_releasability(project) == 1
+        captured = capsys.readouterr()
+        assert "nothing to classify" not in captured.out
+        assert "legacy-pending-entry:" in captured.err
+
+    def test_a_scopeless_pending_entry_is_refused_the_same_way(self, tmp_path, capsys):
+        project = _legacy_log_project(tmp_path, _scopeless_entry("An unscoped change"))
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "legacy-pending-entry: 'An unscoped change'" in err
+
+    def test_every_pending_entry_is_named_not_just_the_first(self, tmp_path, capsys):
+        project = _legacy_log_project(
+            tmp_path,
+            _dated_entry("first", "one") + _dated_entry("shipped", "two", release="v3.1.0")
+            + _dated_entry("third", "three"),
+        )
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "'2026-10-18: first'" in err and "'2026-10-18: third'" in err
+        assert "'2026-10-18: shipped'" not in err
+
+    @pytest.mark.parametrize("placeholder", ["release=unreleased", "release=v1.2.3.4.5"])
+    def test_a_placeholder_release_tag_is_refused_not_read_as_shipped(self, tmp_path, capsys, placeholder):
+        """The v3.2.8 shape: a `release=` that is not a version hides pending work.
+        It is refused under the same code, with the migration's own reason."""
+        entry = _dated_entry("hidden", "hidden").replace("scope=hidden", f"scope=hidden | {placeholder}")
+        project = _legacy_log_project(tmp_path, entry)
+        assert release_readiness.check_releasability(project) == 1
+        captured = capsys.readouterr()
+        assert "nothing to classify" not in captured.out
+        line = next(x for x in captured.err.splitlines() if x.startswith("legacy-pending-entry:"))
+        assert "unreleased-placeholder" in line and "/prawduct:doctor" in line
+
+    def test_shipped_and_untagged_history_is_no_refusal(self, tmp_path, capsys):
+        project = _legacy_log_project(
+            tmp_path,
+            "## Historical entry\n\nNo tag line at all.\n\n"
+            + _dated_entry("shipped", "two", release="v3.1.0")
+            + _scopeless_entry("Ancient history", release="v1.0.0"),
+            fragments=("alpha",),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0, capsys.readouterr().err
+
+    def test_pending_scopes_carries_no_legacy_scopes(self, tmp_path):
+        project = _legacy_log_project(tmp_path, _dated_entry("old way", "oldway"), fragments=("alpha",))
+        pending = release_readiness.pending_scopes(project)
+        assert pending.scopes == ["alpha"]
+        assert not hasattr(pending, "legacy_scopes")
+        assert [r.split(":", 1)[0] for r in pending.refusals] == ["legacy-pending-entry"]
+
+
+class TestAFragmentsOnlyRepoReleasesAsToday:
+    def test_shipping_and_withholding_fragments_pass(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path, entries="", classification="| alpha | ships | |\n| beta | withheld | BKL-6J2X |\n",
+            backlog=_open_item("BKL-6J2X"),
+        )
+        (project / ".prawduct" / "change-log.md").unlink()
+        _add_fragment(project, "alpha")
+        _add_fragment(project, "beta")
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr().out
+        assert "releasable: v3.2.0 — 2 release-pending scope(s), 1 shipping, 1 withheld" in out
+        assert "scanned: 2 change fragment(s)" in out
+
+
+# ---------------------------------------------------------------------------
+# #1024: a collateral scope is declared, withheld behind its parent's blocker,
+# and refused if classified `ships`.
+# ---------------------------------------------------------------------------
+
+
+def _collateral_project(tmp_path: Path, classification: str, *, backlog: str | None = None) -> Path:
+    project = _make_project(
+        tmp_path, entries="", classification=classification,
+        backlog=_open_item("BKL-6J2X") if backlog is None else backlog,
+    )
+    _add_fragment(project, "big-feature")
+    _add_fragment(project, "small-fix")
+    return project
+
+
+class TestCollateralIsDeclared:
+    def test_shipping_a_declared_collateral_scope_is_refused_naming_both_and_the_remedy(self, tmp_path, capsys):
+        project = _collateral_project(
+            tmp_path,
+            "| big-feature | withheld | BKL-6J2X |\n| small-fix | ships | collateral-of big-feature |\n",
+        )
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        line = next(x for x in err.splitlines() if "collateral-of" in x)
+        assert "small-fix" in line and "big-feature" in line
+        assert "withheld | collateral-of big-feature" in line
+
+    def test_a_withheld_collateral_row_passes_behind_its_parents_blocker(self, tmp_path, capsys):
+        project = _collateral_project(
+            tmp_path,
+            "| big-feature | withheld | BKL-6J2X |\n| small-fix | withheld | collateral-of big-feature |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0, capsys.readouterr().err
+        out = capsys.readouterr().out
+        assert "2 release-pending scope(s), 0 shipping, 2 withheld" in out
+        assert "small-fix (collateral of big-feature, blocked by BKL-6J2X)" in out
+
+    def test_the_row_order_does_not_matter(self, tmp_path):
+        project = _collateral_project(
+            tmp_path,
+            "| small-fix | withheld | collateral-of big-feature |\n| big-feature | withheld | BKL-6J2X |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+
+    def test_the_tuple_shape_is_unchanged_and_the_map_is_exposed(self):
+        content = (
+            "## Release classification\n\n| Scope | Disposition | Blocker |\n|---|---|---|\n"
+            "| big-feature | withheld | BKL-6J2X |\n| small-fix | withheld | collateral-of big-feature |\n"
+        )
+        classification, errors = release_readiness.parse_classification(content)
+        assert errors == []
+        assert classification["small-fix"] == (release_readiness.WITHHELD, "BKL-6J2X")
+        assert release_readiness.parse_collateral(content) == {"small-fix": "big-feature"}
+
+    @pytest.mark.parametrize(
+        "rows,phrase",
+        [
+            ("| small-fix | withheld | collateral-of big-feature |\n", "not in the table"),
+            (
+                "| big-feature | ships | |\n| small-fix | withheld | collateral-of big-feature |\n",
+                "is not `withheld`",
+            ),
+            (
+                "| big-feature | withheld | BKL-6J2X |\n| mid | withheld | collateral-of big-feature |\n"
+                "| small-fix | withheld | collateral-of mid |\n",
+                "itself collateral",
+            ),
+        ],
+        ids=["missing-parent", "parent-not-withheld", "collateral-of-collateral"],
+    )
+    def test_each_bad_declaration_is_its_own_error_naming_both_scopes(self, rows, phrase):
+        content = "## Release classification\n\n| Scope | Disposition | Blocker |\n|---|---|---|\n" + rows
+        _classification, errors = release_readiness.parse_classification(content)
+        matching = [e for e in errors if phrase in e]
+        assert len(matching) == 1, errors
+        assert "small-fix" in matching[0]
+        assert ("big-feature" in matching[0]) or ("mid" in matching[0])
+
+    def test_a_closed_parent_blocker_is_stale_for_the_collateral_scope_too(self, tmp_path, capsys):
+        project = _collateral_project(
+            tmp_path,
+            "| big-feature | withheld | BKL-6J2X |\n| small-fix | withheld | collateral-of big-feature |\n",
+            backlog=_shipped_item("BKL-6J2X"),
+        )
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        stale = next(x for x in err.splitlines() if "no longer open" in x)
+        assert "small-fix (withheld as collateral of big-feature, behind BKL-6J2X" in stale
+        assert "big-feature (withheld behind BKL-6J2X" in stale

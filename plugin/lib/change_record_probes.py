@@ -4,6 +4,13 @@ Fires when ``.prawduct/change-log.md`` is committed and ``.prawduct/changes/``
 does not exist: every branch still edits that one shared file, so merges
 conflict there, and the repo has not moved onto change fragments.
 
+**At ``warn``, because staying costs a release (#1125).** The release gate and
+the cut read fragments only and refuse while the log holds a not-yet-released
+entry, naming ``/prawduct:doctor``. A repo on the log that records its next
+change there will meet that refusal at its next release, so this is no longer
+an optional improvement. The advisory id is unchanged (the probe version did not
+move), so an owner who dismissed it at ``info`` is not nagged again by the change.
+
 **Why an advisory, not only a doctor check.** The migration
 (``prawduct-hook migrate-change-log``) is owner-initiated by design — it can need
 the owner's ``--default-type`` and it is one reviewable commit — and its procedure
@@ -68,10 +75,11 @@ def probe_change_log_fragments_available(state: ProjectState, codebase: Codebase
     # shared lines conflict, and with it a merge can bring archived entries back
     # (#857). Fragments end both, so the copy need not ask git which applies.
     trigger_summary = (
-        f"This repo still records changes in the single {CHANGE_LOG_REL_PATH}, so every "
-        "branch edits the same file: merges conflict there, or with a merge=union line "
-        "can bring archived entries back; recording each change as its own file under "
-        f"{FRAGMENT_DIR_REL}/ ends both"
+        f"This repo still records changes in the single {CHANGE_LOG_REL_PATH}. Releases "
+        f"now read only {FRAGMENT_DIR_REL}/ and refuse while that log holds a "
+        "not-yet-released entry, and every branch edits the same file, so merges "
+        "conflict there, or with a merge=union line can bring archived entries back; "
+        f"recording each change as its own file under {FRAGMENT_DIR_REL}/ ends all three"
     )
     pinned = install_pin_too_old(codebase.root)
     if pinned is not None:
@@ -95,7 +103,7 @@ def probe_change_log_fragments_available(state: ProjectState, codebase: Codebase
                         "the union-merge line is never needed",
                     ),
                 ),
-                priority="info",
+                priority="warn",
             )
         ]
     return [
@@ -122,7 +130,7 @@ def probe_change_log_fragments_available(state: ProjectState, codebase: Codebase
                     "the union-merge line is never needed",
                 ),
             ),
-            priority="info",
+            priority="warn",
         )
     ]
 

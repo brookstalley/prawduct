@@ -36,6 +36,11 @@ PRAWDUCT_DECL = (
 )
 #: The changelog after the last release, with no section open for the next one.
 CHANGELOG = "# Changelog\n\nPreamble.\n\n## v3.7.1\n\nOld.\n"
+#: A live log still holding one release-pending legacy entry (#1125).
+LEGACY_PENDING_LOG = (
+    "# Change Log\n\n## 2026-10-18: legacy thing\n\n"
+    "<!-- prawduct: type=fix | scope=oldway -->\n\nBody.\n"
+)
 
 
 def _write(path: Path, text: str) -> None:
@@ -183,6 +188,41 @@ class TestApply:
         assert [p.name for p in (project / ".prawduct" / "changes").glob("*.md")] == ["beta.md"]
         assert "beta" not in (project / RELEASE_FILE).read_text()
 
+    def test_a_collateral_scope_stays_pending_and_is_not_archived(self, tmp_path):
+        """#1024: collateral declared `withheld | collateral-of <parent>` is kept
+        like any withheld scope, so its fragment survives and no archive entry
+        says it shipped."""
+        project = _declared(
+            tmp_path,
+            fragments={n: _fragment(n) for n in ("alpha", "big-feature", "small-fix")},
+            table=(
+                "| alpha | ships | |\n| big-feature | withheld | BKL-6J2X |\n"
+                "| small-fix | withheld | collateral-of big-feature |\n"
+            ),
+        )
+        result = _cut(project, "--release", "v3.8.0", "--apply")
+        assert result.returncode == 0, result.stderr
+        assert "kept pending (withheld): big-feature, small-fix" in result.stdout
+        assert sorted(p.name for p in (project / ".prawduct" / "changes").glob("*.md")) == [
+            "big-feature.md", "small-fix.md",
+        ]
+        archive = "".join(p.read_text() for p in (project / ".prawduct" / "change-log-archive").glob("*.md"))
+        assert "scope=alpha" in archive
+        assert "small-fix" not in archive
+
+    def test_shipping_a_declared_collateral_scope_refuses_the_cut(self, tmp_path):
+        project = _declared(
+            tmp_path,
+            fragments={n: _fragment(n) for n in ("big-feature", "small-fix")},
+            table="| big-feature | withheld | BKL-6J2X |\n| small-fix | ships | collateral-of big-feature |\n",
+        )
+        before = _snapshot(project)
+        result = _cut(project, "--release", "v3.8.0", "--apply")
+        assert result.returncode == 1, result.stdout
+        assert "refused: bad-release-plan:" in result.stderr
+        assert "small-fix" in result.stderr and "big-feature" in result.stderr
+        assert _snapshot(project) == before
+
     def test_named_scopes_cut_exactly_those_without_a_release_plan(self, tmp_path):
         project = _project(tmp_path, fragments={"alpha": _fragment("alpha"), "beta": _fragment("beta")}, table=None)
         result = _cut(project, "--release", "v3.8.0", "--scope", "alpha", "--apply")
@@ -256,29 +296,25 @@ class TestTheOutput:
         assert not (project / ".prawduct" / "releases").exists()
         assert (project / DIGEST).read_text() == CHANGELOG
 
-    def test_the_legacy_line_appears_only_when_legacy_entries_ship(self, tmp_path):
-        legacy = (
-            "# Change Log\n\n## 2026-10-18: legacy thing\n\n"
-            "<!-- prawduct: type=fix | scope=oldway -->\n\nBody.\n"
+    @pytest.mark.parametrize("disposition", ["ships", "withheld"])
+    def test_a_pending_legacy_entry_refuses_the_cut_naming_doctor(self, tmp_path, disposition):
+        """#1125: the cut reads fragments only. A pending legacy entry is refused,
+        whatever the table says of it, and nothing is written. (Was: the cut ran
+        and printed a `legacy entries carry no consumer note` line.)"""
+        project = _declared(
+            tmp_path, fragments={"alpha": _fragment("alpha")},
+            table=f"| alpha | ships | |\n| oldway | {disposition} | BKL-6J2X |\n".replace(
+                "ships | BKL-6J2X", "ships | "
+            ),
         )
-        line = "  legacy entries carry no consumer note; /prawduct:doctor offers the move to fragments"
-        shipping = _declared(
-            tmp_path / "a", fragments={"alpha": _fragment("alpha")},
-            table="| alpha | ships | |\n| oldway | ships | |\n",
-        )
-        _write(shipping / ".prawduct" / "change-log.md", legacy)
-        out = _cut(shipping, "--release", "v3.8.0")
-        assert out.returncode == 0, out.stderr
-        assert line in out.stdout.splitlines()
-
-        withheld = _declared(
-            tmp_path / "b", fragments={"alpha": _fragment("alpha")},
-            table="| alpha | ships | |\n| oldway | withheld | BKL-6J2X |\n",
-        )
-        _write(withheld / ".prawduct" / "change-log.md", legacy)
-        out = _cut(withheld, "--release", "v3.8.0")
-        assert out.returncode == 0, out.stderr
-        assert line not in out.stdout.splitlines()
+        _write(project / ".prawduct" / "change-log.md", LEGACY_PENDING_LOG)
+        before = _snapshot(project)
+        out = _cut(project, "--release", "v3.8.0", "--apply")
+        assert out.returncode == 1, out.stdout
+        assert "refused: invalid-pending-set: legacy-pending-entry: '2026-10-18: legacy thing'" in out.stderr
+        assert "/prawduct:doctor" in out.stderr
+        assert "Nothing was written." in out.stderr
+        assert _snapshot(project) == before
 
     def test_the_dry_run_section_is_the_release_file_apply_writes(self, tmp_path):
         project = _declared(
@@ -975,19 +1011,17 @@ class TestOutputDerivedFromState:
         applied = _cut(project, "--release", "v3.8.0", "--apply")
         assert "1 written to plugin/CHANGELOG.md" in applied.stdout
 
-    def test_the_legacy_line_with_nothing_else_pending_names_only_what_ships(self, tmp_path):
-        legacy = "# Change Log\n\n## 2026-10-18: legacy thing\n\n<!-- prawduct: type=fix | scope=oldway -->\n\nBody.\n"
-        line = "  legacy entries carry no consumer note; /prawduct:doctor offers the move to fragments"
-        for name, table, expected in (
-            ("ships", "| oldway | ships | |\n", True),
-            ("withheld", "| oldway | withheld | BKL-6J2X |\n", False),
-            ("no-plan", None, False),
-        ):
-            project = _declared(tmp_path / name, fragments={}, table=table)
-            _write(project / ".prawduct" / "change-log.md", legacy)
-            out = _cut(project, "--release", "v3.8.0")
-            assert out.returncode == 0, (name, out.stderr)
-            assert (line in out.stdout.splitlines()) is expected, (name, out.stdout)
+    @pytest.mark.parametrize("table", ["| oldway | ships | |\n", "| oldway | withheld | BKL-6J2X |\n", None])
+    def test_a_pending_legacy_entry_with_nothing_else_pending_is_not_nothing_to_do(self, tmp_path, table):
+        """Was: `nothing to do`, plus a legacy line when the plan shipped it. A
+        legacy-only pending set read as empty would drop the entry silently."""
+        project = _declared(tmp_path, fragments={}, table=table)
+        _write(project / ".prawduct" / "change-log.md", LEGACY_PENDING_LOG)
+        out = _cut(project, "--release", "v3.8.0")
+        assert out.returncode == 1, out.stdout
+        assert "nothing to do" not in out.stdout
+        assert "legacy-pending-entry: '2026-10-18: legacy thing'" in out.stderr
+        assert "/prawduct:doctor" in out.stderr
 
     def test_an_unreadable_headline_file_on_a_rerun_is_kept_and_not_called_the_next_release(self, tmp_path):
         project = _declared(tmp_path, fragments=_ONE, table=_ONE_TABLE)

@@ -52,6 +52,8 @@ _HEADING_RE = re.compile(r"^##\s+Release classification\s*$", re.IGNORECASE)
 _NEXT_HEADING_RE = re.compile(r"^#{1,6}\s+")
 #: A backlog id: 2-4 uppercase letters, hyphen, 4 alphanumerics (PFX-XXXX).
 _ITEM_ID_RE = re.compile(r"\b([A-Z]{2,4}-[A-Z0-9]{4})\b")
+#: A ``withheld`` row's third cell declaring the scope collateral of another (#1024).
+_COLLATERAL_RE = re.compile(r"collateral-of\s+`?([^\s`]+)`?")
 
 #: What "this file cannot be read" means, for every read in this module.
 #: ``read_text`` raises ``UnicodeDecodeError`` — a ``ValueError``, not an
@@ -85,14 +87,14 @@ def scopes_tagged_for(entries: list, version: str) -> set[str]:
 
 
 def release_pending_entries(entries: list) -> list:
-    """Release-pending change-log entries, counted as **entries**.
+    """Release-pending legacy change-log entries: tagged, and carrying no ``release=``.
 
-    Tagged (a ``prawduct:`` tag line heads it) and carrying no ``release=``.
-    :func:`release_pending_scopes` is this same set collapsed to its ``scope=``
-    values, and that collapse is lossy in one direction only: an entry carrying
-    no ``scope=`` contributes nothing to collapse, so it leaves the set without
-    leaving a trace. Holding the entries is what makes the loss countable — see
-    :func:`unclassifiable_pending_entries`.
+    The release reads ``.prawduct/changes/`` fragments only (#1125), so an entry
+    this returns is work no release can see: :func:`legacy_pending_refusals`
+    refuses on it, and the size archive (``change_log_archive``) keeps it in the
+    live log, where that refusal and ``migrate-change-log`` both look for it.
+    The third reader, ``gitattributes_probes``, holds its remove-``merge=union``
+    advice while one is pending. None of them enumerates a scope from it.
 
     An entry with **no tag line at all** is not release-pending. Predating the
     tag convention is not the same as being tagged wrong, and this gate has
@@ -105,45 +107,43 @@ def release_pending_entries(entries: list) -> list:
     ]
 
 
-def unclassifiable_pending_entries(entries: list) -> list:
-    """Release-pending entries carrying no ``scope=`` — work no gate can see.
+def legacy_pending_refusals(content: str, entries: list | None = None) -> list[str]:
+    """One ``legacy-pending-entry:`` refusal per change the live log still holds unshipped.
 
-    The classification table is keyed by scope, so an entry contributing no
-    scope reaches no row in it: it can be neither shipped nor withheld, and
-    Phase 0 certifies ``releasable`` over work it never enumerated. That is the
-    unrecallable-publish shape this module exists to prevent, entered through
-    the one door the scope collapse leaves open.
+    The release cut and this gate read fragments only, so a release-pending entry
+    in ``.prawduct/change-log.md`` would otherwise be in no pending set: not
+    shipped, not withheld, and not mentioned. That is the silent drop the gate
+    exists to prevent (v3.1.2, v3.2.8), so it refuses instead and names the way
+    out, ``/prawduct:doctor``, whose check #22 runs ``migrate-change-log``.
+
+    Two readers, because each sees what the other cannot. Every release-pending
+    entry is named by title and line. Then the migration's own converter runs,
+    and every entry it would refuse is named with its reason: that is how a
+    ``release=`` that is not a version (``release=unreleased``) is caught, which
+    reads as shipped to the first reader and is the v3.2.8 shape exactly. The
+    converter's type decision is left to doctor, which owns ``--default-type``,
+    so a missing type is not reported here.
     """
-    return [
-        entry
+    if entries is None:
+        entries = change_log_mod.parse_change_log(content)
+    rel = change_log_mod.CHANGE_LOG_REL_PATH
+    remedy = (
+        f"run /prawduct:doctor to move it into {change_fragments.FRAGMENT_DIR_REL}/ "
+        "(it runs `prawduct-hook migrate-change-log`)"
+    )
+    refusals = [
+        f"legacy-pending-entry: {entry.title!r} ({rel} line {entry.line_number}) has not "
+        f"shipped, and releases read only {change_fragments.FRAGMENT_DIR_REL}/ — {remedy}"
         for entry in release_pending_entries(entries)
-        if not (isinstance(entry.tags.get("scope"), str) and entry.tags.get("scope"))
     ]
-
-
-def release_pending_scopes(entries: list) -> list[str]:
-    """Scopes with at least one tagged change-log entry carrying no ``release=``.
-
-    **The absence of ``release=`` is the marker, and it is now the only one.**
-    A wider collector once sat beside this, adding ``status=shipped`` scopes so
-    the derived-view regenerator could flip plan checkboxes regardless of tagging
-    convention; it went with that regenerator, and its extra input — a ``status=``
-    stamp — is bookkeeping that could lag reality, where a ``release=`` tag names
-    the release that actually carried the code. So this was always the right
-    question for *releasability*, and it is no longer the narrower of two.
-
-    Which entries are release-pending is :func:`release_pending_entries`' one
-    answer, consumed here rather than re-derived: the two must agree, because
-    the gap between them is precisely what the reconciliation measures.
-    """
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for entry in release_pending_entries(entries):
-        scope = entry.tags.get("scope")
-        if isinstance(scope, str) and scope and scope not in seen:
-            seen.add(scope)
-            ordered.append(scope)
-    return ordered
+    # The default type only silences the type decision; nothing is written.
+    conversion = change_fragments.legacy_entries_as_fragments(content, default_type="chore")
+    refusals += [
+        f"legacy-pending-entry: {rel} holds an entry the move to fragments refuses, "
+        f"{problem.code}: {problem.detail} — fix it, then {remedy}"
+        for problem in conversion.refusals
+    ]
+    return refusals
 
 
 def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]], list[str]]:
@@ -154,16 +154,47 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
     rows: ``| scope | ships |  |`` or ``| scope | withheld | ABC-1234 |``; a
     blocker may also be an Issues id, ``#123`` or ``owner/repo#123`` (#1033).
 
+    A ``withheld`` row's third cell may instead declare the scope **collateral**
+    of another (#1024): ``| small-fix | withheld | collateral-of big-feature |``.
+    Collateral is work that merged at or before a pruned release's cut point, so
+    the range prune cannot separate it from the withheld work and it stays on
+    ``develop``. It has no blocker of its own; it is held by its parent's, so its
+    tuple carries the parent's blocker and every caller (the gate's liveness and
+    stale-blocker checks, the cut's ``withheld`` → kept rule) treats it exactly
+    as a withheld scope. :func:`parse_collateral` says which scopes are
+    collateral, and of what.
+
     A row with a recognised shape but bad content (unknown disposition,
-    duplicate scope, `withheld` with no blocker id) becomes an **error**: a row
-    a human wrote and this parser ignored is the silent-omission class the gate
-    exists to prevent. Three cases are skipped rather than reported, because
-    they name no scope and so carry nothing to report *about*: the
-    header/separator rows, any line with fewer than two cells, and a row whose
-    scope cell is empty (even when its disposition cell is well-formed).
+    duplicate scope, `withheld` with no blocker id, a collateral declaration the
+    table cannot honour) becomes an **error**: a row a human wrote and this
+    parser ignored is the silent-omission class the gate exists to prevent.
+    Three cases are skipped rather than reported, because they name no scope and
+    so carry nothing to report *about*: the header/separator rows, any line with
+    fewer than two cells, and a row whose scope cell is empty (even when its
+    disposition cell is well-formed).
     """
+    classification, errors, _collateral = _parse_table(content)
+    return classification, errors
+
+
+def parse_collateral(content: str) -> dict[str, str]:
+    """``collateral scope -> parent scope`` for every well-formed ``collateral-of`` row.
+
+    A sibling of :func:`parse_classification` rather than a third return value,
+    so no caller of that function changes shape. A row whose declaration is an
+    error is still listed: the error is what refuses, and this map only says
+    what the operator declared.
+    """
+    _classification, _errors, collateral = _parse_table(content)
+    return collateral
+
+
+def _parse_table(
+    content: str,
+) -> tuple[dict[str, tuple[str, str | None]], list[str], dict[str, str]]:
     classification: dict[str, tuple[str, str | None]] = {}
     errors: list[str] = []
+    collateral: dict[str, str] = {}
     lines = content.splitlines()
 
     start = None
@@ -172,7 +203,7 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
             start = i + 1
             break
     if start is None:
-        return classification, ["no `## Release classification` section"]
+        return classification, ["no `## Release classification` section"], collateral
 
     for line in lines[start:]:
         stripped = line.strip()
@@ -197,19 +228,57 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
         if scope in classification:
             errors.append(f"scope `{scope}`: classified twice")
             continue
-        if disposition == WITHHELD:
-            blocker_id = _blocker_id(blocker)
-            if blocker_id is None:
+        declared = _COLLATERAL_RE.fullmatch(blocker.strip("`"))
+        if disposition == SHIPS:
+            if declared:
+                # Requirement 2 of #1024: the operator said this scope's code
+                # cannot be separated from withheld work, so shipping it would
+                # archive it as released while its code stays on develop.
+                parent = declared.group(1)
                 errors.append(
-                    f"scope `{scope}`: `{WITHHELD}` requires a blocker item id "
-                    "(e.g. `ABC-1234`, `#123` or `owner/repo#123`) — a withholding "
-                    "with no named blocker is an unrecorded decision"
+                    f"scope `{scope}`: `{SHIPS}` but declared `collateral-of {parent}` — its code "
+                    f"stays on develop with `{parent}`'s, so the cut would archive it as shipped "
+                    f"in a release that does not carry it. Reclassify it "
+                    f"`{WITHHELD} | collateral-of {parent}`, or ship `{parent}`"
                 )
-                continue
-            classification[scope] = (WITHHELD, blocker_id)
-        else:
             classification[scope] = (SHIPS, None)
-    return classification, errors
+            continue
+        if declared:
+            collateral[scope] = declared.group(1)
+            # Resolved to the parent's blocker once every row is read, so a
+            # collateral row may come before its parent.
+            classification[scope] = (WITHHELD, None)
+            continue
+        blocker_id = _blocker_id(blocker)
+        if blocker_id is None:
+            errors.append(
+                f"scope `{scope}`: `{WITHHELD}` requires a blocker item id "
+                "(e.g. `ABC-1234`, `#123` or `owner/repo#123`) or `collateral-of <scope>` — "
+                "a withholding with no named blocker is an unrecorded decision"
+            )
+            continue
+        classification[scope] = (WITHHELD, blocker_id)
+
+    for scope, parent in collateral.items():
+        if parent not in classification:
+            errors.append(
+                f"scope `{scope}`: declared `collateral-of {parent}`, but `{parent}` is not in "
+                "the table — classify the parent, whose blocker holds both"
+            )
+        elif parent in collateral:
+            errors.append(
+                f"scope `{scope}`: declared `collateral-of {parent}`, and `{parent}` is itself "
+                f"collateral — name the scope `{parent}` is collateral of, the one with the blocker"
+            )
+        elif classification[parent][0] != WITHHELD:
+            errors.append(
+                f"scope `{scope}`: declared `collateral-of {parent}`, but `{parent}` is not "
+                f"`{WITHHELD}` — collateral is held by its parent's blocker, so either withhold "
+                f"`{parent}` or reclassify `{scope}`"
+            )
+        else:
+            classification[scope] = (WITHHELD, classification[parent][1])
+    return classification, errors, collateral
 
 
 def _blocker_id(cell: str) -> str | None:
@@ -669,76 +738,56 @@ def _history_entries(project_dir: Path, live_entries: list) -> list:
     return change_log_mod.parse_change_log(text)
 
 
-def _tagged_count(entries: list) -> int:
-    """How many entries a ``prawduct:`` tag line heads.
-
-    The denominator both accounting lines are built on, so it is derived once:
-    a repo whose two branches disagreed about how many entries the gate can even
-    see would be reporting the confusion rather than the count.
-    """
-    return sum(1 for entry in entries if entry.tag_line_count > 0)
-
-
-def _scan_accounting(
-    entries: list,
-    pending_entries: list,
-    scopes: list[str],
-    unclassifiable: list,
-    fragments: int = 0,
-) -> str:
+def _scan_accounting(fragments: int, entries: list) -> str:
     """The gate's denominator, as one phrase.
 
-    A verdict that does not say what it looked at cannot be audited, and cannot
-    be *retired* either: the only honest argument for dropping a check later is
-    a run of it finding nothing, which requires it to have counted out loud.
-    Entries scanned, entries release-pending, the scopes they enumerate, and the
-    ones that enumerate none — the last is the reconciliation's whole yield.
+    A verdict that does not say what it looked at cannot be audited. Fragments
+    are the pending set; the live log's entries are counted too, as history the
+    gate read and found nothing pending in, because "0 legacy entries pending"
+    from a log that parsed to nothing and from one that holds only shipped
+    history look the same without the count.
     """
-    # Fragments are named only when there are some, so a repo still on the
-    # single-file log reads exactly the line it always has.
-    fragment_part = f", {fragments} change fragment(s)" if fragments else ""
     return (
-        f"{len(entries)} change-log entries, {_tagged_count(entries)} tagged"
-        f"{fragment_part}, "
-        f"{len(pending_entries) + fragments} release-pending across {len(scopes)} scope(s), "
-        f"{len(unclassifiable)} unclassifiable"
+        f"{fragments} change fragment(s) in {change_fragments.FRAGMENT_DIR_REL}/, "
+        f"{fragments} release-pending scope(s); {len(entries)} "
+        f"{change_log_mod.CHANGE_LOG_REL_PATH} entries read as shipped history"
     )
 
 
 @dataclass(frozen=True)
 class PendingSet:
-    """What is release-pending, from both shapes of the change record.
+    """What is release-pending: the change fragments, and nothing else (#1125).
 
-    ``entries`` is every parsed legacy entry (the tag checks and the history
-    reads need all of them); ``read_error`` is set when the single-file log
-    exists in neither readable nor fragments-only form. ``refusals`` names
-    whatever makes the union untrustworthy, so a caller refuses on it before
-    reading ``scopes``.
+    ``entries`` is every parsed entry of the live single-file log, read as
+    history only (the "already tagged release=" question and the accounting
+    need it). ``read_error`` is set when that log exists but cannot be read, or
+    when the repo has neither it nor a fragment directory. ``refusals`` names
+    whatever makes the pending set untrustworthy, a pending legacy entry among
+    them, so a caller refuses on it before reading ``scopes``.
     """
 
     entries: list
-    pending_entries: list
-    legacy_scopes: list[str]
     fragment_scopes: list[str]
     refusals: list[str]
     read_error: str | None = None
 
     @property
     def scopes(self) -> list[str]:
-        """Legacy scopes first, then fragment scopes, each once."""
-        return self.legacy_scopes + [s for s in self.fragment_scopes if s not in self.legacy_scopes]
+        """The release-pending scopes: one per fragment."""
+        return list(self.fragment_scopes)
 
 
 def pending_scopes(project_dir: Path) -> PendingSet:
-    """The release-pending set: legacy log entries with no ``release=``, plus fragments.
+    """The release-pending set: one scope per file in ``.prawduct/changes/``.
 
-    The one owner of that union (design D6 of #1012). Every file in the fragment
+    The one owner of that set (design D6 of #1012). Every file in the fragment
     directory is pending, because the cut removes shipped ones. Two things are
     refused rather than resolved: a fragment that fails validation, which could
-    be missing its scope or carrying the wrong one, and a scope pending in both
-    shapes, which is a half-done migration whose two records can disagree about
-    what is shipping. A repo with a fragment directory and no single-file log is
-    a fragments-only repo, not a missing input.
+    be missing its scope or carrying the wrong one, and a release-pending entry
+    still in the single-file log (:func:`legacy_pending_refusals`), which no
+    release reads any more and which would otherwise vanish from the set
+    unannounced. A repo with a fragment directory and no single-file log is a
+    fragments-only repo, not a missing input.
     """
     path = project_dir / change_log_mod.CHANGE_LOG_REL_PATH
     read_error: str | None = None
@@ -752,35 +801,26 @@ def pending_scopes(project_dir: Path) -> PendingSet:
         ):
             read_error = f"cannot read {change_log_mod.CHANGE_LOG_REL_PATH}: {exc}"
     entries = change_log_mod.parse_change_log(content)
-    legacy_scopes = release_pending_scopes(entries)
+    refusals = legacy_pending_refusals(content, entries)
     files = change_fragments.load_pending(project_dir)
-    refusals = [
+    refusals += [
         f"bad-change-fragment: {item.path.name}: {problem}"
         for item in files
         for problem in item.problems
     ]
-    fragment_scopes = [item.fragment.scope for item in files if item.ok and item.fragment.scope]
-    for scope in fragment_scopes:
-        if scope in legacy_scopes:
-            refusals.append(
-                f"scope-in-both-shapes: {scope!r} is pending in "
-                f"{change_log_mod.CHANGE_LOG_REL_PATH} and in "
-                f"{change_fragments.FRAGMENT_DIR_REL}/{scope}.md; keep one record"
-            )
     return PendingSet(
         entries=entries,
-        pending_entries=release_pending_entries(entries),
-        legacy_scopes=legacy_scopes,
-        fragment_scopes=fragment_scopes,
+        fragment_scopes=[item.fragment.scope for item in files if item.ok and item.fragment.scope],
         refusals=refusals,
         read_error=read_error,
     )
+
 
 def check_releasability(project_dir: Path, release: str | None = None) -> int:
     """Phase 0 gate. Exit 0 when every release-pending scope is classified.
 
     Every failure path returns 1 with a named reason on stderr. Un-evaluable
-    state (missing change log, missing release plan) fails closed — the whole
+    state (no change record, missing release plan) fails closed — the whole
     point is that an unclassified scope must never read as "fine".
     """
     pending_set = pending_scopes(project_dir)
@@ -788,24 +828,6 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         print(f"no-change-log: {pending_set.read_error}", file=sys.stderr)
         return 1
     entries = pending_set.entries
-
-    # The tag checks run BEFORE the pending set is computed, because a malformed
-    # tag is precisely what makes that set wrong. `release_pending_scopes` skips
-    # any entry carrying a `release=` value — it cannot tell a version from a
-    # placeholder — so `release=unreleased` silently removes its whole scope and
-    # the gate answers "nothing to cut". That is not a hypothetical failure
-    # mode: it hid an entire branch from the v3.2.8 release. These checks had
-    # lived in the derived-view regenerator, which was their only caller and
-    # which is not what a release depends on.
-    tag_errors, tag_warnings = change_log_mod.validate_change_log_tags(entries)
-    for warning in tag_warnings:
-        print(f"WARNING: {warning}", file=sys.stderr)
-    if tag_errors:
-        # Fail closed: this gate's job is that an unclassifiable release state
-        # never reads as "fine", and a tag it cannot interpret is exactly that.
-        for err in tag_errors:
-            print(f"bad-change-log-tag: {err}", file=sys.stderr)
-        return 1
 
     # Structure, not release state — so it runs BEFORE the no-pending return.
     # A duplicate scope makes scope→plan resolution a coin toss, and a repo with
@@ -815,62 +837,25 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     for warning in _duplicate_scope_warnings(project_dir):
         print(f"WARNING: {warning}", file=sys.stderr)
 
-    # Reconcile release-pending ENTRIES against the scopes they collapse to, and
-    # do it BEFORE the no-pending return — because the entry this catches is
-    # exactly the one that can empty `pending` while release-pending work still
-    # exists. An entry carrying no `scope=` is in no scope, so it reaches no row
-    # of the classification table, so it can be neither shipped nor withheld,
-    # and the gate certifies `releasable` over work it never enumerated.
-    #
-    # It REFUSES rather than reports: this is a releasability verdict over work
-    # that cannot be classified, and an authority gate fails closed on state it
-    # cannot evaluate. The remedy is one `scope=` per named entry, which is why
-    # every offending entry is named — a refusal whose fix is mechanical costs
-    # an operator a minute; the publish it prevents is unrecallable.
-    #
-    # Exit 1, the value every other refusal here uses. Not 3: the change log
-    # READ fine, so this is not the unreadable-subject case — it is the work
-    # that is unclassifiable.
-    pending_entries = pending_set.pending_entries
-    # A fragment that fails validation, or a scope in both shapes, is refused
-    # here, before any verdict, for the reason a malformed tag is: it is exactly
-    # what would make the pending set wrong.
+    # Refused before any verdict, because each is exactly what would make the
+    # pending set wrong: a fragment that fails validation, or a release-pending
+    # legacy entry, which the fragments-only pending set cannot see and so would
+    # otherwise ship in no release with no word said (#1125). Exit 1, the value
+    # every other refusal here uses: the record READ fine, so this is not the
+    # unreadable-subject case.
     if pending_set.refusals:
         for refusal in pending_set.refusals:
             print(refusal, file=sys.stderr)
         return 1
     pending = pending_set.scopes
-    unclassifiable = unclassifiable_pending_entries(entries)
-    accounting = _scan_accounting(
-        entries, pending_entries, pending, unclassifiable, len(pending_set.fragment_scopes)
-    )
-    if unclassifiable:
-        noun = "entry" if len(unclassifiable) == 1 else "entries"
-        print(
-            f"unclassifiable-pending-entry: {len(unclassifiable)} release-pending "
-            f"change-log {noun} with no `scope=` — in no scope, so in no "
-            "classification table, so neither shipped nor withheld. Add a "
-            "`scope=` naming the work, then re-run:",
-            file=sys.stderr,
-        )
-        for entry in unclassifiable:
-            print(f"  - {entry.title!r} (change-log line {entry.line_number})", file=sys.stderr)
-        print(f"  scanned: {accounting}.", file=sys.stderr)
-        return 1
+    accounting = _scan_accounting(len(pending_set.fragment_scopes), entries)
 
     if not pending:
-        # Name the denominator: "0 pending" from a change log the parser could
-        # not read looks identical to "0 pending" because everything shipped,
-        # and only one of those is a pass. Split it further, because `tagged`
-        # alone cannot separate everything already carrying `release=` (normal,
-        # or Phase 1 step 3 just ran and emptied the set out from under a
-        # re-run) from a log that parsed to nothing.
-        #
-        # A third cause used to reach here and no longer can: release-pending
-        # entries carrying no `scope=` key, invisible to a gate that enumerates
-        # scopes. The reconciliation above refuses on those by name, so an empty
-        # `pending` here is now an honestly empty one.
-        detail = f"{len(entries)} change-log entries scanned, {_tagged_count(entries)} tagged"
+        # Name the denominator, and split it further: an empty pending set is
+        # either everything already shipped in past releases, or Phase 1 step 3
+        # just ran and emptied it out from under a re-run, and only the count of
+        # scopes already tagged for this release tells the two apart.
+        detail = accounting
         if release:
             asked = normalize_version(release)
             stamped = len(scopes_tagged_for(_history_entries(project_dir, entries), asked))
@@ -878,12 +863,9 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         print(f"releasable: no release-pending scopes — nothing to classify ({detail}).")
         return 0
 
-    # The accounting the no-pending branch has always printed, now printed on
-    # the branch where something IS pending too. Its absence here was the bug's
-    # other half: the gate reported a verdict without ever saying what it had
-    # looked at, so nothing it missed could be noticed. The `unclassifiable`
-    # count is 0 by construction at this point, and that is the emission worth
-    # having — it is the evidence on which this check could later be retired.
+    # The accounting the no-pending branch prints, printed on the branch where
+    # something IS pending too: a verdict that never says what it looked at
+    # cannot be audited, so nothing it missed could be noticed.
     print(f"scanned: {accounting}.")
 
     for warning in _plan_coverage_warnings(project_dir, pending):
@@ -960,6 +942,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         return 1
 
     classification, errors = parse_classification(plan_content)
+    collateral = parse_collateral(plan_content)
 
     # Blocker liveness is only consulted when something is actually withheld —
     # a release that withholds nothing needs no backlog read at all.
@@ -986,10 +969,9 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     stale_blockers: list[str] = []
     orphans: list[str] = []
 
-    # Tagged-for-this-release entries may already have moved to the change-log
-    # archive (the release checklist archives right after tagging), so this
-    # history question reads the whole log. Pending questions above stay on the
-    # live file, which holds every pending entry by construction.
+    # The cut writes the shipping fragments into the change-log archive tagged
+    # `release=<version>`, so "already shipped in this release" is a history
+    # question, answered from the archive and the live log together.
     already_shipped = scopes_tagged_for(_history_entries(project_dir, entries), version)
     contradictions: list[str] = []
     for scope, (disposition, blocker) in classification.items():
@@ -1016,9 +998,9 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
                 f"already tagged release={version})"
             )
             continue
-        # The re-run exemption is `ships`-only: Phase 1 tags the shipping set
-        # `release=` (the cut, as it archives fragments; by hand, in a legacy
-        # log), so those scopes correctly leave `pending`.
+        # The re-run exemption is `ships`-only: Phase 1's cut archives the
+        # shipping set tagged `release=` and removes its fragments, so those
+        # scopes correctly leave `pending`.
         if scope not in pending and not (disposition == SHIPS and shipped_now):
             orphans.append(scope)
         # Unverifiable liveness is NOT a closed blocker. Claiming "not open" from
@@ -1030,7 +1012,10 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
             and blocker not in unverifiable
             and blocker not in open_ids
         ):
-            stale_blockers.append(f"{scope} (withheld behind {blocker}, which is not open)")
+            # A collateral scope is held by its parent's blocker, so it goes
+            # stale with it, and is named here beside its parent.
+            held = f"as collateral of {collateral[scope]}, " if scope in collateral else ""
+            stale_blockers.append(f"{scope} (withheld {held}behind {blocker}, which is not open)")
 
     problems = list(errors)
     # One problem per distinct reason: the reasons carry different remedies (sync
@@ -1061,8 +1046,10 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         problems.append(
             "scope(s) classified `withheld` whose entries already carry this "
             "release's tag — the table and the change log disagree about what is "
-            "shipping. Do NOT delete the row: either the withholding stands (drop "
-            f"the release= tag) or it does not (reclassify as `{SHIPS}`): "
+            "shipping. Do NOT delete the row: either the withholding stands (undo "
+            "the cut before the prep commit, as the release runbook's Phase 1 step 3 "
+            "says; once committed, write a `reopens:` fragment so it ships with the "
+            f"release that carries its code) or it does not (reclassify as `{SHIPS}`): "
             f"{'; '.join(sorted(contradictions))}"
         )
     if orphans:
@@ -1091,7 +1078,9 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
 
     shipping = sorted(s for s in pending if classification[s][0] == SHIPS)
     withheld = sorted(
-        f"{s} (blocked by {classification[s][1]})"
+        f"{s} (collateral of {collateral[s]}, blocked by {classification[s][1]})"
+        if s in collateral
+        else f"{s} (blocked by {classification[s][1]})"
         for s in pending
         if classification[s][0] == WITHHELD
     )
