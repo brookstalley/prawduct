@@ -614,9 +614,16 @@ class TestQueueEncodingRoundTrip:
             "_load_queue must decode utf-8 — it reads back what _write_queue "
             "wrote through the shared utf-8 writer"
         )
-        assert 'state_path.read_text(encoding="utf-8")' in src, (
+        # #777: the flag read moved out of this module into the one owner,
+        # `core.read_bool_flag`, so the utf-8 pin follows it there and this
+        # module is pinned to NOT read the state file itself again (a second
+        # reader is how the fail-open copy came back).
+        core_src = (REPO_ROOT / "lib" / "core.py").read_text(encoding="utf-8")
+        flag_reader = core_src[core_src.index("def read_bool_flag"):core_src.index("def read_bool_yaml_key")]
+        assert 'path.read_text(encoding="utf-8")' in flag_reader, (
             "the operator_verification_required read must decode utf-8"
         )
+        assert "state_path.read_text" not in src
         # Receiver-qualified so the assertion cannot be satisfied or broken by
         # prose: the docstring above the fix names ``read_text()`` on purpose.
         assert "queue_path.read_text()" not in src, (

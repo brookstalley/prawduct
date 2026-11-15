@@ -780,39 +780,61 @@ def review_round_budget(prawduct_dir: Path) -> "int | None":
 #: comparison something to iterate, so the next flag whose template value and
 #: code default diverge fails a test instead of shipping.
 #:
-#: Opt-in is the whole contract: :func:`read_bool_yaml_key` fails soft to False
-#: on a missing file, an absent key, or a malformed line, so **False is the code
-#: default for every member** and the template must say so too.
+#: Opt-in is the whole contract: :func:`read_bool_flag` reads False for a missing
+#: file, an absent key, or a malformed line, so **False is the code default for
+#: every member** and the template must say so too. A file that exists and
+#: cannot be read is not "absent" and does not default: it is reported.
 OPT_IN_FLAGS: tuple[str, ...] = (
     "coverage_required",
     "operator_verification_required",
 )
 
 
-def read_bool_yaml_key(path: Path, key: str) -> bool:
-    """True if ``path`` has a top-level (column-0) ``key: true`` scalar.
+#: States of a boolean opt-in flag read, as returned by :func:`read_bool_flag`.
+FLAG_OK = "ok"
+FLAG_UNREADABLE = "unreadable"
 
-    The boolean sibling of ``read_str_yaml_key``, sharing the same no-PyYAML
-    column-0 idiom but with boolean semantics: the value is lowercased and
-    compared to ``"true"`` (quotes are *not* stripped — a quoted ``"true"``
-    reads as False). Fail-soft to False on a missing/unreadable file, an absent
-    key, or a malformed/indented line — opt-in by design.
 
-    Reads the repo's opt-in flags — ``coverage_required`` today. It once also
-    read ``views_enabled``, which was retired along with derived views; the
-    function is general and outlived its second caller. bin/prawduct-hook's
-    ``_read_bool_yaml_key`` stays an inline mirror (import-light hot path),
-    pinned by a parity test.
+class StateFileUnreadable(Exception):
+    """A state file that EXISTS could not be read, so a flag in it is unknown.
+
+    Deliberately not an ``OSError`` or ``ValueError`` subclass: the failure this
+    exists to stop was an ``except OSError`` folding "cannot read" into "flag
+    off", and a caller's reflexive catch of those must not swallow it again.
     """
-    if not path.exists():
-        return False
+
+
+def read_bool_flag(path: Path, key: str) -> dict:
+    """The one reader of a top-level (column-0) boolean opt-in ``key``.
+
+    Returns ``{"status": FLAG_OK | FLAG_UNREADABLE, "value": bool, "reason":
+    str | None}``. ``value`` is True only for a readable ``key: true``; the
+    value is lowercased and compared to ``"true"`` (quotes are *not* stripped,
+    so a quoted ``"true"`` reads as False).
+
+    **Absent is not unreadable, and the two take opposite answers.** A missing
+    file, a path whose parent is not a directory, an absent key or an indented
+    line is a repo that never opted in: ``ok`` with ``value`` False. A file that
+    EXISTS and cannot be read (permission denied, a directory in its place,
+    bytes that are not UTF-8) is ``unreadable``: an operator who turned a gate on
+    cannot be told it is off because the file holding the answer went bad. The
+    caller turns that status into its own refusal (api-contract.md § Error
+    Model) rather than a verdict.
+    """
     try:
         content = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        # Same hole as `read_str_yaml_key`: undecodable is unreadable, and this
-        # promises to fail soft on unreadable. Fixed in both, because the two
-        # are documented as siblings sharing one idiom.
-        return False
+    except (FileNotFoundError, NotADirectoryError):
+        return {"status": FLAG_OK, "value": False, "reason": None}
+    except (OSError, UnicodeDecodeError) as exc:
+        return {
+            "status": FLAG_UNREADABLE,
+            "value": False,
+            "reason": (
+                f"cannot read {path} ({type(exc).__name__}), so whether `{key}` "
+                "is on is unknown. An unreadable state file is not a gate that "
+                "is off: fix the file's permissions or encoding and re-run."
+            ),
+        }
     needle = f"{key}:"
     for raw in content.splitlines():
         if raw[:1] in (" ", "\t"):
@@ -821,8 +843,27 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
         if not line.startswith(needle):
             continue
         value = line.split(":", 1)[1].strip().lower()
-        return value == "true"
-    return False
+        return {"status": FLAG_OK, "value": value == "true", "reason": None}
+    return {"status": FLAG_OK, "value": False, "reason": None}
+
+
+def read_bool_yaml_key(path: Path, key: str) -> bool:
+    """True if ``path`` has a top-level (column-0) ``key: true`` scalar.
+
+    The bool-returning face of :func:`read_bool_flag`, for a caller whose own
+    contract has no room for a status. A missing file, an absent key or an
+    indented line reads as False (opt-in by design). A file that exists and
+    cannot be read raises :class:`StateFileUnreadable` instead of reading as
+    False, because a bool has no way to say "unknown". Prefer
+    :func:`read_bool_flag` where the caller can return a refusal.
+
+    bin/prawduct-hook's ``_read_bool_yaml_key`` stays an inline mirror
+    (import-light hot path), pinned by a parity test.
+    """
+    result = read_bool_flag(path, key)
+    if result["status"] == FLAG_UNREADABLE:
+        raise StateFileUnreadable(result["reason"])
+    return result["value"]
 
 
 def pointer_plan_path(prawduct_dir: Path) -> Path | None:

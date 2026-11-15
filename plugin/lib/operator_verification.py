@@ -38,7 +38,12 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from .core import atomic_write_text
+from .core import (
+    FLAG_UNREADABLE,
+    atomic_write_text,
+    read_bool_flag,
+    read_bool_yaml_key,
+)
 
 # Recognized status tokens. ``pending`` is the only status that blocks
 # ``/prawduct:pr create``; ``verified`` and ``accepted`` are both drained states
@@ -218,6 +223,21 @@ class VerificationEntry:
 #: nothing, and folding them reports a drained queue on a queue nobody parsed.
 QUEUE_OK = "ok"
 QUEUE_UNREADABLE = "unreadable"
+#: The gate's OTHER input could not be read: ``project-state.yaml`` exists but
+#: the ``operator_verification_required`` flag in it is unknowable. Reported
+#: through ``queue_status`` (the one status key every result carries) because it
+#: takes the same third outcome for the same reason, and it blocks: a repo that
+#: turned the gate on is not told it is off because its state file went bad.
+QUEUE_STATE_UNREADABLE = "state-unreadable"
+
+
+class QueueUnreadable(Exception):
+    """The queue file exists and could not be read or decoded.
+
+    Raised only by :func:`_load_queue` and caught by every runner, which turns it
+    into that runner's own error shape. Not an ``OSError``/``ValueError``, so a
+    broad catch of those elsewhere cannot absorb it. It never crosses the CLI.
+    """
 
 
 def unparsed_content_lines(preamble: str) -> list[str]:
@@ -500,20 +520,15 @@ def is_operator_verification_required(state_path: Path) -> bool:
     ``core.read_bool_yaml_key``): only top-level keys count; commented-out
     and indented occurrences are ignored. Defaults to ``False`` when the file
     or key is absent — the explicit-opt-in posture for v1.4 enforcement features.
+
+    A file that EXISTS and cannot be read raises
+    :class:`core.StateFileUnreadable` instead of defaulting: absent means "never
+    opted in", unreadable means "unknown", and only the first may read as off.
+    :func:`run_check_operator_verification` reads the flag through
+    :func:`core.read_bool_flag` and reports that case as
+    :data:`QUEUE_STATE_UNREADABLE`.
     """
-    if not state_path.is_file():
-        return False
-    try:
-        content = state_path.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    for raw in content.splitlines():
-        if raw[:1] in (" ", "\t"):
-            continue
-        stripped = raw.split("#", 1)[0].rstrip()
-        if stripped.startswith("operator_verification_required:"):
-            return stripped.split(":", 1)[1].strip().lower() == "true"
-    return False
+    return read_bool_yaml_key(state_path, "operator_verification_required")
 
 
 def _load_queue(queue_path: Path) -> tuple[str, list[VerificationEntry]]:
@@ -523,10 +538,34 @@ def _load_queue(queue_path: Path) -> tuple[str, list[VerificationEntry]]:
     encoding, so a mangled write was mangled back on read. Now that the shared
     writer is utf-8, a bare ``read_text()`` here would make the pair asymmetric
     and transcode a committed product file on the next status mutation.
+
+    An absent queue is empty. One that exists and cannot be read or decoded
+    raises :class:`QueueUnreadable` for the runner above to turn into its error
+    shape; it used to escape as a bare ``OSError``/``UnicodeDecodeError`` and
+    cross the CLI as a traceback, which api-contract.md § Error Model forbids.
     """
-    if not queue_path.is_file():
+    try:
+        text = queue_path.read_text(encoding="utf-8")
+    except (FileNotFoundError, NotADirectoryError):
         return "", []
-    return parse_operator_verification(queue_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:
+        raise QueueUnreadable(_queue_unreadable_reason(queue_path, exc)) from exc
+    return parse_operator_verification(text)
+
+
+def _queue_unreadable_reason(queue_path: Path, exc: Exception) -> str:
+    """The one sentence for a queue that could not be read at all.
+
+    Distinct from :func:`_unreadable_queue`, which is a queue that was read and
+    yielded no entries: this one was never read, so nothing can be said about
+    its content and the operator is pointed at the file, not at its headings.
+    """
+    return (
+        f"cannot read {queue_path} ({type(exc).__name__}), so no entry in it "
+        "could be checked. This is NOT a clear queue. Fix the file's "
+        "permissions or encoding (it must be UTF-8) and re-run; do not "
+        "recreate or rewrite the queue, it is the operator's record."
+    )
 
 
 def _existing_line_ending(queue_path: Path) -> str:
@@ -604,15 +643,39 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
     state_path = prawduct_dir / "project-state.yaml"
     queue_path = prawduct_dir / "operator-verification.md"
 
-    required = is_operator_verification_required(state_path)
+    def _blocked(queue_status: str, required: bool | None, refusal: str) -> dict:
+        return {
+            "required": required,
+            "pending": 0,
+            "queue_status": queue_status,
+            "unparsed_lines": 0,
+            "unparsed_status_entries": [],
+            "queue_path": str(queue_path),
+            "first_pending": None,
+            "message": "blocking: " + refusal,
+            "note": None,
+        }
+
+    # An unreadable state file is not a gate that is off. Absent file or key
+    # still reads as off (`ok`/False); a file that exists and cannot be read
+    # leaves `required` unknown, so the check refuses with the third outcome
+    # instead of waving a repo through that may have opted in.
+    flag = read_bool_flag(state_path, "operator_verification_required")
+    if flag["status"] == FLAG_UNREADABLE:
+        return _blocked(QUEUE_STATE_UNREADABLE, None, flag["reason"])
+    required = flag["value"]
     if not required:
         # A repo that turned the gate off is never stopped, but it should not
         # carry an unreadable queue unseen either: surface it as a note.
         note = None
         if queue_path.is_file():
-            preamble, entries = _load_queue(queue_path)
-            if not entries:
-                note = _unreadable_queue(queue_path, preamble)
+            try:
+                preamble, entries = _load_queue(queue_path)
+            except QueueUnreadable as exc:
+                note = str(exc)
+            else:
+                if not entries:
+                    note = _unreadable_queue(queue_path, preamble)
         return {
             "required": False,
             "pending": 0,
@@ -628,7 +691,10 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
             "note": note,
         }
 
-    preamble, entries = _load_queue(queue_path)
+    try:
+        preamble, entries = _load_queue(queue_path)
+    except QueueUnreadable as exc:
+        return _blocked(QUEUE_UNREADABLE, True, str(exc))
 
     # A gate that could not read its input has not found an empty queue. The
     # preamble is where every line this parser failed to recognise ends up, and
@@ -757,7 +823,10 @@ def run_verify_entry(
             )
         }
 
-    preamble, entries = _load_queue(queue_path)
+    try:
+        preamble, entries = _load_queue(queue_path)
+    except QueueUnreadable as exc:
+        return {"error": "Cannot verify: " + str(exc)}
     target = next((e for e in entries if e.vrf_id == vrf_id), None)
     if target is None:
         if not entries:
@@ -845,7 +914,13 @@ def run_accept_pending(
         }
 
     queue_path = prawduct_dir / "operator-verification.md"
-    preamble, entries = _load_queue(queue_path)
+    try:
+        preamble, entries = _load_queue(queue_path)
+    except QueueUnreadable as exc:
+        return {
+            "error": "Cannot accept: " + str(exc) + " An override here would "
+            "record a bypass covering no entries."
+        }
     pending = pending_entries(entries)
 
     # The override reaches the same queue by a different door, so it inherits

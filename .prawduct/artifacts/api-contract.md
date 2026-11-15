@@ -537,7 +537,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   shape this command was written to end.
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
   `verify-operator-verification` (both mutating). The check is three-way: 0 satisfied, 1 pending
-  entries, **3** the queue could not be parsed (see the third-outcome rule under § Error Model).
+  entries, **3** the queue could not be read or parsed, or `project-state.yaml` exists and could not
+  be read so the `operator_verification_required` flag is unknown (see the third-outcome rule under
+  § Error Model). An absent state file or flag is the gate off, exit 0; an unreadable one is never
+  folded into off. `verify-` and `accept-operator-verification` return an `error:` line, exit 1, for
+  an unreadable queue, never a traceback.
   `accept-operator-verification` refuses on that same unparsed queue rather than recording a bypass
   that covers no entries — an override reached by a different door must not inherit the defect the
   check just closed.
@@ -833,6 +837,8 @@ would have said, because the argument is only convincing in the concrete.
   1 it inherits "there are pending entries, drain or override the first one", and both remedies are
   inapplicable to a file that yielded no entries, leaving the caller at the queue file — the one
   move the refusal forbids. It still BLOCKS: 3 is non-zero, so the gate fails closed.
+  The same exit covers *an unreadable `project-state.yaml`* (#777): folded into 0 it reports the gate
+  off for a repo that turned it on; folded into 1 it claims pending entries nobody counted.
 - `check-learnings-pairing` (2026-08-27), *unreadable pair* — folded into 0 it reports a clean
   pairing off a corpus it could not decode, which is this scope's own subject; folded into 1 it
   claims a duplicate heading it never saw, sending an operator to hand-edit a file that is fine.

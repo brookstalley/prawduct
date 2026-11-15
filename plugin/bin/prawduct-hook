@@ -6554,14 +6554,25 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
 # surface flat on the session-start hot path (same discipline as
 # _read_str_yaml_key above); pinned to the lib helper by TestBoolKeyCallSiteParity.
 # prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestBoolKeyCallSiteParity
+class StateFileUnreadable(Exception):
+    """Mirror of ``lib.core.StateFileUnreadable`` (same name, pinned by the parity
+    test): a state file that exists and cannot be read leaves the flag unknown,
+    which must not read as off."""
+
+
 def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
-    """True if ``state_path`` has a top-level (column-0) ``key: true`` scalar."""
-    if not state_path.exists():
-        return False
+    """True if ``state_path`` has a top-level (column-0) ``key: true`` scalar.
+
+    A missing file or absent key is False (opt-in). A file that exists and cannot
+    be read raises :class:`StateFileUnreadable` rather than reading as False."""
     try:
         content = state_path.read_text(encoding="utf-8")
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         return False
+    except (OSError, UnicodeDecodeError) as exc:
+        raise StateFileUnreadable(
+            f"cannot read {state_path} ({type(exc).__name__}), so whether `{key}` is on is unknown"
+        ) from exc
     needle = f"{key}:"
     for raw in content.splitlines():
         if raw[:1] in (" ", "\t"):
@@ -6605,6 +6616,13 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
         return 0
 
     result = ov.run_check_operator_verification(project_dir)
+    # First, and before `required` is read: an unreadable state file leaves
+    # `required` unknown (None), which `not result["required"]` would otherwise
+    # treat as "gate off" and exit 0, the silent fail-open this branch closes.
+    # Exit 3 for the same reason as the unreadable queue below.
+    if result.get("queue_status") == ov.QUEUE_STATE_UNREADABLE:
+        print(result["message"], file=sys.stderr)
+        return 3
     if not result["required"]:
         # Never gated, but an unreadable queue is worth one stderr line.
         if result.get("note"):
