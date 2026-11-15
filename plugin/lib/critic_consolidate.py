@@ -6331,10 +6331,10 @@ def settled_branch_review(project_dir: Path, facts: list[dict]) -> "dict | None"
 
 
 def branch_review_record(prawduct_dir: Path, fact: dict, facts: list[dict]) -> dict:
-    """The findings record :func:`derive_branch_cache` renders for ``fact``,
-    built without writing it — for a reader that must show this branch's review
-    while the single-slot cache still names another (the session briefing).
-    A verify pass carries its anchor's unresolved blockers, as there."""
+    """The findings record for ``fact``, built without writing it: the one
+    renderer :func:`derive_branch_cache` writes into the cache and the session
+    briefing shows when the single-slot cache still names another review. A
+    verify pass carries its anchor's unresolved blockers."""
     usable = _this_readers_facts(facts)
     body = fact.get("body") or {}
     carried = (
@@ -6397,19 +6397,12 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
         held = None
     if isinstance(held, dict) and held.get("fact_id") == review:
         return {"status": "current", "review": review, "reason": None}
-    body = fact.get("body") or {}
-    carried = (
-        carried_blocking(usable, body.get("base_tree"), fact.get("id"))
-        if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
-        else []
-    )
     # Validated before it replaces anything: a record no reader trusts is worse
     # than the one it would displace, since they would anchor on it.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     candidate = prawduct_dir / ".critic-findings.json.derived"
     atomic_write_text(candidate, json.dumps(
-        fact_to_cache_record(fact, carried=carried, store={"facts": usable}, prawduct_dir=prawduct_dir),
-        indent=2
+        branch_review_record(prawduct_dir, fact, usable), indent=2
     ))
     if not gates.validate_critic_findings(candidate):
         candidate.unlink(missing_ok=True)
