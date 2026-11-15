@@ -198,7 +198,7 @@ def _retire_union_candidates(codebase: Codebase) -> list | None:
             "not check whether its leftover merge=union is safe to remove."
         )
         return None  # could not look (R-2)
-    if release_readiness.release_pending_scopes(change_log.parse_change_log(text)):
+    if release_readiness.release_pending_entries(change_log.parse_change_log(text)):
         return []
     return [
         AdvisoryCandidate(

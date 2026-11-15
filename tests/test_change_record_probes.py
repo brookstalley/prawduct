@@ -87,7 +87,10 @@ class TestProbe:
         assert len(out) == 1
         cand = out[0]
         assert cand.type == "change-log-fragments-available"
-        assert cand.priority == "info"
+        # `warn` since #1125: releases now refuse a not-yet-released entry in the
+        # log, so staying on it blocks the repo's next release, and says so.
+        assert cand.priority == "warn"
+        assert "release" in cand.trigger_summary and "refuse" in cand.trigger_summary
         # Doctor check #22 owns the procedure; the advisory routes there.
         assert cand.recommended_action == "/prawduct:doctor"
         assert "dry run" in cand.owner_action
@@ -129,6 +132,7 @@ class TestProbe:
         repo = _repo(tmp_path)
         _pin(repo, "v3.6.0")
         cand = _probe(repo)[0]
+        assert cand.priority == "warn"
         assert cand.owner_action.startswith("First move this repo's prawduct install pin from v3.6.0")
         # The id is hashed from evidence, so the pin state must not move it.
         _pin(repo, "main")

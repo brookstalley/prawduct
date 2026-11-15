@@ -280,11 +280,10 @@ def observe(
         if pending.read_error is not None:
             pending_note = f"; the pending change records could not be read ({pending.read_error})"
         else:
-            record = (
-                "change-log entry" if scope in pending.legacy_scopes
-                else "fragment" if scope in pending.fragment_scopes
-                else None
-            )
+            # Fragments only (#1125): a pending legacy entry is not a record the
+            # release reads, so it is no evidence here either; it surfaces in the
+            # refusals named below.
+            record = "fragment" if scope in pending.fragment_scopes else None
             # A pending record is evidence of a merge only when the merge could be
             # what brought it: `plan new` writes the fragment with the plan, so on
             # an unmerged branch (a mistyped `branch:`) both are pending and nothing
