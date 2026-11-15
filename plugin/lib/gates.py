@@ -39,7 +39,6 @@ checkout's binding),
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from datetime import datetime, timezone
 import re
 import shlex
@@ -1331,7 +1330,8 @@ def session_work_span(
 ) -> dict:
     """What this session CHANGED, committed work included.
 
-    ``{"changed": [non-metadata paths], "judgeable": bool, "source": str}``.
+    ``{"changed": [non-metadata paths], "judgeable": bool, "source": str,
+    "dropped": [{"sha", "paths", "why"}]}``.
 
     The span is the ``.session-base-tree`` marker (the ``HEAD^{tree}`` recorded
     at session start) against the WORKING TREE, so a session that commits its
@@ -1339,10 +1339,11 @@ def session_work_span(
     moment you commit, is not. Paths that differ only because a pull, merge,
     branch switch or reset brought in history the session did not write, or
     because another session in the same checkout committed while this one had
-    no tool call running, are dropped (:func:`_session_authored_paths`; the
-    second needs ``transcript_path``, the Stop payload's, and without it those
-    commits count), so the span holds what the session AUTHORED, never more
-    than the base-tree diff. ``judgeable`` is
+    no tool call or ``!`` command running, in a commit touching no file this
+    session edited, are dropped (:func:`_session_authored_paths`; the second
+    needs ``transcript_path``, the Stop payload's, and without it those commits
+    count), so the span holds what the session AUTHORED, never more than the
+    base-tree diff. ``judgeable`` is
     ``coverage_algebra.judgeable_files`` over the non-metadata paths: the one
     judgeability predicate, never a second copy of it.
 
@@ -1355,13 +1356,21 @@ def session_work_span(
     uncommitted work — it never widens it — which is the direction authority
     must fail in.
 
+    ``dropped`` is the trace of the second kind of drop: each commit left out as
+    another session's, with its paths and why, so a wrong drop can be seen
+    rather than read as "this session changed nothing". It is empty whenever no
+    commit was dropped, including on every degraded span.
+
     **Cost bound: one ``git status`` and one ``git diff`` when nothing changed,
     one ``rev-parse`` more when HEAD's tree has not moved, and a reflog read,
     one ``log``, one batched ``diff-tree`` and one ``git diff`` beyond that only
     when it has; never a temp-index capture.** A ``transcript_path`` adds, when
-    HEAD's tree has moved, one listing of the transcript folder, and a read of
-    this session's transcript only when another session wrote beside it.
-    This runs on every Stop, which is every turn.
+    HEAD's tree has moved, one listing of the transcript folder; and only when
+    another session wrote beside this one, a read of the bytes this session's
+    transcript gained since the previous Stop (the whole transcript at the
+    first, through the ``.prawduct/.session-activity.json`` cache that
+    ``host.session_tool_activity`` describes) and one batched ``diff-tree`` per
+    kind of commit made while this session was idle. This runs on every Stop, which is every turn.
     ``evidence.capture_tree`` — which writes an index file and walks the whole
     tree — is deliberately not used: it belongs to the review data plane, whose
     callers run once per review rather than once per turn. ``status_output`` is
@@ -1384,11 +1393,12 @@ def session_work_span(
         if not gitstate._is_metadata_path(f)
     ]
 
-    def _span(changed: list[str], source: str) -> dict:
+    def _span(changed: list[str], source: str, dropped: "list[dict] | None" = None) -> dict:
         return {
             "changed": changed,
             "judgeable": bool(coverage_algebra.judgeable_files(changed)),
             "source": source,
+            "dropped": dropped or [],
         }
 
     base = _read_session_base_tree(prawduct_dir)
@@ -1404,16 +1414,18 @@ def session_work_span(
     untracked = _session_untracked_paths(project_dir, snapshot)
     changed += [p for p in untracked if p not in changed]
     changed = [f for f in changed if not gitstate._is_metadata_path(f)]
+    dropped: list[dict] = []
     authored = (
         _session_authored_paths(
-            project_dir, prawduct_dir, base, untracked, transcript_path=transcript_path
+            project_dir, prawduct_dir, base, untracked,
+            transcript_path=transcript_path, dropped=dropped,
         )
         if changed
         else None
     )
     if authored is not None:
         changed = [p for p in changed if p in authored]
-    return _span(changed, "base-tree")
+    return _span(changed, "base-tree", dropped)
 
 
 # HEAD reflog subjects, classified by whether the move carries work this
@@ -1458,30 +1470,140 @@ def _session_started_epoch(prawduct_dir: Path) -> "tuple[str, int] | None":
     return stamp, int(when.timestamp())
 
 
-def _made_by_another_session(
-    transcript_path: "str | None", started_at: int
-) -> "Callable[[int], bool] | None":
-    """A test of whether a HEAD move or commit at a given epoch second was made
-    by another session, or ``None`` when nothing can be told.
+#: The parsed-transcript cache under `.prawduct/` (``host.session_tool_activity``'s
+#: ``cache_path``): gitignored, per clone, keyed inside by transcript path, so a
+#: sibling session in the same checkout keeps its own entry.
+SESSION_ACTIVITY_FILE = ".session-activity.json"
+
+
+def _other_session_activity(
+    transcript_path: "str | None", started_at: int, prawduct_dir: Path
+) -> "host.ToolActivity | None":
+    """This session's own activity, when another session may have committed
+    beside it, or ``None`` when nothing can be told.
 
     Two pieces of positive evidence are both required. Another session's
     transcript was written in this checkout since this session started
     (``host.other_session_wrote_since``), and this session's own transcript
-    was read in full (``host.session_tool_activity``). The test then answers
-    ``True`` only for a moment that transcript covers and at which this
-    session had no tool call running. git runs in this session only from a
-    tool call, and a call that can outlast its result (a background command or
-    agent) stays open, so a moment between calls is one this session did not
-    act in. Everything short of that keeps the commit this session's.
+    was read in full (``host.session_tool_activity``, through the
+    :data:`SESSION_ACTIVITY_FILE` cache, so each Stop parses only what the
+    transcript gained since the last). Everything short of that keeps every
+    commit this session's.
     """
     if not transcript_path:
         return None
     if not host.other_session_wrote_since(transcript_path, started_at):
         return None
-    activity = host.session_tool_activity(transcript_path)
-    if activity is None:
+    return host.session_tool_activity(
+        transcript_path, cache_path=str(prawduct_dir / SESSION_ACTIVITY_FILE)
+    )
+
+
+def _checkout_paths(project_dir: Path, named: "frozenset[str]") -> "set[str]":
+    """The paths in ``named`` that are files of this checkout, relative to it
+    as git names them. Both sides are resolved, because one directory can be
+    reached by two spellings (``/tmp`` and ``/private/tmp`` on macOS). A
+    relative path is kept as it is: no tool names one, and if one did, reading
+    it as a checkout path can only keep a commit."""
+    try:
+        root = Path(project_dir).resolve()
+    except (OSError, RuntimeError):
+        return set(named)
+    paths: set[str] = set()
+    for name in named:
+        if not Path(name).is_absolute():
+            paths.add(name)
+            continue
+        try:
+            paths.add(Path(name).resolve().relative_to(root).as_posix())
+        except ValueError:  # outside this checkout
+            continue
+        except (OSError, RuntimeError):  # unresolvable: keep the literal spelling
+            paths.add(name)
+    return paths
+
+
+def _paths_per_commit(
+    project_dir: Path, shas: "list[str]", flags: "tuple[str, ...]"
+) -> "dict[str, list[str]] | None":
+    """Each commit's changed paths from one batched ``diff-tree``, or ``None``
+    when git fails or answers in a shape this reader does not follow. A commit
+    that changed nothing is listed with no paths."""
+    if not shas:
+        return {}
+    rc, out, _err = evidence.run_git(
+        project_dir, "diff-tree", "--stdin", "--name-only", "-z", *flags,
+        input="\n".join(shas) + "\n",
+    )
+    if rc != 0:
         return None
-    return lambda when: activity.acting_at(when) is False
+    wanted = set(shas)
+    per_commit: dict[str, list[str]] = {sha: [] for sha in shas}
+    current: "str | None" = None
+    for token in out.split("\0"):
+        if not token:
+            continue
+        if token in wanted:
+            current = token
+        elif current is None:
+            return None
+        else:
+            per_commit[current].append(token)
+    return per_commit
+
+
+def _drop_other_sessions_commits(
+    project_dir: Path,
+    activity: "host.ToolActivity",
+    commits: "list[tuple[str, int]]",
+    merges: "list[tuple[str, int]]",
+    dropped: "list[dict] | None",
+) -> "tuple[list[tuple[str, int]], list[tuple[str, int]]]":
+    """``commits`` and ``merges`` less those another session made.
+
+    A commit is dropped only when all three hold: the transcript covers the
+    moment it was made, no tool call or ``!`` command of this session was
+    running then, and none of its paths is one this session's Edit/Write calls
+    targeted. The first two say who RAN ``git commit``; the gates ask who
+    AUTHORED the change, and a user who commits the session's edits from a
+    terminal between turns runs it with no call open. Every dropped commit is
+    appended to ``dropped`` with its paths and why, so a wrong drop can be seen.
+    When a commit's paths cannot be listed nothing is dropped.
+    """
+    edited = _checkout_paths(project_dir, activity.edited_paths)
+    kept_commits = list(commits)
+    kept_merges = list(merges)
+    found: dict[str, dict] = {}
+    for moves, flags in ((kept_commits, ("-r", "--root")), (kept_merges, ("--cc",))):
+        idle = [(sha, when) for sha, when in moves if activity.acting_at(when) is False]
+        if not idle:
+            continue
+        per_commit = _paths_per_commit(
+            project_dir, list(dict.fromkeys(sha for sha, _when in idle)), flags
+        )
+        if per_commit is None:
+            continue
+        for sha, when in idle:
+            paths = per_commit.get(sha, [])
+            if edited.intersection(paths):
+                continue
+            moves.remove((sha, when))
+            found.setdefault(sha, {
+                "sha": sha,
+                "paths": paths,
+                "why": (
+                    f"made at {datetime.fromtimestamp(when, timezone.utc):%Y-%m-%dT%H:%M:%SZ}"
+                    " while another session was writing in this checkout, with no tool"
+                    " call or ! command of this session running, and touching no file"
+                    " this session edited"
+                ),
+            })
+    # A sha this session's reflog and its log both list is dropped only when
+    # every listing of it was.
+    still_counted = {sha for sha, _when in kept_commits + kept_merges}
+    if dropped is not None:
+        dropped.extend(d for sha, d in found.items() if sha not in still_counted)
+    return kept_commits, kept_merges
 
 
 def _session_authored_paths(
@@ -1491,6 +1613,7 @@ def _session_authored_paths(
     untracked: "list[str]",
     why: "list[str] | None" = None,
     transcript_path: "str | None" = None,
+    dropped: "list[dict] | None" = None,
 ) -> "set[str] | None":
     """The paths this session wrote, or ``None`` when that cannot be told —
     the caller then keeps the whole base-tree span.
@@ -1508,9 +1631,12 @@ def _session_authored_paths(
     A second session working in the same checkout moves the same HEAD, so its
     commits look like this session's in both the reflog and the log. Given
     ``transcript_path`` (the Stop payload's), a commit or merge is dropped
-    when :func:`_made_by_another_session` says it was made while another
-    session was writing beside this one and this session had no tool call
-    running. Without that evidence every commit above still counts.
+    when another session was writing beside this one, this session had no tool
+    call or ``!`` command running when it was made, and it touches no file this
+    session's Edit/Write calls targeted (:func:`_drop_other_sessions_commits`).
+    Without that evidence every commit above still counts. Each dropped commit
+    is appended to ``dropped``, when a list is passed, as ``{sha, paths, why}``
+    — only when this returns a set, since a ``None`` drops nothing.
 
     The walk is bounded by ``.session-start`` and must reach an entry older than
     it, or the reflog does not cover the session and cannot vouch for it. Every
@@ -1527,9 +1653,11 @@ def _session_authored_paths(
     Cost: one ``rev-parse`` when HEAD's tree has not moved since session start
     — the common case, which returns at once — else a reflog read, one ``log``,
     a batched ``diff-tree`` per kind of commit the session made, and one
-    ``diff``. A ``transcript_path`` adds one listing of the transcript folder,
-    and a read of this session's transcript only when another session wrote
-    beside it.
+    ``diff``. A ``transcript_path`` adds one listing of the transcript folder;
+    when another session wrote beside this one, a read of the bytes this
+    session's transcript gained since the previous read (the whole transcript
+    the first time; see ``host.session_tool_activity``), and one batched
+    ``diff-tree`` per kind of commit made while this session was idle.
     """
     def _cannot_tell(reason: str) -> None:
         if why is not None:
@@ -1586,10 +1714,12 @@ def _session_authored_paths(
         if not (gitstate.is_object_id(sha) and committed_at.isdigit()):
             return _cannot_tell("the session's commits could not be listed")
         commits.append((sha, int(committed_at)))
-    made_elsewhere = _made_by_another_session(transcript_path, started_at)
-    if made_elsewhere is not None:
-        commits = [c for c in commits if not made_elsewhere(c[1])]
-        merges = [m for m in merges if not made_elsewhere(m[1])]
+    found_dropped: list[dict] = []
+    activity = _other_session_activity(transcript_path, started_at, prawduct_dir)
+    if activity is not None:
+        commits, merges = _drop_other_sessions_commits(
+            project_dir, activity, commits, merges, found_dropped
+        )
     for moves, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
         shas = list(dict.fromkeys(sha for sha, _when in moves))
         if not shas:
@@ -1605,6 +1735,8 @@ def _session_authored_paths(
     if rc != 0:
         return _cannot_tell("the working tree could not be diffed against HEAD")
     authored.update(p for p in out.split("\0") if p)
+    if dropped is not None:
+        dropped.extend(found_dropped)
     return authored
 
 

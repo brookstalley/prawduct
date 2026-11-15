@@ -112,6 +112,11 @@ _BOUNDARY_SURVIVORS = {
     ".prawduct/.test-evidence.json":
         "the test record the freshness gates compare against `.session-start` — the "
         "comparison is what makes it stale, so deleting it would defeat the gate",
+    ".prawduct/.session-activity.json":
+        "a cache keyed inside by transcript path, inode and offset, so an entry never "
+        "answers for another session; a second session in this checkout may be "
+        "mid-session when this one's boundary runs, and deleting its entry costs it a "
+        "full transcript read; old entries are evicted by count",
     ".prawduct/.session-handoff.md":
         "REWRITTEN by the boundary, not removed — it is the bridge the next session "
         "reads, so an unlink here would delete the thing being handed over",

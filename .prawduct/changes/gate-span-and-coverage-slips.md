@@ -13,13 +13,28 @@ reflog read that already drops pulled, merged and switched-to history could not 
 A session that wrote nothing could then be blocked by the reflection gate, and by the Critic
 gate's trigger, which reads the same span.
 
-The span now drops a commit only when two things are both true. First, another session's
+The span now drops a commit only when three things are all true. First, another session's
 transcript in this checkout's host transcript folder was written since this session started
 (only file times are read). Second, this session's own transcript, named in the Stop payload,
-shows no tool call running when the commit was made. git runs in a session only from a tool
-call, so a commit made between this session's calls was not made by it. Background commands and
-agents count as running until the end, because they outlive their call. A worktree delegate's
-commits fall inside the call that ran it, so merged-back delegate work still counts.
+shows no tool call and no `!` command running when the commit was made. Third, none of the
+commit's files is one this session's Edit, Write, MultiEdit or NotebookEdit calls targeted.
+
+The third test is there because the first two say who ran `git commit`, and the gates ask who
+wrote the change. A user who commits the session's edits from a terminal between turns runs it
+with no tool call open, and those files would otherwise leave the span and disarm the
+reflection and Critic gates. A `!git commit` is not a tool call either. The transcript records
+its input as a user message opening `<bash-input>`, stamped when entered, and its output as one
+opening `<bash-stdout>`, stamped when it ended. The time between the two counts as this session
+acting, and a `!` command with no output yet counts as running. Background commands and agents
+count as running until the end, because they outlive their call. A worktree delegate's commits
+fall inside the call that ran it, so merged-back delegate work still counts. Edited files are
+matched as files of this checkout, with both paths resolved, so an edit in another checkout
+saves nothing.
+
+A dropped commit is not silent. `session_work_span` returns a `dropped` list with each commit's
+sha, files and the reason, and the Stop hook writes one line naming them. That line goes to
+stderr and, when another gate blocks, into the block text. It repeats on every turn while the
+commit is in the span, so it is not shown to the user at a clean Stop.
 
 Every case that cannot be settled keeps the commit counted:
 
@@ -27,12 +42,24 @@ Every case that cannot be settled keeps the commit counted:
 - no other session wrote beside this one;
 - the transcript has no tool call, has a result for a call it never opened, or has a broken line
   before its last one;
-- the commit predates the transcript's first record.
+- the commit predates the transcript's first record;
+- git cannot list the commit's files.
 
-Reading the transcript happens only when another session was writing. Otherwise the added cost
-is one folder listing, and only once HEAD's tree has moved. The readers live in the host seam
-(`lib/host.py`: `other_session_wrote_since`, `session_tool_activity`, and the event's new
-`transcript_path`). `gates.session_work_span` takes the path, and `cmd_stop` passes it.
+**Cost.** The transcript is read only when another session was writing. Otherwise the added
+cost is one folder listing, and only once HEAD's tree has moved. A long session's transcript
+reaches tens of MB, so what was parsed is kept in `.prawduct/.session-activity.json`, a new
+gitignored session file. Entries are keyed by transcript path, device, inode and byte offset.
+Each Stop then parses only the bytes appended since the last Stop, plus 256 bytes before the
+offset to confirm the file was not rewritten. A replaced, truncated or rewritten transcript, or
+a missing or unreadable cache, costs one full read and never a different answer. The cache
+grows with the number of tool calls and edited paths, not with tool output. It keeps at most 8
+transcripts and evicts the least recently read. Over this machine's 17 largest transcripts and
+`!`-mode transcripts (up to 47.8 MB), a read resumed from the cache gave the same answer as a
+full read. Each cache entry was 4–123 KB. A Stop with nothing appended took 1–4 ms against
+50–170 ms for a full read. The commits made while this session was idle add one batched
+`git diff-tree`. The readers live in the host seam (`lib/host.py`: `other_session_wrote_since`,
+`session_tool_activity`, and the event's new `transcript_path`). `gates.session_work_span`
+takes the path, and `cmd_stop` passes it.
 
 What is still counted: uncommitted or untracked files another session leaves in the shared
 checkout, and the readers that run without a Stop payload (the briefing, and the `clear-verdict`
@@ -42,8 +69,11 @@ observation). The Critic gate's imported-history excuse is also unchanged.
 real repo: #1071's repro is silent, and this session's own commit and a merged-back delegate
 commit still block with the other session's commit beside them. It also pins each case that
 keeps the commit counted, and that the transcript is not opened when no other session wrote.
-Each guard was seen to fail with that guard removed. `tests/test_host_seam.py` pins the two
-readers and the payload field. The readers were also run over this machine's real transcripts:
+`TestADropAsksWhoAuthoredTheWork` pins a terminal commit of an edited file and a `!git commit`
+as counted, and a foreign commit as dropped and named at Stop. `TestTheTranscriptReadIsBounded`
+counts the bytes a second Stop reads from the transcript. Each guard was seen to fail with that
+guard removed. `tests/test_host_seam.py` pins the two readers, the payload field, and that a
+read resumed from the cache at any byte gives the full read's answer. The readers were also run over this machine's real transcripts:
 42 files, a 7.8 MB one in 70 ms, and the only unreadable ones were sessions with no tool calls.
 
 **Coverage algebra slips (#1159).** `excused_gap_verdict` returned paths whose free steps lacked
@@ -57,4 +87,7 @@ rather than in `_find_path`.
 ## Consumer note
 If you run two Claude Code sessions in the same checkout, a session that changed nothing is no
 longer asked for a reflection just because the other session committed. A session that commits
-its own code is still asked.
+its own code is still asked, including when you commit its edits yourself from a terminal or
+with `!git commit`. A commit left out this way is named on one line in the Stop hook's output.
+`update_gitignore` adds `.prawduct/.session-activity.json` to your `.gitignore` at the next
+session start.

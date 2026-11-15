@@ -170,6 +170,9 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.test-report.xml",
     ".prawduct/.test-report.xml.scope.json",
     ".prawduct/.critic-review-dispatch.json",
+    # What the Stop hook has parsed of each session's host transcript
+    # (`host.session_tool_activity`), so a Stop reads only what was appended.
+    ".prawduct/.session-activity.json",
     ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",
