@@ -1501,9 +1501,12 @@ class TestMarkerAndFindingsReaderInventory:
         ("plugin/lib/critic_consolidate.py", "_mark_cache_superseded", ".critic-findings.json"):
             "tests/test_critic_consolidate.py::TestBeginMarksFindingsSuperseded"
             "::test_dispatch_marks_the_prior_record_naming_both_reviews",
-        ("plugin/lib/critic_consolidate.py", "_prior_review_fact", ".critic-findings.json"):
-            "tests/test_critic_consolidate.py::TestBeginMarksFindingsSuperseded"
-            "::test_verify_still_anchors_after_an_abandoned_review",
+        # The verify anchor, read-only: the dispatch (`_prior_review_fact`) and
+        # mode inference's rule 1 both ask it, so the two cannot disagree about
+        # which review is this branch's (#1150).
+        ("plugin/lib/critic_consolidate.py", "verify_anchor", ".critic-findings.json"):
+            "tests/test_verify_resolutions_lineage.py::TestInferenceAfterABranchSwitch"
+            "::test_bare_inference_picks_verify_on_the_switched_to_branchs_review",
         ("plugin/lib/critic_consolidate.py", "_already_consolidated_note", ".critic-findings.json"):
             "tests/test_critic_consolidate.py::TestConsolidateIntegration"
             "::test_already_consolidated_noop_reports_the_recorded_findings",
@@ -1512,12 +1515,11 @@ class TestMarkerAndFindingsReaderInventory:
         ("plugin/lib/briefing.py", "_summarize_critic_findings", ".critic-findings.json"):
             "tests/test_briefing_functions.py::TestSummarizeCriticFindings"
             "::test_a_superseded_record_says_so_before_anything_it_qualifies",
-        ("plugin/lib/critic_mode.py", "_rule_verify_resolutions_fires", ".critic-findings.json"):
+        # Rules 1 and 1b read the prior record through here, which defers to
+        # `verify_anchor` whenever the record names a review fact (#1150).
+        ("plugin/lib/critic_mode.py", "_verify_prior_record", ".critic-findings.json"):
             "tests/test_critic_mode_inference.py::TestRule1VerifyResolutions"
             "::test_wins_when_diff_is_subset_of_prior_scope",
-        ("plugin/lib/critic_mode.py", "_rule_postfix_fix_fires", ".critic-findings.json"):
-            "tests/test_critic_mode_inference.py::TestRule1bPostCumulativeFix"
-            "::test_fires_for_committed_fix_after_clean_cumulative",
         # The one writer outside consolidation: a clone whose reviews arrived
         # as notes gets the view consolidation would have written.
         ("plugin/lib/critic_consolidate.py", "derive_branch_cache", "review_active()"):

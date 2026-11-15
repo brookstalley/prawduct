@@ -20,14 +20,20 @@ reported at the CLI.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from test_critic_consolidate import (
+    CUMULATIVE_MODE,
     FINDINGS_REL,
+    HOOK,
     PARTIALS_REL,
+    ROOT,
     _commit_file,
     _full_roster_partials,
     _git,
+    _git_env,
     _init_repo,
     _run_begin,
     _run_consolidate,
@@ -63,10 +69,11 @@ def _cached_fact_id(repo: Path) -> str:
     return json.loads((repo / FINDINGS_REL).read_text())["fact_id"]
 
 
-def _two_branches_each_reviewed(tmp_path: Path) -> "tuple[Path, dict]":
+def _two_branches_each_reviewed(tmp_path: Path, b_mode: "str | None" = None) -> "tuple[Path, dict]":
     """``main`` ← ``feature/b`` (reviewed, rev-b) and ``main`` ← ``feature/a``
     (reviewed after it, rev-a), with ``feature/a`` checked out — so the single
-    slot names rev-a, which is off ``feature/b``'s lineage."""
+    slot names rev-a, which is off ``feature/b``'s lineage. ``b_mode`` sets
+    rev-b's mode (the manifest default, `final`, when ``None``)."""
     repo = tmp_path / "r"
     _init_repo(repo)
     _commit_file(repo, ".gitignore", ".prawduct/\n", "ignore review bookkeeping")
@@ -77,7 +84,8 @@ def _two_branches_each_reviewed(tmp_path: Path) -> "tuple[Path, dict]":
     b_tip = _commit_file(repo, "src/b.py", "b = 1\n", "feat: b")
     _consolidate_review(repo, "rev-b-000001", b_tip,
                         head_tree=_tree(repo), head_commit=b_tip,
-                        files_changed=["src/b.py"], files_reviewed=["src/b.py"])
+                        files_changed=["src/b.py"], files_reviewed=["src/b.py"],
+                        **({"mode": b_mode} if b_mode else {}))
 
     _git(repo, "checkout", "--quiet", "main")
     _git(repo, "checkout", "--quiet", "-b", "feature/a")
@@ -142,6 +150,78 @@ class TestVerifyAfterABranchSwitch:
         fact, note = cc._prior_review_fact(repo, repo / ".prawduct", evidence.read_facts(repo))
         assert fact is not None and fact["id"] == "rev-a-000001"
         assert note == ""
+
+
+def _infer(repo: Path) -> "tuple[str, str]":
+    """Bare `/prawduct:critic`'s mode resolution: `infer-critic-mode`, no args."""
+    result = subprocess.run(  # noqa: S603 — fixed argv, no shell
+        [sys.executable, str(HOOK), "infer-critic-mode"],
+        cwd=str(repo), capture_output=True, text=True, timeout=30,
+        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT), "CLAUDE_PROJECT_DIR": str(repo)},
+    )
+    assert result.returncode == 0, result.stderr
+    mode, rationale = result.stdout.strip().split("|", 1)
+    return mode, rationale
+
+
+class TestInferenceAfterABranchSwitch:
+    """The THIRD answerer of "which review is this branch's" (#1150 follow-up):
+    mode inference's rule 1 read the cache directly, so after a switch it saw
+    the other branch's review, refused it as off-lineage, and fell through to
+    `chunk` — while the dispatch it feeds would have anchored on this branch's
+    own review. It now asks the same owner, read-only."""
+
+    def test_bare_inference_picks_verify_on_the_switched_to_branchs_review(self, tmp_path):
+        repo, _refs = _two_branches_each_reviewed(tmp_path)
+        _git(repo, "checkout", "--quiet", "feature/b")
+        (repo / "src/b.py").write_text("b = 2  # the fix, uncommitted\n")
+        before = (repo / FINDINGS_REL).read_text()
+
+        mode, rationale = _infer(repo)
+
+        assert mode == "verify-resolutions", rationale
+        assert rationale.startswith("rule-1 "), rationale
+        # Inference asks; it does not write. The dispatch re-points the slot
+        # when it anchors — a question must not move the view it is asking about.
+        assert (repo / FINDINGS_REL).read_text() == before
+
+    def test_and_the_dispatch_it_names_anchors_there(self, tmp_path):
+        """Inference and dispatch agree: the mode inferred dispatches, on B."""
+        repo, _refs = _two_branches_each_reviewed(tmp_path)
+        _git(repo, "checkout", "--quiet", "feature/b")
+        (repo / "src/b.py").write_text("b = 2  # the fix, uncommitted\n")
+
+        mode, _rationale = _infer(repo)
+        result = _run_begin(repo, "--mode", mode)
+
+        assert result.returncode == 0, result.stderr
+        assert _cached_fact_id(repo) == "rev-b-000001"
+
+    def test_a_committed_fix_after_this_branchs_cumulative_infers_rule_1b(self, tmp_path):
+        """Rule 1b asks the same question of the same owner: B's own
+        `cumulative`, then a committed fix on B, is a verify pass — whatever
+        review the slot last named on A."""
+        repo, _refs = _two_branches_each_reviewed(tmp_path, b_mode=CUMULATIVE_MODE)
+        _git(repo, "checkout", "--quiet", "feature/b")
+        _commit_file(repo, "src/b.py", "b = 2  # the fix, committed\n", "fix: b")
+        before = (repo / FINDINGS_REL).read_text()
+
+        mode, rationale = _infer(repo)
+
+        assert mode == "verify-resolutions", rationale
+        assert rationale.startswith("rule-1b "), rationale
+        assert (repo / FINDINGS_REL).read_text() == before
+
+    def test_a_fix_outside_this_branchs_review_does_not_infer_verify(self, tmp_path):
+        """Control: rule 1's subset check now runs against B's review, so new
+        work outside B's reviewed files is not a verify pass."""
+        repo, _refs = _two_branches_each_reviewed(tmp_path)
+        _git(repo, "checkout", "--quiet", "feature/b")
+        (repo / "src/elsewhere.py").write_text("new = 1\n")
+
+        mode, rationale = _infer(repo)
+
+        assert mode != "verify-resolutions", rationale
 
 
 def _merge_base_review(tmp_path: Path) -> "tuple[Path, dict, str]":

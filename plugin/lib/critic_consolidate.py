@@ -2356,11 +2356,53 @@ def _prior_review_fact(
     slot names whichever review this clone last consolidated or ingested, on
     any branch; the store holds every branch's. So a pointer that is not this
     branch's — off its lineage, or a sibling's review at the merge base the two
-    share (#1116) — defers to :func:`derive_branch_cache`, the one owner of
-    "which review is this branch's", which re-points the slot (the verify
-    reviewer reads its prior findings from it). Only when that finds nothing
-    does the pass refuse, with the pointer's own reason first.
+    share (#1116) — defers to :func:`select_branch_review`, the one owner of
+    "which review is this branch's", and :func:`derive_branch_cache` re-points
+    the slot to its answer (the verify reviewer reads its prior findings from
+    it). Only when that finds nothing does the pass refuse, with the pointer's
+    own reason first.
+
+    The choosing is :func:`verify_anchor`, which writes nothing, so mode
+    inference can ask the same question; this function adds the one write the
+    dispatch owes when the answer moved.
     """
+    answer = verify_anchor(project_dir, prawduct_dir, store)
+    fact = answer["fact"]
+    if fact is None or not answer["rederived"]:
+        return fact, answer["reason"]
+    review = fact.get("id")
+    derived = derive_branch_cache(prawduct_dir, store.get("facts", []), answer["branch_commits"])
+    if derived.get("status") not in ("derived", "current") or derived.get("review") != review:
+        return None, (
+            f"{answer['reason']}; this branch's review {review!r} could not be written "
+            f"to the findings cache the verify reviewer reads "
+            f"({derived.get('reason') or derived.get('status')})"
+        )
+    return fact, (
+        f"verify anchored on review {review}, the newest on this branch, "
+        f"not on the findings cache's: {answer['reason']}. "
+        f".prawduct/.critic-findings.json now names {review}, so the prior "
+        "findings you verify are this branch's"
+    )
+
+
+def verify_anchor(project_dir: Path, prawduct_dir: Path, store: dict) -> dict:
+    """The review a ``verify-resolutions`` pass would anchor to, answered
+    WITHOUT writing anything — the one question the dispatch
+    (:func:`_prior_review_fact`) and mode inference
+    (``critic_mode._rule_verify_resolutions_fires``) both ask.
+
+    Returns ``{"fact", "reason", "rederived", "branch_commits"}``. ``fact`` is
+    the review, or ``None`` with ``reason`` saying why there is none (the
+    dispatch's refusal text). ``rederived`` is True when the cache's pointer was
+    not this branch's and ``fact`` is this branch's newest review instead; then
+    ``reason`` says why the pointer was passed over, and ``branch_commits`` is
+    the range the choice was made over, so the writer re-points the slot over
+    the same one. The choice is :func:`select_branch_review`'s, the selection
+    :func:`derive_branch_cache` renders."""
+    def none(reason: str) -> dict:
+        return {"fact": None, "reason": reason, "rederived": False, "branch_commits": None}
+
     cache = prawduct_dir / ".critic-findings.json"
     try:
         data = json.loads(cache.read_text())
@@ -2371,24 +2413,42 @@ def _prior_review_fact(
         # construction. The narrow tuple is kept out anyway — it is the SHAPE
         # that re-seeded this class three times, and a reader who copies this
         # line does not inherit the reachability argument with it.
-        return None, f"no readable prior findings cache ({exc})"
+        return none(f"no readable prior findings cache ({exc})")
     fact_id = data.get("fact_id") if isinstance(data, dict) else None
     if not isinstance(fact_id, str) or not fact_id.strip():
-        return None, (
+        return none(
             "prior findings cache carries no fact_id — it predates the "
             "evidence store (a fresh review re-establishes coverage)"
         )
     unusable = _store_unusable(store)
     if unusable is not None:
-        return None, unusable
-    for fact in evidence.facts_of_kind(store, "review"):
-        if fact.get("id") != fact_id:
+        return none(unusable)
+    for cached in evidence.facts_of_kind(store, "review"):
+        if cached.get("id") != fact_id:
             continue
-        not_ours = _not_this_branchs(project_dir, fact)
+        not_ours = _not_this_branchs(project_dir, cached)
         if not_ours is None:
-            return fact, ""
-        return _rederived_prior(project_dir, prawduct_dir, store, fact, not_ours)
-    return None, f"prior review fact {fact_id!r} not found in the evidence store"
+            return {"fact": cached, "reason": "", "rederived": False, "branch_commits": None}
+        branch_range = evidence_notes._branch_commits(project_dir)
+        if branch_range.get("status") != "ok":
+            return none(
+                f"{not_ours}; this branch's own review could not be looked up "
+                f"({branch_range.get('reason')})"
+            )
+        chosen = select_branch_review(
+            store.get("facts", []), branch_range["ordered"],
+            gitstate.current_branch(project_dir),
+        )
+        if chosen is None:
+            return none(f"{not_ours}; no review of this branch's could replace it "
+                        "(no review anchors on this branch)")
+        if chosen.get("id") == fact_id:
+            # The merge-base preference is a preference: a sibling's review with
+            # none of this branch's beside it is still the answer.
+            return {"fact": cached, "reason": "", "rederived": False, "branch_commits": None}
+        return {"fact": chosen, "reason": not_ours, "rederived": True,
+                "branch_commits": branch_range["ordered"]}
+    return none(f"prior review fact {fact_id!r} not found in the evidence store")
 
 
 def _not_this_branchs(project_dir: Path, fact: dict) -> "str | None":
@@ -2396,7 +2456,7 @@ def _not_this_branchs(project_dir: Path, fact: dict) -> "str | None":
     without asking :func:`derive_branch_cache`, or ``None`` when it can. Two
     ways: its anchor is off this lineage, or it was recorded on another branch
     and sits at the merge base this branch shares with that one — the one
-    commit where :func:`_newest_branch_review` prefers a review recorded here.
+    commit where :func:`select_branch_review` prefers a review recorded here.
     The branch-name comparison runs first, so the common case (a review of this
     branch) lists no commit range."""
     fact_id = fact.get("id")
@@ -2423,41 +2483,6 @@ def _not_this_branchs(project_dir: Path, fact: dict) -> "str | None":
         f"prior review fact {fact_id!r} was recorded on {recorded!r} and anchors "
         f"at {anchor[:12]}, the merge base {branch!r} shares with it"
     )
-
-
-def _rederived_prior(
-    project_dir: Path, prawduct_dir: Path, store: dict, cached: dict, not_ours: str
-) -> tuple[dict | None, str]:
-    """The verify anchor when the cached pointer is not this branch's: this
-    branch's newest review, through the one owner of that answer
-    (:func:`derive_branch_cache`, which also re-points the slot). The cached
-    fact stands when the owner names it too — the merge-base preference is a
-    preference, so a sibling's review with none of this branch's beside it is
-    still the answer."""
-    branch_range = evidence_notes._branch_commits(project_dir)
-    if branch_range.get("status") != "ok":
-        return None, (
-            f"{not_ours}; this branch's own review could not be looked up "
-            f"({branch_range.get('reason')})"
-        )
-    derived = derive_branch_cache(prawduct_dir, store.get("facts", []), branch_range["ordered"])
-    review = derived.get("review")
-    if derived.get("status") not in ("derived", "current") or not review:
-        return None, (
-            f"{not_ours}; no review of this branch's could replace it "
-            f"({derived.get('reason') or derived.get('status')})"
-        )
-    if review == cached.get("id"):
-        return cached, ""
-    for fact in evidence.facts_of_kind(store, "review"):
-        if fact.get("id") == review:
-            return fact, (
-                f"verify anchored on review {review}, the newest on this branch, "
-                f"not on the findings cache's: {not_ours}. "
-                ".prawduct/.critic-findings.json now names "
-                f"{review}, so the prior findings you verify are this branch's"
-            )
-    return None, f"{not_ours}; review {review!r} was selected but is not in the store read"
 
 
 #: How many excluded/free paths a message names before it summarises the rest.
@@ -6229,11 +6254,21 @@ def _recorded_branch(fact: dict) -> "str | None":
     return branch if isinstance(branch, str) and branch else None
 
 
-def _newest_branch_review(
+def _this_readers_facts(facts: list[dict]) -> list[dict]:
+    """Records of this reader's schema only: a newer plugin's record is not
+    this module's to select or render."""
+    return [f for f in facts if isinstance(f, dict) and f.get("schema") == evidence.SCHEMA_VERSION]
+
+
+def select_branch_review(
     facts: list[dict], branch_commits: "list[str]", branch: "str | None"
 ) -> "dict | None":
-    """The newest review fact on this branch, or ``None`` when none anchors on
-    it. ``branch_commits`` is newest first with the merge base LAST
+    """THE answer to "which review is this branch's": the newest review fact on
+    this branch, or ``None`` when none anchors on it. Pure — it reads its
+    arguments and writes nothing — so the cache writer
+    (:func:`derive_branch_cache`), the verify dispatch and mode inference
+    (both through :func:`verify_anchor`) select identically.
+    ``branch_commits`` is newest first with the merge base LAST
     (:func:`evidence_notes._branch_commits`'s ``ordered``); ``branch`` is the
     checked-out branch's name, ``None`` on a detached HEAD.
 
@@ -6247,6 +6282,7 @@ def _newest_branch_review(
     name a review carries. A preference, not a filter: with no review of its
     own at the merge base — a renamed branch, a review recorded before
     ``actor.branch`` existed — the sibling's still answers, as it always did."""
+    facts = _this_readers_facts(facts)
     depth = {commit: i for i, commit in enumerate(branch_commits)}
     merge_base = branch_commits[-1] if branch_commits else None
     on_branch = [
@@ -6294,14 +6330,15 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
     ties between reviews on one commit. Only records of this reader's schema
     are considered; a newer plugin's record is not this function's to render.
 
-    **The one answer to "which review is this branch's".** The verify dispatch
-    defers here whenever the cached pointer is not this branch's
-    (:func:`_prior_review_fact`), so ingest and dispatch cannot pick two
-    different reviews; the selection itself is :func:`_newest_branch_review`."""
+    **The one answer to "which review is this branch's".** The selection is
+    :func:`select_branch_review`, which :func:`verify_anchor` also asks for the
+    verify dispatch and mode inference, so ingest, dispatch and inference
+    cannot pick three different reviews. This function is the only one of them
+    that writes; the dispatch calls it to re-point the slot when it re-anchors."""
     if critic_marker.review_active(prawduct_dir)[0]:
         return {"status": "skipped", "review": None, "reason": "a review is in flight"}
-    usable = [f for f in facts if isinstance(f, dict) and f.get("schema") == evidence.SCHEMA_VERSION]
-    fact = _newest_branch_review(
+    usable = _this_readers_facts(facts)
+    fact = select_branch_review(
         usable, branch_commits, gitstate.current_branch(prawduct_dir.parent)
     )
     if fact is None:
