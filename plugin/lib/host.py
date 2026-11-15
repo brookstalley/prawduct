@@ -15,21 +15,16 @@ than a patch at every call site:
   :func:`block` are the only writers of structured hook responses and of the
   Stop hook's blocking exit.
 
-Not yet here: plain text the entry points print in place. That is the
-``clear --session-start`` briefing and the banner on stdout, and the notes
-``cmd_stop`` writes to stderr ahead of its block (the worktree redirect,
-waivers, deferrals, the Critic-mode and learnings notes). Claude Code reads
-both channels — SessionStart stdout is context, and a blocking Stop's whole
-stderr is its reason — so for Claude they are response text too. A host that
-reads them differently moves them into this module (#1038).
+The experimental Codex adapters use this seam for SessionStart context and
+Stop responses. Codex Stop covers reflection only.
 
 ``PRAWDUCT_HOST`` names the host, ``claude`` when unset. A host adapter's hook
 registration sets it explicitly rather than prawduct detecting the host from
 its environment, because hosts export each other's variables for compatibility
 (Codex exports ``CLAUDE_PLUGIN_ROOT``), so detection would guess wrong. An
 unknown name fails closed: each hook entry point asks
-:func:`unknown_host_reason` and refuses to run. Claude is the only host
-implemented, so the readers and writers below are Claude's.
+:func:`unknown_host_reason` and refuses to run. Claude has full gate coverage;
+Codex currently has only experimental SessionStart.
 
 This module imports nothing from ``lib``. The hook entry points load it by file
 path before ``lib`` is importable, because it is what tells them where ``lib``
@@ -47,13 +42,17 @@ from pathlib import Path
 #: The variable a host adapter sets to name its host.
 HOST_VARIABLE = "PRAWDUCT_HOST"
 DEFAULT_HOST = "claude"
-KNOWN_HOSTS = frozenset({DEFAULT_HOST})
+KNOWN_HOSTS = frozenset({DEFAULT_HOST, "codex"})
 
 #: The hook events prawduct handles, in host-neutral names.
 EVENTS = frozenset({"session_start", "stop", "subagent_stop"})
 
 #: The Stop hook's blocking exit. The reason goes on stderr.
 BLOCK_EXIT = 2
+CODEX_UNCOVERED_STOP_GATES = (
+    "critic", "pr", "learnings-unmigrated", "learnings-budget",
+    "clear-verdict", "clear-reason",
+)
 
 # Claude's names for what a hook reads.
 _PLUGIN_ROOT_VAR = "CLAUDE_PLUGIN_ROOT"
@@ -63,6 +62,10 @@ _MESSAGE_KEY = "last_assistant_message"
 _TASKS_KEY = "background_tasks"
 _CWD_KEY = "cwd"
 _AGENT_TYPE_KEY = "agent_type"
+_SOURCE_KEY = "source"
+_SESSION_ID_KEY = "session_id"
+_CODEX_PROJECT_DIR_VAR = "PRAWDUCT_PROJECT_DIR"
+_CODEX_CONFIG_DIR_VAR = "CODEX_HOME"
 
 #: Longest background-task label kept; a description or command can be long.
 _TASK_LABEL_CHARS = 80
@@ -120,6 +123,9 @@ class HostEvent:
     background_tasks: tuple[str, ...] | None = None
     cwd: str | None = None
     agent_type: str | None = None
+    session_id: str | None = None
+    source: str | None = None
+    session_boundary: bool | None = None
     fields_present: frozenset[str] = field(default_factory=frozenset)
 
 
@@ -135,12 +141,20 @@ def read_event(event: str, raw: object) -> HostEvent:
         raise ValueError(f"unknown hook event {event!r}; expected one of {sorted(EVENTS)}")
     payload = raw if isinstance(raw, dict) else {}
     message = payload.get(_MESSAGE_KEY)
+    source = payload.get(_SOURCE_KEY) if host_name() == "codex" else None
+    boundary = None
+    if event == "session_start" and host_name() == "codex" and isinstance(source, str):
+        boundary = {"startup": True, "clear": True, "resume": False,
+                    "compact": False}.get(source)
     return HostEvent(
         event=event,
         last_assistant_message=message if isinstance(message, str) else None,
         background_tasks=_task_labels(payload) if _TASKS_KEY in payload else None,
         cwd=_path_text(payload.get(_CWD_KEY)),
         agent_type=_text(payload.get(_AGENT_TYPE_KEY)),
+        session_id=_text(payload.get(_SESSION_ID_KEY)),
+        source=_text(source),
+        session_boundary=boundary,
         fields_present=frozenset(k for k in payload if isinstance(k, str)),
     )
 
@@ -189,6 +203,8 @@ def plugin_root() -> str:
     """The plugin's root directory: the host's plugin-root variable, else the
     directory above this file's (``lib/`` -> root), so a hook run directly in
     tests or a ``--plugin-dir`` probe resolves without the variable."""
+    if host_name() == "codex":
+        return str(Path(__file__).resolve().parent.parent)
     return os.environ.get(_PLUGIN_ROOT_VAR) or str(Path(__file__).resolve().parent.parent)
 
 
@@ -198,6 +214,8 @@ def project_dir_hint() -> str | None:
     A hint, not the answer: ``gitstate.resolve_project_dir`` follows the
     session into a worktree of the same repo, which the host's value does not.
     """
+    if host_name() == "codex":
+        return os.environ.get(_CODEX_PROJECT_DIR_VAR) or None
     return os.environ.get(_PROJECT_DIR_VAR) or None
 
 
@@ -206,6 +224,9 @@ def config_home(env: dict | None = None, home: Path | None = None) -> Path:
     ``~/.claude``. Raises what ``Path.home()`` raises when no home resolves;
     callers that must not fail catch it."""
     env = os.environ if env is None else env
+    if (env.get(HOST_VARIABLE) or "").strip().lower() == "codex":
+        configured = env.get(_CODEX_CONFIG_DIR_VAR)
+        return Path(configured).expanduser() if configured else (Path.home() if home is None else home) / ".codex"
     configured = env.get(_CONFIG_DIR_VAR)
     if configured:
         return Path(configured).expanduser()
@@ -219,6 +240,8 @@ def config_roots(env: dict | None = None, home: Path | None = None) -> list[Path
     existence or de-duplicated, because what each caller needs inside them
     differs. A home that cannot be resolved yields only the override, if any."""
     env = os.environ if env is None else env
+    if (env.get(HOST_VARIABLE) or "").strip().lower() == "codex":
+        return [config_home(env, home)]
     roots: list[Path] = []
     configured = env.get(_CONFIG_DIR_VAR)
     if configured:
@@ -236,6 +259,15 @@ def config_roots(env: dict | None = None, home: Path | None = None) -> list[Path
 
 
 # --- responses ---------------------------------------------------------------
+
+
+def codex_stop_coverage() -> list[str]:
+    """The explicit Phase 1 coverage notice required on every Codex Stop."""
+    return [
+        "Prawduct experimental Codex Phase 1 Stop: reflection only.",
+        *(f"{gate}: not covered by the experimental Codex Phase 1 spike"
+          for gate in CODEX_UNCOVERED_STOP_GATES),
+    ]
 
 
 def emit_session_context(text: str, *, reload_skills: bool = False) -> None:

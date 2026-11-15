@@ -1,0 +1,7 @@
+{
+  "name": "prawduct-codex-experimental",
+  "version": "0.1.0",
+  "description": "Experimental Codex SessionStart adapter for Prawduct",
+  "hooks": "./hooks/hooks.json",
+  "skills": "./skills/"
+}

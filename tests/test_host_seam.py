@@ -40,7 +40,7 @@ _SCANNED_DIRS = ("bin", "lib", "hooks")
 # whatever accessor carries it (`os.environ.get`, `getenv`, an `env` dict
 # passed down), so the literal is the thing to look for. Prose mentions
 # (``CLAUDE_PROJECT_DIR``, `${CLAUDE_PLUGIN_ROOT}`) are not quoted literals.
-_HOST_VARIABLE = re.compile(r"""["']CLAUDE_[A-Z_]+["']""")
+_HOST_VARIABLE = re.compile(r"""["'](?:CLAUDE_[A-Z_]+|CODEX_HOME|PRAWDUCT_PROJECT_DIR)["']""")
 # Payload keys read off a dict, by `.get` or subscript: every key the seam
 # itself reads, taken from the seam so a key it gains is scanned for too.
 _PAYLOAD_KEYS = (host._MESSAGE_KEY, host._TASKS_KEY, host._CWD_KEY, host._AGENT_TYPE_KEY)
@@ -62,6 +62,8 @@ def _scanned_files() -> list[Path]:
                 continue
             if path.suffix == ".py" or path.parent.name == "bin":
                 files.append(path)
+    files.extend(sorted(p for p in (REPO_ROOT / "adapters" / "codex").rglob("*.py")
+                        if "tests" not in p.parts))
     return files
 
 
@@ -82,7 +84,7 @@ def _violations(files: list[Path]) -> list[str]:
 class TestOnePlace:
     def test_the_scan_reaches_the_entry_points_and_the_seam(self):
         files = _scanned_files()
-        names = {p.relative_to(PLUGIN).as_posix() for p in files}
+        names = {p.relative_to(PLUGIN).as_posix() for p in files if PLUGIN in p.parents}
         # The entry points and the modules that used to read host shapes are
         # all inside the scan, and so is the seam itself.
         for expected in (
@@ -91,6 +93,9 @@ class TestOnePlace:
         ):
             assert expected in names
         assert len(files) > 50
+        assert REPO_ROOT / "adapters" / "codex" / "session_start.py" in files
+        adapter = (REPO_ROOT / "adapters" / "codex" / "session_start.py").read_text()
+        assert not re.search(r"""\.get\(["'](?:source|session_id|cwd)["']""", adapter)
 
     def test_the_patterns_match_what_the_seam_itself_does(self):
         """Positive control: the seam's own reads and writes are what the scan
