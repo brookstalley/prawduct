@@ -27,9 +27,16 @@ committed fix resolves the advisory for every clone on next sync, exactly the ro
 §3.5 assigns to the answer store. Reading resolution from ``.gitignore`` needs no
 redundant ``project-state.yaml`` fact and cannot drift from the file it describes.
 This mirrors ``upstream_probes.py`` (trigger and resolution are the same observable
-state). The fire condition is EXACTLY ``update_gitignore``'s ``modified`` condition
-— both read :func:`lib.core.gitignore_contract_drift` — so the nudge can never
-outlive the fix.
+state). The ``contract-drift`` fire condition is EXACTLY ``update_gitignore``'s
+``modified`` condition — both read :func:`lib.core.gitignore_contract_drift` — so
+the nudge can never outlive the fix.
+
+**Judged by git, not by line equality (#762).** That drift is what git would ignore,
+so a wholesale ``.prawduct/`` rule neither reads as a pile of missing entries nor
+passes unseen. When a rule of the owner's own hides a file the contract needs
+committed, ``contract-ignored-by-rule`` fires instead. It is a second advisory
+because the fixer will never edit the owner's rule: offering ``update-gitignore`` there
+would be a nudge no run could clear. It resolves when the rule is narrowed.
 
 Registered at the runtime composition root (``bin/prawduct-hook`` ``cmd_clear``),
 not at import time, so the infrastructure stays feature-agnostic — the same
@@ -39,7 +46,7 @@ pattern as ``lib/backlog_probes.py`` and ``lib/upstream_probes.py``.
 from __future__ import annotations
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
-from .core import gitignore_contract_drift
+from .core import describe_ignored_by_rule, gitignore_contract_drift
 
 FEATURE = "gitignore"
 PROBE_VERSION = 1
@@ -70,8 +77,41 @@ def _summary(missing: list[str], incorrectly_ignored: list[str]) -> str:
     )
 
 
+def _ignored_by_rule_candidate(ignored_by_rule: list[dict]) -> AdvisoryCandidate:
+    """A rule of the owner's own hides files prawduct needs committed (#762).
+
+    A separate advisory from the drift one, because the two have different
+    resolutions: ``update-gitignore`` fixes drift, and it will never edit this
+    rule, so offering it here would be a nudge no run could clear. The exact lines
+    ride in ``trigger_summary`` (built from live data); the owner's part is the
+    decision, which is why this carries no ``recommended_action``.
+    """
+    return AdvisoryCandidate(
+        type="contract-ignored-by-rule",
+        # Count- and rule-independent: hashed into the advisory id, so it must not
+        # move as the offending set shrinks under a partial fix.
+        evidence=(
+            ".gitignore carries a rule that ignores files prawduct needs committed "
+            "(lib/core.py MANAGED_FILES)",
+        ),
+        trigger_summary=" ".join(describe_ignored_by_rule(ignored_by_rule)),
+        owner_action=(
+            "Decide how .gitignore should treat those files: delete the rule, or narrow it "
+            "so they stay tracked, using the lines named above. It is your rule, so prawduct "
+            "will not change it; once it is narrowed this clears by itself."
+        ),
+        recommended_action="",
+        alternative_actions=("/prawduct:doctor",),
+        priority="info",
+    )
+
+
 def probe_gitignore_contract_drift(state: ProjectState, codebase: Codebase):
     """Fire when ``.gitignore`` diverges from the session-file contract.
+
+    "Diverges" is judged by what git would ignore (#762), so a wholesale ``.prawduct/``
+    rule is neither a pile of "missing" entries nor invisible: it is its own advisory,
+    ``contract-ignored-by-rule``, when it hides a file that must be committed.
 
     Inert when it already satisfies the contract — the steady state for every
     correctly-onboarded repo (including this framework repo, which dogfoods the
@@ -82,9 +122,13 @@ def probe_gitignore_contract_drift(state: ProjectState, codebase: Codebase):
     drift = gitignore_contract_drift(codebase.root)
     missing = drift["missing"]
     incorrectly_ignored = drift["incorrectly_ignored"]
+    candidates = []
+    if drift["ignored_by_rule"]:
+        candidates.append(_ignored_by_rule_candidate(drift["ignored_by_rule"]))
     if not missing and not incorrectly_ignored:
-        return []
+        return candidates
     return [
+        *candidates,
         AdvisoryCandidate(
             type="contract-drift",
             evidence=(
@@ -111,4 +155,10 @@ def probe_gitignore_contract_drift(state: ProjectState, codebase: Codebase):
 
 def register() -> None:
     """Register the gitignore-contract probe. Idempotent (register_probe overwrites)."""
-    register_probe(FEATURE, "contract-drift", PROBE_VERSION, probe_gitignore_contract_drift)
+    register_probe(
+        FEATURE,
+        "contract-drift",
+        PROBE_VERSION,
+        probe_gitignore_contract_drift,
+        emits=("contract-ignored-by-rule",),
+    )

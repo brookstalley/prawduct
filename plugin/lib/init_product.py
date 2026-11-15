@@ -325,16 +325,20 @@ def init_product(
             (edited if gitignore_existed else created).append(".gitignore")
     else:
         # Predict: any required entry missing → the file will be written.
-        existing_lines = (
-            set(gitignore.read_text(encoding="utf-8").splitlines())
-            if gitignore_existed
-            else set()
-        )
+        # The same answers the apply path acts on: the shared contract diff (git's
+        # view, so a wholesale rule that already covers an entry predicts no write)
+        # plus the version marker.
         from .migrate_plugin import VERSION_MARKER
 
-        required = set(core.GITIGNORE_ENTRIES) | {VERSION_MARKER}
-        if not required.issubset(existing_lines):
+        would_edit = bool(
+            core.update_gitignore(project_dir, dry_run=True)["modified"]
+        ) or not core.gitignore_covers(project_dir, VERSION_MARKER)
+        if would_edit:
             (edited if gitignore_existed else created).append(".gitignore")
+
+    # Files prawduct needs committed that a rule of the owner's own still ignores (a
+    # wholesale `.prawduct/`, #762). Never repaired here; surfaced so onboard can say so.
+    ignored_by_rule = core.gitignore_contract_drift(project_dir)["ignored_by_rule"]
 
     return {
         "target": str(project_dir),
@@ -348,6 +352,9 @@ def init_product(
         # entries like the tracked-by-default build plan — gate-soundness
         # ch.3). The caller (onboard/doctor) should advise `git add` on these.
         "unignored": unignored,
+        # Managed files hidden by an ignore rule onboarding will not edit: the rule
+        # is the owner's. `describe_ignored_by_rule` words the exact lines to offer.
+        "ignored_by_rule": ignored_by_rule,
         # The day-one Issues backend. On apply this is read BACK from
         # project-state.yaml, so it reports what the file holds. On a dry run it is
         # the requested value — nothing was written, and reporting what *would* be
@@ -488,6 +495,8 @@ def run(argv: list[str]) -> int:
         # Stale ignore lines stripped (managed files / retired entries like the
         # tracked-by-default build plan) — the onboard skill advises `git add`.
         print(f"  unignored   {f} — now tracked-by-contract; `git add` it if present")
+    for sentence in core.describe_ignored_by_rule(result.get("ignored_by_rule", [])):
+        print(f"  cannot fix automatically: {sentence}")
     if result.get("base_branch"):
         # Said out loud: it changes what every diff-base gate measures against,
         # and only the operator knows whether this repo really integrates there.

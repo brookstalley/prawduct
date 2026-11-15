@@ -9276,7 +9276,11 @@ def cmd_update_gitignore(project_dir: Path, argv: list[str]) -> int:
     early-exits on an already-scaffolded repo and the session hooks must never
     edit a tracked file (the no-noise guarantee), so this on-demand command is
     how an existing repo picks up gitignore-contract changes. Prints each
-    unignored path so the caller can advise ``git add``.
+    unignored path so the caller can advise ``git add``. The contract is judged by
+    what git would ignore, so a wholesale rule (``.prawduct/``) counts as covering
+    the entries under it, and one that hides a file prawduct needs committed is
+    reported as ``cannot fix automatically:`` with the exact lines to paste. It is the
+    owner's rule: this command never edits or deletes it (#762).
 
     **Mutating by default, deliberately** — doctor calls it to REPAIR, so a
     preview-by-default would silently stop fixing the repos that need fixing.
@@ -9307,6 +9311,16 @@ def cmd_update_gitignore(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
     result = lib_core.update_gitignore(project_dir, dry_run=dry_run)
+    # What the fixer will NOT repair is said on both paths, and before the verdict
+    # line: "no changes needed" beside an ignored managed file would read as a
+    # clean bill. The owner's rule is theirs to edit (#762).
+    for sentence in lib_core.describe_ignored_by_rule(result.get("ignored_by_rule", [])):
+        print(f"cannot fix automatically: {sentence}")
+    if result.get("basis") == "literal":
+        print(
+            "note: git could not be asked, so this compared literal .gitignore lines "
+            "only; a wholesale rule such as `.prawduct/` would not show here"
+        )
     if dry_run:
         # Past tense would be a lie on this branch, and the caller is here
         # BECAUSE they wanted to know before anything moved.
