@@ -11,21 +11,32 @@ that must be committed. It did that by comparing literal lines, so a single rule
 which already covers every session entry, matched none of them. The check failed in both directions:
 it called the session entries missing (and the repair would then have appended all of them again),
 and it never noticed that the same rule hides files prawduct needs committed, such as
-`.prawduct/pr-review.md` and the build plan. #762 reported it from a repo whose `.gitignore` was
+`.prawduct/project-state.yaml`, the change fragments and the build plan. #762 reported it from a repo whose `.gitignore` was
 exactly `.prawduct/` and `__pycache__/`.
 
 **What changed.** `core._contract_diff` now asks `git check-ignore` which paths would be ignored,
 instead of comparing strings. A session entry counts as covered when any rule in a `.gitignore`
-ignores it, and a negated re-include (`!.prawduct/pr-review.md`) counts. Where there is no work tree
+ignores it, and a negated re-include (`!.prawduct/backlog.md`) counts. Where there is no work tree
 yet (onboarding a directory before `git init`), it asks git about a scratch repo holding only the
-`.gitignore` text, so the answer is the same. Only `.gitignore` files count: a rule in
-`.git/info/exclude` or your global excludes belongs to this machine, not to the next clone.
+`.gitignore` text, so the answer is the same. Only a `.gitignore` inside the repo counts,
+decided by path: a rule in `.git/info/exclude` or in your global excludes file belongs to this
+machine, not to the next clone, and that holds even when the global file is itself named
+`.gitignore` (`core.excludesFile=~/.gitignore`), which used to pass as shared.
 
 **It reports, and does not rewrite your rule.** When a rule of yours hides a file that must be
 committed, `prawduct-hook update-gitignore` prints `cannot fix automatically:`, names the rule and
 its line, and gives the exact lines to paste: delete the rule, or replace `.prawduct/` with
-`.prawduct/*` followed by one `!` line per file to keep (a bare directory rule cannot be negated, so
-it is replaced, not added to). The same sentence reaches the session advisory
+`.prawduct/*` followed by one `!` line for each thing a plugin-governed repo commits under it (a bare
+directory rule cannot be negated, so it is replaced, not added to). A `.claude/` rule becomes
+`.claude/*`, `!.claude/settings.json` and `!.claude/rules/`, so personal skills stay ignored. What
+counts as committed is one list, `core.V2_COMMITTED_PATHS`, taken from what a v2 repo scaffolds and
+writes: `project-state.yaml`, `backlog.md`, `changes/`, `artifacts/`, `AGENTS.md`, `CLAUDE.md`,
+`.claude/settings.json`, `.claude/rules/`, plus the release, runbook, change-log-archive and
+operator-verification state once it exists. It is not the 1.x file-sync registry (`MANAGED_FILES`),
+which `migrate` deletes and a plugin repo never has; that registry keeps only its migration role,
+the literal lines the repair strips. `.prawduct/releases/` and `project-state.yaml` are committed by
+decision, and the remedy re-includes all of it, so narrowing a rule today does not hide a file a
+feature writes later. The same sentence reaches the session advisory
 (`contract-ignored-by-rule`, owner-only, cleared once the rule is narrowed), onboarding's output
 (`ignored_by_rule`), and the doctor skill's gitignore check. The repair command still removes only
 lines that literally name a managed file, and it adds no line a broader rule already covers, which
@@ -36,7 +47,8 @@ so (`basis: literal`, and a `note:` from `update-gitignore`), and cannot see a w
 names only the last rule matching a path, so a file that both a literal line and a wholesale rule
 hide can surface under the wholesale rule one run after the literal line is stripped.
 
-`tests/test_gitignore_contract_semantics.py` uses the issue's own `.gitignore`, in a real repo and
+`tests/test_gitignore_contract_semantics.py` pastes the advised lines into a real repo and asks git
+about every committed path, so clearing the advisory is not mistaken for un-hiding the files. It uses the issue's own `.gitignore`, in a real repo and
 in a directory with no repo, and covers both directions, negation, per-clone excludes, nested
 `.gitignore` files, the no-git fallback, the probe, the command's output, onboarding, and that
 following the printed advice clears the report. `tests/test_gitignore_management.py` keeps its

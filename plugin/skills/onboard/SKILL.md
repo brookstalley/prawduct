@@ -93,7 +93,7 @@ session, run `/prawduct:backlog decline-migration <reason>` first — it writes
 (below) and ask once. On yes, commit them
 as one commit (`chore: onboard to Prawduct`). The commit holds onboarding's own paths only: the
 result's `created` and `edited` lists (`.gitignore` among them when it changed), and any path in its `unignored` list that exists
-on disk (a stale ignore line was stripped, so the file is now meant to be tracked). If the result's `ignored_by_rule` is non-empty, a rule of the owner's own (a wholesale `.prawduct/`) hides files prawduct needs committed; onboarding does not edit it. Show the owner the sentence the dry run printed (`cannot fix automatically:`, with the exact lines), and let them decide before the commit, since those files would not enter it. `git -C <target>
+on disk (a stale ignore line was stripped, so the file is now meant to be tracked). If the result's `ignored_by_rule` is non-empty, a rule of the owner's own (a wholesale `.prawduct/`) hides files a plugin-governed repo commits (`project-state.yaml`, `changes/`, `artifacts/`, `.claude/settings.json`, …); onboarding does not edit it. Show the owner the sentence the dry run printed (`cannot fix automatically:`, with the exact lines), and let them decide before the commit, since those files would not enter it. `git -C <target>
 add -- <paths>`, then `git -C <target> commit -m "…" -- <paths>`. The trailing pathspec keeps
 anything the owner had already staged out of the commit. A pathspec commit takes each named file
 whole, though, so if the dry-run step found any `edited` path not clean, say that the owner's own
