@@ -501,3 +501,82 @@ class TestNonExecutableFilesAreNotGated:
             "and subtracted twice from the covered count"
         )
         assert "ok: 0 judged changed file(s) covered" in result.stdout
+
+
+def _now_ts() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class TestVoidRecordGetsTheSuiteRemedy:
+    """#1181: the recorder's write-ahead void is not a run. verify-coverage must
+    answer with `gates.suite_remedy`'s remedy for the state the record is in,
+    not "emit F4a fields" and not a coverage verdict over empty lists."""
+
+    @staticmethod
+    def _void(repo: Path, stamp: dict, **overrides) -> None:
+        fields = dict(
+            passed=0,
+            verifier="none (no record has landed)",
+            changes_referenced=[],
+            void="record attempt at now (x) did not complete",
+            void_counts_from=None,
+            degraded="record attempt did not complete",
+            in_progress=stamp,
+        )
+        fields.update(overrides)
+        _write_evidence(repo, **fields)
+
+    @staticmethod
+    def _dead_stamp() -> dict:
+        from lib import record_progress
+
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        return {
+            "pid": child.pid,
+            "host": record_progress.this_host(),
+            "started_at": "2026-11-15T10:00:00Z",
+            "command": "x",
+        }
+
+    def test_a_stub_in_progress_says_wait(self, gated_repo: Path):
+        from lib import gates, record_progress
+
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            stamp = record_progress.stamp("x", _now_ts())
+            stamp["pid"] = child.pid  # a live recorder that is not the gate
+            self._void(gated_repo, stamp)
+            result = _run_gate(gated_repo)
+        finally:
+            child.kill()
+            child.wait()
+        assert result.returncode == 1
+        assert gates.WAIT_FOR_RUN in result.stderr
+        assert "F4a" not in result.stderr and "missing-coverage" not in result.stderr
+
+    def test_an_interrupted_stub_says_run(self, gated_repo: Path):
+        from lib import gates
+
+        self._void(gated_repo, self._dead_stamp())
+        result = _run_gate(gated_repo)
+        assert result.returncode == 1
+        assert gates.RUN_AND_RECORD in result.stderr
+        assert "F4a" not in result.stderr and "missing-coverage" not in result.stderr
+
+    def test_a_void_carrying_a_prior_runs_coverage_behaves_as_before(
+        self, gated_repo: Path
+    ):
+        """A void over a run that had coverage fields keeps them and is judged
+        on them (the degraded-is-accepted contract in the docstring)."""
+        self._void(
+            gated_repo,
+            self._dead_stamp(),
+            void_counts_from="2026-11-14T10:00:00Z",
+            verifier="test-reference-verify (floor: symbol-grep)",
+        )
+        result = _run_gate(gated_repo)
+        assert "record attempt" not in result.stderr
+        assert result.returncode == 0, result.stderr

@@ -3834,6 +3834,21 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     return 1
 
 
+def _void_without_coverage(evidence: object) -> bool:
+    """True for a record that is the recorder's void and carries no run's
+    coverage fields: a stub (``void_counts_from`` null — no run ever landed) or
+    a void over a record that had no ``verifier``. A void over a run that did
+    carry coverage keeps those fields and is judged on them, as
+    :func:`verify_coverage` documents for ``degraded`` records. Read off the
+    record's own fields, so no proxy decides the branch."""
+    if not isinstance(evidence, dict):
+        return False
+    void = evidence.get("void")
+    if not (isinstance(void, str) and void.strip()):
+        return False
+    return evidence.get("void_counts_from") is None or "verifier" not in evidence
+
+
 def verify_coverage(project_dir: Path) -> int:
     """Critic Goal-1 helper (v1.4 F4b): when ``coverage_required: true`` in
     project-state.yaml, verify every changed file in the diff appears in
@@ -3899,6 +3914,19 @@ def verify_coverage(project_dir: Path) -> int:
         evidence = json.loads(evidence_path.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         print(f"error: cannot read evidence: {exc}", file=sys.stderr)
+        return 1
+
+    if _void_without_coverage(evidence):
+        # The standing record is a recorder's write-ahead void that carries no
+        # run's coverage (#1181): the answer to "what next" is the suite
+        # verdict's, which `suite_remedy` owns — wait for a run in progress,
+        # run again after an interrupted one — not "emit F4a fields".
+        step = suite_remedy(project_dir)
+        print(
+            "error: coverage_required=true but the saved record is a record "
+            f"attempt's void, not a run ({step.state}): {step.remedy}.",
+            file=sys.stderr,
+        )
         return 1
 
     if "verifier" not in evidence:
