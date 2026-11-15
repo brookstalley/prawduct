@@ -2250,7 +2250,14 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             opts["force"] = True
             i += 1
             continue
-        if arg not in flags and arg not in ("--chunks", "--chunk"):
+        if arg == "--chunk":
+            print(
+                "critic-begin: --chunk is gone — use --chunks (one id or a "
+                "comma-separated list: --chunks 01 or --chunks 01,03)",
+                file=sys.stderr,
+            )
+            return 1
+        if arg not in flags and arg != "--chunks":
             print(f"critic-begin: unknown argument {arg!r}", file=sys.stderr)
             return 1
         if i + 1 >= len(argv):
@@ -2258,8 +2265,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             return 1
         value = argv[i + 1]
         i += 2
-        if arg in ("--chunks", "--chunk"):
-            parts = [part.strip() for part in value.split(",")] if arg == "--chunks" else [value.strip()]
+        if arg == "--chunks":
+            parts = [part.strip() for part in value.split(",")]
             if not all(parts):
                 print(
                     f"critic-begin: {arg} {value!r} names an empty chunk id — "

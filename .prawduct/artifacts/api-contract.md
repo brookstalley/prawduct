@@ -156,8 +156,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `--force` overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted
   — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
   (`methodology/planning.md` "Chunk state") — a comma list,
-  repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` stays as a one-element
-  alias for one release; omitted, the declared set is the code-derived proposal; an id the plan
+  repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` (the old one-element
+  alias) is gone and is a usage error (exit 1) naming `--chunks`; omitted, the declared set is the code-derived proposal; an id the plan
   does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a
   usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note;
   `--session-model <id>` is the model the dispatcher runs as, from which code answers the

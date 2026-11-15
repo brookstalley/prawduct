@@ -768,7 +768,7 @@ def census(
                 "ts": fact.get("ts"),
                 "mode": body.get("mode"),
                 "scope": body.get("scope"),
-                "chunk": body.get("chunk"),
+                "chunk": _review_chunks_label(body),
                 "rows": rows,
                 # A SEPARATE list, never appended to ``rows``. Every consumer of
                 # ``rows`` — the summary's severity tally, its undispositioned
@@ -913,6 +913,18 @@ def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> di
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
+
+
+def _review_chunks_label(body: dict) -> "str | None":
+    """The chunk(s) a review fact names, comma-joined, or ``None``: ``chunks``
+    on a current fact, the bare ``chunk`` on one written before it (facts are
+    append-only, so both shapes are in stores)."""
+    chunks = body.get("chunks")
+    if isinstance(chunks, list):
+        named = [str(c) for c in chunks if isinstance(c, (str, int)) and str(c).strip()]
+        return ", ".join(named) or None
+    chunk = body.get("chunk")
+    return str(chunk) if isinstance(chunk, (str, int)) and str(chunk).strip() else None
 
 
 def render_markdown(report: dict) -> str:

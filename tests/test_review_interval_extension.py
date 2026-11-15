@@ -95,7 +95,7 @@ def _scenario(
     )
     _git(repo, "checkout", "-b", "feat/work", "--quiet")
     (repo / "src/app.py").write_text("x = 2\n")
-    begin = _run_begin(repo, "--mode", "chunk", "--chunk", str(ticked + 1))
+    begin = _run_begin(repo, "--mode", "chunk", "--chunks", str(ticked + 1))
     assert begin.returncode == 0, begin.stderr
     manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
     _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=findings)
@@ -214,7 +214,7 @@ class TestAFixIsToldFromTheNextChunkByItsDeliverables:
             critic_mode.binding_progress(repo, work_unit.resolve(repo)),
         )
         assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
-        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "2")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "2")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["base_commit"] == reviewed, manifest["base_commit"]
@@ -338,7 +338,7 @@ class TestNothingOwedIsSkipped:
         plan.write_text(_plan(1))
         _commit_all(repo, "tick chunk 1")
         (repo / "src/other.py").write_text("y = 1  # chunk 2\n")
-        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "2")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "2")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"],
@@ -375,14 +375,14 @@ class TestNothingOwedIsSkipped:
         plan.write_text(_plan(1))
         _commit_all(repo, "tick chunk 1")
         (repo / "src/other.py").write_text("y = 1  # chunk 2\n")
-        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "2")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "2")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"],
                        findings=[{**BLOCKING, "files": ["src/other.py"]}])
         assert _run_consolidate(repo).returncode == 0
         (repo / "src/other.py").write_text("y = 2  # an attempted fix\n")
-        verify = _run_begin(repo, "--mode", "verify-resolutions", "--chunk", "2")
+        verify = _run_begin(repo, "--mode", "verify-resolutions", "--chunks", "2")
         assert verify.returncode == 0, verify.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[])
@@ -403,7 +403,7 @@ class TestNothingOwedIsSkipped:
         covers the fix' with every chunk already built."""
         repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False)
         _commit_all(repo, "fix")
-        begin = _run_begin(repo, "--mode", "cumulative", "--chunk", "1")
+        begin = _run_begin(repo, "--mode", "cumulative", "--chunks", "1")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[WARNING])
@@ -717,7 +717,7 @@ class TestBoundaryReviewOwed:
     def test_after_the_cumulative_nothing_rides_it(self, tmp_path):
         repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=False, last_type=CUMULATIVE_FINAL)
         _commit_all(repo, "fix")
-        begin = _run_begin(repo, "--mode", "cumulative", "--chunk", "5")
+        begin = _run_begin(repo, "--mode", "cumulative", "--chunks", "5")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[WARNING])
@@ -791,7 +791,7 @@ class TestShortPlanBoundaryOwed:
 
     def test_the_close_after_a_review_of_that_chunk_names_the_cumulative(self, tmp_path):
         _short_plan_branch(tmp_path, chunks=3, committed=("01", "02"))
-        begin = _run_begin(tmp_path, "--mode", "chunk", "--chunk", "3")
+        begin = _run_begin(tmp_path, "--mode", "chunk", "--chunks", "3")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((tmp_path / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(tmp_path, "reviewer", manifest["commit_reviewed"],
