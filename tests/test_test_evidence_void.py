@@ -120,7 +120,9 @@ def _assert_voided(repo: Path, res) -> None:
         f"{status.stdout}"
     )
     first = status.stdout.splitlines()[0]
-    assert first.startswith("stale:") and "did not complete" in first, first
+    # Since #1178 the void names the recorder, so once it has exited the line
+    # reads `stale (interrupted)`: refused, failed or killed, it did not land.
+    assert first.startswith("stale (interrupted):") and "did not land" in first, first
 
 
 class TestEveryRefusalAfterTheSuiteOrReportVoids:

@@ -4,7 +4,7 @@ type: fix
 scope: test-evidence-no-stale-green
 date: 2026-11-15
 title: A record attempt that fails no longer leaves the old green vouching, and an old report no longer vouches for a newer tree
-closes: [brookstalley/prawduct#679, brookstalley/prawduct#848]
+closes: [brookstalley/prawduct#679, brookstalley/prawduct#848, brookstalley/prawduct#1178]
 ---
 Two fixes to `prawduct-hook test-evidence record`. In both, test evidence claimed more than the
 run behind it could show.
@@ -24,6 +24,23 @@ to change. `void` names the attempt for the recorder itself. Because the void is
 a green `test-run` fact for the same tree from another worktree cannot answer over it.
 `--no-rerun` refuses to restamp a void record. Usage errors refuse before the void and leave a
 good record untouched. `--from-counts` and `--no-rerun` run nothing and do not void.
+
+**`test-status` tells a run in progress from one that died, and can wait for it (#1178).** The void
+also carries `in_progress`: the recorder's pid, host, start time and command. While that process is
+alive, `test-status` prints `running:` with the elapsed time and, when the last record has a
+duration, that duration as an estimate (never a percentage). Every gate's refusal says to wait
+rather than start another run, and so does the PR gate's coverage-transfer note. Once the recorder
+is gone and nothing landed, it prints `stale (interrupted):`. A pid is checked against the
+process's start time (`ps -o etime`), so a reused pid does not read as the recorder, and an
+unreaped zombie reads as gone. Where `ps` is unavailable the pid alone is checked, and the stated
+risk is a reused pid reading as running until the wait times out. A refusal also reads as
+interrupted, since its recorder has exited. `test-status --wait [--timeout N]` (default 300s,
+at most 3600s) blocks until the record lands or the recorder dies, then prints the verdict. A
+timeout with the run still going exits 75, sysexits' "try again later": 1 would send the reader
+to run the suite again, and 3 means the subject could not be read. No hook calls it.
+`test-status` now takes arguments, so it left the no-argument set, and `/prawduct:pr`'s grant
+became `test-status*`. `lib/record_progress.py` owns the liveness check and the estimate, and
+`lib/gates.py` owns the wording.
 
 **An ingested report stamps a tree only when it is newer than every file the suite reads (#848,
 R-4).** `--from-junit` stamped the current tree onto the ingested run and appended a `test-run`
@@ -52,8 +69,10 @@ bound and its blind spots), `documentation/running-tests.md`, the `/prawduct:pr`
 advice, and the `degraded` field's comment in `lib/gates.py`.
 
 ## Consumer note
-If a `test-evidence record` refuses or is interrupted, `test-status` now reads **stale** and names
-the attempt. It no longer shows the previous green. Run the suite through the recorder, or ingest a
+While `test-evidence record` is running, `test-status` prints **running** with the elapsed time and
+an estimate from the last run. Wait for it with `prawduct-hook test-status --wait`, which exits 75
+if its timeout passes first, rather than starting a second run. If a `test-evidence record` refuses
+or is interrupted, `test-status` now reads **stale (interrupted)** and names the attempt. It no longer shows the previous green. Run the suite through the recorder, or ingest a
 whole-suite report, to get back to current. Ingesting a report that is older than your latest edit
 still records it, but only as current for this session: a later session or another worktree will
 run the suite again rather than trust it for a tree it never ran against.

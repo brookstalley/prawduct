@@ -50,8 +50,11 @@ and the tests the pool selects out because runners have no git history or backlo
 A run that reaches no result leaves no report, and the recorder refuses to record it. So does a
 command that exits non-zero while its report shows no failing test, which is what a pool run
 reporting `population_mismatch` looks like. A refused or interrupted record does not leave the
-previous green in place: the recorder marks the standing record void before it runs anything, so
-`test-status` reads stale until a record lands.
+previous green in place: the recorder marks the standing record void before it runs anything.
+While that run is going, `test-status` prints `running:` with the elapsed time and an estimate
+from the last run; wait for it with `prawduct-hook test-status --wait` (exit 75 if its timeout
+passes first) rather than starting a second run. If the recorder dies without recording,
+`test-status` prints `stale (interrupted):`.
 
 Recording needs `testament` and node installed: any command that cannot start fails the whole
 record. On a machine without testament, run the two suites yourself and ingest both reports in
