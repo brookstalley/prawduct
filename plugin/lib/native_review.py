@@ -22,6 +22,15 @@ happens to the native run after that:
   builder: the boundary pairing puts the same code's native findings to them,
   and a second unrated list beside an inner pass would manufacture rounds.
 
+- **Where it runs** (#1177): the host review checks out what it reads, and
+  forked in the session's checkout it detached the session's HEAD. So the
+  wrapper is dispatched in a worktree of its own, and runs
+  ``native-review prepare`` first: :func:`prepare` refuses in the session's
+  checkout and otherwise detaches the wrapper's OWN tree at the reviewed head,
+  where the review then reads the reviewed code. :func:`record` returns that
+  tree to the commit it started on and reports, through ``head_guard``, a
+  session HEAD that left its branch anyway.
+
 The native review returns prose. At ``high`` its findings arrive as a JSON array
 (``file``, ``line``, ``summary``, ``failure_scenario``); an empty run prints
 ``(none)``. :func:`parse_findings` reads those two shapes and says ``None`` —
@@ -89,6 +98,11 @@ def write_dispatch(prawduct_dir: Path, manifest: dict, session_model: "str | Non
         "head_tree": manifest.get("head_tree"),
         "base_commit": manifest.get("base_commit"),
         "head_commit": manifest.get("head_commit"),
+        # The session's checkout and the branch it was on at dispatch: where
+        # `prepare` must never run, and the branch `head_guard` checks HEAD is
+        # still on (#1177).
+        "worktree": manifest.get("worktree"),
+        "session_branch": manifest.get("branch"),
     }
     path = sidecar_path(prawduct_dir, manifest["id"])
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -195,6 +209,192 @@ def _read_sidecar(prawduct_dir: Path, review_id: str) -> "tuple[dict | None, str
     return data, ""
 
 
+def _update_sidecar(prawduct_dir: Path, review_id: str, fields: dict) -> "str | None":
+    """Merge ``fields`` into the sidecar; ``None`` on success, else why not."""
+    sidecar, reason = _read_sidecar(prawduct_dir, review_id)
+    if sidecar is None:
+        return reason
+    sidecar.update(fields)
+    try:
+        atomic_write_text(sidecar_path(prawduct_dir, review_id), json.dumps(sidecar, indent=2))
+    except OSError as exc:
+        return f"the sidecar could not be rewritten ({exc.__class__.__name__}: {exc})"
+    return None
+
+
+def _hook_command() -> str:
+    """The hook binary that wrote the sidecar, never whatever ``prawduct-hook``
+    PATH finds: the sidecar's writer and readers must be one build (a framework
+    checkout and its installed plugin differ)."""
+    from . import core  # noqa: PLC0415 — lazy, matching the lib's other imports
+
+    return f'python3 "{core.FRAMEWORK_DIR / "bin" / "prawduct-hook"}"'
+
+
+def prepare_command(review_id: str, project: str) -> str:
+    """What the wrapper runs first, from its own worktree (its default
+    directory): :func:`prepare`, naming the session's checkout."""
+    return f'{_hook_command()} native-review prepare {review_id} "{project}"'
+
+
+def record_command(review_id: str, project: "str | None" = None) -> str:
+    """What the wrapper runs last. Given ``project`` it changes directory into
+    the session's checkout first: the wrapper's own tree is disposable, the
+    hook's ephemeral-worktree guard refuses a state write from it, and the
+    sidecar is not there."""
+    command = f"{_hook_command()} native-review record {review_id}"
+    return f'cd "{project}" && {command}' if project else command
+
+
+def _range_head(sidecar: dict) -> "str | None":
+    """The head of the range the native review was handed (``<level>
+    <base>...<head>``): a real commit, or the unreachable one an inner review's
+    working tree was named by."""
+    tokens = str(sidecar.get("args") or "").split()
+    if len(tokens) < 2 or "..." not in tokens[1]:
+        return None
+    return tokens[1].split("...", 1)[1] or None
+
+
+def _toplevel(path: Path) -> "Path | None":
+    from . import evidence  # noqa: PLC0415 — lazy, matching the lib's other imports
+
+    rc, out, _err = evidence.run_git(path, "rev-parse", "--show-toplevel")
+    return Path(out).resolve() if rc == 0 and out else None
+
+
+def _review_tree_refusal(tree: Path, session: Path) -> "str | None":
+    """Why ``tree`` is not a tree the native review may detach, or ``None``.
+
+    Strict on purpose: a refusal costs one native sample, a wrong tree costs
+    someone's checkout. Only a clean tree of the same repository, other than
+    the session's, on no real branch (detached, or on the harness's scratch
+    branch) is the disposable tree an isolated agent is given."""
+    from . import evidence, gitstate  # noqa: PLC0415 — lazy, matching the lib's other imports
+
+    if not Path(tree).is_dir():
+        return f"{tree} is not a directory"
+    top = _toplevel(tree)
+    if top is None:
+        return f"{tree} is not a git checkout"
+    session_top = _toplevel(session) or Path(session).resolve()
+    if top == session_top:
+        return (
+            f"this is the session's checkout `{session_top}`, which a review must never move: the "
+            "native review runs in a worktree of its own (the wrapper is dispatched with "
+            '`isolation: "worktree"`)'
+        )
+    common = gitstate.git_common_dir(top)
+    if common is None or common != gitstate.git_common_dir(session_top):
+        return f"{top} is not a worktree of the same repository as {session_top}"
+    branch = gitstate.current_branch(top)
+    if branch is not None and not gitstate.is_scratch_branch(branch):
+        return f"{top} holds branch `{branch}`: someone's checkout, not a disposable review tree"
+    rc, dirty, err = evidence.run_git(top, "status", "--porcelain", "--untracked-files=no")
+    if rc != 0:
+        return f"the status of {top} could not be read ({err or rc})"
+    if dirty:
+        return f"{top} has uncommitted changes to tracked files"
+    return None
+
+
+def prepare(review_tree: Path, session_dir: Path, review_id: str) -> "tuple[int, str]":
+    """Detach the wrapper's own worktree at the reviewed head, or refuse.
+
+    ``(0, message)`` once ``review_tree`` is detached there; ``(1, reason)``
+    when it is the session's checkout, or any tree but a disposable one
+    (:func:`_review_tree_refusal`), with nothing checked out. A refusal is kept
+    in the sidecar (``prepare_refused``), so a run that never happened says
+    why. Where the tree started is kept too (``review_tree``), so
+    :func:`record` can return it."""
+    from . import evidence, gitstate  # noqa: PLC0415 — lazy, matching the lib's other imports
+
+    stop = " Nothing was checked out; do not invoke the review."
+    if not is_safe_id(review_id):
+        return 1, f"not a review id: {review_id!r}.{stop}"
+    prawduct_dir = Path(session_dir) / ".prawduct"
+    sidecar, reason = _read_sidecar(prawduct_dir, review_id)
+    if sidecar is None:
+        return 1, f"{reason}.{stop}"
+    refusal = _review_tree_refusal(Path(review_tree), Path(session_dir))
+    head = _range_head(sidecar)
+    if refusal is None and head is None:
+        refusal = f"the sidecar's range {sidecar.get('args')!r} names no head"
+    if refusal is not None:
+        unkept = _update_sidecar(prawduct_dir, review_id, {"prepare_refused": refusal})
+        return 1, f"{refusal}.{stop}" + (f" ({unkept})" if unkept else "")
+    tree = _toplevel(Path(review_tree))
+    rc, start, err = evidence.run_git(tree, "rev-parse", "HEAD")
+    if rc != 0 or not start:
+        return 1, f"the HEAD of {tree} could not be read ({err or rc}).{stop}"
+    branch = gitstate.current_branch(tree)
+    rc, _out, err = evidence.run_git(tree, "checkout", "--quiet", "--detach", head)
+    if rc != 0:
+        return 1, f"{tree} could not be detached at {head[:12]} ({err or rc}).{stop}"
+    unkept = _update_sidecar(
+        prawduct_dir, review_id,
+        {"review_tree": {"path": str(tree), "branch": branch, "commit": start}, "prepare_refused": None},
+    )
+    kept = "" if unkept is None else f" Its starting point was not kept ({unkept}), so record cannot return it."
+    session_top = _toplevel(Path(session_dir)) or session_dir
+    return 0, (
+        f"review tree {tree} detached at {head[:12]}, the reviewed head; the session's checkout "
+        f"{session_top} was not touched. Invoke the review now.{kept}"
+    )
+
+
+def _return_review_tree(project_dir: Path, sidecar: dict) -> str:
+    """Put the review tree back where :func:`prepare` found it, so the harness
+    finds the tree it made and can clean it up. A clause for record's message;
+    ``""`` when there is no tree to return (never prepared, or already gone)."""
+    from . import evidence  # noqa: PLC0415 — lazy, matching the lib's other imports
+
+    kept = sidecar.get("review_tree")
+    if not isinstance(kept, dict) or not isinstance(kept.get("path"), str):
+        return ""
+    path = Path(kept["path"])
+    if not path.is_dir():
+        return ""
+    top = _toplevel(path)
+    if top is None or top == (_toplevel(project_dir) or Path(project_dir).resolve()):
+        return ""  # never the session's checkout: prepare refuses that, so this record is stale
+    rc, dirty, err = evidence.run_git(top, "status", "--porcelain", "--untracked-files=no")
+    if rc != 0 or dirty:
+        why = "it has uncommitted changes" if rc == 0 else f"its status could not be read ({err or rc})"
+        return f"; its review tree {top} was left where the review put it: {why}"
+    branch, commit = kept.get("branch"), kept.get("commit")
+    if isinstance(branch, str) and branch:
+        rc, _out, err = evidence.run_git(top, "switch", "--quiet", branch)
+        where = f"branch `{branch}`"
+    elif isinstance(commit, str) and commit:
+        rc, _out, err = evidence.run_git(top, "checkout", "--quiet", "--detach", commit)
+        where = commit[:12]
+    else:
+        return f"; its review tree {top} was left: no starting point was kept"
+    if rc != 0:
+        return f"; its review tree {top} could not be returned to {where} ({err or rc})"
+    return f"; its review tree {top} returned to {where}"
+
+
+def _head_warning(project_dir: Path, sidecar: "dict | None") -> str:
+    """`` <loud sentence>`` when the session's HEAD has left the branch this
+    review was dispatched on, else ``""``."""
+    from . import head_guard  # noqa: PLC0415 — lazy, matching the lib's other imports
+
+    if not isinstance(sidecar, dict):
+        return ""
+    left = head_guard.left_branch(project_dir, sidecar.get("session_branch"))
+    return f" {head_guard.message(left)}" if left else ""
+
+
+#: How long after dispatch a moved HEAD is put on this review in its
+#: ``NEXT-ACTION``. The mover guarded against is the native run, which the
+#: wrapper keeps alive at most a background ``sleep 900`` past a review of about
+#: a hundred seconds; an hour covers it, and keeps a record re-rendered the next
+#: day from blaming this review for a deliberate detach made since.
+HEAD_WATCH_SECONDS = 3600
+
+
 def _seconds_since(stamp) -> "float | None":
     try:
         then = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -206,12 +406,15 @@ def _seconds_since(stamp) -> "float | None":
 def _tree_moved(project_dir: Path, sidecar: dict) -> "bool | None":
     """Whether a file in the reviewed interval, outside ``.prawduct/``, differs
     in the working tree now from the tree the review read — the native review
-    reads source and docs from the working tree, and a builder may fix one
-    before it lands. ``.prawduct/`` holds the records about the work, which
+    reads source and docs from the tree it runs in, and a builder may fix one
+    before it lands. A run :func:`prepare` placed read its own tree at the
+    reviewed head, so for it the answer is ``False``. ``.prawduct/`` holds the records about the work, which
     consolidation and the builder write during any review. ``None`` when it
     cannot be told: unknown, never "no"."""
     from . import evidence  # noqa: PLC0415 — lazy, matching the lib's other imports
 
+    if isinstance(sidecar.get("review_tree"), dict):
+        return False  # read in its own tree at the reviewed head: nothing could move under it
     base, head = sidecar.get("base_tree"), sidecar.get("head_tree")
     if not (isinstance(base, str) and base and isinstance(head, str) and head):
         return None
@@ -281,8 +484,9 @@ def record(project_dir: Path, prawduct_dir: Path, review_id: str) -> "tuple[int,
         f"; its reviewed trees could not be pinned under {PIN_PREFIX}/{review_id}/, so git gc may "
         "prune them before verification (run it again, or `compare.py --pin`)"
     )
+    after = _return_review_tree(project_dir, sidecar) + _head_warning(project_dir, sidecar)
     if ledger.native_review_event_exists(prawduct_dir, review_id):
-        return 0, f"native review {review_id} is already recorded; nothing appended{unpinned}"
+        return 0, f"native review {review_id} is already recorded; nothing appended{unpinned}{after}"
     findings = parse_findings(text)
     # A sidecar written before inner reviews paired carries no mode or stage;
     # every run dispatched then was a boundary `cumulative`.
@@ -308,7 +512,7 @@ def record(project_dir: Path, prawduct_dir: Path, review_id: str) -> "tuple[int,
         duration_seconds=_seconds_since(sidecar.get("dispatched_at")),
     )
     counted = f"{len(findings)} finding(s)" if findings is not None else "findings not countable from the text"
-    return 0, f"native review {review_id} recorded: {counted}{unpinned}"
+    return 0, f"native review {review_id} recorded: {counted}{unpinned}{after}"
 
 
 def show(prawduct_dir: Path, review_id: "str | None" = None) -> "tuple[int, str]":
@@ -342,16 +546,24 @@ def next_action_clause(prawduct_dir: Path, review_id: "str | None") -> str:
     landed and holds no countable answer; "text unreadable" when it exists and
     cannot be read; and otherwise that it may still be running — never "still
     running", which the next session's briefing would repeat after it finished.
-    It never says the native review gates anything, and says nothing for an
-    inner run (the module docstring says why)."""
+    It never says the native review gates anything, and says nothing of an
+    inner run's list (the module docstring says why).
+
+    Either stage leads with ``head_guard``'s sentence when the session's HEAD
+    has left the branch the review was dispatched on, within
+    :data:`HEAD_WATCH_SECONDS` of the dispatch (#1177): a moved HEAD is not a
+    finding, and it is what the builder must act on before their next commit."""
     if not is_safe_id(review_id) or not sidecar_path(prawduct_dir, review_id).is_file():
         return ""
-    # Only a sidecar that SAYS inner silences the clause: one that exists and
+    # Only a sidecar that SAYS inner silences the list: one that exists and
     # cannot be read still means a native list was dispatched, and the builder
     # is owed the pointer to it.
     sidecar, _reason = _read_sidecar(prawduct_dir, review_id)
+    elapsed = _seconds_since((sidecar or {}).get("dispatched_at"))
+    watched = elapsed is not None and elapsed <= HEAD_WATCH_SECONDS
+    warning = _head_warning(Path(prawduct_dir).parent, sidecar) if watched else ""
     if sidecar is not None and (sidecar.get("stage") or "boundary") != "boundary":
-        return ""
+        return warning
     command = f"`{SHOW_COMMAND} {review_id}`"
     unreadable = False
     try:
@@ -367,9 +579,16 @@ def next_action_clause(prawduct_dir: Path, review_id: "str | None") -> str:
         counted = f" ({len(findings)} finding(s))"
     elif text.strip():
         counted = " (landed, not countable)"
+    elif sidecar is not None and sidecar.get("prepare_refused"):
+        # `prepare` refused its tree, so no review ran and none will land:
+        # "may still be running" would be false for good (#1177).
+        return warning + (
+            " A paired native review of this range (#1130) did not run: its worktree check "
+            f"refused ({sidecar['prepare_refused']}). It gates nothing."
+        )
     else:
         counted = " (it may still be running)"
-    return (
+    return warning + (
         f" A paired native review of this range (#1130) ran beside it{counted}: read its list "
         f"with {command} and work from both lists before fixing. It gates nothing."
     )
