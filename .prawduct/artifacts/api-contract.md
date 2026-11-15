@@ -175,7 +175,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   — exit 0 prints `ok`, exit 1 prints the parse error with its line and column or the validation
   reason (fix the file), exit 3 means nothing can check it: no manifest owns it, or it is keyed to
   another review (stop), exit 2 is a usage error; a reviewer runs it on its own file before
-  returning), `native-review record <review-id> [--text-file <absolute path>]` (mutating; the
+  returning), `native-review prepare <review-id> <session checkout>` (mutating; the paired native
+  review's wrapper runs it first, from its OWN isolated worktree: detaches that worktree at the
+  reviewed head and prints the path inside it where the wrapper saves the review text, exit 0 —
+  exit 1 with the reason, kept in the sidecar as `prepare_refused`, when the tree is the session's
+  own checkout, sits on a real branch, is dirty, belongs to another repository, or the sidecar names
+  no head; exit 2 on a usage error), `native-review record <review-id> [--text-file <absolute path>]` (mutating; the
   paired native review's wrapper runs it from the session's checkout after saving the text in its
   own worktree: copies the text into `.prawduct/.native-reviews/` from that worktree, which the
   sidecar names, or from `--text-file`, deletes the copy in the review worktree, and appends one
