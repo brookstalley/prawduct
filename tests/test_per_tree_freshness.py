@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
 
-from test_plugin_runtime import _git, _run_in  # noqa: E402
+from test_plugin_runtime import _git, _run_in, as_just_run  # noqa: E402
 
 from lib import evidence  # noqa: E402
 
@@ -52,6 +52,7 @@ def _record(repo: Path, xml: str = _GREEN, *extra: str):
     # The report lives OUTSIDE the repo so it is never part of a captured tree.
     junit = repo.parent / "report.xml"
     junit.write_text('<?xml version="1.0" encoding="utf-8"?>\n' + xml)
+    as_just_run(junit)
     res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit), *extra)
     assert res.returncode in (0, 1), res.stderr
     return res
@@ -125,7 +126,12 @@ class TestEachCandidateFindsWhatOnlyItCan:
         # and a detached worktree — only the tree itself matches.
         repo = _repo(tmp_path)
         _branch(repo, "feat-a", "A = 1\n")
-        _record(repo)  # first record: no prior evidence file in the tree
+        # The record ignored, as the managed .gitignore has it in a product
+        # repo: a record attempt writes its in-progress stub before the run
+        # (#1178 R-8), so an unignored record is always in the captured tree,
+        # and only the tree can match here.
+        (repo / ".git" / "info" / "exclude").write_text(".prawduct/.test-evidence.json\n")
+        _record(repo)
         _branch(repo, "feat-a2", "A = 1\n")
         wt = tmp_path / "wt2"
         _git(repo, "worktree", "add", "-q", "--detach", str(wt), "feat-a2")

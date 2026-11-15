@@ -83,17 +83,25 @@ report: its counts never become the suite's, which is the point of refusing rath
 it. The standing evidence record does not survive as it was, though. Every `record` that runs a
 suite or reads a report first marks the standing record void, and only a record that lands
 replaces it. An earlier green does not go on vouching for a tree whose latest attempt failed.
-The void also names the recorder (`in_progress`: its pid, host, start time and command), so
-`test-status` tells three states apart. While the recorder is alive it prints `running:`, with the
-time elapsed against the last recorded run's duration as an estimate, and every gate's refusal
-says to wait for the run rather than start another. Once the recorder is gone and nothing landed
-(the attempt was refused, failed or was killed) it prints `stale (interrupted):`. Otherwise it
-prints the usual verdict. A pid is checked against the process's start time, so a reused pid does
-not read as the recorder. `test-status --wait [--timeout N]` blocks until the record lands or the
-recorder dies, then prints the verdict; it exits 75 if the timeout passes with the run still
-going. The void is carried as `degraded`, the field every reader already refuses. It keeps the
-earlier counts, so the record still says what was last measured, and `--no-rerun` refuses to
-restamp it. Usage errors refuse before the void, and leave a good record alone.
+The void also names the recorder (`in_progress`: its pid, host, machine, start time and
+command), so `test-status` tells three states apart. While the recorder is alive it prints
+`running:`, with the time elapsed against the last recorded run's duration as an estimate, and
+every refusal and remedy says to wait for the run rather than start another; the remedy comes from
+one owner, `gates.suite_remedy`, which every caller prints. Once the recorder is gone and nothing
+landed (the attempt was refused, failed or was killed) it prints `stale (interrupted):`. Otherwise
+it prints the usual verdict. A pid is checked against the process's start time, so a reused pid
+does not read as the recorder. "Machine" is the boot (and, on Linux, the pid namespace), not the
+hostname, which macOS changes with the network. A recorder whose life cannot be checked, because
+it ran on another machine or `ps` is unavailable, reads as running only until it is three times
+the last run's duration old (at least 30 minutes), and as interrupted after that. Its refusal
+says when, and that if no run is going there, the suite can be run now. `test-status --wait
+[--timeout N]` blocks until the record lands or the recorder dies, then prints the verdict; it
+exits 75 if the timeout passes with the run still going. The void is carried as `degraded`, the
+field every reader already refuses. It keeps the earlier counts, so the record still says what was
+last measured, and `--no-rerun` refuses to restamp it. With no usable record to keep (none, an
+unreadable one, or one the schema refuses), the void is a stub with zero counts, so a first run
+shows as `running:` too, and a refused first attempt reads as interrupted rather than as no
+evidence. Usage errors refuse before the void, and leave a good record alone.
 
 | Condition | Result |
 |---|---|
@@ -279,15 +287,21 @@ advisory that fails *silently* manufactures the confidence it exists to check.
 - **A report proves a run happened, with the scope its record states. It never proves which tree
   that run met.** `--from-junit` stamps the current tree onto the run it ingests, and that stamp
   is what lets a later session or another worktree reuse the run. So the stamp is given only when
-  every report is at least as new as every file the suite reads. "Every file" covers tracked and
-  untracked files the suite can depend on, plus files deleted since. A deleted file is dated by
-  the directory it left, including one removed by a commit or checkout after the report. Otherwise
-  the record is written without a tree. It stays current this session only, and a `warning:` names
-  the file. The bound reads modification times, the reader's own observation. It never compares
-  `at` or the report's own timestamp, which the producer wrote; `at` is for an operator to check.
-  Its blind spots all lean toward a stamp. A tool that preserves old modification times (`rsync -a`,
-  archive extraction) makes new content look old. An untracked file removed after the report is in
-  no listing. A filesystem with coarse timestamps can tie an edit with the report it follows.
+  every file the suite reads is no newer than the moment the run behind each report STARTED. The
+  report's modification time is when the run ended, so an edit made while the suite ran would
+  predate it. The start is read as the earlier of two values: the report's modification time less
+  its recorded duration (the `<testsuites>` `time`, else the sum of the `<testsuite>` times), and
+  a `<testsuite>` `timestamp` that carries a UTC offset, which pytest writes. A report that gives
+  neither withholds the stamp. A naive timestamp is a local time on an unknown clock and is not
+  read. "Every file" covers tracked and untracked files the suite can depend on, plus files
+  deleted since. A deleted file is dated by the directory it left, including one removed by a
+  commit or checkout after the run started. Otherwise the record is written without a tree. It
+  stays current this session only, and a `warning:` names the file. A file the suite itself writes
+  into a path it reads, unignored, also withholds the stamp, as the live run's before-and-after
+  tree check does. The blind spots all lean toward a stamp. A tool that preserves old modification
+  times (`rsync -a`, archive extraction) makes new content look old. An untracked file removed
+  after the run is in no listing. A filesystem with coarse timestamps can tie an edit with the
+  run's start, and a duration rounded to the millisecond can read the start that much late.
 - **A report carried away from where it was produced, WITH its record, is refused.** The record
   names the report it describes by absolute path, so a report and record downloaded from CI and
   ingested on a developer's machine do not match and the ingest refuses. That is deliberate — a

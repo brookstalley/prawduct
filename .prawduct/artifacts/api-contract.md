@@ -925,7 +925,8 @@ Fail-direction is deliberate and per-purpose:
   stale, red or degraded (added 2026-11-15, #724) — `gates.tests_are_current`'s reason on stdout,
   checked before anything is derived (no manifest, no marker, one `guard-refusal` fact). Distinct
   from **1** because exit 1 on `verify-resolutions` demotes, and a wider mode reviews the same tree
-  over the same stale suite; the remedy is the suite, then the same mode. Absent evidence does not
+  over the same stale suite; the remedy printed is `gates.suite_remedy`'s (wait for a record attempt
+  still running, else run the suite), then the same mode. Absent evidence does not
   refuse. `--force` dispatches anyway;
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
   `test-status --wait` **75** = the wait timed out with the run still in progress (added

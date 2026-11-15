@@ -5188,12 +5188,19 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         repo, base_tree = self._branch(tmp_path)
         base_wt = tmp_path / "base-wt"
         _git(repo, "worktree", "add", "--detach", "--quiet", str(base_wt), "main")
+        # The record ignored, as a product repo's managed .gitignore has it: the
+        # attempt's in-progress stub (#1178 R-8) is written before the tree is
+        # captured, so an unignored one would make the run's tree not the base's.
+        (repo / ".git" / "info" / "exclude").write_text(".prawduct/.test-evidence.json\n")
         report = tmp_path / "report.xml"  # outside both checkouts, so not in the tree
         report.write_text(
             '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="s" time="1">'
             '<testcase classname="c" name="t1"><failure/></testcase>'
             '<testcase classname="c" name="ok"/></testsuite></testsuites>'
         )
+        from test_plugin_runtime import as_just_run  # noqa: PLC0415
+
+        as_just_run(report)  # the run starts after the worktree it reads
         recorded = subprocess.run(
             [sys.executable, str(HOOK), "test-evidence", "record", "--from-junit", str(report)],
             cwd=str(base_wt), capture_output=True, text=True,

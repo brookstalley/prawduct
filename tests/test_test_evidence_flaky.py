@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
 
-from test_plugin_runtime import _git, _run_in  # noqa: E402
+from test_plugin_runtime import _git, _run_in, as_just_run  # noqa: E402
 
 from lib import evidence  # noqa: E402
 
@@ -45,6 +45,7 @@ def _record(repo: Path, cases: str, *extra: str):
         '<?xml version="1.0" encoding="utf-8"?>\n'
         f'<testsuites><testsuite name="s" time="1.0">{cases}</testsuite></testsuites>'
     )
+    as_just_run(junit)
     res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit), *extra)
     ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
     return res, ev

@@ -24,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
 
-from test_plugin_runtime import _git, _run_in  # noqa: E402
+from test_plugin_runtime import _git, _run_in, as_just_run  # noqa: E402
 
 from lib import evidence, verdict_cache  # noqa: E402
 
@@ -51,6 +51,7 @@ def _test_runs(repo: Path) -> list[dict]:
 def _record_junit(repo: Path, xml: str, *extra: str):
     junit = repo / "report.xml"
     junit.write_text('<?xml version="1.0" encoding="utf-8"?>\n' + xml)
+    as_just_run(junit)
     return _run_in(repo, "test-evidence", "record", "--from-junit", str(junit), *extra)
 
 

@@ -20,6 +20,9 @@ meaning". The value is pinned as a literal because it is a contract.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,7 +39,7 @@ from test_critic_consolidate import (
 )
 from test_cumulative_gate import _write_test_evidence
 
-from lib import evidence, gates
+from lib import critic_consolidate, evidence, gates, record_progress
 
 STALE_EVIDENCE_EXIT = 7
 GUARD = "critic-dispatch-stale-evidence"
@@ -127,6 +130,9 @@ class TestRefusesOnStaleEvidence:
 
         _assert_refused_before_dispatch(repo, result, reason)
 
+    def test_the_slug_set_names_every_state_the_owner_returns(self):
+        assert set(critic_consolidate.STALE_EVIDENCE_REASONS) == set(gates.SUITE_STATES)
+
     @pytest.mark.parametrize(("evidence_kwargs", "slug"), [
         ({"failed": 1}, "failing"),
         ({"degraded": "contended"}, "degraded"),
@@ -150,6 +156,46 @@ class TestRefusesOnStaleEvidence:
         assert body["verdict"] == verdict
         assert body["branch"] == "main"
         assert "refused_fields" not in body
+
+
+def _in_progress_record(repo: Path, pid: int) -> None:
+    """A void the recorder leaves while its run is going, naming `pid`."""
+    record_progress.forget()
+    _write_test_evidence(repo, degraded="record attempt did not complete", omit_tree=True)
+    path = repo / ".prawduct" / ".test-evidence.json"
+    record = json.loads(path.read_text())
+    record["void"] = "record attempt did not complete"
+    record["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    record["in_progress"] = record_progress.stamp("pytest", record["timestamp"]) | {"pid": pid}
+    path.write_text(json.dumps(record))
+
+
+class TestTheRemedyFollowsTheRecordsState:
+    """R-4: the exit-7 text printed its own 'Run the declared suite' after a
+    verdict that said a run was already going, so an obedient agent started a
+    second suite on top of the first."""
+
+    def test_a_run_in_progress_is_told_to_wait_not_to_run_the_suite(self, tmp_path):
+        repo = _repo_owing_a_verify(tmp_path)
+        _in_progress_record(repo, os.getpid())  # this test process: alive
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == STALE_EVIDENCE_EXIT, result.stdout + result.stderr
+        assert "test-status --wait" in result.stdout, result.stdout
+        assert "Run the declared suite" not in result.stdout, result.stdout
+        assert "run the suite and record it" not in result.stdout.lower(), result.stdout
+        assert _stale_guard_facts(repo)[0]["body"]["reason"] == "running"
+
+    def test_an_interrupted_run_is_told_to_run_the_suite(self, tmp_path):
+        """The control: same refusal, recorder gone, so the remedy is a run."""
+        repo = _repo_owing_a_verify(tmp_path)
+        dead = subprocess.Popen([sys.executable, "-c", "pass"])
+        dead.wait()
+        _in_progress_record(repo, dead.pid)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == STALE_EVIDENCE_EXIT, result.stdout + result.stderr
+        assert "test-evidence record" in result.stdout, result.stdout
+        assert "test-status --wait" not in result.stdout, result.stdout
+        assert _stale_guard_facts(repo)[0]["body"]["reason"] == "interrupted"
 
 
 class TestProceedsWhereItMust:

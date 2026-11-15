@@ -904,10 +904,12 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         # vouched is what lets a reader disagree with it.
         print(f"  suite: green — {suite_reason}.")
     else:
+        # The remedy is the one owner's (#1178 R-4): a run in progress is told
+        # to wait for it, never to start a second suite on top of the first.
         print(
             f"unproven-suite: {suite_reason}. Nothing has said this code "
-            "passes, and a release publishes unrecallably — run the suite and "
-            "record it (`prawduct-hook test-evidence record`), then re-run.",
+            "passes, and a release publishes unrecallably — "
+            f"{gates.suite_remedy(project_dir).remedy}, then re-run.",
             file=sys.stderr,
         )
 
