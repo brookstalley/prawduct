@@ -82,9 +82,16 @@ report, and applies these rules in order. Every refusal exits 2 and records noth
 report: its counts never become the suite's, which is the point of refusing rather than recording
 it. The standing evidence record does not survive as it was, though. Every `record` that runs a
 suite or reads a report first marks the standing record void, and only a record that lands
-replaces it. So after a refusal, or a run killed before it recorded, `test-status` reads stale and
-names the attempt. An earlier green does not go on vouching for a tree whose latest attempt
-failed. The void is carried as `degraded`, the field every reader already refuses. It keeps the
+replaces it. An earlier green does not go on vouching for a tree whose latest attempt failed.
+The void also names the recorder (`in_progress`: its pid, host, start time and command), so
+`test-status` tells three states apart. While the recorder is alive it prints `running:`, with the
+time elapsed against the last recorded run's duration as an estimate, and every gate's refusal
+says to wait for the run rather than start another. Once the recorder is gone and nothing landed
+(the attempt was refused, failed or was killed) it prints `stale (interrupted):`. Otherwise it
+prints the usual verdict. A pid is checked against the process's start time, so a reused pid does
+not read as the recorder. `test-status --wait [--timeout N]` blocks until the record lands or the
+recorder dies, then prints the verdict; it exits 75 if the timeout passes with the run still
+going. The void is carried as `degraded`, the field every reader already refuses. It keeps the
 earlier counts, so the record still says what was last measured, and `--no-rerun` refuses to
 restamp it. Usage errors refuse before the void, and leave a good record alone.
 

@@ -40,7 +40,7 @@ in an unattended run can answer. The old workaround was to write both spellings;
 the house form replaces the pair with one line that cannot fall out of step.
 
 The one exception is a command that takes **no arguments at all**
-(`test-status`, `resolve-base`, `check-pr-doc-only`): those are granted bare,
+(`resolve-base`, `check-pr-doc-only`): those are granted bare,
 `Bash(prawduct-hook <cmd>)`, because a star there would widen the grant past
 anything the command can do.
 

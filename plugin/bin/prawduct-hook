@@ -4561,7 +4561,10 @@ def _void_test_evidence(evidence_path: Path, attempt: str) -> dict:
     * ``evidence_tree`` is removed, so the void claims no tree, and a refused run
       with no tree denies there ("cannot tell" counts as met when refused);
     * ``void`` names the attempt. No gate reads it; the restamp does, and refuses
-      a void record rather than carrying its counts onto a fresh tree.
+      a void record rather than carrying its counts onto a fresh tree;
+    * ``in_progress`` names the recorder (``record_progress.stamp``: pid, host,
+      start time, command), so ``test-status`` and the gates can tell a run
+      still going (wait) from one that died (interrupted) — #1178.
 
     The counts, command and every other field are kept, so the record still
     passes the schema and says which run its counts came from. No record, or
@@ -4596,6 +4599,21 @@ def _void_test_evidence(evidence_path: Path, attempt: str) -> dict:
     voided.update(
         timestamp=now, void=void, void_counts_from=counts_from, degraded=degraded
     )
+    # Who is running, so a reader can tell this attempt still going from one
+    # that died (#1178): `test-status` says `running` and the gates say to
+    # wait while the recorder lives, and `stale (interrupted)` once it is gone.
+    # A record that lands carries no stamp; a refusal leaves it naming a
+    # process that has exited, which reads as interrupted.
+    try:
+        from lib import record_progress  # noqa: PLC0415 — lazy keeps top-level cheap
+
+        voided["in_progress"] = record_progress.stamp(attempt, now)
+    except ImportError as exc:
+        print(
+            f"note: the record attempt is not stamped as in progress ({exc}); "
+            "test-status will read it as stale until it lands.",
+            file=sys.stderr,
+        )
     tmp = evidence_path.with_name(evidence_path.name + ".tmp")
     try:
         tmp.write_text(json.dumps(voided, indent=2, sort_keys=True) + "\n")
@@ -7286,7 +7304,7 @@ def _narrowed_run_lines(project_dir: Path) -> list[str]:
     return lines
 
 
-def cmd_test_status(project_dir: Path) -> int:
+def cmd_test_status(project_dir: Path, argv: list[str]) -> int:
     """Report whether the saved suite run is fresh enough to trust, and on
     which of the two grounds — the tree it ran against, or the session it ran
     in. Exit 0 does NOT by itself establish that the evidence covers the
@@ -7296,8 +7314,42 @@ def cmd_test_status(project_dir: Path) -> int:
     After the verdict line (first, so a reader of one line still has it), the
     delegates' narrowed runs (DG2), one line per scratch worktree — so a
     delegate's green is attributable to the tree and ceiling it ran on. They
-    change neither the verdict nor the exit code."""
-    rc = _gates().test_status(project_dir)
+    change neither the verdict nor the exit code.
+
+    ``--wait [--timeout N]`` (#1178) blocks while a record attempt is in
+    progress — until it lands, its recorder dies, or N seconds pass (default
+    ``record_progress.WAIT_DEFAULT_SECONDS``, at most ``WAIT_MAX_SECONDS``) —
+    then prints the verdict; a timeout with the run still going exits 75. No
+    hook calls it: a hook must never block on a suite. ``--timeout`` without
+    ``--wait``, a value that is not a positive number within the bound, and any
+    other token are usage errors (exit 2)."""
+    from lib import record_progress  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    rest = list(argv)
+    timeout = None
+    if "--timeout" in rest:
+        k = rest.index("--timeout")
+        raw = rest[k + 1] if k + 1 < len(rest) else ""
+        del rest[k : k + 2]
+        try:
+            timeout = float(raw)
+        except ValueError:
+            timeout = None
+        if timeout is None or not 0 < timeout <= record_progress.WAIT_MAX_SECONDS:
+            print(
+                f"test-status: --timeout takes a number of seconds above 0 and at most "
+                f"{record_progress.WAIT_MAX_SECONDS}, got {raw!r}",
+                file=sys.stderr,
+            )
+            return 2
+    rejected = _reject_unknown_args("test-status", rest, {"--wait"})
+    if rejected is not None:
+        return rejected
+    wait = "--wait" in rest
+    if timeout is not None and not wait:
+        print("test-status: --timeout applies only with --wait", file=sys.stderr)
+        return 2
+    rc = _gates().test_status(project_dir, wait=wait, timeout=timeout)
     for line in _narrowed_run_lines(project_dir):
         print(line)
     return rc
@@ -11938,7 +11990,6 @@ _NO_ARGUMENT_COMMANDS = frozenset({
     "critic-end",
     "print-install-reference",
     "resolve-base",
-    "test-status",
     "validate-evidence",
     "verify-coverage",
     "python-floor",
@@ -12092,7 +12143,7 @@ def _dispatch() -> int:
     elif command == "stop":
         return cmd_stop(project_dir, _read_stop_stdin())
     elif command == "test-status":
-        return cmd_test_status(project_dir)
+        return cmd_test_status(project_dir, sys.argv[2:])
     elif command == "validate-evidence":
         return cmd_validate_evidence(project_dir)
     elif command == "test-evidence":

@@ -213,7 +213,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `--from-counts` there exit 2, since neither records a fact. A narrowed fact is attribution only —
   the freshness fallback neither vouches nor denies by it. `test-status` prints its verdict line
   first, then one line per scratch worktree's newest narrowed run (at most 10); its exit code is
-  unchanged.
+  unchanged. A record attempt that has not landed prints `running:` (its recorder alive) or
+  `stale (interrupted):` (gone) ahead of the verdict, both exit 1 (#1178). `test-status --wait
+  [--timeout N]` (default 300s, at most 3600) blocks until the record lands or the recorder dies
+  and then answers as a bare call would; a timeout with the run still going exits **75** (see
+  Error Model). No hook calls it.
 - **Evidence transport** — `review`, `resolution`, `chunk-imported` and `chunk-retracted` facts travel between clones
   as their store lines in notes on `refs/notes/prawduct` (`data-model.md` § Evidence Store).
   `evidence ingest [--all] [--json]` (mutating) appends the note lines the store lacks, bounded to
@@ -903,7 +907,13 @@ Fail-direction is deliberate and per-purpose:
   a plugin; a demoted one would append its fact to a store nothing can parse. **5 is withdrawn,
   not free:** #167's `self-inflicted-refusal` held it on `develop` until its 2026-09-20 revert,
   and never shipped in a release, so it is left unclaimed rather than given a new meaning;
-  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
+  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
+  `test-status --wait` **75** = the wait timed out with the run still in progress (added
+  2026-11-15, #1178). sysexits' EX_TEMPFAIL, "try again later", which is the remedy. Folded into
+  **1** it reads as stale, whose remedy (run the suite) starts the second run the wait exists to
+  prevent; folded into **3** it claims the subject could not be read, and it was read: the run is
+  still going. Not **5**, which stays withdrawn. 75 is also what testament exits for a verdict worth
+  asking for again, so agents in this ecosystem already read it that way.
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command went inert and was
   then removed (#303), so those two meanings were removed rather than given new ones. Retiring a
   meaning is what the additive-first norm permits; the thing it forbids is a new meaning wearing

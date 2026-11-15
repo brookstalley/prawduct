@@ -44,6 +44,7 @@ from datetime import datetime, timezone
 import re
 import shlex
 import sys
+import time
 from pathlib import Path
 
 from . import (
@@ -325,6 +326,42 @@ def _parse_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     return record, ""
 
 
+#: ``test-status``'s labels for a record attempt that has not landed (#1178):
+#: its recorder is alive, or it is gone and nothing landed. Both exit 1, like
+#: ``stale:`` — the run is not evidence yet — and ``interrupted`` keeps the
+#: ``stale`` prefix because that is what it is.
+RUNNING_LABEL = "running"
+INTERRUPTED_LABEL = "stale (interrupted)"
+
+
+def record_in_progress(run: dict) -> "tuple[str, str] | None":
+    """``(state, reason)`` for a record carrying the recorder's ``in_progress``
+    stamp, or ``None`` when it carries none. ``state`` is
+    ``record_progress.RUNNING``, ``ELSEWHERE`` (another host's, which cannot be
+    checked and is treated as running) or ``GONE``. One owner for the sentence,
+    so the refusal every gate prints and ``test-status``'s line say the same."""
+    stamp = run.get("in_progress")
+    if stamp is None:
+        return None
+    from . import record_progress  # noqa: PLC0415 — lazy: only an in-flight record needs it
+
+    state, why = record_progress.recorder_state(stamp)
+    who = record_progress.describe(stamp)
+    if state == record_progress.GONE:
+        return state, (
+            f"the record attempt ({who}) did not land, and its recorder is no longer "
+            f"running ({why}): it was refused, failed, or was killed. Run the suite "
+            "through the recorder again, or ingest the report of a whole-suite run"
+        )
+    where = f" ({why})" if why else ""
+    return state, (
+        f"a suite run is in progress ({who}; "
+        f"{record_progress.progress(stamp, run.get('duration_seconds'))}){where}. "
+        "Wait for it to record — `prawduct-hook test-status --wait` — and do not "
+        "start another"
+    )
+
+
 def run_refusal(run: dict) -> str:
     """Why a recorded run may not vouch for anything, or ``""`` if it may.
 
@@ -333,7 +370,17 @@ def run_refusal(run: dict) -> str:
     and a ``test-run`` fact alike — so the store cannot come to trust a run the
     record's own reader would refuse. A count that is not an integer refuses:
     a fact body is not schema-checked the way the record is.
+
+    **A record attempt in progress answers first (#1178).** The write-ahead void
+    keeps the previous run's counts, so without this a red earlier run would be
+    named as the reason and a green one would say "run the suite" — both of
+    which send a reader to start a second run on top of the first. While the
+    recorder lives the refusal says to wait; once it is gone, that the attempt
+    was interrupted. Only the worktree's own record carries the stamp.
     """
+    progress = record_in_progress(run)
+    if progress is not None:
+        return progress[1]
     failed = run.get("failed")
     if not isinstance(failed, int) or isinstance(failed, bool):
         return "the saved run carries no valid failure count"
@@ -2410,7 +2457,9 @@ def _merge_base_verdict(
         return verdict
     tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
     if not tests_ok:
-        verdict["transfer_note"] = transfer_remedy(transfer, tests_reason)
+        verdict["transfer_note"] = transfer_remedy(
+            transfer, tests_reason, in_progress=_suite_run_in_progress(project_dir)
+        )
         return verdict
     # Recording is OPT-IN, and the reason is the second caller. This verdict is
     # read by the Stop gate (authority, session end) and by the session-start
@@ -2535,7 +2584,23 @@ def _repo_relative(project_dir: Path, path: Path) -> str:
         return path.as_posix()
 
 
-def test_status(project_dir: Path) -> int:
+def _suite_run_in_progress(project_dir: Path) -> bool:
+    """True while this worktree's recorder is running (or on another host)."""
+    from . import record_progress  # noqa: PLC0415 — lazy, as in record_in_progress
+
+    progress = _in_progress_now(project_dir)
+    return progress is not None and progress[0] != record_progress.GONE
+
+
+def _in_progress_now(project_dir: Path) -> "tuple[str, str] | None":
+    """:func:`record_in_progress` for this worktree's saved record, or None."""
+    record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+    return record_in_progress(record) if record is not None else None
+
+
+def test_status(
+    project_dir: Path, *, wait: bool = False, timeout: "float | None" = None
+) -> int:
     """Print whether saved test evidence is fresh enough to trust.
 
     Used by builders and the Critic to decide whether to re-run the test suite.
@@ -2550,10 +2615,47 @@ def test_status(project_dir: Path) -> int:
     re-run" — this is disclosure, not a new gate, and the exit codes are
     unchanged.
 
+    **A record attempt that has not landed has its own two lines (#1178)**,
+    ahead of the freshness verdict: :data:`RUNNING_LABEL` while its recorder is
+    alive (with elapsed time against the last run's duration, as an estimate),
+    and :data:`INTERRUPTED_LABEL` once it is gone. Both exit 1.
+
+    ``wait`` blocks while a run is in progress — until its record lands, its
+    recorder dies, or ``timeout`` seconds pass — then prints the verdict. Never
+    called from a hook: a hook must not block on a suite.
+
     Exit codes:
       0  - tests are current; safe to skip re-running
-      1  - tests are stale or no evidence
+      1  - tests are stale or no evidence, or a run is in progress
+      75 - ``wait`` timed out with the run still in progress
+           (``record_progress.WAIT_TIMEOUT_EXIT``)
     """
+    from . import record_progress  # noqa: PLC0415 — lazy, as in record_in_progress
+
+    limit = record_progress.WAIT_DEFAULT_SECONDS if timeout is None else timeout
+    timed_out = False
+    if wait:
+        deadline = time.monotonic() + limit
+        while True:
+            progress = _in_progress_now(project_dir)
+            if progress is None or progress[0] == record_progress.GONE:
+                break
+            if time.monotonic() >= deadline:
+                timed_out = True
+                break
+            time.sleep(record_progress.WAIT_POLL_SECONDS)
+    progress = _in_progress_now(project_dir)
+    if progress is not None:
+        state, reason = progress
+        label = INTERRUPTED_LABEL if state == record_progress.GONE else RUNNING_LABEL
+        print(f"{label}: {reason}")
+        if timed_out:
+            print(
+                f"timed out after waiting {limit:g}s with the run still in progress — "
+                "wait again (a longer --timeout if need be); do not start another run"
+            )
+            return record_progress.WAIT_TIMEOUT_EXIT
+        return 1
     is_current, reason, clause = tests_are_current(project_dir)
     if is_current:
         label = CURRENT_TREE_LABEL if clause == "tree" else CURRENT_SESSION_LABEL
@@ -2638,8 +2740,13 @@ def transfer_remedy(
     *,
     untracked: "list[str] | None" = None,
     index_deleted: "list[str] | None" = None,
+    in_progress: bool = False,
 ) -> str:
     """The remedy prose for a base-advance transfer that did not grant.
+
+    ``in_progress`` (#1178): a suite run is already under way in this worktree,
+    so the remedy is to wait for its record and re-run the gate — telling the
+    reader to run the suite would start a second one on top of it.
 
     Both gates that attempt the transfer render this — the PR gate's `uncovered`
     block and the Stop gate's ``transfer_note`` — so the wording has one home
@@ -2688,6 +2795,12 @@ def transfer_remedy(
         "condition denying the transfer is that no saved suite run has met this "
         f"tree ({tests_reason})."
     )
+    if in_progress:
+        return (
+            f"{lead} Wait for that run to record (`prawduct-hook test-status --wait`), "
+            "then re-run this gate: if the run met this tree, the coverage transfers "
+            "and no review is needed. Do not start another run."
+        )
     if uncommitted:
         flag = "--include-untracked" if untracked else ""
         paths = " ".join(shlex.quote(p) for p in uncommitted)
@@ -3334,6 +3447,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
                 explained.get("uncommitted"),
                 untracked=explained.get("untracked"),
                 index_deleted=explained.get("index_deleted"),
+                in_progress=_suite_run_in_progress(project_dir),
             ),
             file=sys.stderr,
         )
