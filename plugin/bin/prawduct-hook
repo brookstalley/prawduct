@@ -2756,28 +2756,58 @@ def cmd_critic_consolidate(project_dir: Path, args: list[str] | None = None) -> 
     rejected = _reject_unknown_args("critic-consolidate", rest, {flag})
     if rejected is not None:
         return rejected
-    return critic_consolidate.consolidate(
+    # The branch the review was dispatched on, read before consolidation
+    # deletes the manifest: a review must never move the session's HEAD, and
+    # one did (#1177). Said here, to the caller of this command, for any review.
+    began_on = _manifest_branch(critic_consolidate.manifest_path(get_prawduct_dir(project_dir)))
+    rc = critic_consolidate.consolidate(
         project_dir, trigger="explicit", tree_changed_by_builder=reason
     )
+    from lib import head_guard  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    left = head_guard.left_branch(project_dir, began_on)
+    if left:
+        print(f"PRAWDUCT WARNING: {head_guard.message(left)}", file=sys.stderr)
+    return rc
+
+
+def _manifest_branch(path: Path) -> str | None:
+    """The ``branch`` a dispatch manifest recorded, or ``None`` when there is
+    no manifest or it cannot be read — consolidation itself reports either."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    branch = data.get("branch") if isinstance(data, dict) else None
+    return branch if isinstance(branch, str) and branch else None
 
 
 def cmd_native_review(project_dir: Path, argv: list[str]) -> int:
-    """``native-review record <review id>`` | ``native-review show [<review id>]``.
+    """``native-review prepare <review id> <session checkout>`` |
+    ``native-review record <review id>`` | ``native-review show [<review id>]``.
 
     The paired native review's record (#1130, ``lib/native_review.py``).
-    ``record`` is run by the wrapper a development build's boundary review
-    dispatches, once it has written the review's text: it appends one
+    ``prepare`` is the wrapper's first step, run from its own worktree (here,
+    ``project_dir``): it detaches that tree at the reviewed head (exit 0), or
+    refuses — in the session's checkout above all — and checks nothing out
+    (exit 1; #1177). ``record`` is run by the wrapper, from the session's
+    checkout, once it has written the review's text: it appends one
     ``native.review`` ledger event (exit 0, also when already recorded) or says
     why there is nothing to record (exit 1). ``show`` prints a native review's
     text, the newest by default (exit 0), or why it cannot (exit 1). Exit 2 on a
     usage error."""
     from lib import gitstate, native_review  # noqa: PLC0415 — lazy; the dispatcher seeded sys.path
 
-    usage = "usage: prawduct-hook native-review record <review id> | show [<review id>]"
+    usage = (
+        "usage: prawduct-hook native-review prepare <review id> <session checkout> | "
+        "record <review id> | show [<review id>]"
+    )
     op = argv[0] if argv else None
     rest = argv[1:]
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    if op == "record" and len(rest) == 1:
+    if op == "prepare" and len(rest) == 2:
+        rc, message = native_review.prepare(project_dir, Path(rest[1]), rest[0])
+    elif op == "record" and len(rest) == 1:
         rc, message = native_review.record(project_dir, prawduct_dir, rest[0])
     elif op == "show" and len(rest) <= 1:
         rc, message = native_review.show(prawduct_dir, rest[0] if rest else None)
@@ -10760,7 +10790,7 @@ _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--session-model <id>] [--scope <s>] [--chunks <id>[,<id>...]] [--force]|critic-end|critic-discard|"
     "critic-restore <review-id>|critic-consolidate|validate-partial <path>|"
-    "native-review record <review-id>|native-review show [<review-id>]|"
+    "native-review prepare <review-id> <session-checkout>|native-review record <review-id>|native-review show [<review-id>]|"
     "subagent-stop|"
     "stop|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
@@ -11287,7 +11317,11 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # a plan.
     "plan": frozenset({"resolve", "status", "check-claims"}),
     # `show` prints a native review's text; `record` appends the ledger event.
-    "native-review": frozenset({"show"}),
+    # `prepare` is not read-only, and is admitted for the opposite reason: it
+    # writes nothing under this tree's `.prawduct/` (only the session checkout's
+    # sidecar, by its own path) and moves only this tree's HEAD — it exists to
+    # run in a disposable tree and refuses everywhere else (#1177).
+    "native-review": frozenset({"show", "prepare"}),
     # The one `evidence` read set the skew guard also reads. Its writes are
     # refused here on a narrower ground than this guard's usual one: none of
     # them can strand — the store, the notes ref and `.git/config` belong to

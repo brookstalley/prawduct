@@ -3121,27 +3121,42 @@ def native_review_prompt(review_id: str, worktree: str, args: str, text_path: st
     """The wrapper subagent's whole instruction, rendered once so no skill file
     composes it. The wrapper exists because the native review runs on its
     caller's model and may come back in the background: it holds the model
-    fixed and stays alive until the text lands."""
+    fixed and stays alive until the text lands.
+
+    It runs in a worktree of its own (#1177): the native review is forked in
+    its caller's directory and checks out the commit it reads, which in the
+    session's checkout detached the session's HEAD. ``prepare`` runs first and
+    refuses there; the record runs in the session's checkout, where its sidecar
+    is (``lib/native_review.py``)."""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
     return (
         f"Native review for Critic review `{review_id}`. Project (absolute): `{worktree}`. "
+        "You run in a git worktree of your own; the session's checkout "
+        f"`{worktree}` is not yours, so never run git checkout, switch, reset, stash, rebase or "
+        "bisect in it. First, from your own worktree, run "
+        f"`{native_review.prepare_command(review_id, worktree)}`: it refuses in the session's "
+        "checkout and otherwise detaches your worktree at the reviewed head. If it exits non-zero, "
+        "stop, do not invoke the review, and report its output. "
         f"Invoke the Skill tool with skill `{NATIVE_REVIEW_SKILL}` and args `{args}` — exactly "
         "those, adding and changing nothing. If the result says it is running in the "
         "background, stay alive until its completion notification arrives (start a "
         "background `sleep 900`, and stop it once the notification lands). Then write the "
         "review's complete text, everything after `Result:`, verbatim, to "
         f"`{text_path}` with the Write tool, and run "
-        f"`{native_review_record_command(review_id)}`. Edit nothing else and fix "
+        f"`{native_review_record_command(review_id, worktree)}`. Edit nothing else and fix "
         "nothing. Report one line: that command's output."
     )
 
 
-def native_review_record_command(review_id: str) -> str:
+def native_review_record_command(review_id: str, worktree: "str | None" = None) -> str:
     """The record command, naming the binary that ran this dispatch. The one on
     PATH may be another build (a framework checkout runs its own), and the record
-    must be written by the code that wrote the sidecar it reads."""
-    from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+    must be written by the code that wrote the sidecar it reads. Given the
+    session's ``worktree`` it runs there (``native_review.record_command``)."""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
-    return f'python3 "{core.FRAMEWORK_DIR / "bin" / "prawduct-hook"}" native-review record {review_id}'
+    return native_review.record_command(review_id, worktree)
 
 
 
@@ -3234,7 +3249,8 @@ def native_review_line(manifest: dict) -> "str | None":
     return (
         "native review paired (#1130) — in the same message as the reviewers (or, "
         "single-pass, before you start reviewing), dispatch ONE general-purpose Agent, "
-        f"in the background, with {model} and the manifest's `native_review.prompt` "
+        'in the background, with `isolation: "worktree"` (it must never run in this '
+        f"checkout), with {model} and the manifest's `native_review.prompt` "
         "verbatim. Do not wait for it, read its result or mention it in your review: "
         "consolidation never waits for it, and it records itself."
     )

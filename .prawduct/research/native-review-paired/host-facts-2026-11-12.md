@@ -39,3 +39,15 @@ already reviewed it: 0 blocking, 0 warning, 1 observation.
   checked by hand and are real (filed as #1159): a latent free-step shape slip in
   `coverage_algebra` and a stale `_merge_base_verdict` docstring. Neither is blocking. One range
   is an anecdote, not a rate — the paired run exists to measure the rate.
+
+## Added 2026-11-15 (#1177): the review checks out what it reads
+
+Observed in a product repo's session transcript, Claude Code with Opus 5.5: a `code-review` fork
+at `high`, handed `<base>...<head>` by the paired wrapper, ran `git checkout -q <head>` about
+fourteen seconds in, in the directory it was forked in — the session's own checkout — and then read
+source there. `<head>` was the feature branch's tip, so HEAD went detached at that same commit
+with nothing changed on disk. The recipe's Phase 0 assumes the diff is `HEAD`-relative, which is
+the likely reason. Re-derive it from the fork's subagent transcript (its `meta.json` names
+`code-review`, `spawnDepth` 3): the Bash calls carry the checkout. A caller cannot instruct the
+fork, which sees only the skill's recipe and its args, so the wrapper runs in a worktree of its
+own.
