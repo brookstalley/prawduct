@@ -957,6 +957,36 @@ class TestGuardScope:
         assert "BLOCKED" not in result.stderr  # still exempt from the refusal
         assert "snapshot of the commit it was forked from" in result.stderr
 
+    def test_session_start_says_the_notice_once_on_stdout(self, tmp_path):
+        """SessionStart's stdout is what reaches the agent; stderr is only logged.
+
+        The notice rides stdout at `clear --session-start` (the one owner,
+        `_emit_pre_dispatch_notice`, shared with the skew guard), exactly once,
+        and not on stderr where nothing reads it.
+        """
+        wt = _agent_worktree(_seeded(tmp_path))
+        result = _run(wt, "clear", "--session-start", "--brief-only")
+        assert result.stdout.count("snapshot of the commit it was forked from") == 1
+        assert "snapshot of the commit it was forked from" not in result.stderr
+        assert "BLOCKED" not in result.stderr
+
+    @pytest.mark.parametrize("command", ["stop", "subagent-stop"])
+    def test_stop_hooks_are_silent_about_the_snapshot(self, tmp_path, command):
+        """Stop fires every turn and the agent has nothing to act on: no repeat."""
+        wt = _agent_worktree(_seeded(tmp_path))
+        result = _run(wt, command)
+        for channel in (result.stdout, result.stderr):
+            assert "snapshot of the commit it was forked from" not in channel
+        assert "BLOCKED" not in result.stderr
+
+    def test_durable_agent_tree_follows_the_same_policy(self, tmp_path):
+        wt = _agent_worktree_on_named_branch(_seeded(tmp_path))
+        start = _run(wt, "clear", "--session-start", "--brief-only")
+        assert start.stdout.count("snapshot of the commit it was forked from") == 1
+        assert "snapshot of the commit it was forked from" not in start.stderr
+        stop = _run(wt, "stop")
+        assert "snapshot of the commit it was forked from" not in stop.stdout + stop.stderr
+
     def test_override_env_reverses_the_refusal_but_keeps_the_notice(self, tmp_path):
         """The override waives permission to write, not the staleness warning.
 

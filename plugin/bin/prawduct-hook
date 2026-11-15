@@ -11376,6 +11376,37 @@ _HARNESS_INVOKED_COMMANDS = frozenset({
 # SessionStart entry runs, and to nothing the other events run.
 _SKEW_REPORTING_HOOK = ("clear", "--session-start")
 
+
+def _emit_pre_dispatch_notice(
+    command: str, argv: "list[str] | None", text: str, *, session_start_stdout: bool = True
+) -> None:
+    """The ONE owner of how a pre-dispatch notice behaves on a harness hook.
+
+    Both pre-dispatch guards (`_check_binary_skew`, `_check_ephemeral_worktree`)
+    say their NOTEs through here, so they cannot decide separately. The facts a
+    notice reports are properties of the session, not of a turn, and stderr at
+    exit 0 is only logged by the harness, so:
+
+    - `_SKEW_REPORTING_HOOK` (`clear --session-start`): once, on STDOUT, the
+      channel SessionStart output reaches the agent's context through.
+    - any other `_HARNESS_INVOKED_COMMANDS` verb (`stop`, `subagent-stop`):
+      silent. They fire every turn and the agent has nothing to act on.
+    - everything else, including an agent running `clear` itself: stderr, where
+      the agent that ran the command reads it.
+
+    ``session_start_stdout=False`` is for a notice whose wording is wrong for a
+    hook caller (a lib-only skew); it then goes to stderr under SessionStart
+    too, but stays silent on Stop like every other harness verb.
+    """
+    reporter, flag = _SKEW_REPORTING_HOOK
+    if command in _HARNESS_INVOKED_COMMANDS:
+        if command != reporter:
+            return
+        if flag in (argv or []) and session_start_stdout:
+            print(text)
+            return
+    print(text, file=sys.stderr)
+
 # Agent-invoked, state-mutating governance writes. A wrong-version write here
 # does not merely misreport — it corrupts or silently omits a persisted fact
 # that later gates compose over, and the caller CAN re-invoke the right binary,
@@ -11842,7 +11873,9 @@ def _backlog_is_service_backed(project_dir: Path) -> bool:
         return False
 
 
-def _print_ephemeral_notice(kind: str | None, project_dir: Path) -> None:
+def _print_ephemeral_notice(
+    command: str, argv: list[str], kind: str | None, project_dir: Path
+) -> None:
     """The HEAD-snapshot notice, on every path that proceeds.
 
     One function because four callers emit it for four different reasons
@@ -11856,20 +11889,23 @@ def _print_ephemeral_notice(kind: str | None, project_dir: Path) -> None:
     word "ephemeral" would be false — but the READING half is unchanged, which
     is the whole reason the notice is separate from the refusal. Only the first
     clause varies; the fork-point warning is identical, because it is identical.
+
+    WHERE it goes is `_emit_pre_dispatch_notice`'s decision, shared with the
+    skew guard: once on stdout at SessionStart, silent on Stop, stderr for a
+    command the agent runs itself.
     """
     what = (
         f"an ephemeral {kind} worktree"
         if kind is not None
         else "a linked agent worktree"
     )
-    print(
+    _emit_pre_dispatch_notice(command, argv, (
         f"NOTE: this is {what} ({project_dir}). Every "
         "tracked file here — build plans, artifacts, learnings — is a "
         "snapshot of the commit it was forked from, so uncommitted changes "
         "in the dispatching session are NOT visible. Where a file and your "
-        "prompt disagree, your prompt is newer.",
-        file=sys.stderr,
-    )
+        "prompt disagree, your prompt is newer."
+    ))
 
 
 def _ephemeral_refusal_reason(command: str) -> str:
@@ -11899,15 +11935,16 @@ def _ephemeral_refusal_reason(command: str) -> str:
 def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) -> int:
     """0 to proceed; 1 when a state write from a disposable worktree must refuse.
 
-    Also emits the HEAD-snapshot notice for EVERY command that proceeds,
-    harness-invoked ones included: a
+    Also emits the HEAD-snapshot notice for every command that proceeds: a
     worktree-isolated agent reads every tracked file as a snapshot of the fork
     point, so a dispatcher's uncommitted governing artifacts are invisible to it.
     That silence is what made the source report's agent hold a build plan
-    contradicting its own prompt, and this is the only channel that reaches such
-    an agent without its cooperation — the briefing file the delegation
-    instruction names does not exist in an isolated worktree (it is gitignored,
-    so `git worktree add` never materializes it).
+    contradicting its own prompt. The notice must reach the agent without its
+    cooperation — the briefing file the delegation instruction names does not
+    exist in an isolated worktree (it is gitignored, so `git worktree add` never
+    materializes it) — so a harness hook says it ONCE, on SessionStart's stdout,
+    and not on Stop (`_emit_pre_dispatch_notice` owns that policy, shared with
+    `_check_binary_skew`; hook stderr is only logged, never read by the agent).
     """
     override = bool(os.environ.get(_EPHEMERAL_OVERRIDE_ENV))
     try:
@@ -11931,7 +11968,7 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
         # creates. Classified by PATH, deliberately: the question is "did the
         # harness fork this tree", which the branch cannot answer.
         if _gitstate().ephemeral_worktree_kind_of_path(project_dir) is not None:
-            _print_ephemeral_notice(None, project_dir)
+            _print_ephemeral_notice(command, argv, None, project_dir)
         return 0
 
     if command in _HARNESS_INVOKED_COMMANDS:
@@ -11945,14 +11982,15 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
         # chunk's contract is "every AGENT-invoked `.prawduct/`-mutating
         # command", not literally every one.
         #
-        # The NOTICE still fires, and the detection above now runs before this
+        # The NOTICE still fires (once, at SessionStart; see
+        # `_emit_pre_dispatch_notice`), and the detection above runs before this
         # branch so it can. An earlier form returned here first and justified the
         # hole partly by "a human driving it who can see the banner" — nothing in
         # the SessionStart banner or the session digest mentions ephemerality, so
         # that path emitted no signal at all on the one path where a human could
         # act. A justification naming a channel that carries nothing is worse
         # than an unjustified hole: it reads as coverage.
-        _print_ephemeral_notice(kind, project_dir)
+        _print_ephemeral_notice(command, argv, kind, project_dir)
         return 0
 
     if override or not _ephemeral_command_writes(command, argv, project_dir):
@@ -11960,7 +11998,7 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
         # questions — "may I write here" versus "how old is what I am reading" —
         # and a dispatcher who opted into writing has not thereby learned that
         # its artifacts are a fork-point snapshot.
-        _print_ephemeral_notice(kind, project_dir)
+        _print_ephemeral_notice(command, argv, kind, project_dir)
         return 0
 
     print(
@@ -11981,10 +12019,10 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
 
     Emits on stderr for every command but the harness's — the failure this
     closes was defined by its silence, so a quiet pass would reproduce it one
-    severity down. The skew is a property of the session, so SessionStart
-    (`_SKEW_REPORTING_HOOK`) says it once, in hook terms and on stdout, and the
-    `stop`/`subagent-stop` verbs stay silent whoever invokes them, rather than
-    repeat it every turn. A lib-only skew under `--session-start` is not a hook
+    severity down. Where a notice goes is `_emit_pre_dispatch_notice`'s policy,
+    shared with the ephemeral guard: SessionStart (`_SKEW_REPORTING_HOOK`) says
+    it once, in hook terms and on stdout, and the `stop`/`subagent-stop` verbs
+    stay silent whoever invokes them, rather than repeat it every turn. A lib-only skew under `--session-start` is not a hook
     (a hook runs its own plugin's script and lib), so it gets the ordinary note.
     """
     skew = _binary_skew(project_dir)
@@ -12014,7 +12052,7 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
             + [f"`{c} {op}`" for c, ops in sorted(_DATA_PLANE_WRITE_OPS.items())
                for op in sorted(ops)]
         )
-        print(
+        _emit_pre_dispatch_notice(command, argv, (
             f"NOTE: {SKEW_MARKER}: this session's hooks are running {running}, "
             f"not the plugin this repo carries ({repo_plugin}). Hooks always run "
             "the installed plugin, so this is expected while you work on the "
@@ -12026,11 +12064,12 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
             "code do the hooks' writes too, start the session with "
             f"`claude --plugin-dir {repo_plugin}`. Said once per session start; "
             "Stop and SubagentStop do not repeat it."
-        )
+        ))
         return 0
     if command in _HARNESS_INVOKED_COMMANDS - {reporter}:
         # Never refuse (see the set's comment), and never repeat what
-        # SessionStart already said: these fire every turn.
+        # SessionStart already said: these fire every turn. Silent here and in
+        # `_emit_pre_dispatch_notice`, which is what says every other NOTE.
         return 0
     detail = (
         f"{SKEW_MARKER}: {what}, but this repo carries {repo_plugin}. "
@@ -12045,7 +12084,9 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
             file=sys.stderr,
         )
         return 1
-    print(f"NOTE: {detail}", file=sys.stderr)
+    # A lib-only skew under `--session-start` is not a hook, so its wording stays
+    # the agent-side note, on stderr.
+    _emit_pre_dispatch_notice(command, argv, f"NOTE: {detail}", session_start_stdout=False)
     return 0
 
 
