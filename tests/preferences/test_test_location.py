@@ -110,7 +110,7 @@ class TestTestLocation:
         """A git-excluded local directory holding test files (the owner's blind-test
         fixture under `.git/info/exclude`) is not this repo's source; an untracked
         test file git does NOT ignore still is, and must still be found."""
-            subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
         (tmp_path / "tests").mkdir()
         (tmp_path / "tests" / "test_real.py").write_text("def test_x(): pass\n")
         local = tmp_path / ".prawduct" / ".local-evidence" / "fixture" / "tests"
