@@ -199,7 +199,11 @@ def file_item(
 
     _mirror(absorb, issue, owner, repo)
     canonical = f"{owner}/{repo}#{issue.get('number')}"
-    item, decode_warnings = encode.decode_item(issue, canonical_id=canonical)
+    # Not `advise_degraded`: this issue was just composed here, and an omitted
+    # `--stage` is the filer's choice rather than a lost label (#745).
+    item, decode_warnings = encode.decode_item(
+        issue, canonical_id=canonical, advise_degraded=False
+    )
     warnings.extend(decode_warnings)
     item["actor"] = actor
     # Audit the created issue against the standard (§4). WARN-only — findings ride
