@@ -27,6 +27,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -400,9 +401,18 @@ class TestHeadGuard:
 
     @staticmethod
     def _follow(repo: Path, left: dict) -> None:
-        """An advisory's recovery is tested by its effect: run it as printed."""
-        subprocess.run(left["recovery"], shell=True, cwd=str(repo), check=True,
-                       capture_output=True, timeout=10)
+        """An advisory's recovery is tested by its effect: run it as printed.
+
+        Without a shell (the repo bans ``shell=True``): the printed text is
+        split on `` && `` and each step run in list form, stopping at the first
+        failure, which is what the shell's ``&&`` does."""
+        printed = left["recovery"]
+        assert f"`{printed}`" in head_guard.message(left)  # what is run is what is printed
+        for step in printed.split(" && "):
+            argv = shlex.split(step)
+            assert argv[0] == "git", step
+            proc = subprocess.run(argv, cwd=str(repo), capture_output=True, text=True, timeout=10)
+            assert proc.returncode == 0, (step, proc.stderr)
         assert _branch(repo) == BRANCH
         assert head_guard.left_branch(repo, BRANCH) is None
 
