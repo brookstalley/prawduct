@@ -15,7 +15,10 @@ a "successive override," and this is where it is read (CRT-3M8Q). Only when neit
 does :func:`infer_mode` walk four inference rules in precedence order and
 return the first that fires:
 
-  1. ``verify-resolutions`` — prior ``.critic-findings.json`` has
+  1. ``verify-resolutions`` — the prior review the verify dispatch would
+     anchor to (:func:`_verify_prior_record`: the findings cache's review when
+     it is this branch's, else this branch's newest, asked read-only of the
+     dispatch's owner — rule 1b reads the same record) has
      BLOCKING/WARNING findings + ``commit_reviewed`` anchor resolves **and is
      an ancestor of HEAD** + uncommitted diff is non-empty AND its judgeable
      subset is within prior ``files_reviewed`` (the review's subject set,
@@ -328,7 +331,7 @@ def infer_mode(
         # now, not one to defer to.
         return None if clean_tree and kind == OWED_BOUNDARY else why
 
-    if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
+    if _rule_verify_resolutions_fires(prawduct_dir, project_dir, progress):
         ext = _extension()
         if ext:
             return MODE_DEFERRED, f"extension-deferred (fix in progress): {ext}"
@@ -339,7 +342,7 @@ def infer_mode(
             "subset of prior files_reviewed (builder is mid-fix)"
         )
 
-    postfix_reason = _rule_postfix_fix_fires(prawduct_dir, project_dir)
+    postfix_reason = _rule_postfix_fix_fires(prawduct_dir, project_dir, progress)
     if postfix_reason:
         return "verify-resolutions", (
             f"rule-1b verify-resolutions (post-cumulative fix): {postfix_reason}"
@@ -941,16 +944,64 @@ def _mid_plan_answer(
 # ---------------------------------------------------------------------------
 
 
-def _rule_verify_resolutions_fires(
-    prawduct_dir: Path, project_dir: Path
-) -> bool:
-    """Rule 1: prior findings + anchor resolves + diff ⊆ prior scope."""
+def _verify_prior_record(
+    prawduct_dir: Path, project_dir: Path, progress=None
+) -> "dict | None":
+    """The prior-review record rules 1 and 1b judge — the review a
+    ``verify-resolutions`` dispatch would anchor to, rendered as the findings
+    cache would hold it — or ``None`` when there is none.
+
+    **Not whatever the single-slot cache names.** The cache survives a branch
+    switch, so after one it names the other branch's review; both rules used to
+    refuse that as off-lineage and fall through, while the
+    ``verify-resolutions`` dispatch they feed would have anchored on this
+    branch's own review (#1150). So when the cache names a review fact, this
+    asks the dispatch's own question, ``critic_consolidate.verify_anchor``
+    (one owner: ``select_branch_review``), and a re-derived answer is rendered
+    through ``fact_to_cache_record``, the projection the dispatch would write.
+    When the dispatch would refuse, so does this. A record carrying no
+    ``fact_id`` (pre-store) is returned as written, as before.
+
+    **Read-only, deliberately.** The dispatch re-points the cache when it
+    re-anchors; inference does not. Inference is a question asked before a
+    dispatch that may not follow — it can answer ``deferred`` or another mode,
+    and the skill then dispatches nothing or something else — and a question
+    that moved the builder's view of "the latest findings" would change what
+    the briefing shows over a review nobody ran. Nothing is lost by not
+    writing: when ``verify-resolutions`` does dispatch, it writes the same
+    answer, because it selects through the same function.
+    """
     findings_path = prawduct_dir / ".critic-findings.json"
     if not findings_path.is_file():
-        return False
+        return None
     try:
         data = json.loads(findings_path.read_text())
     except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    fact_id = data.get("fact_id")
+    if not isinstance(fact_id, str) or not fact_id.strip():
+        return data
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
+
+    read = _facts_for(project_dir, progress)
+    answer = critic_consolidate.verify_anchor(project_dir, prawduct_dir, read)
+    if answer["fact"] is None:
+        return None  # the dispatch would refuse; inferring it buys an exit 1
+    if answer["rederived"]:
+        return critic_consolidate.fact_to_cache_record(answer["fact"], store=read)
+    return data
+
+
+def _rule_verify_resolutions_fires(
+    prawduct_dir: Path, project_dir: Path, progress=None
+) -> bool:
+    """Rule 1: prior findings + anchor resolves + diff ⊆ prior scope. The prior
+    findings are :func:`_verify_prior_record`'s — the review the dispatch would
+    anchor to, asked read-only."""
+    data = _verify_prior_record(prawduct_dir, project_dir, progress)
+    if data is None:
         return False
 
     commit_reviewed = data.get("commit_reviewed")
@@ -1029,11 +1080,12 @@ def _cumulative_anchor(data: dict) -> str | None:
     return None
 
 
-def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
+def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path, progress=None) -> str:
     """Rule 1b (CRT-4J8W): a committed fix after a cumulative review.
 
-    Fires when the working tree is clean, the prior record is a
-    ``cumulative`` review (see :func:`_cumulative_anchor`), its
+    Fires when the working tree is clean, the prior record
+    (:func:`_verify_prior_record`, the review the verify dispatch would anchor
+    to) is a ``cumulative`` review (see :func:`_cumulative_anchor`), its
     ``commit_reviewed`` resolves, and the committed delta since it holds at
     least one judgeable file while staying under the verify-resolutions
     widening threshold, measured on the judgeable subset of both sides —
@@ -1054,12 +1106,10 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     """
     if _get_uncommitted_code_files(project_dir):
         return ""
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not findings_path.is_file():
-        return ""
-    try:
-        data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError):
+    # The review the verify dispatch would anchor to, as rule 1 reads it — not
+    # whatever the slot last named on another branch.
+    data = _verify_prior_record(prawduct_dir, project_dir, progress)
+    if data is None:
         return ""
     anchor = _cumulative_anchor(data)
     if anchor is None:
