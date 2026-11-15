@@ -43,12 +43,15 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from conftest import SHAPED_REFLECTION  # noqa: E402 — one home for the shape
+from lib import core as lib_core  # noqa: E402
 from lib import gates  # noqa: E402
 from lib import host as lib_host  # noqa: E402
 
@@ -487,12 +490,14 @@ def _transcripts(
     background: bool = False,
     concurrent: bool = True,
     covered_from: int = 1,
+    extra: "list[dict] | None" = None,
 ) -> str:
     """This session's host transcript, in the shape Claude Code writes it, with
     one tool call per ``(start, end)`` offset from the session start (``end``
     ``None`` for a call with no result yet), and a second session's transcript
     beside it, last written mid-session when ``concurrent`` and an hour before
-    the session otherwise. Returns the path
+    the session otherwise. ``extra`` records (:func:`_edit_call`,
+    :func:`_bang_command`) are merged in by timestamp. Returns the path
     the Stop payload carries as ``transcript_path``."""
     folder = tmp_path / "host-projects" / "-repo"
     folder.mkdir(parents=True, exist_ok=True)
@@ -512,6 +517,9 @@ def _transcripts(
                             "message": {"role": "user", "content": [
                                 {"type": "tool_result", "tool_use_id": f"toolu_{n}",
                                  "content": "ok"}]}})
+    if extra:
+        # A stable sort keeps a use before its result when both share a second.
+        records = sorted(records + extra, key=lambda r: r["timestamp"])
     ours = folder / "ours-session.jsonl"
     ours.write_text("".join(json.dumps(r) + "\n" for r in records))
     # Another session's transcript is always there; whether it was written
@@ -522,6 +530,41 @@ def _transcripts(
     written = s.started + 400 if concurrent else s.started - 3600
     os.utime(theirs, (written, written))
     return str(ours)
+
+
+def _edit_call(s: "_Session", at: int, path: Path, name: str = "Edit") -> "list[dict]":
+    """An Edit/Write tool call on ``path`` at ``at`` seconds into the session,
+    shaped as Claude Code records it: the ``tool_use`` input names the absolute
+    ``file_path`` (``notebook_path`` for NotebookEdit), read off this machine's
+    transcripts (2026-11-15: 15k Edit and 4k Write calls, all absolute)."""
+    key = "notebook_path" if name == "NotebookEdit" else "file_path"
+    call_id = f"toolu_edit_{name}_{at}"
+    return [
+        {"type": "assistant", "timestamp": _iso(s.started + at),
+         "message": {"role": "assistant", "content": [
+             {"type": "tool_use", "id": call_id, "name": name,
+              "input": {key: str(path), "old_string": "x = 1", "new_string": "x = 2"}}]}},
+        {"type": "user", "timestamp": _iso(s.started + at + 1),
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": call_id, "content": "ok"}]}},
+    ]
+
+
+def _bang_command(s: "_Session", start: int, end: "int | None", command: str) -> "list[dict]":
+    """A command the user ran with Claude Code's ``!`` bash mode. It is not a
+    tool call: the transcript records the input as a user message whose content
+    is the string ``<bash-input>…</bash-input>``, stamped when it was entered,
+    and the output as a later user message starting ``<bash-stdout>``, stamped
+    when the command finished (read off this machine's transcripts: a 62-second
+    ``afplay`` loop's two stamps are 62 s apart)."""
+    records = [{"type": "user", "timestamp": _iso(s.started + start),
+                "message": {"role": "user",
+                            "content": f"<bash-input>{command}</bash-input>"}}]
+    if end is not None:
+        records.append({"type": "user", "timestamp": _iso(s.started + end),
+                        "message": {"role": "user",
+                                    "content": "<bash-stdout>ok</bash-stdout><bash-stderr></bash-stderr>"}})
+    return records
 
 
 def _their_session_commits(s: "_Session", at: int = 300) -> None:
@@ -690,6 +733,264 @@ class TestAnotherSessionInThisCheckout:
         monkeypatch.setattr(lib_host, "session_tool_activity", _forbidden)
         span = gates.session_work_span(repo, transcript_path=transcript)
         assert span["changed"] == ["theirs.py"]
+
+
+class TestADropAsksWhoAuthoredTheWork:
+    """The Critic's R-6 on #1071's narrowing: the transcript says who RAN
+    ``git commit``, the gates ask who AUTHORED the change. The user commits the
+    session's work from a terminal between turns, or with ``!git commit``; no
+    tool call is open, and the paths left the span, disarming the reflection
+    and Critic gates in silence. A commit is now kept when any of its paths is
+    one this session's Edit/Write calls targeted, and a commit made while a
+    ``!`` command ran is the session's own. Whatever is still dropped is
+    carried on the span and named at Stop, so a wrong drop can be seen."""
+
+    @pytest.mark.parametrize("tool", ["Edit", "Write", "MultiEdit", "NotebookEdit"])
+    def test_a_terminal_commit_of_a_file_this_session_edited_still_counts(
+        self, tmp_path, capsys, tool
+    ):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_edit_call(s, 100, repo / "code.py", tool)
+        )
+        (repo / "code.py").write_text("x = 2\n")
+        s.git_at(200, "commit", "-q", "-am", "committed from a terminal")  # idle
+        _their_session_commits(s)
+
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["code.py"]
+        assert [d["paths"] for d in span["dropped"]] == [["theirs.py"]]
+        rc = _hook.cmd_stop(repo, {"transcript_path": transcript})
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert BLOCKER in err
+
+    def test_an_edit_in_another_checkout_rescues_nothing(self, tmp_path):
+        """The edited path is matched as a path in THIS checkout: the same name
+        edited somewhere else is not this checkout's file."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_edit_call(s, 100, elsewhere / "theirs.py")
+        )
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+
+    def test_an_edit_through_a_symlinked_path_still_rescues(self, tmp_path):
+        """macOS hands out ``/tmp`` and ``/private/tmp`` for one directory, so
+        the edited path and the checkout are compared resolved."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        alias = tmp_path / "alias"
+        alias.symlink_to(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_edit_call(s, 100, alias / "code.py")
+        )
+        (repo / "code.py").write_text("x = 2\n")
+        s.git_at(200, "commit", "-q", "-am", "committed from a terminal")
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["code.py"]
+
+    def test_a_bang_mode_commit_stays_counted(self, tmp_path, capsys):
+        """``!git commit`` runs no tool call; the transcript stamps its input
+        when it was entered and its output when it ended."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)],
+            extra=_bang_command(s, 295, 305, "git commit -am fix"),
+        )
+        (repo / "code.py").write_text("x = 2\n")
+        s.git_at(300, "commit", "-q", "-am", "fix")
+        _their_session_commits(s, at=400)
+
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["code.py"]
+        assert [d["paths"] for d in span["dropped"]] == [["theirs.py"]]
+        rc = _hook.cmd_stop(repo, {"transcript_path": transcript})
+        assert rc == 2
+        assert BLOCKER in capsys.readouterr().err
+
+    def test_a_bang_command_that_ended_before_the_commit_covers_nothing(self, tmp_path):
+        """The control for the case above: the ``!`` window is when the command
+        ran, not the rest of the session."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_bang_command(s, 250, 260, "git status"),
+        )
+        (repo / "code.py").write_text("x = 2\n")
+        s.git_at(300, "commit", "-q", "-am", "someone else's")
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+        assert [d["paths"] for d in span["dropped"]] == [["code.py"]]
+
+    def test_a_bang_command_with_no_output_yet_keeps_what_follows(self, tmp_path):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_bang_command(s, 250, None, "make release"),
+        )
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["theirs.py"]
+        assert span["dropped"] == []
+
+    def test_a_foreign_commit_is_dropped_and_named(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        sha = _git(repo, "rev-parse", "HEAD")
+
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+        assert len(span["dropped"]) == 1
+        dropped = span["dropped"][0]
+        assert dropped["sha"] == sha
+        assert dropped["paths"] == ["theirs.py"]
+        assert "another session" in dropped["why"]
+
+        rc = _hook.cmd_stop(repo, {"transcript_path": transcript})
+        err = capsys.readouterr().err
+        assert rc == 0, err
+        notes = [line for line in err.splitlines() if sha[:12] in line]
+        assert len(notes) == 1, err
+        assert "theirs.py" in notes[0]
+
+    def test_nothing_dropped_names_nothing(self, tmp_path, capsys):
+        """The control: the same commit read without the payload is counted,
+        the span carries an empty trace, and Stop prints no drop note."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        sha = _git(repo, "rev-parse", "HEAD")
+        assert gates.session_work_span(repo)["dropped"] == []
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert sha[:12] not in err
+
+    def test_a_degraded_span_still_carries_an_empty_trace(self, tmp_path):
+        repo = _repo(tmp_path)
+        (repo / "code.py").write_text("x = 2\n")
+        span = gates.session_work_span(repo)
+        assert span["source"] == "porcelain"
+        assert span["dropped"] == []
+
+
+class _CountingFile:
+    """A file object that counts the bytes its reader actually took."""
+
+    def __init__(self, real, counter: dict):
+        self._real = real
+        self._counter = counter
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self._real.close()
+        return False
+
+    def __iter__(self):
+        for line in self._real:
+            self._counter["bytes"] += len(line)
+            yield line
+
+    def read(self, *args):
+        data = self._real.read(*args)
+        self._counter["bytes"] += len(data)
+        return data
+
+    def readline(self, *args):
+        data = self._real.readline(*args)
+        self._counter["bytes"] += len(data)
+        return data
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+class TestTheTranscriptReadIsBounded:
+    """The Critic's R-5: once a sibling had written, every later Stop re-parsed
+    this session's whole transcript, which grows to tens of MB. The parsed
+    state is now kept in ``.prawduct/.session-activity.json``, keyed by the
+    transcript's path, inode and byte offset, and each Stop parses only what
+    was appended since. Asserted on the bytes read from the transcript, which
+    is the work, not on whether the file was opened."""
+
+    def _count_transcript_reads(self, monkeypatch, transcript: str) -> dict:
+        counter = {"bytes": 0}
+        real_open = open
+
+        def counting_open(path, *args, **kwargs):
+            fh = real_open(path, *args, **kwargs)
+            if os.fspath(path) == transcript:
+                return _CountingFile(fh, counter)
+            return fh
+
+        monkeypatch.setattr(lib_host, "open", counting_open, raising=False)
+        return counter
+
+    def test_a_second_stop_reads_only_the_appended_bytes(self, tmp_path, monkeypatch):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)])
+        # Padding: the first read must be visibly bigger than the second.
+        with open(transcript, "a") as fh:
+            for n in range(200):
+                fh.write(json.dumps({"type": "user", "timestamp": _iso(s.started + 30),
+                                     "message": {"role": "user", "content": "x" * 200}}) + "\n")
+        counter = self._count_transcript_reads(monkeypatch, transcript)
+        _their_session_commits(s, at=300)
+        first_size = os.path.getsize(transcript)
+        assert gates.session_work_span(repo, transcript_path=transcript)["changed"] == []
+        assert counter["bytes"] >= first_size
+
+        # A call that ran across a second commit, appended after the first Stop.
+        appended = "".join(json.dumps(r) + "\n" for r in [
+            {"type": "assistant", "timestamp": _iso(s.started + 490), "message": {
+                "role": "assistant", "content": [
+                    {"type": "tool_use", "id": "toolu_late", "name": "Bash",
+                     "input": {"command": "git commit"}}]}},
+            {"type": "user", "timestamp": _iso(s.started + 510), "message": {
+                "role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "toolu_late", "content": "ok"}]}},
+        ])
+        with open(transcript, "a") as fh:
+            fh.write(appended)
+        (repo / "late.py").write_text("late = 1\n")
+        s.git_at(500, "add", "late.py")
+        s.git_at(500, "commit", "-q", "-m", "this session's, inside the late call")
+
+        counter["bytes"] = 0
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        # The answer the appended call gives, so the tail was really parsed...
+        assert span["changed"] == ["late.py"]
+        # ...and the work was the tail, plus at most the prefix check.
+        assert len(appended) <= counter["bytes"] <= len(appended) + lib_host.PREFIX_CHECK_BYTES
+        assert counter["bytes"] < first_size
+
+    def test_an_unchanged_transcript_is_not_reparsed(self, tmp_path, monkeypatch):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        gates.session_work_span(repo, transcript_path=transcript)
+        counter = self._count_transcript_reads(monkeypatch, transcript)
+        assert gates.session_work_span(repo, transcript_path=transcript)["changed"] == []
+        assert counter["bytes"] <= lib_host.PREFIX_CHECK_BYTES
+
+    def test_the_cache_is_a_registered_session_file(self):
+        assert gates.SESSION_ACTIVITY_FILE in {
+            p.rstrip("/").removeprefix(".prawduct/") for p in lib_core.GITIGNORE_ENTRIES
+        }
 
 
 # ---------------------------------------------------------------------------
