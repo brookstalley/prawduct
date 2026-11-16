@@ -104,9 +104,12 @@ class TestTheBriefingShowsThisBranchsReview:
         assert "BLOCKING: A's own defect" in out, out
         assert "B's own defect" not in out, out
 
-    def test_with_no_review_of_its_own_the_doubt_is_named(self, tmp_path):
-        """A branch with no review: the owner finds none to show instead, so
-        the cache's record stands — said to be possibly another branch's."""
+    def test_with_no_review_of_its_own_it_says_so_and_shows_none(self, tmp_path):
+        """A branch with no review, and a cache naming a review off its lineage:
+        the answer is definitive, not a doubt. Renegotiated from "Could not
+        confirm… may be another branch's", which hedged a fact `verify_anchor`
+        had established and then showed that review's blocking count as if it
+        were this branch's."""
         repo = _two_branches(tmp_path)
         _git(repo, "checkout", "--quiet", "main")
         _git(repo, "checkout", "--quiet", "-b", "feature/c")
@@ -114,10 +117,71 @@ class TestTheBriefingShowsThisBranchsReview:
 
         out = _summary(repo)
 
+        assert out.splitlines() == [
+            "This branch has no review; the findings cache holds `feature/a`'s "
+            "review rev-a-000001, not shown here."
+        ], out
+        assert "A's own defect" not in out and "blocking" not in out.lower(), out
+
+    def test_when_the_owner_cannot_answer_the_doubt_is_named(self, tmp_path):
+        """Control for the definitive case: an unreadable store cannot say
+        whose review the cache holds, so the record stands, hedged."""
+        repo = _two_branches(tmp_path)
+        _git(repo, "checkout", "--quiet", "feature/b")
+        evidence.store_path(repo).write_bytes(b"\xff\xfe not utf-8\n")
+
+        out = _summary(repo)
+
         lead = out.splitlines()[0]
         assert lead.startswith("Could not confirm review rev-a-000001"), lead
         assert "another branch's review" in lead, lead
         assert "BLOCKING: A's own defect" in out, out
+
+    def test_a_fresh_worktree_with_no_cache_shows_its_branchs_review(self, tmp_path):
+        """The cache is per-worktree and the store clone-shared: a fresh
+        worktree of a reviewed branch has no cache, and its briefing used to
+        say nothing about a review the store holds."""
+        repo = _two_branches(tmp_path)
+        (repo / FINDINGS_REL).unlink()
+
+        out = _summary(repo)
+
+        lead = out.splitlines()[0]
+        assert lead.startswith("Showing review rev-a-000001, this branch's newest"), lead
+        assert "no readable findings cache" in lead, lead
+        assert "BLOCKING: A's own defect" in out, out
+        assert not (repo / FINDINGS_REL).exists(), "display only: nothing is written"
+
+    def test_an_undecodable_cache_defers_to_the_owner_too(self, tmp_path):
+        repo = _two_branches(tmp_path)
+        (repo / FINDINGS_REL).write_bytes(b"\xff\xfe not utf-8\n")
+
+        out = _summary(repo)
+
+        assert out.splitlines()[0].startswith("Showing review rev-a-000001"), out
+        assert "BLOCKING: A's own defect" in out, out
+
+    def test_an_undecodable_cache_with_no_review_to_show_is_still_reported(self, tmp_path):
+        """Control: with nothing the owner can show, the unreadable record is
+        named — never rendered as "no review has run"."""
+        repo = _two_branches(tmp_path)
+        _git(repo, "checkout", "--quiet", "main")
+        _git(repo, "checkout", "--quiet", "-b", "feature/c")
+        _commit_file(repo, "src/c.py", "c = 1\n", "feat: c")
+        (repo / FINDINGS_REL).write_bytes(b"\xff\xfe not utf-8\n")
+
+        out = _summary(repo)
+
+        assert "could not be read" in out and "NOT a statement" in out, out
+
+    def test_no_cache_and_no_review_reports_nothing(self, tmp_path):
+        repo = _two_branches(tmp_path)
+        _git(repo, "checkout", "--quiet", "main")
+        _git(repo, "checkout", "--quiet", "-b", "feature/c")
+        _commit_file(repo, "src/c.py", "c = 1\n", "feat: c")
+        (repo / FINDINGS_REL).unlink()
+
+        assert briefing._summarize_critic_findings(repo / ".prawduct", repo) is None
 
     def test_the_handoff_carries_it(self, tmp_path):
         """At the layer the defect was reported: the session handoff's

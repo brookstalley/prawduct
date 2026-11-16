@@ -5515,11 +5515,10 @@ class TestCriticBeginCLI:
         # Renegotiated in the open (#1051, ST8): a chunk id is now validated
         # against the plan it names a chunk OF, and `--scope demo` resolves to
         # no plan file here — so there is nothing `03` could be a chunk of, and
-        # the review records `chunks: []` / `chunk: null` and says why in a
-        # note, rather than carrying an id no reader can place. The scope still
-        # rides through.
+        # the review records `chunks: []` and says why in a note, rather than
+        # carrying an id no reader can place. The scope still rides through.
         assert manifest["scope"] == "demo"
-        assert (manifest["chunks"], manifest["chunk"]) == ([], None)
+        assert manifest["chunks"] == []
         assert "no build plan resolves for this review, so the declared chunk(s) 03" in result.stderr
         # The marker is set (the session-mutation guard rides the dispatch).
         assert (repo / MARKER_REL).is_file()
@@ -6807,14 +6806,23 @@ class TestVerifyResolutionsDispatch:
 
     def test_a_missing_anchor_on_a_healthy_store_stays_exit_one(self, tmp_path):
         """The control for exit 6: a genuinely absent anchor is the demotable
-        case, so it keeps exit 1 and the skill's re-dispatch route."""
+        case, so it keeps exit 1 and the skill's re-dispatch route.
+
+        Renegotiated: a pointer naming a fact the store lacks now defers to
+        this branch's own review (`test_verify_resolutions_lineage.py`
+        `TestAMissingPointerIsAStaleViewToo`), so "genuinely absent" means
+        the branch has no review either — the only one in the store is a
+        sibling's, off this lineage."""
         repo = tmp_path / "r"
         _init_repo(repo)
-        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
-        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "--quiet", "-b", "sibling")
+        sibling_tip = _commit_file(repo, "src/app.py", "x = 99  # sibling\n", "sibling")
+        sibling_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
         _seed_prior_review_with_blocker(
-            repo, head, head_tree=head_tree, head_commit=head
+            repo, sibling_tip, head_tree=sibling_tree, head_commit=sibling_tip
         )
+        _git(repo, "checkout", "--quiet", "main")
         (repo / "src/app.py").write_text("x = 2  # my fix\n")
         cache = repo / ".prawduct" / ".critic-findings.json"
         data = json.loads(cache.read_text())
@@ -10649,19 +10657,20 @@ def _st8_manifest(repo: Path) -> dict:
 
 
 class TestTheReviewNamesItsChunks:
-    """`begin_review(chunks=…)` (the `--chunks` flag's library half; `--chunk`
-    stays as its one-element alias) — the manifest and the review fact carry
-    `chunks`, `chunks_proposed`, and `chunk = chunks[0]`, so
-    `plan_status.chunk_states` can certify every chunk one review covered."""
+    """`begin_review(chunks=…)` (the `--chunks` flag's library half) — the
+    manifest and the review fact carry `chunks` and `chunks_proposed`, so
+    `plan_status.chunk_states` can certify every chunk one review covered.
+    Neither carries the singular `chunk` any more: its one-release shim is
+    retired, and its last reader, the ledger event, reads `chunks[0]`."""
 
-    def test_a_fact_names_two_chunks_and_chunk_is_the_first(self, tmp_path):
+    def test_a_fact_names_two_chunks_and_the_ledger_event_the_first(self, tmp_path):
         repo = _st8_repo(tmp_path)
         result = cc.begin_review(repo, "chunk", chunks=["01", "03"])
         assert result["status"] == "ok", result
         manifest = _st8_manifest(repo)
         assert manifest["chunks"] == ["01", "03"]
         assert manifest["chunks_proposed"] == ["01", "03"]
-        assert manifest["chunk"] == "01"
+        assert "chunk" not in manifest
         _write_partial(repo, "reviewer", manifest["commit_reviewed"])
         done = _run_consolidate(repo)
         assert done.returncode == 0, done.stderr
@@ -10669,6 +10678,11 @@ class TestTheReviewNamesItsChunks:
         body = fact["body"]
         assert (body["chunks"], body["chunks_proposed"]) == (["01", "03"], ["01", "03"])
         assert "chunk" not in body
+        # The ledger event keeps its `chunk` field (its own schema, read by
+        # `review-stats`), now taken from the manifest's `chunks`.
+        events = [json.loads(line) for line in (repo / LEDGER_REL).read_text().splitlines()]
+        (event,) = [e for e in events if e.get("event") == "review.critic"]
+        assert event["chunk"] == "01", event
         # And the one reader certifies both, and only both.
         from lib import plan_status
 
@@ -10686,7 +10700,7 @@ class TestTheReviewNamesItsChunks:
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
         assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
-        assert manifest["chunk"] == "01"
+        assert "chunk" not in manifest
         assert "WARNING: declared chunk" not in result.stderr
 
     def test_final_proposes_the_chunks_its_interval_built_not_every_open_one(self, tmp_path):
@@ -10699,13 +10713,13 @@ class TestTheReviewNamesItsChunks:
         manifest = _st8_manifest(repo)
         assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
 
-    def test_the_chunk_alias_is_one_element_and_normalized_to_the_plan(self, tmp_path):
-        """`--chunk 1` against a plan printing `01`: recorded as the plan prints it."""
+    def test_a_declared_id_is_normalized_to_the_plan(self, tmp_path):
+        """`--chunks 1` against a plan printing `01`: recorded as the plan prints it."""
         repo = _st8_repo(tmp_path)
         result = _run_begin(repo, "--mode", "chunk", "--chunks", "1")
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
-        assert (manifest["chunks"], manifest["chunk"]) == (["01"], "01")
+        assert manifest["chunks"] == ["01"]
 
     def test_a_declared_chunk_outside_the_proposal_warns_and_is_recorded(self, tmp_path):
         repo = _st8_repo(tmp_path)
@@ -10749,15 +10763,24 @@ class TestTheReviewNamesItsChunks:
         result = cc.begin_review(repo, "chunk")
         assert result["status"] == "ok", result
         manifest = _st8_manifest(repo)
-        assert (manifest["chunks"], manifest["chunks_proposed"], manifest["chunk"]) == ([], [], None)
+        assert (manifest["chunks"], manifest["chunks_proposed"]) == ([], [])
 
     def test_an_unbound_checkout_drops_a_declared_chunk_and_says_so(self, tmp_path):
         repo = _st8_repo(tmp_path, plan=None)
-        result = cc.begin_review(repo, "chunk", chunk="01")
+        result = cc.begin_review(repo, "chunk", chunks=["01"])
         assert result["status"] == "ok", result
         manifest = _st8_manifest(repo)
-        assert (manifest["chunks"], manifest["chunk"]) == ([], None)
+        assert manifest["chunks"] == []
         assert any("no build plan resolves for this review" in n for n in result["notes"]), result["notes"]
+
+    def test_the_one_element_chunk_alias_is_gone_from_the_library(self, tmp_path):
+        """The library half of the retired `--chunk` flag: `begin_review` takes
+        `chunks` only, so a caller still passing `chunk=` fails loudly rather
+        than having its declaration silently dropped."""
+        repo = _st8_repo(tmp_path)
+        with pytest.raises(TypeError, match="chunk"):
+            cc.begin_review(repo, "chunk", chunk="01")
+        assert not (repo / PARTIALS_REL / "manifest.json").exists()
 
 
 class TestTheDispatchProposalLeavesOutTheStubAndSaysWhyItNamedFewer:
@@ -10917,11 +10940,22 @@ class TestManifestChunkFields:
         bad, why = cc.validate_manifest(_manifest_dict(chunks_proposed=[""]))
         assert not bad and "'chunks_proposed'" in why
 
-    def test_chunk_must_be_the_first_of_chunks(self):
-        bad, why = cc.validate_manifest(_manifest_dict(chunks=["03", "01"], chunk="01"))
-        assert not bad and "first of 'chunks'" in why
-        ok, _ = cc.validate_manifest(_manifest_dict(chunks=[], chunk=None))
-        assert ok
+    def test_a_manifest_with_chunks_carries_no_chunk_and_none_is_cross_checked(self):
+        """Renegotiated from "`chunk` must be the first of `chunks`": the
+        manifest no longer writes `chunk`, and where `chunks` is present
+        nothing reads `chunk` (`plan_status.fact_chunks` prefers the list), so
+        a cross-check would guard a field with no reader. A legacy `chunk`
+        beside `chunks` is ignored, not refused."""
+        manifest = _manifest_dict(chunks=["03", "01"])
+        del manifest["chunk"]
+        assert cc.validate_manifest(manifest) == (True, "")
+        assert cc.validate_manifest(_manifest_dict(chunks=["03", "01"], chunk="01"))[0]
+        body = cc.build_fact_body(
+            _manifest_dict(chunks=["03", "01"], chunk="01"), [_partial("reviewer", "abc123")]
+        )
+        assert body["chunks"] == ["03", "01"] and "chunk" not in body
+        # Still typed when present: a legacy manifest's bare `chunk` is read.
+        assert not cc.validate_manifest(_manifest_dict(chunk=3))[0]
 
     def test_a_manifest_without_chunks_keeps_the_bare_chunk(self):
         """A manifest from before `chunks` existed still validates, and its fact

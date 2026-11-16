@@ -1741,12 +1741,23 @@ def _git_session_commits(project_dir: Path) -> list[str]:
 
 def _this_branchs_record(prawduct_dir: Path, project_dir: Path, data: object) -> "tuple[str, object]":
     """``(lead, record)``: the findings record to summarize for the checked-out
-    branch, and the line that goes before it — ``""`` when the record is the
-    cache's own and is confirmed as this branch's, or carries no ``fact_id``
-    to confirm by. :func:`_summarize_critic_findings` says why."""
+    branch, and the line that goes before it. ``data`` is the cache's parsed
+    record, ``None`` when there is no readable cache. ``lead`` is ``""`` when
+    the record is the cache's own and is confirmed as this branch's, or there
+    is nothing to say; ``record`` is ``None`` when no record is to be shown —
+    the lead alone, or nothing. :func:`_summarize_critic_findings` says why."""
     fact_id = data.get("fact_id") if isinstance(data, dict) else None
-    if not isinstance(fact_id, str) or not fact_id.strip():
-        return "", data
+    named = fact_id if isinstance(fact_id, str) and fact_id.strip() else None
+
+    def unconfirmed(why: str) -> "tuple[str, object]":
+        if named is None:
+            return "", data  # no pointer to doubt: a pre-store record, or no record
+        return (
+            f"Could not confirm review {named}, which the findings cache names, is "
+            f"this branch's ({why}) — what follows may be another branch's review.",
+            data,
+        )
+
     try:
         from . import critic_consolidate  # noqa: PLC0415 — lazy; the briefing renders without it
 
@@ -1754,29 +1765,35 @@ def _this_branchs_record(prawduct_dir: Path, project_dir: Path, data: object) ->
         answer = critic_consolidate.verify_anchor(project_dir, prawduct_dir, store)
         fact = answer["fact"]
         if fact is None:
-            return (
-                f"Could not confirm review {fact_id}, which the findings cache names, is "
-                f"this branch's ({answer['reason']}) — what follows may be another "
-                "branch's review.",
-                data,
+            foreign = answer.get("foreign")
+            if foreign is None:
+                return unconfirmed(answer["reason"])
+            # Definitive: the cache's review is off this lineage and the owner
+            # found none on it. Its counts are not this branch's to show.
+            recorded = critic_consolidate._recorded_branch(foreign)
+            whose = (
+                f"`{recorded}`'s" if recorded and recorded != gitstate.current_branch(project_dir)
+                else "another lineage's"
             )
-        if fact.get("id") == fact_id:
+            return (
+                f"This branch has no review; the findings cache holds {whose} review "
+                f"{foreign.get('id')}, not shown here.",
+                None,
+            )
+        if fact.get("id") == named:
             return "", data
         record = critic_consolidate.branch_review_record(
             prawduct_dir, fact, store.get("facts") or []
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- display only: a lookup that fails must leave the cache's record shown, with the doubt named
-        return (
-            f"Could not confirm review {fact_id}, which the findings cache names, is "
-            f"this branch's ({type(exc).__name__}: {str(exc)[:80]}) — what follows "
-            "may be another branch's review.",
-            data,
-        )
-    return (
-        f"Showing review {fact.get('id')}, this branch's newest. The findings cache "
-        f"still names review {fact_id}: {answer['reason']}.",
-        record,
-    )
+        return unconfirmed(f"{type(exc).__name__}: {str(exc)[:80]}")
+    if named is not None:
+        held = f"The findings cache still names review {named}: {answer['reason']}."
+    elif data is None:
+        held = "This worktree has no readable findings cache."
+    else:
+        held = "The findings cache names no review (it predates the evidence store)."
+    return f"Showing review {fact.get('id')}, this branch's newest. {held}", record
 
 
 def _summarize_critic_findings(
@@ -1798,20 +1815,32 @@ def _summarize_critic_findings(
     dispatch and mode inference ask, answered by the one owner
     (``select_branch_review``) — and when that answer is a different review,
     it is the one summarized, rendered as the cache writer would render it,
-    and named, with the review the cache holds beside it. Nothing is written:
-    re-pointing the slot is the dispatch's and ingest's job. When the
-    question cannot be answered, the record is shown as written with the
-    reason it could not be confirmed as this branch's. A record with no
-    ``fact_id`` (written before the evidence store) is shown as written.
+    and named, with the review the cache holds beside it. The same holds when
+    the cache names no review — absent (the cache is per-worktree, the store
+    clone-shared, so a fresh worktree of a reviewed branch has none),
+    undecodable, or without a ``fact_id``. Nothing is written: re-pointing the
+    slot is the dispatch's and ingest's job. When the owner answers that this
+    branch has no review and the cache's is another lineage's, that is said
+    and the other review's counts are not shown. When the question cannot be
+    answered, the record is shown as written with the reason it could not be
+    confirmed as this branch's.
     """
     findings_path = prawduct_dir / ".critic-findings.json"
-    if not findings_path.is_file():
-        return None
+    data = None
+    read_error: "Exception | None" = None
+    if findings_path.is_file():
+        try:
+            data = json.loads(findings_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            read_error = exc
     try:
-        data = json.loads(findings_path.read_text())
         lead, data = _this_branchs_record(
             prawduct_dir, project_dir or prawduct_dir.parent, data
         )
+        if data is None:
+            if read_error is not None:
+                raise read_error
+            return lead or None
         summary = data.get("summary", "")
         findings = data.get("findings", [])
         if not summary and not findings:
@@ -1868,8 +1897,9 @@ def _summarize_critic_findings(
             parts.append(f"  NEXT-ACTION: {next_action}")
         return "\n".join(parts)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a briefing must render whatever the record turns out to be; the failure is reported, never swallowed
-        # `is_file()` already passed, so we are here because a record that EXISTS
-        # could not be read. Returning None would drop the whole `## Critic
+        # A record that EXISTS could not be read and the owner had no review to
+        # show instead (re-raised above), or a record could not be rendered.
+        # Returning None would drop the whole `## Critic
         # Findings` section and render identically to "no review has run" — and
         # the reader is definitionally the builder who lost the reviewer's
         # report, which is the one context where that difference decides whether
