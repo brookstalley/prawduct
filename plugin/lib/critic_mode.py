@@ -108,7 +108,6 @@ consumes them.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -587,16 +586,14 @@ def _fresh_cumulative_covers_head(prawduct_dir: Path, project_dir: Path) -> bool
     be named: mid-plan, the redirect still has to reach :func:`_mid_plan_answer`.
     """
     head_sha = gitstate._git_head_sha(project_dir)
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not head_sha or not findings_path.is_file():
+    if not head_sha:
         return False
-    try:
-        data = json.loads(findings_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        # `ValueError` takes `UnicodeDecodeError` too: an undecodable cache
-        # answers "no record", never a traceback out of inference.
-        return False
-    return isinstance(data, dict) and (
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
+
+    # The one reader: an absent, undecodable or malformed cache answers "no
+    # record", never a traceback out of inference.
+    data = critic_consolidate.read_findings_cache(prawduct_dir).record
+    return data is not None and (
         data.get("commit_reviewed") == head_sha
         and data.get("mode") == _MODE_CUMULATIVE_VERBOSE
     )
@@ -987,12 +984,7 @@ def _verify_prior_record(
     """
     from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
 
-    try:
-        data = json.loads((prawduct_dir / ".critic-findings.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        data = None
-    if not isinstance(data, dict):
-        data = None
+    data = critic_consolidate.read_findings_cache(prawduct_dir).record
     read = _facts_for(project_dir, progress)
     answer = critic_consolidate.verify_anchor(project_dir, prawduct_dir, read)
     if answer["fact"] is None:

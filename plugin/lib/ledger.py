@@ -334,25 +334,25 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 1
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not findings_path.is_file():
+    from . import critic_consolidate, gates  # noqa: PLC0415 — lazy; both import this module
+
+    findings_path = critic_consolidate.findings_cache_path(prawduct_dir)
+    read = critic_consolidate.read_findings_cache(prawduct_dir)
+    if read.state == critic_consolidate.FINDINGS_ABSENT:
         print(
             f"ledger-append: no findings record at {findings_path} — write "
             "the findings file first, then append.",
             file=sys.stderr,
         )
         return 1
-
-    from . import gates  # noqa: PLC0415 — lazy; avoids a gates<->ledger import cycle
-
-    if not gates.validate_critic_findings(findings_path):
+    record = read.record
+    if record is None or not gates.validate_critic_findings(findings_path):
         print(
             f"ledger-append: {findings_path} failed schema validation — an "
             "invalid record must not enter the review history review-stats reads.",
             file=sys.stderr,
         )
         return 1
-    record = json.loads(findings_path.read_text(encoding="utf-8"))
 
     duration = record.get("duration_seconds")
     if not isinstance(duration, (int, float)) or isinstance(duration, bool):
