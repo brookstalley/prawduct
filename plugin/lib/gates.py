@@ -26,13 +26,8 @@ gate per design constraint 1 + Chunk 7, and it uses the hook-resident gate
 *attribution* machinery shared with ``cmd_clear``); it calls these helpers via
 ``_gates()``. Whether those gates arm is ``plan_status.gate_arms`` (#1051).
 
-Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``,
-``plan_status`` (chunk progress, the one walker — #1051), ``work_unit`` (the
-checkout's binding),
-``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
-(the one resolver for the rules layout the cross-check nudge names),
-``standing_block`` (the close the Stop deferral and the clear checks read), and ``core``
-(``read_bool_flag`` — the one reader of a boolean opt-in flag), plus the stdlib.
+Depends only on its lib siblings and the stdlib — the import block below is the
+list, so it is not copied here to drift (a copy did, naming removed imports).
 """
 
 
