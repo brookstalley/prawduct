@@ -230,6 +230,18 @@ QUEUE_UNREADABLE = "unreadable"
 QUEUE_STATE_UNREADABLE = "state-unreadable"
 
 
+#: The tail both unreadable-queue messages take when nothing is stopped on
+#: them — the check with ``operator_verification_required`` off. The refusal's
+#: tail ("NOT a clear queue … You can stop here") is blocking voice, and an off
+#: gate that speaks it sends a reader to stop work, or to clear a flag that is
+#: already clear, over a queue no gate reads.
+_OFF_TAIL = (
+    "Nothing is blocked: `operator_verification_required` is off, so no gate "
+    "reads this queue. It is the operator's record — if they want it readable, "
+    "hand them the line above; do not rewrite it yourself."
+)
+
+
 class QueueUnreadable(Exception):
     """The queue file exists and could not be read or decoded.
 
@@ -280,14 +292,18 @@ def unparsed_content_lines(preamble: str) -> list[str]:
     return out
 
 
-def _unreadable_queue(queue_path: Path, preamble: str) -> str | None:
-    """The one refusal for a queue file the parser read nothing from.
+def _unreadable_queue(queue_path: Path, preamble: str, *, blocks: bool = True) -> str | None:
+    """The one message for a queue file the parser read nothing from.
 
     ``None`` when nothing in ``preamble`` looks like unrecognised queue content.
     Otherwise one message quoting the first unrecognised ``##`` line (the first
     unparsed line when none is a ``##`` heading), the count, the accepted
     shapes, and what the caller CAN do. The check, accept and verify paths all
     render this and none carries its own copy, so the remedy cannot drift.
+
+    ``blocks`` says whether the caller stops on it, and picks the tail: the
+    refusal's (the check with the gate on; accept and verify, which cannot
+    proceed) or :data:`_OFF_TAIL` (the check with the gate off, a note).
     """
     unparsed = unparsed_content_lines(preamble)
     if not unparsed:
@@ -298,12 +314,15 @@ def _unreadable_queue(queue_path: Path, preamble: str) -> str | None:
         f"{len(unparsed)} line(s) in {queue_path} were not recognised as "
         f"entries. The first is: `{first}`. An entry is a level-2 heading "
         "`## VRF-<id> - <title>` or `## [VRF-<id>] <title>` whose first body "
-        "line is `**Status:** pending|verified|accepted`. This is NOT a clear "
-        "queue: nothing was read, so nothing could be found pending.\n"
-        "This queue is the operator's record. DO NOT rewrite the queue to "
-        "satisfy this - hand the operator the quoted line and let them rename "
-        "the headings or clear `operator_verification_required`. You can stop "
-        "here and report."
+        "line is `**Status:** pending|verified|accepted`. " + (
+            "This is NOT a clear queue: nothing was read, so nothing could be "
+            "found pending.\n"
+            "This queue is the operator's record. DO NOT rewrite the queue to "
+            "satisfy this - hand the operator the quoted line and let them rename "
+            "the headings or clear `operator_verification_required`. You can stop "
+            "here and report."
+            if blocks else _OFF_TAIL
+        )
     )
 
 
@@ -533,16 +552,19 @@ def _load_queue(queue_path: Path) -> tuple[str, list[VerificationEntry]]:
     return parse_operator_verification(text)
 
 
-def _queue_unreadable_reason(queue_path: Path, exc: Exception) -> str:
+def _queue_unreadable_reason(queue_path: Path, exc: Exception, *, blocks: bool = True) -> str:
     """The one sentence for a queue that could not be read at all.
 
     Distinct from :func:`_unreadable_queue`, which is a queue that was read and
     yielded no entries: this one was never read, so nothing can be said about
     its content and the operator is pointed at the file, not at its headings.
+    ``blocks`` picks the tail as it does there.
     """
-    return (
-        f"cannot read {queue_path} ({type(exc).__name__}), so no entry in it "
-        "could be checked. This is NOT a clear queue. Fix the file's "
+    lead = f"cannot read {queue_path} ({type(exc).__name__}), so no entry in it could be checked. "
+    if not blocks:
+        return lead + "The file must be UTF-8 and readable. " + _OFF_TAIL
+    return lead + (
+        "This is NOT a clear queue. Fix the file's "
         "permissions or encoding (it must be UTF-8) and re-run; do not "
         "recreate or rewrite the queue, it is the operator's record."
     )
@@ -647,15 +669,17 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
     if not required:
         # A repo that turned the gate off is never stopped, but it should not
         # carry an unreadable queue unseen either: surface it as a note.
+        # Derived from `required` (False here): a note, so neither message
+        # speaks in the blocking voice of the refusal it would be with the gate on.
         note = None
         if queue_path.is_file():
             try:
                 preamble, entries = _load_queue(queue_path)
             except QueueUnreadable as exc:
-                note = str(exc)
+                note = _queue_unreadable_reason(queue_path, exc.__cause__ or exc, blocks=False)
             else:
                 if not entries:
-                    note = _unreadable_queue(queue_path, preamble)
+                    note = _unreadable_queue(queue_path, preamble, blocks=False)
         return {
             "required": False,
             "pending": 0,

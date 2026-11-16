@@ -6898,27 +6898,39 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
 def cmd_check_operator_verification(project_dir: Path) -> int:
     """Structural gate for `/prawduct:pr create`: refuse open when queue has pending entries.
 
-    Mirrors :func:`cmd_check_cumulative_critic` semantics — exit 0 only
-    when the gate is satisfied, exit 1 with stderr describing the
-    blocker. The gate is only active when ``operator_verification_required:
-    true`` is set in ``project-state.yaml``; otherwise the command is a
-    no-op exit 0.
+    The gate is only active when ``operator_verification_required: true`` is
+    set in ``project-state.yaml``; with it off the command never blocks.
+
+    Exit codes:
+      0  - satisfied: the requirement is off (an unreadable queue is then a
+           stderr NOTE, never a block), or no entry is pending
+      1  - pending entries; stderr names the first ID and the paths that can
+           move them
+      3  - could not evaluate, and blocks: the queue holds content that parsed
+           as zero entries, the queue file cannot be read or decoded,
+           ``project-state.yaml`` cannot be read (so whether the gate is on is
+           unknown), or the plugin ``lib/`` could not be loaded
     """
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
     try:
         from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
-    except ImportError:
-        # Fail OPEN: this gate cannot evaluate a queue it can't load. If the
-        # bundled lib/ failed to import (an incomplete plugin install),
-        # blocking /prawduct:pr here would be a false positive. Surface a note, allow.
+    except ImportError as exc:
+        # Fail CLOSED, with exit 3. A gate that could not load has not found
+        # the requirement off, and it cannot read the flag that would say so.
+        # Kept as a guard rather than an unguarded import (as `_gates()`
+        # callers do) because an uncaught ImportError exits 1 — this command's
+        # "pending entries, drain or override" — and sends the reader to two
+        # remedies that cannot work on a gate that never ran.
         print(
-            "NOTE: check-operator-verification could not import the plugin lib/ "
-            "from ${CLAUDE_PLUGIN_ROOT}; gate skipped.",
+            "blocking: check-operator-verification could not evaluate: the plugin "
+            f"lib/ could not be loaded from {lib_root} ({exc}), so whether the "
+            "operator-verification gate is on, and what its queue holds, is "
+            "unknown. Repair or reinstall the plugin and re-run.",
             file=sys.stderr,
         )
-        return 0
+        return 3
 
     result = ov.run_check_operator_verification(project_dir)
     # First, and before `required` is read: an unreadable state file leaves
