@@ -316,6 +316,12 @@ _NOT_GRANTED: dict[tuple[str, str], str] = {
     # retention ends. The PR flow archives one plan by name; a fleet sweep is
     # not its to run.
     ("pr", "plan-backfill"): "cross-reference to the release checklist",
+    # Cross-reference: Step 1c's `fragment-present-untracked` row points the owner at
+    # the one printer of the lines that narrow a `.prawduct/` rule. Narrowing is the
+    # owner's decision about their own rule, and the PR flow neither makes it nor
+    # edits `.gitignore`; doctor, which offers the repair, holds the grant.
+    ("pr", "update-gitignore --dry-run"): "pointer for the owner to the narrowing "
+    "lines; the owner's rule is not the PR flow's to change",
 }
 
 

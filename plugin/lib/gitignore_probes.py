@@ -90,20 +90,21 @@ def _ignored_by_rule_candidate(ignored_by_rule: list[dict]) -> AdvisoryCandidate
     return AdvisoryCandidate(
         type="contract-ignored-by-rule",
         # Count- and rule-independent: hashed into the advisory id, so it must not
-        # move as the offending set shrinks under a partial fix.
-        evidence=(
-            ".gitignore carries a rule that ignores files prawduct needs committed "
-            "(lib/core.py V2_COMMITTED_PATHS)",
-        ),
+        # move as the offending set shrinks under a partial fix. Relayed to the owner,
+        # so it names the condition, not where prawduct keeps the list.
+        evidence=(".gitignore carries a rule that ignores files prawduct needs committed",),
         trigger_summary=" ".join(describe_ignored_by_rule(ignored_by_rule)),
         owner_action=(
-            "Decide how .gitignore should treat those files: delete the rule, or narrow it "
-            "so they stay tracked, using the lines named above. It is your rule, so prawduct "
-            "will not change it; once it is narrowed this clears by itself."
+            "Decide how .gitignore should treat those files: narrow the rule with the lines "
+            "named above so they stay tracked, or delete it and reconcile as named above. It "
+            "is your rule, so prawduct will not change it; once it is narrowed or gone this "
+            "clears by itself."
         ),
         recommended_action="",
         alternative_actions=("/prawduct:doctor",),
-        priority="info",
+        # `warn`, as the legacy change-log advisory is: a file this rule hides is never
+        # committed, so the next clone does not have it.
+        priority="warn",
     )
 
 

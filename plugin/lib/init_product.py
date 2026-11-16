@@ -242,8 +242,9 @@ def init_product(
         warnings.append(
             f"This repo records changes in {CHANGE_LOG_REL_PATH}. Releases and the PR gate read "
             f"only {change_fragments.FRAGMENT_DIR_REL}/ and refuse an unreleased entry in that log, "
-            "so move it onto fragments before the next PR: /prawduct:doctor (check #22) runs "
-            "`prawduct-hook migrate-change-log` as a dry run first."
+            "so move it onto fragments before the next PR: /prawduct:doctor's \"Change record "
+            "still on the legacy log\" check runs `prawduct-hook migrate-change-log` as a dry run "
+            "first."
         )
 
     # Learnings starter — a `.claude/rules/` file, so the harness loads it and no
