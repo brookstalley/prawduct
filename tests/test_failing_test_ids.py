@@ -216,9 +216,17 @@ class TestTheKeyCannotMoveAVerdict:
         assert status.stdout.startswith("current")
 
     def test_non_string_ids_print_no_names(self, tmp_path):
+        """The finding names no test when the ids are not strings.
+
+        ``test-status`` now joins each stale finding to ``suite_remedy``'s
+        clause (the readers return the finding alone, so the remedy prints
+        once), so the exact-match is on the finding — everything before the
+        remedy — and the remedy is asserted separately rather than dropped."""
         repo = _repo(tmp_path)
         _record(repo, _MIXED)
         self._edit(repo, [1, 2])
         status = _run_in(repo, "test-status")
         assert status.returncode == 1
-        assert status.stdout.strip() == "stale: 3 test(s) failing in saved evidence"
+        finding, sep, remedy = status.stdout.strip().partition(". Fix the failing test(s)")
+        assert sep, status.stdout
+        assert finding == "stale: 3 test(s) failing in saved evidence"
