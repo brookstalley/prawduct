@@ -39,7 +39,7 @@ Tests: `tests/test_review_interval_extension.py`. Hand-built facts there now anc
 branch range instead of carrying only a branch name, and new cases cover a reused name, a merged
 delegate, a nameless fact, the merge base and no range, at the deferral and at the boundary.
 `tests/test_briefing_branch_review.py` covers the briefing on real git.
-Docs: `review-cycle.md`'s findings-cache paragraph.
+Docs: `review-cycle.md`'s findings-cache paragraph no longer says briefings read the cache as written.
 
 ## Consumer note
 After you switch branches, the session handoff's Critic findings are the checked-out branch's own
