@@ -302,7 +302,7 @@ class TestTextHandoffAcrossWorktrees:
         result = _paired(branch_repo, monkeypatch)
         native = result["manifest"]["native_review"]
         prompt = native["prompt"]
-        assert native["text_path"] not in prompt
+        assert str(native_review.text_path(branch_repo / ".prawduct", result["id"])) not in prompt
         sentence = next(s for s in prompt.split(". ") if "Write tool" in s)
         assert "your own worktree" in sentence and "prepare" in sentence, sentence
 
@@ -701,9 +701,14 @@ class TestNextActionReportsAMovedHead:
         assert "work from both lists" not in clause
 
 
-class TestConsolidateCommandReportsAMovedHead:
-    """``critic-consolidate`` compares the manifest's branch, written at
-    dispatch, with HEAD after — any review, paired or not."""
+class TestEveryConsolidationReportsAMovedHead:
+    """Consolidation compares the manifest's branch, written at dispatch, with
+    HEAD after — any review, paired or not, on every path that consolidates:
+    the explicit command, the SubagentStop hook and the Stop backstop. The
+    check lives in ``critic_consolidate.consolidate`` (it holds the manifest
+    the branch is read from before deleting it), and the sentence rides the
+    record's ``next_action`` — the carrier a hook path has, since a hook's
+    stderr reaches nobody."""
 
     @pytest.fixture
     def hook(self):
@@ -714,24 +719,73 @@ class TestConsolidateCommandReportsAMovedHead:
         loader.exec_module(module)
         return module
 
-    def test_a_detached_head_is_reported_on_stderr(self, hook, branch_repo, monkeypatch, capsys):
+    @staticmethod
+    def _unpaired(branch_repo, monkeypatch) -> dict:
         (branch_repo / ".prawduct" / "project-state.yaml").write_text("native_review_pairing: false\n")
         monkeypatch.setattr(core, "PRAWDUCT_VERSION", DEV)
         result = cc.begin_review(branch_repo, "cumulative", force=True, session_model="claude-opus-5-5")
         assert "native_review" not in result["manifest"]  # unpaired: the guard is general
         _write_partial(branch_repo, result)
+        return result
+
+    def test_the_explicit_command_reports_it_once_in_next_action(
+        self, hook, branch_repo, monkeypatch, capsys
+    ):
+        self._unpaired(branch_repo, monkeypatch)
         _detach_at_tip(branch_repo)
         monkeypatch.chdir(branch_repo)
         assert hook.cmd_critic_consolidate(branch_repo, []) == 0
-        err = capsys.readouterr().err
-        assert f"HEAD LEFT BRANCH `{BRANCH}`" in err
-        assert f"git switch {BRANCH}" in err
+        captured = capsys.readouterr()
+        (relayed,) = [ln for ln in captured.out.splitlines() if ln.startswith("NEXT-ACTION: ")]
+        assert f"HEAD LEFT BRANCH `{BRANCH}`" in relayed
+        assert f"git switch {BRANCH}" in relayed
+        assert relayed == "NEXT-ACTION: " + _next_action(branch_repo)
+        # One owner, one sentence: the command no longer says it a second time.
+        assert (captured.out + captured.err).count("HEAD LEFT BRANCH") == 1
 
-    def test_control_on_the_branch_nothing_is_said(self, hook, branch_repo, monkeypatch, capsys):
+    def test_the_subagent_stop_path_reports_it(self, hook, branch_repo, monkeypatch):
+        self._unpaired(branch_repo, monkeypatch)
+        _detach_at_tip(branch_repo)
+        monkeypatch.chdir(branch_repo)
+        assert hook.cmd_subagent_stop(
+            branch_repo, {"cwd": str(branch_repo), "agent_type": "prawduct:critic-reviewer"}
+        ) == 0
+        assert not cc.manifest_path(branch_repo / ".prawduct").exists(), "it consolidated"
+        sentence = _next_action(branch_repo)
+        assert f"HEAD LEFT BRANCH `{BRANCH}`" in sentence and f"git switch {BRANCH}" in sentence
+
+    def test_the_stop_backstop_trigger_reports_it(self, branch_repo, monkeypatch):
+        self._unpaired(branch_repo, monkeypatch)
+        _detach_at_tip(branch_repo)
+        assert cc.consolidate(branch_repo, trigger="session-end-backstop") == 0
+        assert f"HEAD LEFT BRANCH `{BRANCH}`" in _next_action(branch_repo)
+
+    def test_a_review_still_in_flight_reports_it_in_its_no_op(self, branch_repo, monkeypatch, capsys):
+        """No partial yet, so nothing is consolidated and no record written —
+        but the caller reading the no-op is told HEAD moved."""
         (branch_repo / ".prawduct" / "project-state.yaml").write_text("native_review_pairing: false\n")
         monkeypatch.setattr(core, "PRAWDUCT_VERSION", DEV)
-        result = cc.begin_review(branch_repo, "cumulative", force=True, session_model="claude-opus-5-5")
+        cc.begin_review(branch_repo, "cumulative", force=True, session_model="claude-opus-5-5")
+        _detach_at_tip(branch_repo)
+        capsys.readouterr()
+        assert cc.consolidate(branch_repo, trigger="explicit") == 0
+        out = capsys.readouterr().out
+        assert out.startswith("At consolidation: HEAD LEFT BRANCH"), out
+        assert cc.manifest_path(branch_repo / ".prawduct").exists(), "still in flight"
+
+    def test_a_paired_review_says_it_once(self, branch_repo, monkeypatch):
+        """The native clause carries the same sentence for a paired review;
+        the record says it once, not twice."""
+        result = _paired(branch_repo, monkeypatch)
         _write_partial(branch_repo, result)
+        _detach_at_tip(branch_repo)
+        assert cc.consolidate(branch_repo, trigger="subagent-stop") == 0
+        assert _next_action(branch_repo).count("HEAD LEFT BRANCH") == 1
+
+    def test_control_on_the_branch_nothing_is_said(self, hook, branch_repo, monkeypatch, capsys):
+        self._unpaired(branch_repo, monkeypatch)
         monkeypatch.chdir(branch_repo)
         assert hook.cmd_critic_consolidate(branch_repo, []) == 0
-        assert "HEAD LEFT" not in capsys.readouterr().err
+        captured = capsys.readouterr()
+        assert "HEAD LEFT" not in captured.out + captured.err
+        assert "HEAD LEFT" not in _next_action(branch_repo)

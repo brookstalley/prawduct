@@ -1122,7 +1122,12 @@ LAST_MEASURED_TOKENS = {
     # declaring; no reviewer loads this file.
     # -3 on 2026-11-15 (branch-review-one-owner, #1179): "builders and briefings read it for content"
     # lost "and briefings" — the briefing now confirms the cached review is this branch's first.
-    "skills/critic/review-cycle.md": 8252,
+    # -1 on 2026-11-16 (coherence-pass Chunk 03): the anchoring paragraph and the first demotion
+    # row say a MISSING pointer (no cache — it is per-worktree — no `fact_id`, a gone fact) also
+    # yields to the branch's review, and the manifest key list names `chunks`/`chunks_proposed`
+    # for the retired `chunk`. Paid by cutting the paragraph's restatement of why a cross-branch
+    # anchor misleads, which `critic_consolidate._prior_review_fact` owns.
+    "skills/critic/review-cycle.md": 8251,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -6713,7 +6718,8 @@ class TestReviewCycle:
         # RAISED 8158 -> 8187 (native-review-paired Chunk 01, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 8187 -> 8256 (verify-resolutions-lineage, #1150/#1116/#724, 2026-11-15) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 8256 -> 8253 (branch-review-one-owner, #1179, 2026-11-15) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8253, f"review-cycle.md is ~{tokens} tokens, should be <8253"
+        # LOWERED 8253 -> 8252 (coherence-pass Chunk 03, 2026-11-16) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8252, f"review-cycle.md is ~{tokens} tokens, should be <8252"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

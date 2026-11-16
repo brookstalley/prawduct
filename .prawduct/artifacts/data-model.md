@@ -136,8 +136,9 @@ clone that wrote it.
   `files_reviewed`/`files_changed`, `chunks[]` (the build-plan chunks this review **names**, each of which it certifies (as it
   does an unnamed chunk a scoped commit subject in its interval names), in plan order — declared at dispatch with `critic-begin --chunks`, or exactly the code-derived
   proposal when omitted; ST8 of #1050), `chunks_proposed[]` (that proposal, recorded beside the
-  declaration so an edit to it is visible on the record, never silent), `chunk` (`chunks[0]` or
-  null — kept one release for readers of the singular field), `findings[]` (each with a
+  declaration so an edit to it is visible on the record, never silent), `chunk` (on facts written
+  by v3.8.1 and earlier only — `chunks[0]` or null, or alone on a fact from before `chunks`; new facts
+  omit it, and `plan_status.fact_chunks` is the reader rule for both), `findings[]` (each with a
   stable `fid`, `goal`, `severity`, `title`, `recommendation`, and — on a test-failure finding —
   `failed_tests`, the ids it rates, omitted when none), `counts`, and `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
