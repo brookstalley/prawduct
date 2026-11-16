@@ -375,9 +375,9 @@ def _cap(clause: str) -> str:
 def _in_progress_parts(run: dict) -> "tuple[str, str, str] | None":
     """``(state, finding, remedy)`` for a record carrying the recorder's
     ``in_progress`` stamp, or ``None`` when it carries none. The one place the
-    in-flight sentence is composed: :func:`record_in_progress` joins the two
-    halves for the refusal, :func:`suite_remedy` hands the remedy to callers
-    that write their own lead."""
+    in-flight sentence is composed: :func:`record_in_progress` hands the
+    finding to the refusal, :func:`suite_remedy` the remedy to whichever
+    surface prints it."""
     stamp = run.get("in_progress")
     if stamp is None:
         return None
@@ -409,17 +409,20 @@ def _in_progress_parts(run: dict) -> "tuple[str, str, str] | None":
 
 
 def record_in_progress(run: dict) -> "tuple[str, str] | None":
-    """``(state, reason)`` for a record carrying the recorder's ``in_progress``
+    """``(state, finding)`` for a record carrying the recorder's ``in_progress``
     stamp, or ``None`` when it carries none. ``state`` is
     ``record_progress.RUNNING``, ``ELSEWHERE`` (another machine's, which cannot
     be checked: treated as running until ``record_progress.unverified_bound``,
     then as gone) or ``GONE``. One owner for the sentence, so the refusal every
-    gate prints and ``test-status``'s line say the same."""
+    gate prints and ``test-status``'s line say the same.
+
+    The finding only, never the remedy: every surface that prints this appends
+    :func:`suite_remedy`'s clause itself, so a finding that carried one too
+    printed it twice."""
     parts = _in_progress_parts(run)
     if parts is None:
         return None
-    state, finding, remedy = parts
-    return state, f"{finding}. {_cap(remedy)}"
+    return parts[0], parts[1]
 
 
 def suite_remedy(project_dir: Path) -> SuiteStep:
@@ -432,6 +435,12 @@ def suite_remedy(project_dir: Path) -> SuiteStep:
     it to start a second suite on top of the first. The state is read off this
     worktree's record in the order :func:`run_refusal` refuses it, so the two
     cannot disagree about which condition answers.
+
+    **Those readers return the finding alone; the remedy is this function's
+    only.** Each surface prints finding + this clause once — ``test-status``
+    joins them, and the exit-7 refusal, the release gate's ``unproven-suite``
+    line and :func:`transfer_remedy` append it after the verdict. A reason that
+    also carried its own remedy printed it twice.
     """
     record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
     if record is None:
@@ -458,7 +467,9 @@ def run_refusal(run: dict) -> str:
     rule for every run a freshness check can consult — the worktree's record
     and a ``test-run`` fact alike — so the store cannot come to trust a run the
     record's own reader would refuse. A count that is not an integer refuses:
-    a fact body is not schema-checked the way the record is.
+    a fact body is not schema-checked the way the record is. The FINDING only:
+    what to do about it is :func:`suite_remedy`'s, which the printing surface
+    appends.
 
     **A record attempt in progress answers first (#1178).** The write-ahead void
     keeps the previous run's counts, so without this a red earlier run would be
@@ -482,8 +493,7 @@ def run_refusal(run: dict) -> str:
     if isinstance(degraded, str) and degraded.strip():
         return (
             f"the saved run reports itself degraded ({degraded.strip()}) — its "
-            "counts do not cover what they appear to. Run the suite again, "
-            "uncontended, and record that run"
+            "counts do not cover what they appear to"
         )
     return ""
 
@@ -540,7 +550,8 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
     closed. The remedy is one command: re-record the run.
 
     Returns ``(is_current, reason, clause)``. ``reason`` is a short
-    human-readable string suitable for printing back to the agent. ``clause``
+    human-readable string suitable for printing back to the agent — the finding
+    only; the remedy is :func:`suite_remedy`'s, appended by whoever prints it. ``clause``
     names which disjunct answered — ``"session"``, ``"tree"``, or ``"none"``
     when neither did — because the two are **different guarantees** and a
     caller that prints only "current" tells its reader the stronger one.
@@ -635,7 +646,7 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
 
     return False, (
         f"no session marker to date the evidence against ({evidence_ts}), and "
-        f"it does not vouch for the current tree — run the suite and record it{store_note}"
+        f"it does not vouch for the current tree{store_note}"
     ), "none"
 
 
@@ -913,7 +924,8 @@ def suite_vouches_for_tree(
     tree it is actually about. ``None`` means the working tree.
 
     Returns ``(vouches, reason)``; the reason is printed either way, because a
-    denial here is the cheapest remedy the gate has to offer.
+    denial here is the cheapest remedy the gate has to offer. The reason is the
+    finding only: :func:`transfer_remedy` writes the remedy after it.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     record, why_not = _load_test_evidence(prawduct_dir)
@@ -922,8 +934,7 @@ def suite_vouches_for_tree(
         if not isinstance(recorded_tree, str) or not recorded_tree:
             why_not = (
                 "the saved run records no evidence_tree, so nothing can say which "
-                "tree it ran against — re-run the suite (or restamp with "
-                "`test-evidence record --no-rerun`) so the transfer has a tree to check"
+                "tree it ran against"
             )
         else:
             # `None` means the working tree, which is the Stop gate's own target
@@ -2877,7 +2888,9 @@ def test_status(
     Used by builders and the Critic to decide whether to re-run the test suite.
 
     stdout: the verdict line first — :data:`CURRENT_TREE_LABEL`,
-    :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason —
+    :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason, and
+    a refusal by :func:`suite_remedy`'s clause (this is the one surface that
+    joins the two: the readers return the finding alone) —
     then one ``flaky:`` line per test the saved run passed only on retry
     (:func:`flaky_lines`), which inform and never change the exit code.
     The parenthetical names which of :func:`tests_are_current`'s two disjuncts
@@ -2921,9 +2934,9 @@ def test_status(
         record_progress.forget()
     progress = _in_progress_now(project_dir)
     if progress is not None:
-        state, reason = progress
+        state, finding = progress
         label = INTERRUPTED_LABEL if state == record_progress.GONE else RUNNING_LABEL
-        print(f"{label}: {reason}")
+        print(f"{label}: {finding}. {_cap(suite_remedy(project_dir).remedy)}")
         if timed_out:
             # Ends: a recorder this machine can check ends when its process
             # does, and one it cannot reads as interrupted past its bound.
@@ -2938,7 +2951,7 @@ def test_status(
         label = CURRENT_TREE_LABEL if clause == "tree" else CURRENT_SESSION_LABEL
         print(f"{label}: {reason}")
     else:
-        print(f"stale: {reason}")
+        print(f"stale: {reason}. {_cap(suite_remedy(project_dir).remedy)}")
     # After the verdict, never instead of it: the saved run's flakes. Printed
     # whatever the verdict, since a stale green that passed only on retry is
     # still worth a backlog item, and never changing the exit code.
@@ -3101,9 +3114,14 @@ def transfer_remedy(
             "and no review is needed. Re-running on the same committed HEAD is safe "
             "because this gate's verdict never read those paths."
         )
+    # A red or degraded saved run owes more than a re-run — fix the failures,
+    # or run uncontended — and the verdict reason above is the finding only,
+    # so the owner's clause is the one place that says so.
+    run = "Run the suite and `prawduct-hook test-evidence record`"
+    if suite_step is not None and suite_step.state in (SUITE_FAILING, SUITE_DEGRADED):
+        run = _cap(suite_step.remedy)
     return (
-        f"{lead} Run the suite and `prawduct-hook test-evidence "
-        "record`, then re-run: the coverage transfers and no review is needed. The "
+        f"{lead} {run}, then re-run: the coverage transfers and no review is needed. The "
         "suite is what vouches for the reviewed diff meeting the advanced base — a "
         "run from earlier in this session does not, which is why timing is not what "
         "is checked here."

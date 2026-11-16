@@ -180,22 +180,51 @@ def test_no_estimate_without_a_previous_duration(tmp_path):
 
 
 class TestTheGatesSayWait:
-    def test_run_refusal_says_wait_not_rerun(self, running):
+    """The verdict readers state the FINDING; the remedy — wait — comes once,
+    from ``suite_remedy``, at whichever surface prints it.
+
+    These used to assert "wait" inside the reason itself. That contract is
+    renegotiated, not relaxed: every caller already appended the owner's remedy
+    after the reason, so a reason that also carried it printed the remedy twice
+    (`test-status --wait` … `test-status --wait`). The finding still names the
+    run in progress, and never tells the reader to run the suite.
+    """
+
+    def test_run_refusal_names_the_run_and_carries_no_remedy(self, running):
         repo, _ = running
         why = gates.run_refusal(_evidence(repo))
-        assert "in progress" in why and "wait" in why
+        assert "in progress" in why
+        assert "test-status --wait" not in why and "wait for it" not in why.lower()
         assert "Run the suite" not in why and "run the suite" not in why
 
-    def test_tests_are_current_says_wait(self, running):
+    def test_tests_are_current_names_the_run_and_carries_no_remedy(self, running):
         repo, _ = running
         current, reason, _clause = gates.tests_are_current(repo)
         assert current is False
-        assert "in progress" in reason and "wait" in reason
+        assert "in progress" in reason and "test-status --wait" not in reason
 
-    def test_suite_vouches_says_wait(self, running):
+    def test_suite_vouches_names_the_run_and_the_owner_says_wait(self, running):
         repo, _ = running
         vouches, reason = gates.suite_vouches_for_tree(repo)
-        assert vouches is False and "wait" in reason
+        assert vouches is False and "in progress" in reason
+        assert "test-status --wait" not in reason
+        assert "test-status --wait" in gates.suite_remedy(repo).remedy
+
+    def test_the_composed_transfer_note_says_wait_once(self, running):
+        """The transfer note as the gates compose it — the vouching reason
+        plus the owner's step — names the wait exactly once."""
+        repo, _ = running
+        _vouches, reason = gates.suite_vouches_for_tree(repo)
+        transfer = {"prior_fact_id": "rev-x", "files": ["a.py"], "reason": ""}
+        note = gates.transfer_remedy(transfer, reason, suite_step=gates.suite_remedy(repo))
+        assert note.count("test-status --wait") == 1, note
+        assert "in progress" in note and "Run the suite" not in note, note
+
+    def test_test_status_says_wait_once(self, running):
+        repo, _ = running
+        first = _run_in(repo, "test-status").stdout.splitlines()[0]
+        assert first.startswith("running:"), first
+        assert first.count("test-status --wait") == 1, first
 
     def test_the_transfer_remedy_says_wait_not_rerun(self):
         transfer = {"prior_fact_id": "rev-x", "files": ["a.py"], "reason": ""}
@@ -401,16 +430,23 @@ class TestAForeignStampHasAnEnd:
         assert record_progress.recorder_state(stamp, 42.0)[0] == record_progress.GONE
 
     def test_the_refusal_names_when_waiting_ends_and_the_way_out(self, tmp_path):
+        """The finding says when waiting stops; the way out is the remedy's,
+        which ``suite_remedy`` owns and ``test-status`` prints after it."""
         record = _stamp_record(tmp_path, _foreign(60))
         why = gates.run_refusal(record)
         assert "other-box" in why
         assert "interrupted" in why, "the refusal must say when waiting stops"
-        assert "if no run is going on other-box" in why, why
+        assert "if no run is going on other-box" in gates.suite_remedy(tmp_path).remedy
+        line = _run_in(tmp_path, "test-status").stdout.splitlines()[0]
+        assert line.count("if no run is going on other-box") == 1, line
 
-    def test_past_the_bound_the_refusal_says_run_the_suite(self, tmp_path):
+    def test_past_the_bound_the_remedy_says_run_the_suite(self, tmp_path):
         record = _stamp_record(tmp_path, _foreign(10 * 3600))
         why = gates.run_refusal(record)
-        assert "Run the suite" in why and "do not start another" not in why, why
+        assert "did not land" in why and "Run the suite" not in why, why
+        step = gates.suite_remedy(tmp_path)
+        assert step.state == gates.SUITE_INTERRUPTED
+        assert "run the suite" in step.remedy and "do not start another" not in step.remedy
 
     def test_test_status_and_wait_end_on_an_old_foreign_stamp(self, tmp_path):
         repo = _repo(tmp_path)
@@ -608,6 +644,55 @@ class TestOneOwnerOfTheSuiteRemedy:
         note = gates.transfer_remedy(transfer, "r", suite_step=step)
         assert step.remedy in note and "if no run is going on other-box" in note
 
+    @pytest.mark.parametrize("over, finding, remedy", [
+        ({"degraded": "a worker died"}, "a worker died", "uncontended"),
+        ({"failed": 2, "passed": 1}, "2 test(s) failing", "Fix the failing test(s)"),
+        ({}, "predates session", "Run the suite and record it"),
+    ])
+    def test_test_status_joins_each_stale_finding_to_its_remedy_once(
+        self, tmp_path, over, finding, remedy
+    ):
+        """``test-status`` is the one surface that prints the verdict whole, so
+        it joins the finding to ``suite_remedy``'s clause — once. The readers
+        return the finding alone; a reason that carried its own remedy printed
+        it twice wherever a caller appended the owner's."""
+        record = {
+            "timestamp": "2001-01-01T00:00:00Z", "passed": 3, "failed": 0, "skipped": 0,
+            "duration_seconds": 1.0, "command": "x", "verifier": "v",
+            "tests_executed": [], "changes_referenced": [], "coverage_level": "referenced",
+        } | over
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".test-evidence.json").write_text(json.dumps(record))
+        (prawduct / ".session-start").write_text("2002-01-01T00:00:00Z")
+        res = _run_in(tmp_path, "test-status")
+        assert res.returncode == 1, res.stdout + res.stderr
+        line = res.stdout.splitlines()[0]
+        assert line.startswith("stale:") and finding in line, line
+        assert line.lower().count(remedy.lower()) == 1, line
+        reason = gates.tests_are_current(tmp_path)[1]
+        assert remedy.lower() not in reason.lower(), reason
+
+    def test_a_degraded_transfer_note_says_uncontended_once(self, tmp_path):
+        """The degraded finding no longer carries "run again, uncontended", so
+        the transfer note takes that clause from the owner — once."""
+        record = {
+            "timestamp": _ts(), "passed": 3, "failed": 0, "skipped": 0,
+            "duration_seconds": 1.0, "command": "x", "verifier": "v",
+            "tests_executed": [], "changes_referenced": [], "coverage_level": "referenced",
+            "degraded": "a worker died",
+        }
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / ".prawduct" / ".test-evidence.json").write_text(json.dumps(record))
+        _vouches, reason = gates.suite_vouches_for_tree(tmp_path)
+        step = gates.suite_remedy(tmp_path)
+        assert step.state == gates.SUITE_DEGRADED
+        transfer = {"prior_fact_id": "rev-x", "files": ["a.py"], "reason": ""}
+        note = gates.transfer_remedy(transfer, reason, suite_step=step)
+        assert "a worker died" in note and note.lower().count("uncontended") == 1, note
+        control = gates.transfer_remedy(transfer, reason)
+        assert "uncontended" not in control.lower(), control
+
     def test_the_skill_and_review_cycle_rows_defer_to_the_printed_remedy(self):
         for rel in ("skills/critic/SKILL.md", "skills/critic/review-cycle.md"):
             text = " ".join((ROOT / rel).read_text(encoding="utf-8").split())
@@ -616,3 +701,65 @@ class TestOneOwnerOfTheSuiteRemedy:
             at = text.index("**exit 7**") if "**exit 7**" in text else text.index("| **7** |")
             row = text[at:at + 260]
             assert "printed" in row, (rel, row)
+
+
+class TestTheCriticKnowsARunInFlight:
+    """A suite in flight is not a defect, and the Critic protocol said it was.
+
+    ``test-status`` exits 1 on ``running:`` as on ``stale:``, and
+    ``verify-coverage`` exits 1 on a record attempt's void, so every Critic
+    surface that read "exit 1 = stale" or "other exit-1 → BLOCKING" graded a
+    run that had not landed yet as a WARNING or a BLOCKING finding. Each of the
+    three carriers is pinned at the bullet (or step) that rates the command, so
+    a row reworded in one of them reds here; the remedy it names (``--wait``)
+    must be one the reader's grants admit.
+    """
+
+    _CARRIERS = (
+        "skills/critic/goals-1-3.md",
+        "skills/critic/review-protocol.md",
+        "skills/critic/SKILL.md",
+    )
+
+    @staticmethod
+    def _line(rel: str, needle: str) -> str:
+        lines = [ln for ln in (ROOT / rel).read_text(encoding="utf-8").splitlines()
+                 if needle in ln]
+        assert len(lines) == 1, (rel, needle, lines)
+        return lines[0]
+
+    @pytest.mark.parametrize("rel", _CARRIERS)
+    def test_the_test_status_row_says_a_running_suite_is_not_a_finding(self, rel):
+        row = self._line(rel, "run `prawduct-hook test-status`" if rel.endswith("SKILL.md")
+                         else "prawduct-hook test-status`:")
+        assert "`running:`" in row, (rel, row)
+        assert "never a finding" in row, (rel, row)
+        assert "--wait" in row, (rel, row)
+        assert "exit code is the *only* freshness signal" not in row, (rel, row)
+
+    @pytest.mark.parametrize("rel", _CARRIERS[:2])
+    def test_the_verify_coverage_row_excepts_a_running_void(self, rel):
+        row = self._line(rel, "run `prawduct-hook verify-coverage`")
+        assert "(running)" in row and "not a finding" in row, (rel, row)
+        assert "→ **BLOCKING** with the diagnostic" in row, "the control: other exit-1 still blocks"
+
+    @staticmethod
+    def _bash_patterns(text: str, field: str) -> list:
+        import re  # noqa: PLC0415
+        line = re.search(rf"^{field}:(.*)$", text, re.M).group(1)
+        return [t.strip()[len("Bash("):-1] for t in line.split(",")
+                if t.strip().startswith("Bash(") and t.strip().endswith(")")]
+
+    @pytest.mark.parametrize("rel, field", [
+        ("skills/critic/SKILL.md", "allowed-tools"),
+        ("agents/critic-reviewer.md", "tools"),
+    ])
+    def test_the_grants_admit_the_wait(self, rel, field):
+        import fnmatch  # noqa: PLC0415
+        patterns = self._bash_patterns((ROOT / rel).read_text(encoding="utf-8"), field)
+        assert patterns, rel
+        for cmd in ("prawduct-hook test-status", "prawduct-hook test-status --wait",
+                    "prawduct-hook test-status --wait --timeout 300"):
+            assert any(fnmatch.fnmatchcase(cmd, p) for p in patterns), (rel, cmd)
+        assert not any(fnmatch.fnmatchcase("prawduct-hook test-evidence record", p)
+                       for p in patterns), "the control: recording stays ungranted"
