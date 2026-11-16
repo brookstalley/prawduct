@@ -7395,34 +7395,96 @@ def validate_partial_cmd(project_dir: Path, path_arg: str) -> int:
     )
     return 1
 
-def _lead_with_moved_head(project_dir: Path, began_on: "str | None", next_action: str) -> str:
-    """``next_action`` led by ``head_guard``'s sentence when HEAD has left
-    ``began_on``, the branch the manifest recorded at dispatch (#1177).
+def _manifest_branch(prawduct_dir: Path) -> "str | None":
+    """The ``branch`` the pending dispatch manifest recorded, or ``None`` when
+    there is no manifest, it cannot be read, or it names none (a detached
+    dispatch). Lenient on purpose: :func:`_consolidate` reads the manifest
+    strictly and reports each of those itself."""
+    try:
+        data = json.loads(manifest_path(prawduct_dir).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    branch = data.get("branch") if isinstance(data, dict) else None
+    return branch if isinstance(branch, str) and branch else None
 
-    Here, not at a caller, because every path that consolidates — the explicit
-    command, the SubagentStop hook, the Stop backstop — comes through
-    :func:`consolidate`, which holds the manifest the branch is read from and
-    deletes it; and in ``next_action`` because that is the carrier a hook path
-    has (its stderr reaches nobody) and the line a reviewing fork relays. A
-    paired review's native clause may already carry the same sentence, so it
-    is said once. Marked as seen at consolidation: the briefing shows this
-    record as written, after the builder may have recovered."""
-    from . import head_guard  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
-    left = head_guard.left_branch(project_dir, began_on)
-    if not left:
-        return next_action
-    sentence = head_guard.message(left)
-    if sentence in next_action:
-        return next_action
-    return f"At consolidation: {sentence} {next_action}"
+def _lead_with_moved_head(moved: "str | None", text: str) -> str:
+    """``text`` led by the moved-HEAD sentence, unless there is none or ``text``
+    already carries it (a paired review's native clause may), so it is said
+    once. Marked as seen at consolidation: the briefing shows a record as
+    written, after the builder may have recovered."""
+    if not moved or moved in text:
+        return text
+    return f"At consolidation: {moved} {text}"
 
 
 def consolidate(
     project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None" = None
 ) -> int:
+    """Consolidate the pending review (:func:`_consolidate`), reporting a HEAD
+    that left the review's branch (#1177) on EVERY exit.
+
+    The one owner of that report, because every path that consolidates — the
+    explicit command, the SubagentStop hook, the Stop backstop — comes through
+    here, and the manifest the branch is read from is deleted on success. HEAD
+    is compared with the manifest's ``branch`` ONCE, at entry, and the answer
+    rides whatever is emitted:
+
+    - an exit that writes a carrier says it there: the record's
+      ``next_action`` (the line a hook path's builder reads and a reviewing
+      fork relays) and the in-flight no-op's stdout;
+    - every other exit — a refusal (a tree changed since dispatch, a bad
+      partial, a failed append, an invalid cache) or an exception — writes no
+      carrier, so it is said on stderr AHEAD of whatever the refusal says
+      there. A reviewer's ``git checkout <base>`` both detaches HEAD and
+      changes the tree, and the tree refusal's remedy alone would send the
+      builder to ``--tree-changed-by-builder`` without knowing HEAD is
+      detached. stderr is the channel the refusal itself speaks on, and the
+      one the Stop backstop hands to the agent when it blocks.
+    """
+    if trigger not in ledger.CONSOLIDATION_TRIGGERS:
+        raise ValueError(
+            f"consolidate: trigger must be one of {ledger.CONSOLIDATION_TRIGGERS}, "
+            f"got {trigger!r}"
+        )
+    from . import head_guard  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    left = head_guard.left_branch(project_dir, _manifest_branch(prawduct_dir))
+    moved = head_guard.message(left) if left else None
+    if moved is None:
+        return _consolidate(
+            project_dir, trigger=trigger, tree_changed_by_builder=tree_changed_by_builder,
+            moved=None,
+        )
+    import contextlib  # noqa: PLC0415 — only a moved HEAD pays for it
+    import io  # noqa: PLC0415
+
+    held = io.StringIO()
+    rc: "int | None" = None
+    try:
+        with contextlib.redirect_stderr(held):
+            rc = _consolidate(
+                project_dir, trigger=trigger,
+                tree_changed_by_builder=tree_changed_by_builder, moved=moved,
+            )
+    finally:
+        # rc 0 is an exit whose carrier already says it (the record or the
+        # in-flight no-op); anything else — a refusal, or an exception on its
+        # way out — has none, so the warning leads its stderr.
+        if rc != 0:
+            print(f"PRAWDUCT WARNING: {moved}", file=sys.stderr)
+        sys.stderr.write(held.getvalue())
+    return rc
+
+
+def _consolidate(
+    project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None",
+    moved: "str | None",
+) -> int:
     """Merge complete reviewer partials into evidence facts + the derived
-    cache. Idempotent.
+    cache. Idempotent. Reached only through :func:`consolidate`; ``moved`` is
+    its moved-HEAD sentence, or ``None``, for the carriers written here.
 
     ``trigger`` names the calling path (one of ``ledger.CONSOLIDATION_TRIGGERS``)
     and is recorded on the ``review.critic`` ledger event. Required, and never
@@ -7449,13 +7511,6 @@ def consolidate(
         complete; the manifest is left in place so the fix can retry (fact
         appends already made are healed by the id-idempotency probe).
     """
-
-    if trigger not in ledger.CONSOLIDATION_TRIGGERS:
-        raise ValueError(
-            f"consolidate: trigger must be one of {ledger.CONSOLIDATION_TRIGGERS}, "
-            f"got {trigger!r}"
-        )
-
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     mpath = manifest_path(prawduct_dir)
     if not mpath.is_file():
@@ -7505,7 +7560,7 @@ def consolidate(
         # in flight is when a reviewer's checkout would have moved it, and the
         # caller who ran the command is reading this message.
         print(_lead_with_moved_head(
-            project_dir, manifest.get("branch"),
+            moved,
             _incomplete_noop_message(
                 missing, len(partials), len(roster), review_id, prawduct_dir,
                 handed_off=bool(manifest.get("reviewer_model"))),
@@ -7801,9 +7856,7 @@ def consolidate(
         fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
         store=store, not_waived=waiver_refusals, prawduct_dir=prawduct_dir,
     )
-    record["next_action"] = _lead_with_moved_head(
-        project_dir, manifest.get("branch"), record["next_action"]
-    )
+    record["next_action"] = _lead_with_moved_head(moved, record["next_action"])
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
