@@ -1258,7 +1258,7 @@ def validate_critic_findings(findings_path: Path) -> bool:
     ch.02, one schema for both homes of the same record).
     """
     try:
-        data = json.loads(findings_path.read_text())
+        data = json.loads(findings_path.read_text(encoding="utf-8"))
         return _validate_critic_findings_data(data)
     except Exception:  # prawduct:allow prawduct/broad-except -- validation must not crash gate check
         return False

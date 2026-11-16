@@ -10507,8 +10507,8 @@ def cmd_archive_change_log(project_dir: Path, argv: list[str]) -> int:
             print(
                 "refused: git tracks this repo's change record but would ignore "
                 f"{change_log_archive.ARCHIVE_DIR_REL}/, so committing the move would drop the "
-                "moved entries from history — nothing moved. Un-ignore it (for a `.prawduct/*` "
-                f"pattern add `!{change_log_archive.ARCHIVE_DIR_REL}/` to .gitignore) and re-run.",
+                "moved entries from history — nothing moved. Un-ignore it — `prawduct-hook update-gitignore --dry-run` "
+                "prints the lines that re-include it — and re-run.",
                 file=sys.stderr,
             )
             return 1

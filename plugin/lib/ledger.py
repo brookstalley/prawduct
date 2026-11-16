@@ -352,7 +352,7 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 1
-    record = json.loads(findings_path.read_text())
+    record = json.loads(findings_path.read_text(encoding="utf-8"))
 
     duration = record.get("duration_seconds")
     if not isinstance(duration, (int, float)) or isinstance(duration, bool):

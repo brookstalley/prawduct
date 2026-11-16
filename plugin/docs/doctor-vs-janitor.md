@@ -46,12 +46,12 @@ time away.
 These are the only concerns that genuinely live in both skills today. In each, the two checks ask
 different questions at different altitudes — that is why they are not duplication.
 
-- **API versioning.** doctor Health-Check #9 asks *"is a versioning decision recorded?"*
+- **API versioning.** doctor's *API versioning decision* check asks *"is a versioning decision recorded?"*
   (conformance — `design_decisions.api_versioning_approach` set, or an explicit dated deferral).
   The janitor "API Design & Versioning Hygiene" theme asks *"is the API designed to evolve well?"*
   (craft — across ~8 dimensions, of which versioning is one). The recorded decision is the only
   gated part (Critic + the `api-versioning` advisory); the janitor theme is a survey.
-- **gitignore.** doctor Health-Check #8 checks the prawduct *contract*, by what git would ignore (session-file
+- **gitignore.** doctor's *Gitignore contract* check checks the prawduct *contract*, by what git would ignore (session-file
   entries covered, including by a wholesale rule, and only by a `.gitignore` in the repo, never a global excludes file; no rule hiding a file a plugin-governed repo commits (`core.V2_COMMITTED_PATHS`);
   the retired `build-plan.md` entry not re-added). The janitor Version Control Hygiene
   theme checks *general* hygiene (build artifacts, editor files, secrets). Different objects, same
@@ -62,6 +62,6 @@ different questions at different altitudes — that is why they are not duplicat
 - **Template Currency** (janitor) compares the product's artifacts against the plugin's templates.
   Its own pre-check tells the user to confirm the plugin install via `/prawduct:doctor` when the
   plugin root is unreachable — an explicit handoff, not a shared check.
-- **Backlog**: doctor Health-Check #7 reports *external* backlog files (`TODO.md`, `BACKLOG.md`)
+- **Backlog**: doctor's *External backlog files* check reports *external* backlog files (`TODO.md`, `BACKLOG.md`)
   not yet recorded in `backlog_external_imports`; the janitor Backlog-Triage step surveys the
   *prawduct* backlog's own health (stale/unstaged/dedup). Different objects.

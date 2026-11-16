@@ -1107,7 +1107,7 @@ class TestNormHealthSweepOverdueProbe:
         assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
 
     def test_the_advisory_names_the_repair_route_not_only_the_sweep(self, tmp_path):
-        """The pointer to Health Check #14 must live where every surface renders it.
+        """The pointer to the leftover-scaffold check must live where every surface renders it.
 
         It was first set on `alternative_actions`, which the briefing does not
         render (only `advisory show` does) — so the fix was inert where most
@@ -1126,7 +1126,9 @@ class TestNormHealthSweepOverdueProbe:
             "the summary must offer the repair, not only the audit"
         )
         rendered = " ".join([out[0].trigger_summary, *out[0].alternative_actions])
-        assert rendered.count("Health Check #14") == 1, "the route is said once"
+        # Named, not numbered: doctor's list renumbers under an ordinal.
+        assert rendered.count("*Leftover norm-index scaffold rows* check") == 1, "the route is said once"
+        assert "Check #" not in rendered
 
     def test_window_boundary_is_inclusive(self, tmp_path):
         # age == SWEEP_WINDOW_DAYS is still "fresh" (the guard is `<=`); one day past fires.

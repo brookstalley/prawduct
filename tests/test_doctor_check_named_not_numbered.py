@@ -8,7 +8,7 @@ carry, so that is what a message cites.
 
 Scanned: every string literal the runtime can print (``plugin/lib`` and the hook),
 docstrings excluded since nobody is shown those, plus the PR skill's Step 1c rows,
-which relay the PR gate's verdicts.
+which relay the PR gate's verdicts, and every shipped prose file outside doctor's own list.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ LEGACY_LOG_CHECK = "Change record still on the legacy log"
 
 #: User-facing ordinals outside this change's files, reported for their owners to fix.
 #: Each is (file, count): a NEW ordinal in the same file still fails.
-KNOWN = {"plugin/lib/norm_probes.py": 1}
+KNOWN: dict[str, int] = {}
 
 
 def _runtime_sources() -> list[Path]:
@@ -71,6 +71,23 @@ def test_step_1c_cites_no_doctor_check_by_number():
     step = text[start : text.index("### Step 1d:", start)]
     assert "/prawduct:doctor" in step, "control: Step 1c still routes to doctor"
     assert not ORDINAL.findall(step)
+
+
+def test_no_shipped_prose_outside_doctor_cites_a_check_by_number():
+    """Skills, docs, methodology, agents and templates route readers to doctor too, and
+    an ordinal there misdirects exactly as a printed one does. Doctor's own SKILL.md is
+    the list itself, so its internal cross-references renumber with it."""
+    roots = ["skills", "docs", "methodology", "agents", "templates"]
+    files = [f for r in roots for f in sorted((PLUGIN / r).rglob("*.md"))]
+    doctor = PLUGIN / "skills" / "doctor" / "SKILL.md"
+    assert doctor in files and len(files) > 20, "control: the corpus was reached"
+    hits = {
+        str(f.relative_to(PLUGIN)): n
+        for f in files
+        if f != doctor and (n := len(ORDINAL.findall(f.read_text(encoding="utf-8"))))
+    }
+    assert ORDINAL.findall(doctor.read_text(encoding="utf-8")), "control: the pattern matches"
+    assert hits == {}, f"prose cites a doctor check by number: {hits}; name the check"
 
 
 def test_the_name_cited_is_the_name_doctor_gives_the_check(tmp_path, capsys):

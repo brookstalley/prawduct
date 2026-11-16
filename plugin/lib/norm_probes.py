@@ -1506,7 +1506,7 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
             # `trigger_summary` (which is id-free) and, when the wording must change,
             # bump PROBE_VERSION so the supersession is deliberate.
             evidence=("norms exist (`## Direction` sections) but the janitor Norm Health sweep is overdue or never run",),
-            # The Health Check #14 route lives HERE, once: the briefing renders
+            # The leftover-scaffold route lives HERE, once: the briefing renders
             # `trigger_summary` and only `advisory show` renders
             # `alternative_actions`, so the summary is the one field every surface
             # prints — and it is not part of `compute_id`, so the route can be
@@ -1515,7 +1515,7 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
             trigger_summary=(
                 f"Norm Health sweep overdue (>{SWEEP_WINDOW_DAYS}d or never run) while norms exist — "
                 "erosion and decay go unmeasured. If this repo has ratified nothing, the rows are "
-                "probably leftover template scaffold: run `/prawduct:doctor` Health Check #14 "
+                "probably leftover template scaffold: run `/prawduct:doctor`'s *Leftover norm-index scaffold rows* check "
                 "(`norm-index-scaffold`) instead of a sweep."
             ),
             owner_action=(

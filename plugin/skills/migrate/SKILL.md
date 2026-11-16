@@ -103,7 +103,7 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
    all non-framework files are preserved. Reversible via git revert."
    ```
 
-7. **Move the change record onto fragments** (optional; offer it, never apply it unasked), a second commit: follow `/prawduct:doctor` check #22's procedure, in `${CLAUDE_SKILL_DIR}/../../skills/doctor/SKILL.md` — the one home for how `migrate-change-log` is run, its refusals relayed and its `--default-type` chosen.
+7. **Move the change record onto fragments** (optional; offer it, never apply it unasked), a second commit: follow `/prawduct:doctor`'s *Change record still on the legacy log* procedure, in `${CLAUDE_SKILL_DIR}/../../skills/doctor/SKILL.md` — the one home for how `migrate-change-log` is run, its refusals relayed and its `--default-type` chosen.
 
 8. **Tell the user** the repo now runs fully on the plugin: governance comes from the plugin's
    Stop hook + SessionStart digest, skills are `/prawduct:*`, and framework updates arrive via

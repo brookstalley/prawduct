@@ -19,6 +19,7 @@ The claims each test pins, in the order a reader of the module meets them:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -462,6 +463,20 @@ class TestCommand:
         assert "would ignore" in proc.stderr
         assert _archive(prawduct) == {}
         assert (prawduct / "change-log.md").read_text(encoding="utf-8") == VERSIONED
+
+        # The remedy points at the one owner of the narrowing lines; following it — paste
+        # the lines `update-gitignore --dry-run` prints — un-ignores the archive and the
+        # move then goes through.
+        assert "prawduct-hook update-gitignore --dry-run" in proc.stderr
+        hook = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+        dry = subprocess.run([sys.executable, str(hook), "update-gitignore", "--dry-run"],
+                             cwd=str(tmp_path), capture_output=True, text=True, env=env)
+        lines = re.search(r"Replace it with these lines: (.*?)\. Or delete", dry.stdout)
+        assert lines, dry.stdout
+        (tmp_path / ".gitignore").write_text(
+            "\n".join(re.findall(r"`([^`]+)`", lines.group(1))) + "\n", encoding="utf-8")
+        assert _cli(prawduct, "--apply").returncode == 0
+        assert _archive(prawduct) != {}
 
     def test_unknown_argument_is_a_usage_error(self, tmp_path: Path) -> None:
         assert _cli(_repo(tmp_path, VERSIONED), "--force").returncode == 2
