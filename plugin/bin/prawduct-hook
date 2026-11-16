@@ -2195,8 +2195,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     `--chunks` names chunks this review certifies (ST8; its span may certify
     more, `methodology/planning.md` "Chunk state"): a comma list, and
     repeatable — the lists join in the order given, a repeated id kept once.
-    `--chunk <id>` is its one-element alias, kept for one release; the two mix.
-    The joined list reaches `begin_review` as `chunks=[...]`; with neither flag
+    The retired one-element alias `--chunk` is refused, naming `--chunks`.
+    The joined list reaches `begin_review` as `chunks=[...]`; without the flag
     nothing is passed, and the consolidator's default (no chunks named) holds.
     An empty element (`--chunks 01,,03`) is refused rather than dropped, since
     a review naming fewer chunks than its caller meant completes fewer.

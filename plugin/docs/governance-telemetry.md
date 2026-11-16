@@ -113,7 +113,9 @@ All three nest under a `learning` key, under the same envelope:
   session's base tree against the working tree, less history a pull, merge or
   branch switch brought in and less commits another session in the same
   checkout made while this one had no tool call or `!` command running, in
-  files this one did not edit (each named at Stop) — so a rule written and
+  files this one's edit tools (Edit, Write, MultiEdit, NotebookEdit) did not target
+  (each named on the Stop hook's stderr; a Bash- or subagent-written file does not
+  count as its edit) — so a rule written and
   committed in one turn is still counted at that turn's Stop. Without the
   marker there is no base to diff, and then nothing is recorded and the Stop
   hook says so on stderr; that one missing state is also why the budget check

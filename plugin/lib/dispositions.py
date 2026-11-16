@@ -916,15 +916,13 @@ def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> di
 
 
 def _review_chunks_label(body: dict) -> "str | None":
-    """The chunk(s) a review fact names, comma-joined, or ``None``: ``chunks``
-    on a current fact, the bare ``chunk`` on one written before it (facts are
-    append-only, so both shapes are in stores)."""
-    chunks = body.get("chunks")
-    if isinstance(chunks, list):
-        named = [str(c) for c in chunks if isinstance(c, (str, int)) and str(c).strip()]
-        return ", ".join(named) or None
-    chunk = body.get("chunk")
-    return str(chunk) if isinstance(chunk, (str, int)) and str(chunk).strip() else None
+    """The chunk(s) a review fact names, comma-joined, or ``None`` — read through
+    :func:`plan_status.fact_chunks`, the one rule for both fact shapes (``chunks``,
+    and the bare ``chunk`` of a fact written before it), so the census and
+    chunk-status cannot name different chunks for one review."""
+    from . import plan_status  # noqa: PLC0415 — lazy: plan_status imports this module
+
+    return ", ".join(plan_status.fact_chunks(body)) or None
 
 
 def render_markdown(report: dict) -> str:

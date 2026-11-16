@@ -118,3 +118,5 @@ def test_the_disposition_census_reads_chunks_and_the_legacy_chunk():
     assert dispositions._review_chunks_label({"chunks": ["01", "03"]}) == "01, 03"
     assert dispositions._review_chunks_label({"chunk": "02"}) == "02"
     assert dispositions._review_chunks_label({"chunks": []}) is None
+    # A malformed `chunks` names nothing, as chunk-status reads it — never the legacy `chunk`.
+    assert dispositions._review_chunks_label({"chunks": "01", "chunk": "02"}) is None

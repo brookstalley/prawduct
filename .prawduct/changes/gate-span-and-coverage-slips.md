@@ -86,8 +86,10 @@ rather than in `_find_path`.
 
 ## Consumer note
 If you run two Claude Code sessions in the same checkout, a session that changed nothing is no
-longer asked for a reflection just because the other session committed. A session that commits
-its own code is still asked, including when you commit its edits yourself from a terminal or
-with `!git commit`. A commit left out this way is named on one line in the Stop hook's output.
+longer asked for a reflection just because the other session committed. A session whose commit
+touches a file it changed with its edit tools (Edit, Write, MultiEdit, NotebookEdit) is still
+asked, including when you commit those edits yourself from a terminal or with `!git commit`. A
+file it wrote only through Bash, or that a delegate subagent edited, does not count as its edit
+here, so a terminal commit of such a file while another session is writing is left out. A commit left out this way is named on one line in the Stop hook's output.
 `update_gitignore` adds `.prawduct/.session-activity.json` to your `.gitignore` at the next
 session start.

@@ -289,6 +289,10 @@ def test_literal_managed_entry_is_still_removed_and_not_double_reported(world):
         [".claude/*"],
         [".prawduct/", ".claude/"],  # two rules, two sentences, pasted together
         ["*.md"],  # not a directory rule: the advice is per-file `!` lines after it
+        # A basename directory rule (common for build output) excludes the committed
+        # directory ITSELF, at any depth: `!dir/**` alone cannot re-include its contents.
+        ["artifacts/"],
+        ["releases/"],
     ],
 )
 def test_the_advised_lines_leave_every_v2_path_unignored(tmp_path, rules):

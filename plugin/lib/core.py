@@ -1263,7 +1263,8 @@ def describe_ignored_by_rule(entries: list[dict]) -> list[str]:
     excluded, hence ``!dir/artifacts/`` and not a file inside it). A bare ``dir/`` rule
     cannot be negated, which is why it is replaced, not appended to. A rule that excludes a
     committed directory itself can only be deleted. Any other rule keeps standing and takes
-    ``!`` lines after it, one per path it hides.
+    ``!`` lines after it, one per path it hides; a directory takes two, ``!dir/`` for a
+    rule that excludes the directory itself and ``!dir/**`` for its contents.
     """
     groups: dict[tuple[str, int, str], list[str]] = {}
     for e in entries:
@@ -1297,7 +1298,13 @@ def describe_ignored_by_rule(entries: list[dict]) -> list[str]:
                 f"`{x}`" for x in [f"{directory}/*", *reincludes]
             )
         else:
-            lines = [f"!{p}**" if p.endswith("/") else f"!{p}" for p in paths]
+            # A directory entry gets `!dir/` as well as `!dir/**`: a rule such as `artifacts/`
+            # excludes the directory ITSELF, and git never re-includes a file whose parent
+            # directory is excluded, so `!dir/**` alone leaves it hidden.
+            lines = [
+                x for p in paths
+                for x in ([f"!{p}", f"!{p}**"] if p.endswith("/") else [f"!{p}"])
+            ]
             sentence += ", or add these lines after it: " + ", ".join(f"`{x}`" for x in lines)
         out.append(sentence + ".")
     return out

@@ -86,8 +86,9 @@ replaces it. An earlier green does not go on vouching for a tree whose latest at
 The void also names the recorder (`in_progress`: its pid, host, machine, start time and
 command), so `test-status` tells three states apart. While the recorder is alive it prints
 `running:`, with the time elapsed against the last recorded run's duration as an estimate, and
-every refusal and remedy says to wait for the run rather than start another; the remedy comes from
-one owner, `gates.suite_remedy`, which every caller prints. Once the recorder is gone and nothing
+every refusal and remedy says to wait for the run rather than start another; the remedy is worded by
+`gates.suite_remedy`, though a refusal's reason can carry its own copy, so some callers print
+it twice (#1182). Once the recorder is gone and nothing
 landed (the attempt was refused, failed or was killed) it prints `stale (interrupted):`. Otherwise
 it prints the usual verdict. A pid is checked against the process's start time, so a reused pid
 does not read as the recorder. "Machine" is the boot (and, on Linux, the pid namespace), not the
