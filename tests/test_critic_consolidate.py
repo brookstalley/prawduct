@@ -960,8 +960,10 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         import ast  # noqa: PLC0415
 
         src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        # `_consolidate` holds the body; `consolidate` wraps it to report a
+        # moved HEAD on every exit.
         fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef) and n.name == "consolidate")
+                  if isinstance(n, ast.FunctionDef) and n.name == "_consolidate")
         args = {a.arg for a in fn.args.args} | {a.arg for a in fn.args.kwonlyargs}
         bound_at: dict[str, int] = {}
         for node in ast.walk(fn):
@@ -9953,8 +9955,10 @@ class TestTheCostLeadReachesBothCarriers:
         import ast  # noqa: PLC0415
 
         src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        # `_consolidate` holds the body; `consolidate` wraps it to report a
+        # moved HEAD on every exit.
         fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef) and n.name == "consolidate")
+                  if isinstance(n, ast.FunctionDef) and n.name == "_consolidate")
         calls = [c for c in ast.walk(fn) if isinstance(c, ast.Call)]
 
         def _name(call):
