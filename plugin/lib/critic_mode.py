@@ -108,7 +108,6 @@ consumes them.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -587,14 +586,14 @@ def _fresh_cumulative_covers_head(prawduct_dir: Path, project_dir: Path) -> bool
     be named: mid-plan, the redirect still has to reach :func:`_mid_plan_answer`.
     """
     head_sha = gitstate._git_head_sha(project_dir)
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not head_sha or not findings_path.is_file():
+    if not head_sha:
         return False
-    try:
-        data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return False
-    return (
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
+
+    # The one reader: an absent, undecodable or malformed cache answers "no
+    # record", never a traceback out of inference.
+    data = critic_consolidate.read_findings_cache(prawduct_dir).record
+    return data is not None and (
         data.get("commit_reviewed") == head_sha
         and data.get("mode") == _MODE_CUMULATIVE_VERBOSE
     )
@@ -962,12 +961,17 @@ def _verify_prior_record(
     switch, so after one it names the other branch's review; both rules used to
     refuse that as off-lineage and fall through, while the
     ``verify-resolutions`` dispatch they feed would have anchored on this
-    branch's own review (#1150). So when the cache names a review fact, this
-    asks the dispatch's own question, ``critic_consolidate.verify_anchor``
-    (one owner: ``select_branch_review``), and a re-derived answer is rendered
-    through ``fact_to_cache_record``, the projection the dispatch would write.
-    When the dispatch would refuse, so does this. A record carrying no
-    ``fact_id`` (pre-store) is returned as written, as before.
+    branch's own review (#1150). So this asks the dispatch's own question,
+    ``critic_consolidate.verify_anchor`` (one owner: ``select_branch_review``),
+    whatever the cache holds — a pointer to another review, or none (no cache,
+    as in a fresh worktree of a reviewed branch; an unreadable one; no
+    ``fact_id``) — and a re-derived answer is rendered through
+    ``critic_consolidate.branch_review_record``, the renderer the dispatch's
+    cache write and the briefing use. When the dispatch would refuse, so does
+    this — except over a record written before the evidence store (no
+    ``fact_id``) when the store holds no review of this branch either: that
+    record is judged as written, as before, being the only prior record such
+    a repo has.
 
     **Read-only, deliberately.** The dispatch re-points the cache when it
     re-anchors; inference does not. Inference is a question asked before a
@@ -978,26 +982,24 @@ def _verify_prior_record(
     writing: when ``verify-resolutions`` does dispatch, it writes the same
     answer, because it selects through the same function.
     """
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not findings_path.is_file():
-        return None
-    try:
-        data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    fact_id = data.get("fact_id")
-    if not isinstance(fact_id, str) or not fact_id.strip():
-        return data
     from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
 
+    data = critic_consolidate.read_findings_cache(prawduct_dir).record
     read = _facts_for(project_dir, progress)
     answer = critic_consolidate.verify_anchor(project_dir, prawduct_dir, read)
     if answer["fact"] is None:
+        fact_id = data.get("fact_id") if data is not None else None
+        if data is not None and not (isinstance(fact_id, str) and fact_id.strip()):
+            # A record written before the evidence store, and no review in the
+            # store to replace it: judged as written, as it always was. The
+            # store holds nothing this record could be checked against.
+            return data
         return None  # the dispatch would refuse; inferring it buys an exit 1
     if answer["rederived"]:
-        return critic_consolidate.fact_to_cache_record(answer["fact"], store=read)
+        return critic_consolidate.branch_review_record(
+            prawduct_dir, answer["fact"], read.get("facts") or []
+        )
+    # Not re-derived: the cache's own pointer is this branch's review.
     return data
 
 

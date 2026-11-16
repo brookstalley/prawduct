@@ -164,9 +164,9 @@ class TestManifestBlock:
         assert native["skill"] == "code-review"
         assert native["level"] == "high"
         assert native["args"] == f"high {base}...{head}"
-        assert native["text_path"] == str(
-            branch_repo / ".prawduct" / ".native-reviews" / f"{result['id']}.md"
-        )
+        # No `text_path`: the session-side home of the text was written here and
+        # read by nothing — `record` derives it (`native_review.text_path`).
+        assert "text_path" not in native
         assert native["dispatched_at"]
         # The wrapper runs on the reviewers' model: the native review runs on
         # its caller's model, so a fair comparison pins the two together.
@@ -178,7 +178,8 @@ class TestManifestBlock:
         # in a worktree of its own, where the harness refuses a Write to the
         # session's files (the first live run, 2026-11-15). It writes in its own
         # tree and `record` copies the text here (test_native_review_head.py).
-        assert native["text_path"] not in native["prompt"]
+        session_text = native_review.text_path(branch_repo / ".prawduct", result["id"])
+        assert str(session_text) not in native["prompt"]
         assert cc.validate_manifest(manifest) == (True, "")
 
     def test_the_arguments_never_carry_a_fix_a_post_or_a_costly_level(self, branch_repo, monkeypatch):
@@ -225,12 +226,21 @@ class TestManifestValidation:
         ok, reason = cc.validate_manifest(manifest)
         assert not ok and "native_review" in reason
 
-    @pytest.mark.parametrize("key", ["skill", "args", "level", "text_path", "prompt", "dispatched_at"])
+    @pytest.mark.parametrize("key", ["skill", "args", "level", "prompt", "dispatched_at"])
     def test_a_missing_field_is_refused(self, branch_repo, monkeypatch, key):
         manifest = self._manifest(branch_repo, monkeypatch)
         del manifest["native_review"][key]
         ok, reason = cc.validate_manifest(manifest)
         assert not ok and key in reason
+
+    def test_a_block_without_text_path_is_accepted(self, branch_repo, monkeypatch):
+        """`text_path` was required and read by nothing; a manifest restored
+        from before its removal may still carry it, and is accepted too."""
+        manifest = self._manifest(branch_repo, monkeypatch)
+        manifest["native_review"].pop("text_path", None)
+        assert cc.validate_manifest(manifest) == (True, "")
+        manifest["native_review"]["text_path"] = "/somewhere/old.md"
+        assert cc.validate_manifest(manifest) == (True, "")
 
     @pytest.mark.parametrize("key, bad", [("mode", "final"), ("mode", "bogus"), ("synthetic_range", "yes")])
     def test_a_mode_that_does_not_pair_or_a_non_boolean_range_kind_is_refused(
@@ -312,7 +322,7 @@ class TestNativeTextDoesNotVoidTheReview:
 
     def test_writing_the_native_text_leaves_the_dispatch_tree_unchanged(self, branch_repo, monkeypatch):
         manifest = _begin(branch_repo, "cumulative", monkeypatch, DEV)["manifest"]
-        text = Path(manifest["native_review"]["text_path"])
+        text = native_review.text_path(branch_repo / ".prawduct", manifest["id"])
         text.parent.mkdir(parents=True, exist_ok=True)
         text.write_text("Result:\n(none)\n")
         assert cc.tree_changed_since_dispatch(branch_repo, manifest) == ("unchanged", [])

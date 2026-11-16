@@ -2791,30 +2791,11 @@ def cmd_critic_consolidate(project_dir: Path, args: list[str] | None = None) -> 
     rejected = _reject_unknown_args("critic-consolidate", rest, {flag})
     if rejected is not None:
         return rejected
-    # The branch the review was dispatched on, read before consolidation
-    # deletes the manifest: a review must never move the session's HEAD, and
-    # one did (#1177). Said here, to the caller of this command, for any review.
-    began_on = _manifest_branch(critic_consolidate.manifest_path(get_prawduct_dir(project_dir)))
-    rc = critic_consolidate.consolidate(
+    # A HEAD that left the review's branch (#1177) is reported by
+    # `consolidate` itself, for this path and the hook paths alike.
+    return critic_consolidate.consolidate(
         project_dir, trigger="explicit", tree_changed_by_builder=reason
     )
-    from lib import head_guard  # noqa: PLC0415 — lazy keeps top-level cheap
-
-    left = head_guard.left_branch(project_dir, began_on)
-    if left:
-        print(f"PRAWDUCT WARNING: {head_guard.message(left)}", file=sys.stderr)
-    return rc
-
-
-def _manifest_branch(path: Path) -> str | None:
-    """The ``branch`` a dispatch manifest recorded, or ``None`` when there is
-    no manifest or it cannot be read — consolidation itself reports either."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    branch = data.get("branch") if isinstance(data, dict) else None
-    return branch if isinstance(branch, str) and branch else None
 
 
 def cmd_native_review(project_dir: Path, argv: list[str]) -> int:
@@ -6898,24 +6879,37 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
 def cmd_check_operator_verification(project_dir: Path) -> int:
     """Structural gate for `/prawduct:pr create`: refuse open when queue has pending entries.
 
-    Mirrors :func:`cmd_check_cumulative_critic` semantics — exit 0 only
-    when the gate is satisfied, exit 1 with stderr describing the
-    blocker. The gate is only active when ``operator_verification_required:
-    true`` is set in ``project-state.yaml``; otherwise the command is a
-    no-op exit 0.
+    The gate is only active when ``operator_verification_required: true`` is
+    set in ``project-state.yaml``; with it off the command never blocks.
+
+    Exit codes:
+      0  - satisfied: the requirement is off (an unreadable queue is then a
+           stderr NOTE, never a block), or no entry is pending; also the
+           plugin's own ``lib/`` failing to import, which fails OPEN with a
+           stderr NOTE (api-contract § Error Model, "Unevaluable advisory gate")
+      1  - pending entries; stderr names the first ID and the paths that can
+           move them
+      3  - could not evaluate the repo's subject, and blocks: the queue holds
+           content that parsed as zero entries, the queue file cannot be read
+           or decoded, or ``project-state.yaml`` cannot be read (so whether the
+           gate is on is unknown)
     """
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
     try:
         from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
-    except ImportError:
-        # Fail OPEN: this gate cannot evaluate a queue it can't load. If the
-        # bundled lib/ failed to import (an incomplete plugin install),
-        # blocking /prawduct:pr here would be a false positive. Surface a note, allow.
+    except ImportError as exc:
+        # Fail OPEN, exit 0 — the recorded contract (api-contract § Error Model,
+        # "Unevaluable advisory gate"): this is prawduct itself broken, not the
+        # repo's subject unreadable, and blocking every caller's PR on a broken
+        # install helps nobody, least of all the repos that never enabled the
+        # gate. Said on stderr so the skip is visible. A subject the gate could
+        # not read (queue, state file) is the different case below: exit 3.
         print(
-            "NOTE: check-operator-verification could not import the plugin lib/ "
-            "from ${CLAUDE_PLUGIN_ROOT}; gate skipped.",
+            "NOTE: check-operator-verification skipped — the plugin lib/ could not "
+            f"be loaded from {lib_root} ({exc}). Repair or reinstall the plugin; "
+            "this gate did not run.",
             file=sys.stderr,
         )
         return 0
@@ -6923,7 +6917,8 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
     result = ov.run_check_operator_verification(project_dir)
     # First, and before `required` is read: an unreadable state file leaves
     # `required` unknown (None), which `not result["required"]` would otherwise
-    # treat as "gate off" and exit 0, the silent fail-open this branch closes.
+    # treat as "gate off" and exit 0 — reporting the gate off for a repo that
+    # turned it on.
     # Exit 3 for the same reason as the unreadable queue below.
     if result.get("queue_status") == ov.QUEUE_STATE_UNREADABLE:
         print(result["message"], file=sys.stderr)
@@ -10514,8 +10509,10 @@ def cmd_archive_change_log(project_dir: Path, argv: list[str]) -> int:
             print(
                 "refused: git tracks this repo's change record but would ignore "
                 f"{change_log_archive.ARCHIVE_DIR_REL}/, so committing the move would drop the "
-                "moved entries from history — nothing moved. Un-ignore it (for a `.prawduct/*` "
-                f"pattern add `!{change_log_archive.ARCHIVE_DIR_REL}/` to .gitignore) and re-run.",
+                "moved entries from history — nothing moved. Un-ignore it: after a `.prawduct/*` rule add "
+                f"`!{change_log_archive.ARCHIVE_DIR_REL}/`; a wholesale `.prawduct/` rule "
+                "cannot be narrowed by a `!` line, so replace it with the lines "
+                "`prawduct-hook update-gitignore --dry-run` prints. Then re-run.",
                 file=sys.stderr,
             )
             return 1

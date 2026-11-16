@@ -531,7 +531,7 @@ def _probe_source() -> str:
     function's source is part of what this gate emits.
     """
     text = COVERAGE_PY.read_text(encoding="utf-8")
-    start = text.index("def _entry_check_without_history")
+    start = text.index("def _committed_log_pending_verdict")
     end = text.index("\ndef ", text.index("def check_change_log_entry"))
     release = RELEASE_READINESS_PY.read_text(encoding="utf-8")
     r_start = release.index("def legacy_pending_refusals")
@@ -768,18 +768,27 @@ def _ignored_fragments_repo(tmp_path: Path, fragments: dict[str, str]) -> Path:
     return repo
 
 
+#: Where the gate sends the owner to narrow the rule. The lines themselves have one
+#: owner, `core.describe_ignored_by_rule`; a gate spelling its own (`.prawduct/*` plus
+#: `!.prawduct/changes/`) re-included only the fragment directory and left
+#: `project-state.yaml` and `artifacts/` hidden.
+_NARROWING_POINTER = "`prawduct-hook update-gitignore --dry-run` prints the lines"
+
+
 def test_ignored_fragments_pass_on_the_weaker_check_and_say_so(tmp_path):
     result = _run_probe(_ignored_fragments_repo(tmp_path, {"x.md": _fragment("x")}))
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith("fragment-present-untracked:")
-    assert "Confirm by hand" in result.stdout and "!.prawduct/changes/" in result.stdout
+    assert "Confirm by hand" in result.stdout and _NARROWING_POINTER in result.stdout
+    assert "!.prawduct/" not in result.stdout, "the gate spells no narrowing lines of its own"
 
 
 def test_ignored_fragment_directory_with_no_fragment_still_fails(tmp_path):
     result = _run_probe(_ignored_fragments_repo(tmp_path, {}))
     assert result.returncode == 1
     assert "no-entry: git ignores .prawduct/changes/" in result.stderr
-    assert "!.prawduct/changes/" in result.stderr
+    assert _NARROWING_POINTER in result.stderr
+    assert "!.prawduct/" not in result.stderr, "the gate spells no narrowing lines of its own"
 
 
 def test_an_ignored_invalid_fragment_is_refused_by_code(tmp_path):
@@ -789,13 +798,112 @@ def test_an_ignored_invalid_fragment_is_refused_by_code(tmp_path):
 
 
 def test_following_the_unignore_advice_restores_the_real_check(tmp_path):
+    """Follow the pointer literally: run what the gate names, paste the lines it prints
+    in place of the wholesale rule. The real check returns, and the rest of what a repo
+    commits under `.prawduct/` is no longer hidden either."""
     repo = _ignored_fragments_repo(tmp_path, {"x.md": _fragment("x")})
-    _commit_file(repo, ".gitignore", ".prawduct/*\n!.prawduct/changes/\n", "track fragments")
+    env = dict(_git_env(repo))
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    advice = subprocess.run(
+        [sys.executable, str(HOOK), "update-gitignore", "--dry-run"],
+        cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+    )
+    assert advice.returncode == 0, advice.stderr
+    (sentence,) = [x for x in advice.stdout.splitlines() if x.startswith("cannot fix automatically:")]
+    tail = sentence.split("Replace it with these lines: ", 1)[1].split(". ", 1)[0]
+    lines = re.findall(r"`([^`]+)`", tail)
+    assert "!.prawduct/changes/" in lines, lines
+    _commit_file(repo, ".gitignore", "\n".join(lines) + "\n", "narrow the rule as advised")
     _git(repo, "add", FRAGMENT_DIR)
     _git(repo, "commit", "-q", "-m", "add fragment")
     result = _run_probe(repo)
     assert result.returncode == 0, result.stderr
     assert "fragment-present: .prawduct/changes/x.md added" in result.stdout
+    for rel in (".prawduct/project-state.yaml", ".prawduct/artifacts/plan.md"):
+        ignored = subprocess.run(
+            ["git", "check-ignore", "-q", "--no-index", rel],
+            cwd=str(repo), env=_git_env(repo), timeout=10,
+        )
+        assert ignored.returncode == 1, f"following the advice left {rel} ignored"
+
+
+def _legacy_lines(text: str) -> list[str]:
+    return [x for x in text.splitlines() if x.startswith("legacy-pending-entry:")]
+
+
+def _run_releasability(repo: Path) -> subprocess.CompletedProcess:
+    env = dict(_git_env(repo))
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    return subprocess.run(
+        [sys.executable, str(HOOK), "check-releasability"],
+        cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+    )
+
+
+def test_an_ignored_log_pending_entry_beside_ignored_fragments_is_refused_like_the_release(tmp_path):
+    """The PR gate and the release agree when git ignores `.prawduct/` wholesale.
+
+    The release reads the log from disk; the fragment path used to read only
+    `HEAD:`, where an ignored log never is, so a valid fragment on disk passed
+    the gate (`fragment-present-untracked`) while `check-releasability` refused
+    the very entry beside it. Both must print the same `legacy-pending-entry:`
+    lines."""
+    repo = _ignored_fragments_repo(tmp_path, {"x.md": _fragment("x")})
+    (repo / CHANGE_LOG).write_text("# Change Log\n\n" + _PENDING_ENTRY)
+    assert not _git(repo, "ls-files", "--", CHANGE_LOG).stdout.strip(), "premise: the log is untracked"
+    gate = _run_probe(repo)
+    release = _run_releasability(repo)
+    assert release.returncode == 1 and _legacy_lines(release.stderr), release.stderr
+    assert gate.returncode == 1, gate.stdout
+    assert _legacy_lines(gate.stderr) == _legacy_lines(release.stderr)
+    assert "fragment-present" not in gate.stdout, "stdout must not contradict the refusal"
+
+
+def test_a_staged_uncommitted_log_pending_entry_is_refused_like_the_release(tmp_path):
+    """The gate's other not-in-HEAD state: a log git tracks (staged) that no commit
+    holds yet. It was treated as "nothing to refuse" while the release reads the
+    on-disk log and refuses its pending entry — the same disagreement as the
+    ignored log, through the tracked door."""
+    repo = _make_branched_repo(tmp_path)
+    if (repo / CHANGE_LOG).exists():
+        _git(repo, "rm", "-q", CHANGE_LOG)
+        _git(repo, "commit", "-q", "-m", "drop the log from HEAD")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x"), "fragment")
+    (repo / CHANGE_LOG).parent.mkdir(parents=True, exist_ok=True)
+    (repo / CHANGE_LOG).write_text("# Change Log\n\n" + _PENDING_ENTRY)
+    _git(repo, "add", CHANGE_LOG)
+    assert _git(repo, "ls-files", "--", CHANGE_LOG).stdout.strip(), "premise: tracked"
+    assert not _git(repo, "ls-tree", "--name-only", "HEAD", "--", CHANGE_LOG).stdout.strip()
+    gate = _run_probe(repo)
+    release = _run_releasability(repo)
+    assert release.returncode == 1 and _legacy_lines(release.stderr), release.stderr
+    assert gate.returncode == 1, gate.stdout
+    assert _legacy_lines(gate.stderr) == _legacy_lines(release.stderr)
+
+
+def test_an_ignored_log_of_shipped_entries_beside_ignored_fragments_still_passes(tmp_path):
+    # The control: the on-disk log is read, and a log with nothing pending refuses nothing.
+    repo = _ignored_fragments_repo(tmp_path, {"x.md": _fragment("x")})
+    (repo / CHANGE_LOG).write_text(
+        "# Change Log\n\n## 2026-06-10: shipped\n"
+        "<!-- prawduct: type=fix | scope=x | release=v1.0.0 -->\n\nBody.\n"
+    )
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("fragment-present-untracked:")
+
+
+def test_an_unreadable_ignored_log_beside_ignored_fragments_is_refused_like_the_release(tmp_path):
+    """The release refuses a log it cannot read (`no-change-log:`); so does the gate,
+    with the release's verdict name, and never with a traceback."""
+    repo = _ignored_fragments_repo(tmp_path, {"x.md": _fragment("x")})
+    (repo / CHANGE_LOG).write_bytes(b"# Change Log\n\n## 2026-06-10: work\n\n\xff\xfe body\n")
+    gate = _run_probe(repo)
+    release = _run_releasability(repo)
+    assert release.returncode == 1 and "no-change-log:" in release.stderr
+    assert gate.returncode == 1, gate.stdout
+    assert "no-change-log:" in gate.stderr and "Traceback" not in gate.stderr
 
 
 def test_a_committed_fragment_that_is_not_utf8_is_refused_not_a_traceback(tmp_path):

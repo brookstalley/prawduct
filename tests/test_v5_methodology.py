@@ -769,7 +769,12 @@ LAST_MEASURED_TOKENS = {
     # review can waive an inherited red base too. Priced with the route sums.
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
-    "skills/critic/review-protocol.md": 4061,
+    # +9 on 2026-11-16 (coherence-pass Chunk 01), DECLARED: Goal 1's `test-status` and
+    # `verify-coverage` bullets say a suite in flight is never a finding — `test-status` and `verify-coverage` exit 1 on a suite in flight (`running:`, a `(running)` void), which the protocol rated as stale or missing evidence — a WARNING or BLOCKING for a non-defect. Paid in part
+    # by cutting "Review test quality and coverage through code analysis only", which SKILL.md
+    # and critic-reviewer.md state in every payload that reads this file. Priced in
+    # `test_reviewer_payload_budget.py`.
+    "skills/critic/review-protocol.md": 4070,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -892,7 +897,10 @@ LAST_MEASURED_TOKENS = {
     # +13 on 2026-11-11 (review-round-cost Chunk 02, #900), DECLARED: a test-failure finding lists
     # its failing ids in `failed_tests`, the input consolidation's inherited-baseline waiver reads.
     # Priced against the route sums in test_reviewer_payload_budget.py.
-    "skills/critic/goals-1-3.md": 2506,
+    # +16 on 2026-11-16 (coherence-pass Chunk 01), DECLARED: the same two Goal 1 clauses as
+    # review-protocol.md — `test-status` and `verify-coverage` exit 1 on a suite in flight (`running:`, a `(running)` void), which the protocol rated as stale or missing evidence — a WARNING or BLOCKING for a non-defect. Paid in part by cutting the wall-clock figure, which
+    # review-cycle.md's "Target wall-clock" row owns. Priced in `test_reviewer_payload_budget.py`.
+    "skills/critic/goals-1-3.md": 2522,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1122,7 +1130,12 @@ LAST_MEASURED_TOKENS = {
     # declaring; no reviewer loads this file.
     # -3 on 2026-11-15 (branch-review-one-owner, #1179): "builders and briefings read it for content"
     # lost "and briefings" — the briefing now confirms the cached review is this branch's first.
-    "skills/critic/review-cycle.md": 8252,
+    # -1 on 2026-11-16 (coherence-pass Chunk 03): the anchoring paragraph and the first demotion
+    # row say a MISSING pointer (no cache — it is per-worktree — no `fact_id`, a gone fact) also
+    # yields to the branch's review, and the manifest key list names `chunks`/`chunks_proposed`
+    # for the retired `chunk`. Paid by cutting the paragraph's restatement of why a cross-branch
+    # anchor misleads, which `critic_consolidate._prior_review_fact` owns.
+    "skills/critic/review-cycle.md": 8251,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1325,7 +1338,10 @@ LAST_MEASURED_TOKENS = {
     # `test_reviewer_payload_budget.py`.
     # -12 on 2026-11-15 (retire-chunk-status-shims, #1055): step 4 lost "`--chunk <id>` is a
     # one-element alias for one release" — the alias is retired.
-    "skills/critic/SKILL.md": 3253,
+    # +8 on 2026-11-16 (coherence-pass Chunk 01), DECLARED: step 5 says `running:` is a suite in
+    # flight, never a finding. Paid in part by cutting "the builder runs tests before requesting
+    # review", false since the suite moved to the boundary. Priced in `test_reviewer_payload_budget.py`.
+    "skills/critic/SKILL.md": 3261,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -5789,7 +5805,8 @@ class TestCriticSkill:
         # RAISED 4001 -> 4049 (bounded-cumulative review round), DECLARED — see LAST_MEASURED_TOKENS.
         # RAISED 3951 -> 3964 (review-round-cost Critic round, R-7/R-9) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4049 -> 4062 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
-        assert tokens < 4062, f"review-protocol.md is ~{tokens} tokens, should be <4062"
+        # RAISED 4062 -> 4071 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 4071, f"review-protocol.md is ~{tokens} tokens, should be <4071"
 
 
 # =============================================================================
@@ -6099,7 +6116,8 @@ class TestCriticGoals13:
         # LOWERED 2707 -> 2499 (critic-trim, 2026-11-10) with the reading.
         # LOWERED 2499 -> 2494 (pr-reviewer-fold, 2026-11-11) with the reading.
         # RAISED 2494 -> 2507 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 2507, f"goals-1-3.md is ~{tokens} tokens, should be <2507"
+        # RAISED 2507 -> 2523 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 2523, f"goals-1-3.md is ~{tokens} tokens, should be <2523"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -6368,7 +6386,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3221 -> 3228 (review-round-cost merge review, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 3228 -> 3266 (verify-resolutions-lineage, #724, 2026-11-15) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3266 -> 3254 (retire-chunk-status-shims, #1055, 2026-11-15) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3254, f"SKILL.md is ~{tokens} tokens, should be <3254"
+        # RAISED 3254 -> 3262 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3262, f"SKILL.md is ~{tokens} tokens, should be <3262"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6713,7 +6732,8 @@ class TestReviewCycle:
         # RAISED 8158 -> 8187 (native-review-paired Chunk 01, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 8187 -> 8256 (verify-resolutions-lineage, #1150/#1116/#724, 2026-11-15) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 8256 -> 8253 (branch-review-one-owner, #1179, 2026-11-15) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8253, f"review-cycle.md is ~{tokens} tokens, should be <8253"
+        # LOWERED 8253 -> 8252 (coherence-pass Chunk 03, 2026-11-16) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8252, f"review-cycle.md is ~{tokens} tokens, should be <8252"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

@@ -1595,3 +1595,109 @@ def test_required_unreadable_queue_still_exits_3(tmp_path):
 def test_the_unreadable_refusal_text_has_one_owner():
     src = (_Path(_ov.__file__)).read_text(encoding="utf-8")
     assert src.count("parsed 0 entries") == 1
+
+
+
+# =============================================================================
+# An off gate does not speak in blocking voice; a gate that cannot load fails
+# closed (coherence pass over #1185)
+# =============================================================================
+
+#: Phrases that tell the reader something was stopped. Every one is true of the
+#: required gate's refusal and false of a gate that is off, where nothing blocks.
+_BLOCKING_VOICE = (
+    "You can stop here",
+    "NOT a clear queue",
+    "clear `operator_verification_required`",
+    "re-run",
+)
+
+
+def test_off_gate_unreadable_queue_note_carries_no_blocking_voice(tmp_path):
+    repo = _repo(tmp_path, _UNKNOWN_STYLE, required=False)
+    proc = _run_hook_env(repo, "check-operator-verification")
+    assert proc.returncode == 0, proc.stderr
+    assert "### VRF-1 check the dashboard" in proc.stderr, proc.stderr
+    for phrase in _BLOCKING_VOICE:
+        assert phrase not in proc.stderr, (phrase, proc.stderr)
+    assert "nothing is blocked" in proc.stderr.lower(), proc.stderr
+
+
+def test_required_gate_unreadable_queue_keeps_its_blocking_voice(tmp_path):
+    """The control: the same queue with the gate on is a refusal, and says so."""
+    proc = _run_hook_env(_repo(tmp_path, _UNKNOWN_STYLE), "check-operator-verification")
+    assert proc.returncode == 3
+    assert "You can stop here" in proc.stderr and "NOT a clear queue" in proc.stderr
+    assert "nothing is blocked" not in proc.stderr.lower()
+
+
+def test_off_gate_undecodable_queue_note_carries_no_blocking_voice(tmp_path):
+    repo = _repo(tmp_path, None, required=False)
+    (repo / ".prawduct" / "operator-verification.md").write_bytes(b"## VRF-1 \xff\xfe\n")
+    proc = _run_hook_env(repo, "check-operator-verification")
+    assert proc.returncode == 0, proc.stderr
+    assert "UnicodeDecodeError" in proc.stderr, proc.stderr
+    for phrase in _BLOCKING_VOICE:
+        assert phrase not in proc.stderr, (phrase, proc.stderr)
+    on = _repo(tmp_path / "on", None)
+    (on / ".prawduct" / "operator-verification.md").write_bytes(b"## VRF-1 \xff\xfe\n")
+    control = _run_hook_env(on, "check-operator-verification")
+    assert control.returncode == 3 and "NOT a clear queue" in control.stderr
+
+
+def test_a_gate_that_cannot_load_its_lib_fails_open_by_contract(tmp_path):
+    """Renegotiated: a coherence pass moved this arm to exit 3, and the Critic held
+    it against the recorded contract — api-contract § Error Model, "Unevaluable
+    advisory gate": the plugin's OWN lib failing to import fails open, exit 0,
+    because prawduct is what is broken and blocking every caller's PR (most of
+    which never enabled the gate) helps nobody. What must hold is that the skip
+    is SAID: the NOTE names the gate as not run and the repair, and the old
+    "gate skipped" one-liner that read as a verdict is gone."""
+    import shutil  # noqa: PLC0415
+
+    plugin = tmp_path / "plugin"
+    src = _HOOK_PATH.parent.parent
+    for sub in ("bin", "lib"):
+        shutil.copytree(src / sub, plugin / sub,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+    (plugin / "lib" / "operator_verification.py").unlink()
+    repo = _repo(tmp_path / "repo", None)
+    proc = _subprocess.run(  # noqa: S603
+        [_sys.executable, str(plugin / "bin" / "prawduct-hook"), "check-operator-verification"],
+        capture_output=True, text=True,
+        env={"CLAUDE_PROJECT_DIR": str(repo), "CLAUDE_PLUGIN_ROOT": str(plugin),
+             "PATH": "/usr/bin:/bin"},
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stderr.startswith("NOTE:"), proc.stderr
+    assert "did not run" in proc.stderr and "reinstall" in proc.stderr, proc.stderr
+    # The control: the intact tree evaluates the same repo (empty queue → 0, no NOTE).
+    control = _run_hook_env(repo, "check-operator-verification")
+    assert control.returncode == 0 and "did not run" not in control.stderr
+
+
+def test_the_handler_docstring_lists_every_exit():
+    import ast  # noqa: PLC0415
+
+    tree = ast.parse(_HOOK_PATH.read_text(encoding="utf-8"))
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+              and n.name == "cmd_check_operator_verification")
+    doc = ast.get_docstring(fn)
+    returned = {n.value.value for n in ast.walk(fn)
+                if isinstance(n, ast.Return) and isinstance(n.value, ast.Constant)}
+    assert returned == {0, 1, 3}, returned
+    for code in sorted(returned):
+        assert f"  {code} " in doc or f"  {code}  " in doc, (code, doc)
+
+
+def test_the_pr_skill_exit_3_row_names_every_exit_3_state():
+    """Exit 3 is the three inputs the gate could not read: the row must name each,
+    or a reader meeting the state file's refusal goes looking for a queue heading
+    to blame. A plugin that cannot load its lib/ is NOT one of them — it fails open
+    by contract (exit 0), so the row must not claim it."""
+    text = (_HOOK_PATH.parent.parent / "skills" / "pr" / "SKILL.md").read_text(encoding="utf-8")
+    row = next(ln for ln in text.splitlines() if ln.startswith("- **Exit 3**"))
+    for state in ("parsed as zero entries", "cannot be read or decoded",
+                  "project-state.yaml"):
+        assert state in row, (state, row)
+    assert "lib/" not in row, row

@@ -16,6 +16,7 @@ onboard-before-``git init`` case), because the two take different paths to the s
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -106,15 +107,20 @@ def _git_ignores(repo: Path, rel: str) -> bool:
     return proc.returncode == 0
 
 
+_PASTE_MARKERS = ("Replace it with these lines: ", "Add these lines after it: ")
+
+
+def _lines_in(sentence: str) -> list[str]:
+    """The lines one printed sentence tells the owner to paste (its first option)."""
+    for marker in _PASTE_MARKERS:
+        if marker in sentence:
+            return re.findall(r"`([^`]+)`", sentence.split(marker, 1)[1].split(". ", 1)[0])
+    return []
+
+
 def _advice_lines(entries) -> list[str]:
     """The lines the owner is told to paste, parsed from the printed sentences."""
-    out: list[str] = []
-    for sentence in describe_ignored_by_rule(entries):
-        for marker in ("replace it with these lines: ", "add these lines after it: "):
-            if marker in sentence:
-                tail = sentence.split(marker)[1].rstrip(".")
-                out += [part.strip("` ") for part in tail.split(", ")]
-    return out
+    return [line for sentence in describe_ignored_by_rule(entries) for line in _lines_in(sentence)]
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -494,6 +500,18 @@ def test_probe_is_not_a_missing_entries_nag_under_a_wholesale_rule(world):
         assert f"`{line}`" in cand.trigger_summary
 
 
+def test_a_rule_hiding_committed_files_is_a_warning_in_the_owners_words(world):
+    """Hidden committed files are lost on the next clone, the same stake as the legacy
+    change-log advisory (`warn`), so this is not `info`. Its evidence is relayed to the
+    product owner: it names the condition, never prawduct's source layout."""
+    _write(world, WHOLESALE)
+    (cand,) = gp.probe_gitignore_contract_drift(ProjectState({}), Codebase(root=world))
+    assert cand.type == "contract-ignored-by-rule"
+    assert cand.priority == "warn"
+    for text in (*cand.evidence, cand.trigger_summary, cand.owner_action):
+        assert "lib/" not in text and ".py" not in text and "V2_COMMITTED_PATHS" not in text, text
+
+
 def test_probe_is_inert_once_the_rule_is_narrowed(world):
     text = ".prawduct/*\n" + "".join(f"{x}\n" for x in REINCLUDE) + OUTSIDE
     _write(world, text)
@@ -531,6 +549,114 @@ def test_cli_names_the_rule_and_the_lines_and_does_not_claim_it_updated(world):
         assert "will not edit" in proc.stdout
         assert "updated .gitignore" not in proc.stdout
         assert gi.read_bytes() == before
+
+
+# --- following the advice literally, as the CLI prints it ------------------------
+
+
+def _session_samples(root: Path) -> list[str]:
+    """Write a file at every session entry under `.prawduct/` (a file inside a directory
+    entry), as a working clone has them. Returns their repo-relative paths."""
+    rels = [_sample(e) for e in GITIGNORE_ENTRIES if e.startswith(".prawduct/")]
+    for rel in rels:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("x\n", encoding="utf-8")
+    assert rels, "fixture is vacuous: no session entry under .prawduct/"
+    return rels
+
+
+def _visible(repo: Path) -> set[str]:
+    """What `git status` would offer to commit: untracked, not ignored."""
+    proc = subprocess.run(  # noqa: S603
+        ["git", "status", "--porcelain", "-uall"], cwd=repo,
+        capture_output=True, text=True, timeout=30, check=True,
+    )
+    return {line[3:] for line in proc.stdout.splitlines() if line.startswith("?? ")}
+
+
+def _printed_advice(repo: Path) -> str:
+    proc = _hook(repo, "--dry-run")
+    assert proc.returncode == 0, proc.stderr
+    (sentence,) = [x for x in proc.stdout.splitlines() if x.startswith("cannot fix automatically:")]
+    return sentence
+
+
+def _follow_the_delete_option(repo: Path, sentence: str, rule: str) -> None:
+    """Do what the deletion option says, word for word: drop the line, then run each
+    `prawduct-hook` command that same option names (and nothing it does not)."""
+    clause = re.split(r"(?i)\b(?=delete (?:it|that line))", sentence, maxsplit=1)[1]
+    gi = repo / ".gitignore"
+    gi.write_text(
+        "".join(f"{x}\n" for x in gi.read_text(encoding="utf-8").splitlines() if x != rule),
+        encoding="utf-8",
+    )
+    for op in re.findall(r"`prawduct-hook ([a-z-]+)`", clause):
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "bin" / "prawduct-hook"), op],
+            capture_output=True, text=True, timeout=60,
+            env={**os.environ, "CLAUDE_PROJECT_DIR": str(repo), "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        assert proc.returncode == 0, proc.stderr
+
+
+def test_following_the_delete_option_exposes_no_session_file(tmp_path):
+    """The repo this advice exists for ignores `.prawduct/` wholesale, which is why
+    `update_gitignore` (it adds no line a broader rule already covers) never wrote a
+    session entry there. Deleting the rule alone therefore offers every session file to
+    the next `git add -A`; the deletion option must carry the step that restores them."""
+    _git(tmp_path, "init", "-q", ".")
+    _materialize(tmp_path)
+    session = _session_samples(tmp_path)
+    _write(tmp_path, ".prawduct/\n__pycache__/\n")
+    assert not set(session) & _visible(tmp_path), "control: the rule hides the session files"
+    _follow_the_delete_option(tmp_path, _printed_advice(tmp_path), ".prawduct/")
+    visible = _visible(tmp_path)
+    assert not set(session) & visible, sorted(set(session) & visible)
+    # The deletion did its job: what prawduct commits is visible now.
+    assert ".prawduct/project-state.yaml" in visible
+
+
+def test_deleting_the_rule_without_the_named_step_exposes_session_files(tmp_path):
+    # The control: the step the advice names is what keeps them hidden, not the fixture.
+    _git(tmp_path, "init", "-q", ".")
+    _materialize(tmp_path)
+    session = _session_samples(tmp_path)
+    _write(tmp_path, ".prawduct/\n__pycache__/\n")
+    _write(tmp_path, "__pycache__/\n")
+    assert set(session) <= _visible(tmp_path)
+
+
+@pytest.mark.parametrize("rules", [[".prawduct/"], [".claude/"], ["*.md"]])
+def test_the_option_that_leads_is_safe_on_its_own(tmp_path, rules):
+    """The first option printed is the one an owner follows; it needs no second step.
+    Pasting its lines leaves every session file hidden and every v2 path visible.
+
+    The starting `.gitignore` is what the fixer leaves (it has already run), so each
+    world holds exactly the session lines a real repo under that rule has: none under
+    `.prawduct/` for a wholesale `.prawduct/`, all of them otherwise."""
+    _git(tmp_path, "init", "-q", ".")
+    _materialize(tmp_path)
+    session = _session_samples(tmp_path)
+    (tmp_path / ".claude" / "settings.local.json").write_text("{}\n", encoding="utf-8")
+    _write(tmp_path, "\n".join(rules) + "\n__pycache__/\n")
+    update_gitignore(tmp_path)
+    sentence = _printed_advice(tmp_path)
+    lead = sentence.split("Prawduct will not edit your rule. ", 1)[1]
+    assert lead.startswith(_PASTE_MARKERS), lead
+    lines = _lines_in(sentence)
+    assert lines, sentence
+    # A directory rule is REPLACED by the lines; any other rule stays and they follow it.
+    rest = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
+    pasted: list[str] = []
+    for x in rest:
+        if x in rules:
+            pasted += [x, *lines] if x.startswith("*") else lines
+        else:
+            pasted.append(x)
+    _write(tmp_path, "\n".join(pasted) + "\n")
+    visible = _visible(tmp_path)
+    assert not set(session) & visible, sorted(set(session) & visible)
+    assert [p for p in V2_ALL if _git_ignores(tmp_path, p)] == []
 
 
 # --- the other callers ------------------------------------------------------------

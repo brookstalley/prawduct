@@ -104,9 +104,12 @@ class TestTheBriefingShowsThisBranchsReview:
         assert "BLOCKING: A's own defect" in out, out
         assert "B's own defect" not in out, out
 
-    def test_with_no_review_of_its_own_the_doubt_is_named(self, tmp_path):
-        """A branch with no review: the owner finds none to show instead, so
-        the cache's record stands — said to be possibly another branch's."""
+    def test_with_no_review_of_its_own_it_says_so_and_shows_none(self, tmp_path):
+        """A branch with no review, and a cache naming a review off its lineage:
+        the answer is definitive, not a doubt. Renegotiated from "Could not
+        confirm… may be another branch's", which hedged a fact `verify_anchor`
+        had established and then showed that review's blocking count as if it
+        were this branch's."""
         repo = _two_branches(tmp_path)
         _git(repo, "checkout", "--quiet", "main")
         _git(repo, "checkout", "--quiet", "-b", "feature/c")
@@ -114,10 +117,123 @@ class TestTheBriefingShowsThisBranchsReview:
 
         out = _summary(repo)
 
+        assert out.splitlines() == [
+            "This branch has no review; the findings cache holds `feature/a`'s "
+            "review rev-a-000001, not shown here."
+        ], out
+        assert "A's own defect" not in out and "blocking" not in out.lower(), out
+
+    def test_the_owner_names_the_other_branch(self, tmp_path):
+        """One owner of the answer: `verify_anchor` says WHOSE review the
+        cache holds (`foreign_branch`), so no reader reaches for the fact's
+        recorded branch itself."""
+        repo = _two_branches(tmp_path)
+        _git(repo, "checkout", "--quiet", "main")
+        _git(repo, "checkout", "--quiet", "-b", "feature/c")
+        _commit_file(repo, "src/c.py", "c = 1\n", "feat: c")
+
+        answer = cc.verify_anchor(repo, repo / ".prawduct", evidence.read_facts(repo))
+
+        assert answer["fact"] is None and answer["foreign"]["id"] == "rev-a-000001", answer
+        assert answer["foreign_branch"] == "feature/a", answer
+
+    def test_the_briefing_reaches_into_no_private_name_of_the_owner(self):
+        source = Path(briefing.__file__).read_text(encoding="utf-8")
+        assert "critic_consolidate._" not in source, (
+            "ask critic_consolidate's public answer (verify_anchor), not its helpers"
+        )
+
+    def test_after_an_amend_this_branchs_findings_stay_shown_hedged(self, tmp_path):
+        """`git commit --amend` on the reviewed branch: the reviewed head is no
+        longer an ancestor, and no other review anchors on the rewritten
+        lineage. That is not another branch's review — the cache's review was
+        recorded on THIS branch — so its BLOCKING findings and NEXT-ACTION
+        stay in front of the builder, under the "could not confirm" lead."""
+        repo = _two_branches(tmp_path)  # on feature/a; the cache holds rev-a
+        _git(repo, "commit", "--quiet", "--amend", "-m", "feat: feature/a (amended)")
+
+        answer = cc.verify_anchor(repo, repo / ".prawduct", evidence.read_facts(repo))
+        out = _summary(repo)
+
+        assert answer["fact"] is None and answer["foreign"] is None, answer
+        assert answer["foreign_branch"] is None, answer
+        lead = out.splitlines()[0]
+        assert lead.startswith("Could not confirm review rev-a-000001"), lead
+        assert "BLOCKING: A's own defect" in out, out
+        assert "NEXT-ACTION:" in out, out
+        assert "This branch has no review" not in out, out
+
+    def test_after_a_rebase_this_branchs_findings_stay_shown_hedged(self, tmp_path):
+        repo = _two_branches(tmp_path)
+        _git(repo, "checkout", "--quiet", "main")
+        _commit_file(repo, "src/m.py", "m = 1\n", "feat: main moves on")
+        _git(repo, "checkout", "--quiet", "feature/a")
+        _git(repo, "rebase", "--quiet", "main")
+
+        out = _summary(repo)
+
+        assert out.splitlines()[0].startswith("Could not confirm review rev-a-000001"), out
+        assert "BLOCKING: A's own defect" in out, out
+
+    def test_when_the_owner_cannot_answer_the_doubt_is_named(self, tmp_path):
+        """Control for the definitive case: an unreadable store cannot say
+        whose review the cache holds, so the record stands, hedged."""
+        repo = _two_branches(tmp_path)
+        _git(repo, "checkout", "--quiet", "feature/b")
+        evidence.store_path(repo).write_bytes(b"\xff\xfe not utf-8\n")
+
+        out = _summary(repo)
+
         lead = out.splitlines()[0]
         assert lead.startswith("Could not confirm review rev-a-000001"), lead
         assert "another branch's review" in lead, lead
         assert "BLOCKING: A's own defect" in out, out
+
+    def test_a_fresh_worktree_with_no_cache_shows_its_branchs_review(self, tmp_path):
+        """The cache is per-worktree and the store clone-shared: a fresh
+        worktree of a reviewed branch has no cache, and its briefing used to
+        say nothing about a review the store holds."""
+        repo = _two_branches(tmp_path)
+        (repo / FINDINGS_REL).unlink()
+
+        out = _summary(repo)
+
+        lead = out.splitlines()[0]
+        assert lead.startswith("Showing review rev-a-000001, this branch's newest"), lead
+        assert "no readable findings cache" in lead, lead
+        assert "BLOCKING: A's own defect" in out, out
+        assert not (repo / FINDINGS_REL).exists(), "display only: nothing is written"
+
+    def test_an_undecodable_cache_defers_to_the_owner_too(self, tmp_path):
+        repo = _two_branches(tmp_path)
+        (repo / FINDINGS_REL).write_bytes(b"\xff\xfe not utf-8\n")
+
+        out = _summary(repo)
+
+        assert out.splitlines()[0].startswith("Showing review rev-a-000001"), out
+        assert "BLOCKING: A's own defect" in out, out
+
+    def test_an_undecodable_cache_with_no_review_to_show_is_still_reported(self, tmp_path):
+        """Control: with nothing the owner can show, the unreadable record is
+        named — never rendered as "no review has run"."""
+        repo = _two_branches(tmp_path)
+        _git(repo, "checkout", "--quiet", "main")
+        _git(repo, "checkout", "--quiet", "-b", "feature/c")
+        _commit_file(repo, "src/c.py", "c = 1\n", "feat: c")
+        (repo / FINDINGS_REL).write_bytes(b"\xff\xfe not utf-8\n")
+
+        out = _summary(repo)
+
+        assert "could not be read" in out and "NOT a statement" in out, out
+
+    def test_no_cache_and_no_review_reports_nothing(self, tmp_path):
+        repo = _two_branches(tmp_path)
+        _git(repo, "checkout", "--quiet", "main")
+        _git(repo, "checkout", "--quiet", "-b", "feature/c")
+        _commit_file(repo, "src/c.py", "c = 1\n", "feat: c")
+        (repo / FINDINGS_REL).unlink()
+
+        assert briefing._summarize_critic_findings(repo / ".prawduct", repo) is None
 
     def test_the_handoff_carries_it(self, tmp_path):
         """At the layer the defect was reported: the session handoff's
@@ -156,3 +272,74 @@ class TestTheBriefingShowsThisBranchsReview:
         assert written["status"] == "derived" and written["review"] == "rev-b-verify1", written
         assert json.loads((repo / FINDINGS_REL).read_text()) == shown
         assert "B's own defect" in out, "the carried blocker reaches the briefing"
+
+
+_PLAN = (
+    "---\nscope: s\n---\n\n# Build Plan — from plan (2026-10-25)\n\n"
+    "**Size**: small | **Type**: refactor\n\n"
+    "## Build Chunks\n\n### Chunk 01: First\n\n### Chunk 02: Second\n"
+)
+
+
+class TestTheSessionStartCost:
+    """The section renders on every SessionStart boundary. Asking the owner
+    for a review when the cache is absent (a fresh worktree) costs an
+    evidence-store parse and git reads, where it used to return at once. The
+    cost is the PARSE and the GIT READS, so those are what is counted."""
+
+    @staticmethod
+    def _count(monkeypatch, module, name) -> list:
+        calls: list = []
+        real = getattr(module, name)
+
+        def counted(*args, **kwargs):
+            calls.append(args)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(module, name, counted)
+        return calls
+
+    def test_the_handoff_parses_the_store_once(self, tmp_path, monkeypatch):
+        """The plan's work context, its progress table and this section each
+        read the store; they share one parse."""
+        from lib import work_unit
+
+        repo = _two_branches(tmp_path)
+        plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
+        plan.parent.mkdir(parents=True, exist_ok=True)
+        plan.write_text(_PLAN)
+        binding = work_unit.Binding("bound", "s", plan, "integration", None, "binding")
+        monkeypatch.setattr(briefing.work_unit, "resolve", lambda _project_dir: binding)
+        parses = self._count(monkeypatch, evidence, "read_facts")
+
+        text = briefing.render_session_handoff(repo).text
+
+        assert "## Work In Progress" in text and "## Critic Findings" in text, text
+        assert "A's own defect" in text, "the section rendered from the shared read"
+        assert len(parses) == 1, f"{len(parses)} store parses for one handoff"
+
+    def test_no_cache_and_no_review_in_the_store_asks_no_git(self, tmp_path, monkeypatch):
+        """A fresh worktree in a repo whose store holds no review: nothing to
+        show and nothing to doubt, answered without the owner's git reads."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        asked = self._count(monkeypatch, cc, "verify_anchor")
+        git = self._count(monkeypatch, briefing.subprocess, "run")
+
+        assert briefing._summarize_critic_findings(repo / ".prawduct", repo) is None
+        assert asked == [], asked
+        # The one git call left locates the store (`rev-parse --git-common-dir`);
+        # none walks the branch range or reads HEAD's branch.
+        commands = [" ".join(map(str, call[0])) for call in git]
+        assert len(commands) == 1 and "--git-common-dir" in commands[0], commands
+
+    def test_control_no_cache_with_a_review_in_the_store_asks_the_owner(self, tmp_path, monkeypatch):
+        repo = _two_branches(tmp_path)
+        (repo / FINDINGS_REL).unlink()
+        asked = self._count(monkeypatch, cc, "verify_anchor")
+
+        out = _summary(repo)
+
+        assert len(asked) == 1 and "BLOCKING: A's own defect" in out, out

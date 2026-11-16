@@ -1491,33 +1491,49 @@ class TestMarkerAndFindingsReaderInventory:
         ("plugin/lib/critic_consolidate.py", "restore_review", "review_active()"):
             "tests/test_critic_session_guard.py::TestRestoreEdgeStates"
             "::test_a_live_marker_with_no_partials_is_refused_with_critic_end",
-        ("plugin/lib/critic_consolidate.py", "consolidate", "clear_marker()"):
+        ("plugin/lib/critic_consolidate.py", "_consolidate", "clear_marker()"):
             "tests/test_critic_consolidate.py::TestBeginMarksFindingsSuperseded"
             "::test_consolidation_clears_the_marker",
         # --- the findings record: the derived cache every builder actually reads ---
-        ("plugin/lib/critic_consolidate.py", "consolidate", ".critic-findings.json"):
+        # Its name is spelled once, and every site reaches it through the one
+        # reader (`read_findings_cache`/`read_findings_record`) or, to write
+        # it, `findings_cache_path` (tests/test_findings_cache_reader.py).
+        ("plugin/lib/critic_consolidate.py", "<module>", ".critic-findings.json"):
+            "tests/test_findings_cache_reader.py::TestOneReader"
+            "::test_the_owner_spells_the_name_once",
+        ("plugin/lib/critic_consolidate.py", "read_findings_cache", "findings_cache_path()"):
+            "tests/test_findings_cache_reader.py::TestTheTypedAnswer::test_a_record",
+        ("plugin/lib/critic_consolidate.py", "read_findings_cache", "read_findings_record()"):
+            "tests/test_findings_cache_reader.py::TestTheTypedAnswer::test_a_record",
+        ("plugin/lib/gates.py", "validate_critic_findings", "read_findings_record()"):
+            "tests/test_findings_cache_reader.py::TestTheTypedAnswer"
+            "::test_the_schema_validator_reads_through_it",
+        ("plugin/lib/critic_consolidate.py", "_consolidate", "findings_cache_path()"):
             "tests/test_critic_consolidate.py::TestConsolidateIntegration"
             "::test_complete_partials_at_head_consolidates",
-        ("plugin/lib/critic_consolidate.py", "_mark_cache_superseded", ".critic-findings.json"):
+        ("plugin/lib/critic_consolidate.py", "_mark_cache_superseded", "findings_cache_path()"):
+            "tests/test_critic_consolidate.py::TestBeginMarksFindingsSuperseded"
+            "::test_dispatch_marks_the_prior_record_naming_both_reviews",
+        ("plugin/lib/critic_consolidate.py", "_mark_cache_superseded", "read_findings_cache()"):
             "tests/test_critic_consolidate.py::TestBeginMarksFindingsSuperseded"
             "::test_dispatch_marks_the_prior_record_naming_both_reviews",
         # The verify anchor, read-only: the dispatch (`_prior_review_fact`) and
         # mode inference's rule 1 both ask it, so the two cannot disagree about
         # which review is this branch's (#1150).
-        ("plugin/lib/critic_consolidate.py", "verify_anchor", ".critic-findings.json"):
+        ("plugin/lib/critic_consolidate.py", "verify_anchor", "read_findings_cache()"):
             "tests/test_verify_resolutions_lineage.py::TestInferenceAfterABranchSwitch"
             "::test_bare_inference_picks_verify_on_the_switched_to_branchs_review",
-        ("plugin/lib/critic_consolidate.py", "_already_consolidated_note", ".critic-findings.json"):
+        ("plugin/lib/critic_consolidate.py", "_already_consolidated_note", "read_findings_cache()"):
             "tests/test_critic_consolidate.py::TestConsolidateIntegration"
             "::test_already_consolidated_noop_reports_the_recorded_findings",
         # The reader that made the superseded marker necessary: a builder who
         # lost the reviewer's report reads this and nothing else.
-        ("plugin/lib/briefing.py", "_summarize_critic_findings", ".critic-findings.json"):
+        ("plugin/lib/briefing.py", "_summarize_critic_findings", "read_findings_cache()"):
             "tests/test_briefing_functions.py::TestSummarizeCriticFindings"
             "::test_a_superseded_record_says_so_before_anything_it_qualifies",
         # Rules 1 and 1b read the prior record through here, which defers to
         # `verify_anchor` whenever the record names a review fact (#1150).
-        ("plugin/lib/critic_mode.py", "_verify_prior_record", ".critic-findings.json"):
+        ("plugin/lib/critic_mode.py", "_verify_prior_record", "read_findings_cache()"):
             "tests/test_critic_mode_inference.py::TestRule1VerifyResolutions"
             "::test_wins_when_diff_is_subset_of_prior_scope",
         # The one writer outside consolidation: a clone whose reviews arrived
@@ -1525,13 +1541,19 @@ class TestMarkerAndFindingsReaderInventory:
         ("plugin/lib/critic_consolidate.py", "derive_branch_cache", "review_active()"):
             "tests/test_evidence_notes.py::TestASecondCloneGetsItsFindingsCache"
             "::test_a_review_in_flight_keeps_the_slot",
-        ("plugin/lib/critic_consolidate.py", "derive_branch_cache", ".critic-findings.json"):
+        ("plugin/lib/critic_consolidate.py", "derive_branch_cache", "findings_cache_path()"):
             "tests/test_evidence_notes.py::TestASecondCloneGetsItsFindingsCache"
             "::test_another_branchs_cache_is_replaced",
-        ("plugin/lib/critic_mode.py", "_fresh_cumulative_covers_head", ".critic-findings.json"):
+        ("plugin/lib/critic_consolidate.py", "derive_branch_cache", "read_findings_cache()"):
+            "tests/test_evidence_notes.py::TestASecondCloneGetsItsFindingsCache"
+            "::test_another_branchs_cache_is_replaced",
+        ("plugin/lib/critic_mode.py", "_fresh_cumulative_covers_head", "read_findings_cache()"):
             "tests/test_critic_mode_inference.py::TestRule2Cumulative"
             "::test_does_not_fire_when_cumulative_record_covers_head",
-        ("plugin/lib/ledger.py", "ledger_append", ".critic-findings.json"):
+        ("plugin/lib/ledger.py", "ledger_append", "findings_cache_path()"):
+            "tests/test_governance_ledger.py::TestLedgerAppendEnvelope"
+            "::test_envelope_fields_and_payload_equality",
+        ("plugin/lib/ledger.py", "ledger_append", "read_findings_cache()"):
             "tests/test_governance_ledger.py::TestLedgerAppendEnvelope"
             "::test_envelope_fields_and_payload_equality",
         # --- neither reads them: both name the paths so a product repo ignores
@@ -1562,6 +1584,12 @@ class TestMarkerAndFindingsReaderInventory:
         ".critic-findings.json", ".prawduct/.critic-findings.json",
     })
     _MARKER_MODULE = "plugin/lib/critic_marker.py"
+    #: The findings record's API. The record has one reader, so a site reaches
+    #: it through these rather than by naming the file, and the literal alone
+    #: would leave every reader unlisted. Bare-name calls count inside their
+    #: home module, as the marker API's do inside its own.
+    _FINDINGS_API = frozenset({"read_findings_cache", "read_findings_record", "findings_cache_path"})
+    _FINDINGS_MODULE = "plugin/lib/critic_consolidate.py"
 
     @classmethod
     def _scan(cls) -> set[tuple[str, str, str]]:
@@ -1584,6 +1612,7 @@ class TestMarkerAndFindingsReaderInventory:
         for path in files:
             rel = str(path.relative_to(root))
             visitor = _ReaderSiteVisitor(rel, cls._MARKER_API, cls._PATHS, cls._MARKER_MODULE)
+            visitor.homes[cls._FINDINGS_MODULE] = cls._FINDINGS_API
             visitor.visit(ast.parse(path.read_text()))
             sites |= visitor.sites
         return sites
@@ -1665,6 +1694,8 @@ class _ReaderSiteVisitor:
         self.api = api
         self.paths = paths
         self.marker_module = marker_module
+        #: module -> an API whose bare-name calls count there, beside the marker's.
+        self.homes: dict[str, frozenset] = {}
         self.enclosing: list[str] = []
         self.sites: set[tuple[str, str, str]] = set()
 
@@ -1687,11 +1718,17 @@ class _ReaderSiteVisitor:
         if isinstance(node, ast.Call):
             fn = node.func
             name = None
+            api: frozenset = frozenset()
             if isinstance(fn, ast.Attribute):
                 name = fn.attr
+                api = self.api.union(*self.homes.values())
             elif isinstance(fn, ast.Name) and self.rel == self.marker_module:
                 name = fn.id
-            if name in self.api:
+                api = self.api
+            elif isinstance(fn, ast.Name) and self.rel in self.homes:
+                name = fn.id
+                api = self.homes[self.rel]
+            if name in api:
                 self.sites.add((self.rel, self._where(), name + "()"))
         if isinstance(node, ast.Constant) and node.value in self.paths:
             self.sites.add((self.rel, self._where(), node.value))

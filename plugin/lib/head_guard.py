@@ -11,8 +11,12 @@ which is the fix. This module is the detection under it, for any cause: given
 the branch a review began on, it says whether HEAD has since been detached and
 the command that puts the work back on the branch. Its callers are the surfaces
 that already reach someone at the right time — the review's ``NEXT-ACTION``
-(``native_review.next_action_clause``), ``native-review record``'s output, and
-``critic-consolidate``'s.
+(``native_review.next_action_clause`` for a paired review, and
+``critic_consolidate.consolidate`` for any review, on every path that
+consolidates — the explicit command, the SubagentStop hook and the Stop
+backstop — and on every exit: in the record's ``next_action`` when one is
+written, and on stderr ahead of a refusal when none is) and
+``native-review record``'s output.
 
 Only a DETACHED HEAD is reported. A switch to another branch is a deliberate
 act, and no reviewer makes one; a detached HEAD is what a checkout of a commit

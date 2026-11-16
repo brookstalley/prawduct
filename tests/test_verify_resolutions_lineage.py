@@ -24,6 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from test_critic_consolidate import (
     CUMULATIVE_MODE,
     FINDINGS_REL,
@@ -317,3 +319,138 @@ class TestTheMergeBaseIsShared:
 
         assert fact is not None and fact["id"] == "rev-own-00001", note
         assert "rev-sibling-1" in note and "feature/a" in note, note
+
+
+#: The ways the findings cache can fail to point at a review: the cache is
+#: per-worktree and the store clone-shared, so a fresh worktree of a reviewed
+#: branch has none at all.
+def _no_cache(cache: Path) -> None:
+    cache.unlink()
+
+
+def _undecodable_cache(cache: Path) -> None:
+    cache.write_bytes(b"\xff\xfe not utf-8\n")
+
+
+def _cache_without_fact_id(cache: Path) -> None:
+    data = json.loads(cache.read_text(encoding="utf-8"))
+    del data["fact_id"]
+    cache.write_text(json.dumps(data), encoding="utf-8")
+
+
+def _cache_naming_a_gone_fact(cache: Path) -> None:
+    data = json.loads(cache.read_text(encoding="utf-8"))
+    data["fact_id"] = "rev-gone-000001"
+    cache.write_text(json.dumps(data), encoding="utf-8")
+
+
+POINTERLESS = [_no_cache, _undecodable_cache, _cache_without_fact_id, _cache_naming_a_gone_fact]
+
+
+class TestAMissingPointerIsAStaleViewToo:
+    """A wrong pointer defers to the owner (#1150); a MISSING one used to
+    demote — no cache, an undecodable one, no `fact_id`, or a fact the store
+    does not hold — though the store could answer. Each now asks
+    `select_branch_review` and refuses only when it finds nothing."""
+
+    @pytest.mark.parametrize("break_cache", POINTERLESS, ids=lambda f: f.__name__)
+    def test_verify_anchors_on_this_branchs_review_without_a_usable_pointer(
+        self, tmp_path, break_cache
+    ):
+        repo, _refs = _two_branches_each_reviewed(tmp_path)
+        break_cache(repo / FINDINGS_REL)
+        (repo / "src/a.py").write_text("a = 2  # the fix, uncommitted\n")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        rev_a = next(f for f in _store_facts(repo, "review") if f["id"] == "rev-a-000001")
+        assert manifest["base_tree"] == rev_a["body"]["head_tree"]
+        # The slot is re-pointed, so the verify reviewer reads A's findings.
+        assert _cached_fact_id(repo) == "rev-a-000001"
+        assert "rev-a-000001" in result.stderr, result.stderr
+        # The note says why the pointer was passed over in words, not in a raw
+        # exception: no errno, and no absolute path into this checkout.
+        assert "Errno" not in result.stderr and str(repo) not in result.stderr, result.stderr
+
+    @pytest.mark.parametrize("break_cache, said", [
+        (_no_cache, "no findings cache in this worktree"),
+        (_undecodable_cache, "the findings cache is not valid UTF-8"),
+    ], ids=["absent", "undecodable"])
+    def test_the_dispatch_note_says_why_in_words(self, tmp_path, break_cache, said):
+        """A fresh worktree's verify dispatch note used to read "no readable
+        prior findings cache ([Errno 2] No such file or directory: '/abs/...')"
+        — an error, for the ordinary state of a new worktree, and a path."""
+        repo, _refs = _two_branches_each_reviewed(tmp_path)
+        break_cache(repo / FINDINGS_REL)
+        (repo / "src/a.py").write_text("a = 2  # the fix, uncommitted\n")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, result.stderr
+        note = next(ln for ln in result.stderr.splitlines() if "verify anchored on review" in ln)
+        assert f"pointer: {said}." in note, note
+        assert "Errno" not in note and "/" not in note.split("pointer:", 1)[1].split(".", 1)[0], note
+
+    @pytest.mark.parametrize("break_cache", POINTERLESS, ids=lambda f: f.__name__)
+    def test_bare_inference_picks_verify_without_a_usable_pointer(self, tmp_path, break_cache):
+        repo, _refs = _two_branches_each_reviewed(tmp_path)
+        cache = repo / FINDINGS_REL
+        break_cache(cache)
+        before = cache.read_bytes() if cache.exists() else None
+        (repo / "src/a.py").write_text("a = 2  # the fix, uncommitted\n")
+
+        mode, rationale = _infer(repo)
+
+        assert mode == "verify-resolutions", rationale
+        assert rationale.startswith("rule-1 "), rationale
+        assert (cache.read_bytes() if cache.exists() else None) == before
+
+    def test_with_no_review_on_the_branch_a_missing_cache_still_refuses(self, tmp_path):
+        """Control: the owner finds nothing, so the pass demotes (exit 1), with
+        the pointer's reason first."""
+        repo, _refs = _two_branches_each_reviewed(tmp_path)
+        _git(repo, "checkout", "--quiet", "main")
+        _git(repo, "checkout", "--quiet", "-b", "feature/c")
+        _commit_file(repo, "src/c.py", "c = 1\n", "feat: c")
+        (repo / "src/c.py").write_text("c = 2\n")
+        (repo / FINDINGS_REL).unlink()
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 1, result.stderr
+        # Renegotiated from "no readable prior findings cache (<errno + path>)":
+        # a missing cache is the ordinary state of a fresh worktree, said so.
+        assert "no findings cache in this worktree" in result.stderr, result.stderr
+        assert "Errno" not in result.stderr and str(repo) not in result.stderr, result.stderr
+        assert "no review anchors on this branch" in result.stderr, result.stderr
+        assert not (repo / PARTIALS_REL / "manifest.json").exists()
+
+
+class TestInferenceRendersThroughTheBriefingsRenderer:
+    def test_a_rederived_verify_record_carries_its_anchors_blockers(self, tmp_path):
+        """Rules 1 and 1b judge a re-derived review as `branch_review_record`
+        renders it — the record the dispatch writes and the briefing shows. A
+        bare projection drops what a verify pass carries: its anchor's
+        unresolved blockers, so a clean-delta verify read as nothing to fix."""
+        from lib import critic_mode
+
+        repo, _refs = _two_branches_each_reviewed(tmp_path)
+        _git(repo, "checkout", "--quiet", "feature/b")
+        rev_b = next(f for f in _store_facts(repo, "review") if f["id"] == "rev-b-000001")
+        verify = {**rev_b, "id": "rev-b-verify1", "ts": "2099-01-01T00:00:00Z",
+                  "body": {**rev_b["body"], "findings": [],
+                           "mode": cc._VERBOSE_VERIFY_RESOLUTIONS,
+                           "base_tree": rev_b["body"]["head_tree"]}}
+        assert evidence.append_envelope(repo, verify)["status"] == "appended"
+        prawduct = repo / ".prawduct"
+        facts = evidence.read_facts(repo)["facts"]
+
+        record = critic_mode._verify_prior_record(prawduct, repo)
+
+        assert record == cc.branch_review_record(prawduct, verify, facts)
+        # Control: on this fixture the bare projection says something else —
+        # it does not carry rev-b's blocker into the sentence the builder acts on.
+        bare = cc.fact_to_cache_record(verify, store={"facts": facts})
+        assert record["next_action"] != bare["next_action"], record["next_action"]

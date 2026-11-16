@@ -1251,20 +1251,37 @@ def _directory_rule(pattern: str) -> str | None:
     return base
 
 
+#: How every deletion option ends. Deleting a rule can expose session files: where a
+#: broader rule (a wholesale ``.prawduct/``, ``*.json``) already ignored a session entry,
+#: :func:`update_gitignore` adds no line of its own for it, so the rule was the only thing
+#: hiding it. Running the fixer after the deletion writes those lines.
+_THEN_RECONCILE = (
+    "then run `prawduct-hook update-gitignore`, so any session file that rule was hiding "
+    "gets a line of its own"
+)
+
+
 def describe_ignored_by_rule(entries: list[dict]) -> list[str]:
     """One plain sentence per offending rule: what it hides, and the exact lines.
 
-    The fixer never edits the owner's rule (#762), so this is the repair. For a wholesale
-    directory rule the choice is delete it (the session entries prawduct manages already
-    ignore what should not be committed) or replace it with ``dir/*`` plus one ``!``
-    re-include for every top-level entry :data:`V2_COMMITTED_PATHS` holds under that
-    directory: all of them, hidden today or not, so the narrowed rule does not hide a file a
-    feature creates later (git will not re-include a file whose parent directory is
-    excluded, hence ``!dir/artifacts/`` and not a file inside it). A bare ``dir/`` rule
-    cannot be negated, which is why it is replaced, not appended to. A rule that excludes a
-    committed directory itself can only be deleted. Any other rule keeps standing and takes
-    ``!`` lines after it, one per path it hides; a directory takes two, ``!dir/`` for a
-    rule that excludes the directory itself and ``!dir/**`` for its contents.
+    The fixer never edits the owner's rule (#762), so this is the repair, and the ONE owner
+    of the lines that narrow a rule: callers point here (``update-gitignore --dry-run``
+    prints it) rather than spelling their own subset.
+
+    The option that leads is the one safe on its own. A wholesale directory rule is
+    replaced by ``dir/*`` plus one ``!`` re-include for every top-level entry
+    :data:`V2_COMMITTED_PATHS` holds under that directory: all of them, hidden today or not,
+    so the narrowed rule does not hide a file a feature creates later (git will not
+    re-include a file whose parent directory is excluded, hence ``!dir/artifacts/`` and not
+    a file inside it), while session files and anything else under it (personal skills
+    under ``.claude/``) stay ignored. A bare ``dir/`` rule cannot be negated, which is why
+    it is replaced, not appended to. Any other rule keeps standing and takes ``!`` lines
+    after it, one per path it hides; a directory takes two, ``!dir/`` for a rule that
+    excludes the directory itself and ``!dir/**`` for its contents. Deleting the rule is the
+    second option, and it is not safe on its own: in the repo this advice exists for, the
+    rule is why no session entry was ever written (see :data:`_THEN_RECONCILE`), so the
+    deletion names the fixer run that restores them. A rule that excludes a committed
+    directory itself can only be deleted.
     """
     groups: dict[tuple[str, int, str], list[str]] = {}
     for e in entries:
@@ -1275,12 +1292,14 @@ def describe_ignored_by_rule(entries: list[dict]) -> list[str]:
         sentence = (
             f"{', '.join(f'`{p}`' for p in paths)} {'are' if many else 'is'} ignored by "
             f"`{pattern}` ({source}:{line}), but prawduct needs {'them' if many else 'it'} "
-            "committed. Prawduct will not edit your rule. Delete that line"
+            "committed. Prawduct will not edit your rule. "
         )
         directory = _directory_rule(pattern)
         if directory and any(p.rstrip("/") == directory for p in paths):
-            pass  # the rule IS a committed directory: `!` cannot re-include it, so only deleting works
-        elif directory and all(p.startswith(directory + "/") for p in paths):
+            # The rule IS a committed directory: `!` cannot re-include it, so only deleting works.
+            out.append(sentence + f"Delete that line, {_THEN_RECONCILE}.")
+            continue
+        if directory and all(p.startswith(directory + "/") for p in paths):
             reincludes: list[str] = []
             for c in V2_COMMITTED_PATHS:
                 if not c.path.startswith(directory + "/"):
@@ -1294,7 +1313,7 @@ def describe_ignored_by_rule(entries: list[dict]) -> list[str]:
                 line_ = f"!{directory}/{head}{sep}"
                 if line_ not in reincludes:
                     reincludes.append(line_)
-            sentence += ", or replace it with these lines: " + ", ".join(
+            sentence += "Replace it with these lines: " + ", ".join(
                 f"`{x}`" for x in [f"{directory}/*", *reincludes]
             )
         else:
@@ -1305,8 +1324,8 @@ def describe_ignored_by_rule(entries: list[dict]) -> list[str]:
                 x for p in paths
                 for x in ([f"!{p}", f"!{p}**"] if p.endswith("/") else [f"!{p}"])
             ]
-            sentence += ", or add these lines after it: " + ", ".join(f"`{x}`" for x in lines)
-        out.append(sentence + ".")
+            sentence += "Add these lines after it: " + ", ".join(f"`{x}`" for x in lines)
+        out.append(sentence + f". Or delete it, {_THEN_RECONCILE}.")
     return out
 
 
