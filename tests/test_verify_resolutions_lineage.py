@@ -370,6 +370,28 @@ class TestAMissingPointerIsAStaleViewToo:
         # The slot is re-pointed, so the verify reviewer reads A's findings.
         assert _cached_fact_id(repo) == "rev-a-000001"
         assert "rev-a-000001" in result.stderr, result.stderr
+        # The note says why the pointer was passed over in words, not in a raw
+        # exception: no errno, and no absolute path into this checkout.
+        assert "Errno" not in result.stderr and str(repo) not in result.stderr, result.stderr
+
+    @pytest.mark.parametrize("break_cache, said", [
+        (_no_cache, "no findings cache in this worktree"),
+        (_undecodable_cache, "the findings cache is not valid UTF-8"),
+    ], ids=["absent", "undecodable"])
+    def test_the_dispatch_note_says_why_in_words(self, tmp_path, break_cache, said):
+        """A fresh worktree's verify dispatch note used to read "no readable
+        prior findings cache ([Errno 2] No such file or directory: '/abs/...')"
+        — an error, for the ordinary state of a new worktree, and a path."""
+        repo, _refs = _two_branches_each_reviewed(tmp_path)
+        break_cache(repo / FINDINGS_REL)
+        (repo / "src/a.py").write_text("a = 2  # the fix, uncommitted\n")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, result.stderr
+        note = next(ln for ln in result.stderr.splitlines() if "verify anchored on review" in ln)
+        assert f"pointer: {said}." in note, note
+        assert "Errno" not in note and "/" not in note.split("pointer:", 1)[1].split(".", 1)[0], note
 
     @pytest.mark.parametrize("break_cache", POINTERLESS, ids=lambda f: f.__name__)
     def test_bare_inference_picks_verify_without_a_usable_pointer(self, tmp_path, break_cache):
@@ -398,7 +420,10 @@ class TestAMissingPointerIsAStaleViewToo:
         result = _run_begin(repo, "--mode", "verify-resolutions")
 
         assert result.returncode == 1, result.stderr
-        assert "no readable prior findings cache" in result.stderr, result.stderr
+        # Renegotiated from "no readable prior findings cache (<errno + path>)":
+        # a missing cache is the ordinary state of a fresh worktree, said so.
+        assert "no findings cache in this worktree" in result.stderr, result.stderr
+        assert "Errno" not in result.stderr and str(repo) not in result.stderr, result.stderr
         assert "no review anchors on this branch" in result.stderr, result.stderr
         assert not (repo / PARTIALS_REL / "manifest.json").exists()
 

@@ -77,6 +77,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 from . import coverage_algebra, critic_marker, dispositions, evidence, evidence_notes, gates, gitstate, ledger, model_tier
 from .core import GITIGNORE_ENTRIES, atomic_write_text
@@ -1589,6 +1590,77 @@ def _widened_fallback_mode(
     )
 
 
+#: The derived findings cache, in ``.prawduct/``: the single slot naming the
+#: review this worktree last consolidated or derived (D7 — a VIEW no gate
+#: reads). Spelled here once; every module reads it through
+#: :func:`read_findings_cache`, and a guard
+#: (``tests/test_findings_cache_reader.py``) keeps the path from being built
+#: anywhere else.
+FINDINGS_CACHE_NAME = ".critic-findings.json"
+
+#: :class:`FindingsCacheRead` states. Only ``FINDINGS_OK`` carries a record.
+FINDINGS_OK = "ok"
+FINDINGS_ABSENT = "absent"
+FINDINGS_UNREADABLE = "unreadable"
+FINDINGS_UNDECODABLE = "undecodable"
+FINDINGS_INVALID_JSON = "invalid-json"
+FINDINGS_NOT_A_RECORD = "not-a-record"
+
+
+class FindingsCacheRead(NamedTuple):
+    """What reading the findings cache found. ``record`` is the parsed object
+    when ``state`` is ``FINDINGS_OK``, else ``None``; ``reason`` is ``""`` then,
+    and otherwise a short phrase fit for a message — never an absolute path,
+    which the raw exception text carried into a reviewer's dispatch note."""
+
+    state: str
+    record: "dict | None"
+    reason: str
+
+
+def findings_cache_path(prawduct_dir: Path) -> Path:
+    """Where the findings cache lives — for its writers; readers use
+    :func:`read_findings_cache`."""
+    return prawduct_dir / FINDINGS_CACHE_NAME
+
+
+def read_findings_record(path: Path) -> FindingsCacheRead:
+    """THE reader of a findings record at ``path`` — the cache, or a candidate
+    validated before it replaces the cache. Never raises.
+
+    UTF-8 always, and each way of not having a record is its own state rather
+    than one ``(OSError, ValueError)`` bucket each caller re-spells: a missing
+    file (``FINDINGS_ABSENT``, the ordinary state of a fresh worktree), any
+    other OS error, bytes that are not UTF-8, text that is not JSON, and JSON
+    that is not an object. The per-site reads this replaces regressed the
+    UTF-8 fix three times."""
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except FileNotFoundError:
+        return FindingsCacheRead(FINDINGS_ABSENT, None, "no findings cache in this worktree")
+    except UnicodeDecodeError:
+        return FindingsCacheRead(FINDINGS_UNDECODABLE, None, "the findings cache is not valid UTF-8")
+    except OSError as exc:
+        why = exc.strerror or type(exc).__name__
+        return FindingsCacheRead(FINDINGS_UNREADABLE, None, f"the findings cache could not be read ({why})")
+    try:
+        record = json.loads(text)
+    except ValueError as exc:
+        where = f": {exc.msg}, line {exc.lineno}" if isinstance(exc, json.JSONDecodeError) else ""
+        return FindingsCacheRead(FINDINGS_INVALID_JSON, None, f"the findings cache is not valid JSON{where}")
+    if not isinstance(record, dict):
+        return FindingsCacheRead(
+            FINDINGS_NOT_A_RECORD, None,
+            f"the findings cache is not a findings record (a JSON {type(record).__name__}, not an object)",
+        )
+    return FindingsCacheRead(FINDINGS_OK, record, "")
+
+
+def read_findings_cache(prawduct_dir: Path) -> FindingsCacheRead:
+    """:func:`read_findings_record` of this worktree's findings cache."""
+    return read_findings_record(findings_cache_path(prawduct_dir))
+
+
 def partials_dir(prawduct_dir: Path) -> Path:
     return prawduct_dir / PARTIALS_DIRNAME
 
@@ -2141,17 +2213,11 @@ def _mark_cache_superseded(prawduct_dir: Path, review_id: str) -> bool:
     Fail-soft in every direction — the view is advisory, and a dispatch must
     never be blocked by it. Returns whether the marker was written.
     """
-    cache = prawduct_dir / ".critic-findings.json"
-    try:
-        # ValueError covers JSONDecodeError AND the UnicodeDecodeError a
-        # byte-truncated cache raises from read_text() — same pair
-        # `critic_findings_note` reads this file behind.
-        record = json.loads(cache.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        # No cache yet (first review in this repo), or one nothing can parse.
-        # Either way there is no record to make honest and nothing to lose.
-        return False
-    if not isinstance(record, dict):
+    cache = findings_cache_path(prawduct_dir)
+    record = read_findings_cache(prawduct_dir).record
+    if record is None:
+        # No cache yet (first review in this worktree), or one nothing can
+        # parse. Either way there is no record to make honest and nothing to lose.
         return False
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     prior_id = record.get("fact_id") or "an earlier review"
@@ -2394,7 +2460,8 @@ def verify_anchor(project_dir: Path, prawduct_dir: Path, store: dict) -> dict:
     (:func:`_prior_review_fact`), mode inference
     (``critic_mode._verify_prior_record``) and the session briefing ask.
 
-    Returns ``{"fact", "reason", "rederived", "branch_commits", "foreign"}``.
+    Returns ``{"fact", "reason", "rederived", "branch_commits", "foreign",
+    "foreign_branch"}``.
     ``fact`` is the review, or ``None`` with ``reason`` saying why there is none
     (the dispatch's refusal text). ``rederived`` is True when the cache's
     pointer was not this branch's review and ``fact`` is this branch's newest
@@ -2406,36 +2473,45 @@ def verify_anchor(project_dir: Path, prawduct_dir: Path, store: dict) -> dict:
 
     **Every pointer that is not this branch's defers to the owner** — off this
     lineage, a sibling's at the merge base, and equally one that is MISSING:
-    no readable cache (an undecodable one included), no ``fact_id`` in it, or
-    a fact the store does not hold. The cache is per-worktree and the store
+    no cache, an unreadable or undecodable one, no ``fact_id`` in it, or a
+    fact the store does not hold — each said in words by
+    :func:`read_findings_cache`, never as a raw exception carrying a path.
+    The cache is per-worktree and the store
     clone-shared, so a fresh worktree of a reviewed branch has no cache while
     the store holds the branch's review; a missing pointer is a stale view,
     not a missing review. A cache written before the evidence store (no
     ``fact_id``) is no exception: the owner reads the store, not the cache.
 
-    ``foreign`` is the cached review when the answer is DEFINITIVE that this
-    branch has none — the pointer resolved to a review off this lineage, and
-    the owner found no review on it — else ``None``. A reader showing the
-    cache uses it to say "the cache holds another branch's review" rather
-    than "could not confirm"."""
-    def none(reason: str, foreign: "dict | None" = None) -> dict:
+    ``foreign`` is the cached review, and ``foreign_branch`` the branch it was
+    recorded on, when the answer is DEFINITIVE that this branch has none and
+    the cache holds ANOTHER branch's: the pointer resolved to a review off this
+    lineage, the owner found no review on it, and the review was recorded on a
+    branch other than the one checked out. Else both are ``None``. Off-lineage
+    alone is not enough: an amended commit or a rebase of THIS branch leaves
+    its own review's anchor off the rewritten lineage, and that review is
+    still the one whose findings the builder owes — so a review recorded on
+    this branch, or on no branch (a detached HEAD, a fact older than
+    ``actor.branch``), or a check from a detached HEAD, stays an unconfirmed
+    pointer for the reader to show hedged. A reader showing the cache uses
+    ``foreign_branch`` to say whose review the cache holds rather than "could
+    not confirm"."""
+    def none(reason: str, foreign: "dict | None" = None,
+             foreign_branch: "str | None" = None) -> dict:
         return {"fact": None, "reason": reason, "rederived": False,
-                "branch_commits": None, "foreign": foreign}
+                "branch_commits": None, "foreign": foreign, "foreign_branch": foreign_branch}
 
     def as_cached(fact: dict) -> dict:
         return {"fact": fact, "reason": "", "rederived": False,
-                "branch_commits": None, "foreign": None}
+                "branch_commits": None, "foreign": None, "foreign_branch": None}
 
-    cache = prawduct_dir / ".critic-findings.json"
     fact_id = cached = None
-    try:
-        data = json.loads(cache.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        # `ValueError` covers `UnicodeDecodeError`: an undecodable cache is as
-        # missing a pointer as an absent one.
-        passed_over = f"no readable prior findings cache ({exc})"
+    read = read_findings_cache(prawduct_dir)
+    if read.record is None:
+        # Absent (a fresh worktree), unreadable, undecodable, not JSON, not a
+        # record: each as missing a pointer as the others, said in words.
+        passed_over = read.reason
     else:
-        fact_id = data.get("fact_id") if isinstance(data, dict) else None
+        fact_id = read.record.get("fact_id")
         passed_over = (
             "prior findings cache carries no fact_id — it predates the evidence store"
         )
@@ -2460,19 +2536,22 @@ def verify_anchor(project_dir: Path, prawduct_dir: Path, store: dict) -> dict:
             f"{passed_over}; this branch's own review could not be looked up "
             f"({branch_range.get('reason')})"
         )
-    chosen = select_branch_review(
-        store.get("facts", []), branch_range["ordered"],
-        gitstate.current_branch(project_dir),
-    )
+    branch = gitstate.current_branch(project_dir)
+    chosen = select_branch_review(store.get("facts", []), branch_range["ordered"], branch)
     if chosen is None:
+        recorded = _recorded_branch(cached) if cached is not None else None
+        another = recorded is not None and branch is not None and recorded != branch
         return none(f"{passed_over}; no review of this branch's could replace it "
-                    "(no review anchors on this branch)", foreign=cached)
+                    "(no review anchors on this branch)",
+                    foreign=cached if another else None,
+                    foreign_branch=recorded if another else None)
     if cached is not None and chosen.get("id") == fact_id:
         # The merge-base preference is a preference: a sibling's review with
         # none of this branch's beside it is still the answer.
         return as_cached(cached)
     return {"fact": chosen, "reason": passed_over, "rederived": True,
-            "branch_commits": branch_range["ordered"], "foreign": None}
+            "branch_commits": branch_range["ordered"], "foreign": None,
+            "foreign_branch": None}
 
 
 def _not_this_branchs(project_dir: Path, fact: dict) -> "str | None":
@@ -6402,12 +6481,9 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
     if fact is None:
         return {"status": "none", "review": None, "reason": "no review anchors on this branch"}
     review = str(fact.get("id"))
-    findings_path = prawduct_dir / ".critic-findings.json"
-    try:
-        held = json.loads(findings_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        held = None
-    if isinstance(held, dict) and held.get("fact_id") == review:
+    findings_path = findings_cache_path(prawduct_dir)
+    held = read_findings_cache(prawduct_dir).record
+    if held is not None and held.get("fact_id") == review:
         return {"status": "current", "review": review, "reason": None}
     # Validated before it replaces anything: a record no reader trusts is worse
     # than the one it would displace, since they would anchor on it.
@@ -6776,19 +6852,15 @@ def _already_consolidated_note(prawduct_dir: Path) -> str:
     Diagnostics stay advisory (``architecture.md``: advice fails soft — which
     says do not block, not do not report).
     """
-    cache = prawduct_dir / ".critic-findings.json"
-    if not cache.exists():
+    name = FINDINGS_CACHE_NAME
+    read = read_findings_cache(prawduct_dir)
+    if read.state == FINDINGS_ABSENT:
         return ""
-    try:
-        # ValueError covers JSONDecodeError AND the UnicodeDecodeError a
-        # byte-truncated cache raises from read_text() — the case the "must not
-        # crash an informational no-op" contract promises and a narrower
-        # (OSError, JSONDecodeError) missed.
-        record = json.loads(cache.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return f" (`.prawduct/{cache.name}` exists but is unreadable: {exc} — not a clean-review signal.)"
-    if not isinstance(record, dict) or not isinstance(record.get("findings"), list):
-        return f" (`.prawduct/{cache.name}` is not a findings record — not a clean-review signal.)"
+    record = read.record
+    if read.state not in (FINDINGS_OK, FINDINGS_NOT_A_RECORD):
+        return f" (`.prawduct/{name}` exists but is unreadable: {read.reason} — not a clean-review signal.)"
+    if record is None or not isinstance(record.get("findings"), list):
+        return f" (`.prawduct/{name}` is not a findings record — not a clean-review signal.)"
     findings = record["findings"]
     if not findings:
         return ""
@@ -6801,7 +6873,7 @@ def _already_consolidated_note(prawduct_dir: Path) -> str:
     age_note = f", dispatched {age:.0f} min ago" if age is not None else ""
     return (
         f" The newest recorded review ({fact_id}{age_note}) holds {len(findings)}"
-        f" finding(s) — read `.prawduct/{cache.name}`; if they are already"
+        f" finding(s) — read `.prawduct/{name}`; if they are already"
         " dispositioned, this is history, not work." + _BATCH_FIX_DIRECTIVE
     )
 
@@ -7857,7 +7929,7 @@ def _consolidate(
         store=store, not_waived=waiver_refusals, prawduct_dir=prawduct_dir,
     )
     record["next_action"] = _lead_with_moved_head(moved, record["next_action"])
-    findings_path = prawduct_dir / ".critic-findings.json"
+    findings_path = findings_cache_path(prawduct_dir)
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
     # Belt-and-suspenders: the cache we just rendered must satisfy the schema

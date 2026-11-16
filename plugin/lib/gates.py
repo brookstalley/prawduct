@@ -1255,11 +1255,15 @@ def validate_critic_findings(findings_path: Path) -> bool:
 
     Thin path wrapper over :func:`_validate_critic_findings_data` (the data
     form also validates ledger event payloads — review-proportionality
-    ch.02, one schema for both homes of the same record).
+    ch.02, one schema for both homes of the same record). The file is read
+    by the findings cache's one reader,
+    ``critic_consolidate.read_findings_record``; anything but a record fails.
     """
     try:
-        data = json.loads(findings_path.read_text(encoding="utf-8"))
-        return _validate_critic_findings_data(data)
+        from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module
+
+        read = critic_consolidate.read_findings_record(findings_path)
+        return read.record is not None and _validate_critic_findings_data(read.record)
     except Exception:  # prawduct:allow prawduct/broad-except -- validation must not crash gate check
         return False
 
