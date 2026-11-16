@@ -135,7 +135,9 @@ class TestOnboardConfiguresTheTransport:
         assert "nothing to change" in step
         assert "git -C <target> remote" not in step
         assert "from another directory" in step
-        assert "Health Check #25" in step
+        # Routed by name, not ordinal: doctor's list renumbers.
+        assert "*Notes transport configured* check" in step
+        assert "Check #" not in step
 
     def test_what_it_runs_is_granted(self):
         frontmatter = _frontmatter(ONBOARD.read_text(encoding="utf-8"))
