@@ -48,13 +48,11 @@ from pathlib import Path
 from typing import NamedTuple
 
 from . import (
-    buildplan_refs,
     coverage,
     coverage_algebra,
     evidence,
     gitstate,
     host,
-    learnings_files,
     plan_status,
     standing_block,
     tree_key_memo,
