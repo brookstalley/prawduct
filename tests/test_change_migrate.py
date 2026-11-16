@@ -62,6 +62,14 @@ MIXED = (
 )
 
 
+def _legacy_pending(pending) -> list[str]:
+    """The scopes of the live log's release-pending entries: what the release
+    gate refuses on (#1125), and so what the migration must move."""
+    return sorted(
+        {e.tags["scope"] for e in release_readiness.release_pending_entries(pending.entries) if e.tags.get("scope")}
+    )
+
+
 class TestConversion:
     def test_an_empty_log_converts_nothing(self):
         result = change_fragments.legacy_entries_as_fragments(PREAMBLE)
@@ -314,13 +322,15 @@ class TestCommand:
     def test_apply_writes_fragments_and_the_release_gate_sees_the_same_pending_set(self, tmp_path):
         project = _project(tmp_path, MIXED)
         before = release_readiness.pending_scopes(project)
-        assert before.legacy_scopes and not before.fragment_scopes
+        assert _legacy_pending(before) and not before.fragment_scopes
+        # The gate refuses the unmigrated repo, naming every pending entry.
+        assert before.refusals and all(r.startswith("legacy-pending-entry:") for r in before.refusals)
         run = _migrate(project, "--apply")
         assert run.returncode == 0, run.stderr
         after = release_readiness.pending_scopes(project)
         assert after.refusals == [] and after.read_error is None
-        assert sorted(after.fragment_scopes) == sorted(before.legacy_scopes) == ["alpha", "gamma"]
-        assert after.legacy_scopes == []
+        assert sorted(after.fragment_scopes) == _legacy_pending(before) == ["alpha", "gamma"]
+        assert _legacy_pending(after) == []
         assert all(f.ok for f in change_fragments.load_pending(project))
 
     def test_a_crlf_log_and_the_fragments_moved_out_of_it_stay_crlf(self, tmp_path):
@@ -338,8 +348,8 @@ class TestCommand:
             data = path.read_bytes()
             assert b"\r\n" in data and data.count(b"\n") == data.count(b"\r\n"), path.name
         after = release_readiness.pending_scopes(project)
-        assert sorted(after.fragment_scopes) == sorted(before.legacy_scopes) == ["alpha", "gamma"]
-        assert after.legacy_scopes == [] and after.refusals == []
+        assert sorted(after.fragment_scopes) == _legacy_pending(before) == ["alpha", "gamma"]
+        assert _legacy_pending(after) == [] and after.refusals == []
         assert all(f.ok for f in change_fragments.load_pending(project))
         assert "2026-10-18: shipped fix" in log.read_text(encoding="utf-8")
 
@@ -349,7 +359,7 @@ class TestCommand:
         )
         project = _project(tmp_path, MIXED + several)
         before = release_readiness.pending_scopes(project)
-        assert sorted(before.legacy_scopes) == ["alpha", "delta", "gamma"]
+        assert _legacy_pending(before) == ["alpha", "delta", "gamma"]
         dry = _migrate(project)
         assert dry.returncode == 0, dry.stderr
         assert "epsilon: recorded under another change's header" in dry.stdout and "delta: recorded" not in dry.stdout

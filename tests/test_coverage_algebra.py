@@ -1089,6 +1089,34 @@ class TestExcusedGapVerdict:
             assert verdict["status"] == "covered", (key_fn, verdict)
             assert verdict["gap"]["src"] == T11
 
+    def test_free_steps_carry_their_files_in_both_forms(self):
+        """#1159: ``coverage_verdict`` documents a free step as
+        ``{kind: free, src, dst, files}``. The key form learns an interval is
+        free without listing it, so the files are filled in on the found path.
+        The excused path is a found path too, covered or blocked, so its free
+        steps owe the same shape in both forms."""
+        table = {
+            (T1, T11): ["docs/x.md"],
+            (T11, T1): ["docs/x.md"],
+            (T11, T2): ["lib/b.py"],
+        }
+        keys = {T0: "k0", T1: "k1", T11: "k1", T2: "k2"}
+        for findings, status in (([], "covered"), ([BLOCKER], "blocked")):
+            facts = [
+                _review("r1", T0, T1, ["lib/a.py"], findings=findings),
+                _review("r9", T3, T11, ["lib/z.py"]),
+            ]
+            for key_fn in (None, keys.get):
+                verdict = ca.excused_gap_verdict(
+                    facts, T0, T2, _diff(table), key_fn, _not_any({"lib/a.py"})
+                )
+                assert verdict["status"] == status, (key_fn, verdict)
+                free = [s for s in verdict["path"] if s["kind"] == "free"]
+                assert free, (key_fn, verdict["path"])
+                for step in free:
+                    assert set(step) == {"kind", "src", "dst", "files"}, (key_fn, step)
+                    assert step["files"] == table[(step["src"], step["dst"])], key_fn
+
 
 def _random_evidence_case(rng):
     """One generated evidence graph over trees that differ in judgeable and
@@ -1179,4 +1207,5 @@ class TestOneEvidenceGraph:
                         assert step["src"] in nodes and step["dst"] in nodes, seed
                         files = diff_fn(step["src"], step["dst"])
                         assert files is not None and not ca.judgeable_files(files), seed
+                        assert step["files"] == files, (seed, kf)  # #1159
         assert composed > 100  # excused paths were actually produced and walked

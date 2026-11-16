@@ -768,7 +768,7 @@ def census(
                 "ts": fact.get("ts"),
                 "mode": body.get("mode"),
                 "scope": body.get("scope"),
-                "chunk": body.get("chunk"),
+                "chunk": _review_chunks_label(body),
                 "rows": rows,
                 # A SEPARATE list, never appended to ``rows``. Every consumer of
                 # ``rows`` — the summary's severity tally, its undispositioned
@@ -913,6 +913,16 @@ def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> di
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
+
+
+def _review_chunks_label(body: dict) -> "str | None":
+    """The chunk(s) a review fact names, comma-joined, or ``None`` — read through
+    :func:`plan_status.fact_chunks`, the one rule for both fact shapes (``chunks``,
+    and the bare ``chunk`` of a fact written before it), so the census and
+    chunk-status cannot name different chunks for one review."""
+    from . import plan_status  # noqa: PLC0415 — lazy: plan_status imports this module
+
+    return ", ".join(plan_status.fact_chunks(body)) or None
 
 
 def render_markdown(report: dict) -> str:

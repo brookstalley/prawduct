@@ -1197,6 +1197,65 @@ def git_paths_ignored(project_dir: Path, rel_paths: "list[str]") -> "set[str]":
     return {p for p in result.stdout.split("\0") if p}
 
 
+def git_ignore_rules(
+    project_dir: Path,
+    rel_paths: "list[str]",
+    env: "dict[str, str] | None" = None,
+) -> "dict[str, tuple[str, int, str]] | None":
+    """The ignore rule git settles on for each of ``rel_paths``, or ``None`` if git
+    could not be asked.
+
+    ``git check-ignore --no-index -v --stdin -z`` in ONE call. ``--no-index`` asks
+    "would a rule ignore this path" without regard to whether it is already
+    tracked, which is the question the ``.gitignore`` contract poses (a managed
+    file that is committed today is still hidden from the next ``git add -A`` of a
+    fresh clone). ``-v`` names the deciding rule, so a caller can tell a shared
+    ``.gitignore`` from a per-clone exclude.
+
+    Returns ``{path: (source, line, pattern)}`` for every path some pattern
+    matched. A path with no matching pattern is absent. A NEGATED match (a
+    ``!re-include``) is present with the ``!`` still on ``pattern``: it is the
+    deciding rule and the path is NOT ignored, so the caller must read the prefix.
+
+    ``None`` is a different answer from ``{}``: git missing, timed out, or not a
+    work tree (exit 128) means "unknown", not "nothing is ignored", and a caller
+    that collapsed them would turn a failed probe into a confident claim.
+
+    ``env`` replaces the child's environment when given (a caller aiming at a
+    scratch repo must shed an inherited ``GIT_DIR``, or git answers about the
+    wrong repository).
+    """
+    if not rel_paths:
+        return {}
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "-v", "--stdin", "-z"],
+            input="\0".join(rel_paths),
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode not in (0, 1):
+        return None
+    fields = result.stdout.split("\0")
+    if fields and fields[-1] == "":
+        fields.pop()
+    if len(fields) % 4 != 0:
+        return None
+    rules: dict[str, tuple[str, int, str]] = {}
+    for i in range(0, len(fields), 4):
+        source, line, pattern, path = fields[i : i + 4]
+        try:
+            rules[path] = (source, int(line), pattern)
+        except ValueError:
+            return None
+    return rules
+
+
 def git_path_is_tracked(project_dir: Path, rel_path: str) -> bool | None:
     """True if ``rel_path`` is tracked, False if not, ``None`` if git could not
     be asked.

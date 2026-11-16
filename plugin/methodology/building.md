@@ -71,7 +71,7 @@ retroactivity). Departing from a norm that already governs your change is a reco
 
 **Establish a clean baseline.** Before the first work cycle of a session:
 
-- *Tests*: `test-status` current is the baseline (exit 0 — don't re-run); else one run of the declared suite, all passing. A delegate skips this, inheriting the main agent's baseline.
+- *Tests*: `test-status` current is the baseline (exit 0; on `running:`, wait); else one run of the declared suite, all passing. A delegate skips this, inheriting the main agent's baseline.
 - *A red baseline*: establish whether your work caused it before fixing it. If it predates your work, record it (`test-evidence record --degraded`) — and once more in a clean checkout of the merge-base (a detached worktree; the store is clone-shared), which lets consolidation waive its BLOCKING finding — and name it in the handoff rather than folding a fix into your diff; if your work caused it, fix it first.
 - *Git state*: Commit or stash unrelated work. Medium+ work gets a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Address or explicitly acknowledge each compliance finding in the session briefing.

@@ -7,7 +7,9 @@ run is recorded as a `native.review` ledger event, and its text is kept per clon
 `.prawduct/.native-reviews/`. A boundary run's findings are put to the builder; an inner run's are
 not. The build plans and their decisions are `.prawduct/artifacts/build-plan-native-review-paired.md`
 and `build-plan-native-review-inner.md`. The host facts the design rests on are in
-`host-facts-2026-11-12.md`, which `fork_costs.py` re-derives.
+`host-facts-2026-11-12.md`, which `fork_costs.py` re-derives. The native review runs in a worktree
+of its own (#1177): the host's review checks out the commit it reads, in whatever directory it was
+forked in, and forked in the session's checkout it detached the session's HEAD.
 
 ## Monthly comparison
 
@@ -44,7 +46,8 @@ and `build-plan-native-review-inner.md`. The host facts the design rests on are 
    the confirmed ones are re-raises. No item carries a line number, since only native findings
    have one.
    An item marked `tree_moved` came from a review whose working tree changed before the native
-   run landed, so the code at `head_tree` may differ a little from what was read. A re-raise
+   run landed, so the code at `head_tree` may differ a little from what was read. Runs dispatched
+   since #1177 read their own worktree, detached at the reviewed head, so none of them is marked. A re-raise
    item's `earlier` findings are read at `earlier_head_tree`. The two instruments still word
    findings differently (a native finding names one file and reads "summary — scenario"), so the
    sheet hides the source as far as the words allow, not completely.

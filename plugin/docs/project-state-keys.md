@@ -370,10 +370,15 @@ live-integration changes that automated tests can't fully cover. Drain via
 `/prawduct:pr create --accept-pending-verification "rationale"`. Default off — opt in by setting
 `operator_verification_required: true`.
 
+An absent file or key reads as off. A `project-state.yaml` that exists but cannot be read (no
+permission, not UTF-8) does NOT read as off: `check-operator-verification` refuses with exit 3 and
+names the file, so a repo that opted in is never told its gate is off. An unreadable queue file
+refuses the same way instead of crashing. Same rule for `coverage_required`.
+
 ## review_round_budget (on by default, 6)
 
 The most full review rounds one body of work may buy before `critic-begin` refuses another (exit
-4). `verify-resolutions` is never refused and never counted — it is how a BLOCKING finding clears,
+4). `verify-resolutions` is never refused by the budget and never counted — it is how a BLOCKING finding clears,
 so a ceiling that ate it would strand findings with no command that resolves them.
 
 The unit is the build-plan SCOPE, not the branch: a branch may carry two scopes (one would charge
@@ -419,8 +424,11 @@ consolidation never waits for it. A boundary review's `NEXT-ACTION` names the na
 inner one's does not, because a second unrated list beside an inner pass would manufacture
 rounds. Its text is kept per clone in `.prawduct/.native-reviews/`. An inner review of a working
 tree is handed to the native review as a range whose working-tree end (and base, when no commit
-holds it) is an unreachable commit over the reviewed tree, which `git gc` collects; no ref, index
-or file changes.
+holds it) is an unreachable commit over the reviewed tree; recording the run pins both reviewed
+trees under `refs/prawduct/native-trees/` until the experiment stops. The native review runs in a
+worktree of its own, detached at the reviewed head, and never moves this checkout's HEAD, index or
+files (#1177). If HEAD leaves its branch during a review anyway, the review's `NEXT-ACTION` and
+`critic-consolidate` say so, with the command that puts the work back on the branch.
 
 Set `native_review_pairing: false` to opt this repo out. Only an explicit `false` does: the
 pairing is the development build's default, so a misspelt value keeps it running rather than

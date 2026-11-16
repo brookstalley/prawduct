@@ -120,7 +120,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 The head end moves to **committed HEAD** instead when committed content differs from the reviewed tree — that is the PR gate's target, and anchoring there keeps a stray uncommitted file from leaving the gate `uncovered` after a successful pass (the WIP is noted and excluded). "Differs" is a **tree** comparison, and two readings of it are wrong in opposite directions: the vouching commit above materializes the reviewed tree verbatim, so it changes no content and is not a change of intent; and a prior review of a **dirty** tree (its fact records `head_commit: null`) leaves the anchor *ahead* of committed HEAD, which read as a committed delta inverts the edge and anchors the resolution facts to a tree the fixes are absent from. So the head end moves only when the trees differ **and** a commit actually landed — HEAD no longer standing where the prior review dispatched. (Both exclusions are code; `critic_consolidate.begin_review` carries the derivation.)
 
-The anchor must also be an **ancestor of HEAD**. The findings cache is single-slot and survives a branch switch, and worktrees of one clone share an object store, so a sibling branch's anchor still resolves — resolving is not evidence it belongs to this lineage, and a cross-branch anchor yields phantom findings. Not-an-ancestor and any git failure both demote.
+The anchor must also be **this branch's**. The findings cache is single-slot and survives a branch switch, and worktrees of one clone share an object store, so a sibling branch's anchor still resolves — resolving is not evidence it belongs to this lineage, and a cross-branch anchor yields phantom findings. A cached anchor off this lineage, or a sibling's at the shared merge base, yields to this branch's newest review (as ingest derives it) and the cache is re-pointed; with none, the pass demotes.
 
 **Demotion** (all detected by `critic-begin`, fail-closed — it refuses to anchor rather than silently shrinking the review):
 
@@ -130,12 +130,13 @@ The anchor must also be an **ancestor of HEAD**. The findings cache is single-sl
 |---|---|
 | No readable findings cache, no `fact_id` in it, or the fact is gone from the store (1) | Nothing to anchor against — fall back per the property above, record `mode_chosen_by: "fallback-no-prior-findings"`. |
 | The prior tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. **Committed.** |
-| The prior fact's anchor commit is not an ancestor of HEAD (1) | Another lineage — a branch switch, or rewritten history; the delta would span the divergence. Same fallback. **Committed.** |
+| The prior fact's anchor commit is not an ancestor of HEAD, and this branch has no review (1) | Another lineage — a branch switch, or rewritten history; the delta would span the divergence. Same fallback. **Committed.** |
 | Delta > 2 × the prior count + 5 (2) | Scope widened beyond the prior surface — a partial review would mislead. Both counts are coverage-priced (the judgeable subset of each subject set, not the subject set), so prose riding along on a fix cannot demote the pass. Re-dispatch in the mode the refusal names, recording `mode_chosen_by: "fallback-scope-widened"`. |
 
 **Not a demotion.** Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it
 reviewed: **exit 3, no review needed — stop.** There is no wider mode to fall back to, and
-re-dispatching one spends a full round on a bundle the gate already passes.
+re-dispatching one spends a full round on a bundle the gate already passes. Nor is stale or red
+saved test evidence: **exit 7** — its printed remedy, then this mode again (no evidence never refuses).
 
 **When NOT to use verify-resolutions.** Not as a chunk's first review (it's a re-review mode). Not after long drift unrelated to the original findings — the scope-widening threshold exists for exactly that.
 
@@ -342,7 +343,7 @@ Every review cycle must produce a record — governance without an audit trail i
 
 **Dispatch manifest** (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`; schema/validators in `lib/critic_consolidate.py`). Keys: review `id`, `mode` (verbose string), `mode_chosen_by` (the `infer-critic-mode` rationale, relayed via `--chosen-by`), `roster` + `roster_chosen_by`, `rendezvous` (each role's resolved partial + started paths, derived from `partial_path`/`started_path`, which own the shape — recorded here so no instruction surface spells a filename), `commit_reviewed` (HEAD at dispatch), the review interval (`base_tree`/`head_tree` + commits), `files_changed` plus its subject/oracle split (`files_reviewed`/`files_oracle`), all derived from the interval, a cumulative's `span`/`bounded_from`/`span_reason` with `files_context` (the rest of the bundle when bounded), the review `stage` with `judgeable_files`, `chunk_type` and the rendered `signals` line ("Severity is stage-keyed"), the relayed telemetry `tier`, `scope`, `chunk`, `base_reviewed`, and `reviewer_model` (from `--session-model`): when set, the fork reviews nothing and dispatches every roster role on it, the single-pass `reviewer` included, which reads `dispatch_directives`. `native_review` (development builds: each `cumulative`, sampled `chunk`/`verify-resolutions`): the paired native review's wrapper, dispatched from `critic-begin`'s printed line; no roster role, never awaited. `critic-consolidate` refuses to persist unless every roster role reported a valid partial at the manifest's `commit_reviewed`, carrying the manifest's `id` as its `dispatch_id` — the binding that stops a straggler from a displaced review consolidating as this one. `dispatch_tree` (the whole working tree at dispatch) arms the same refusal for a tree changed since ("Prep work" above).
 
-**The findings cache is a derived view.** `.prawduct/.critic-findings.json` is regenerated from the newest review fact and carries its `fact_id`; builders and briefings read it for *content*, and no gate reads it — gates compose over the store.
+**The findings cache is a derived view.** `.prawduct/.critic-findings.json` is regenerated from the newest review fact and carries its `fact_id`; builders read it for *content*, and no gate reads it — gates compose over the store.
 
 ### The Governance-Event Ledger
 

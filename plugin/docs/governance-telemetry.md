@@ -56,7 +56,8 @@ kind-named key (`review` for `review.*`):
   and `stage`; `synthetic_range` (true when the range was named by unreachable commits because the
   interval had no commit at one end); and `tree_moved` (true when a file in the reviewed interval,
   outside `.prawduct/`, differed in the working tree by the time the run was recorded, `null` when
-  it could not be told). `dispatched_at` is the time
+  it could not be told; always false for a run that read its own worktree at the reviewed head,
+  the way every run is dispatched since #1177). `dispatched_at` is the time
   `critic-begin` stamped. The kind sits outside `review.` and the payload under `native`, so a
   reader that takes `review.*` events as Critic reviews (older builds of this plugin included)
   skips it as unknown; `review-stats` reports it in its own `native_review` block, in no Critic
@@ -110,7 +111,11 @@ All three nest under a `learning` key, under the same envelope:
 - **The span is the session's work, not its uncommitted work.** The Stop hook
   reaches `learning.written` off `gates.session_work_span`, which diffs the
   session's base tree against the working tree, less history a pull, merge or
-  branch switch brought in — so a rule written and
+  branch switch brought in and less commits another session in the same
+  checkout made while this one had no tool call or `!` command running, in
+  files this one's edit tools (Edit, Write, MultiEdit, NotebookEdit) did not target
+  (each named on the Stop hook's stderr; a Bash- or subagent-written file does not
+  count as its edit) — so a rule written and
   committed in one turn is still counted at that turn's Stop. Without the
   marker there is no base to diff, and then nothing is recorded and the Stop
   hook says so on stderr; that one missing state is also why the budget check

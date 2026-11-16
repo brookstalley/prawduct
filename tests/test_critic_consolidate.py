@@ -5188,12 +5188,19 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         repo, base_tree = self._branch(tmp_path)
         base_wt = tmp_path / "base-wt"
         _git(repo, "worktree", "add", "--detach", "--quiet", str(base_wt), "main")
+        # The record ignored, as a product repo's managed .gitignore has it: the
+        # attempt's in-progress stub (#1178 R-8) is written before the tree is
+        # captured, so an unignored one would make the run's tree not the base's.
+        (repo / ".git" / "info" / "exclude").write_text(".prawduct/.test-evidence.json\n")
         report = tmp_path / "report.xml"  # outside both checkouts, so not in the tree
         report.write_text(
             '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="s" time="1">'
             '<testcase classname="c" name="t1"><failure/></testcase>'
             '<testcase classname="c" name="ok"/></testsuite></testsuites>'
         )
+        from test_plugin_runtime import as_just_run  # noqa: PLC0415
+
+        as_just_run(report)  # the run starts after the worktree it reads
         recorded = subprocess.run(
             [sys.executable, str(HOOK), "test-evidence", "record", "--from-junit", str(report)],
             cwd=str(base_wt), capture_output=True, text=True,
@@ -5492,7 +5499,7 @@ class TestCriticBeginCLI:
         (repo / "src/app.py").write_text("x = 2\n")  # the chunk's dirty diff
         status_before = _git(repo, "status", "--porcelain").stdout
         result = _run_begin(repo, "--mode", "chunk", "--chosen-by", "rule-4 chunk",
-                            "--chunk", "03", "--scope", "demo")
+                            "--chunks", "03", "--scope", "demo")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         ok, reason = cc.validate_manifest(manifest)
@@ -5683,7 +5690,7 @@ class TestStageReachesEveryReader:
             "- [ ] Chunk 01: The chunk\n\n## Chunk 01: The chunk\n\n"
             "- **Type:** doc-only\n- **Description:** words.\n- **Deliverables:** `src/app.py`\n"
         )
-        result = _run_begin(repo, "--mode", "chunk", "--scope", "demo", "--chunk", "01")
+        result = _run_begin(repo, "--mode", "chunk", "--scope", "demo", "--chunks", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = self._manifest(repo)
         assert manifest["record_lint"]["plan_graded"].endswith("build-plan-demo.md")
@@ -7872,7 +7879,7 @@ class TestScopeAttribution:
         the pointer — that read is where the misattribution enters.
         """
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = self._manifest(repo)
         assert manifest["scope"] == "mine"
@@ -7883,7 +7890,7 @@ class TestScopeAttribution:
 
     def test_an_explicit_scope_still_wins(self, tmp_path):
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01", "--scope", "other")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "01", "--scope", "other")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = self._manifest(repo)
         assert manifest["scope"] == "other"
@@ -7901,7 +7908,7 @@ class TestScopeAttribution:
         did, which is the thing record-lint exists to refuse.
         """
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "record-lint graded chunk 01 of" in result.stdout
         assert "build-plan-mine.md" in result.stdout
@@ -7938,7 +7945,7 @@ class TestScopeAttribution:
         The control is the claimed branch, whose scope reaches every record.
         """
         repo = self._repo_with_scoped_plan(tmp_path, "fix/unrelated-name")
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = self._manifest(repo)
         assert manifest["scope"] is None
@@ -7969,7 +7976,7 @@ class TestScopeAttribution:
         """The control for the #1049 shape: the same fixture on the branch
         `mine` claims puts `mine` on the manifest, the fact and the event."""
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = self._manifest(repo)
         _write_partial(repo, "reviewer", manifest["commit_reviewed"])
@@ -10660,9 +10667,8 @@ class TestTheReviewNamesItsChunks:
         assert done.returncode == 0, done.stderr
         (fact,) = _store_facts(repo, "review")
         body = fact["body"]
-        assert (body["chunks"], body["chunk"], body["chunks_proposed"]) == (
-            ["01", "03"], "01", ["01", "03"]
-        )
+        assert (body["chunks"], body["chunks_proposed"]) == (["01", "03"], ["01", "03"])
+        assert "chunk" not in body
         # And the one reader certifies both, and only both.
         from lib import plan_status
 
@@ -10696,14 +10702,14 @@ class TestTheReviewNamesItsChunks:
     def test_the_chunk_alias_is_one_element_and_normalized_to_the_plan(self, tmp_path):
         """`--chunk 1` against a plan printing `01`: recorded as the plan prints it."""
         repo = _st8_repo(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "1")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "1")
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
         assert (manifest["chunks"], manifest["chunk"]) == (["01"], "01")
 
     def test_a_declared_chunk_outside_the_proposal_warns_and_is_recorded(self, tmp_path):
         repo = _st8_repo(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "02")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "02")
         assert result.returncode == 0, result.stderr
         assert "WARNING: declared chunk(s) 02 are not in the proposal" in result.stderr
         manifest = _st8_manifest(repo)
@@ -10711,7 +10717,7 @@ class TestTheReviewNamesItsChunks:
         assert manifest["chunks_proposed"] == ["01", "03"]
         # Control: declaring inside the proposal says nothing.
         _abandon(repo)
-        inside = _run_begin(repo, "--mode", "chunk", "--chunk", "03")
+        inside = _run_begin(repo, "--mode", "chunk", "--chunks", "03")
         assert inside.returncode == 0, inside.stderr
         assert "WARNING: declared chunk" not in inside.stderr
 
@@ -10720,12 +10726,12 @@ class TestTheReviewNamesItsChunks:
         lib = cc.begin_review(repo, "chunk", chunks=["01", "09"])
         assert lib["status"] == "error" and lib["kind"] == cc.UNKNOWN_CHUNK_KIND, lib
         assert "09" in lib["reason"] and "declares 01, 02, 03" in lib["reason"]
-        cli = _run_begin(repo, "--mode", "chunk", "--chunk", "09")
+        cli = _run_begin(repo, "--mode", "chunk", "--chunks", "09")
         assert cli.returncode == 1, cli.stderr
         assert "chunk id(s) 09 are not chunks of" in cli.stderr
         assert not (repo / PARTIALS_REL / "manifest.json").exists()
         # Control: the same dispatch naming a real chunk is accepted.
-        assert _run_begin(repo, "--mode", "chunk", "--chunk", "01").returncode == 0
+        assert _run_begin(repo, "--mode", "chunk", "--chunks", "01").returncode == 0
 
     def test_a_rejected_heading_key_is_not_a_chunk_id(self, tmp_path):
         repo = _st8_repo(tmp_path, plan=_ST8_PLAN + "\n#### Chunk 4x: oops\n")
@@ -10853,7 +10859,7 @@ class TestRecordLintGradesTheChunksTheFactNames:
 
     def test_an_explicit_chunk_grades_that_chunk(self, tmp_path):
         repo = self._repo_touching_two_and_three(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "03")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "03")
         assert result.returncode == 0, result.stderr
         lint = _st8_manifest(repo)["record_lint"]
         assert (lint["chunks_graded"], lint["chunk_graded"]) == (["03"], "03"), lint
@@ -10926,11 +10932,17 @@ class TestManifestChunkFields:
         body = cc.build_fact_body(manifest, [_partial("reviewer", "abc123")])
         assert body["chunk"] == "01" and "chunks" not in body and "chunks_proposed" not in body
 
-    def test_the_fact_body_writes_all_three(self):
+    def test_the_fact_body_writes_chunks_not_the_singular_chunk(self):
         manifest = _manifest_dict(chunks=["02", "03"], chunks_proposed=["03"], chunk="02")
         body = cc.build_fact_body(manifest, [_partial("reviewer", "abc123")])
-        assert (body["chunks"], body["chunks_proposed"], body["chunk"]) == (["02", "03"], ["03"], "02")
+        assert (body["chunks"], body["chunks_proposed"]) == (["02", "03"], ["03"])
+        assert "chunk" not in body
         empty = cc.build_fact_body(
             _manifest_dict(chunks=[], chunks_proposed=[], chunk=None), [_partial("reviewer", "abc123")]
         )
-        assert (empty["chunks"], empty["chunk"]) == ([], None)
+        assert empty["chunks"] == [] and "chunk" not in empty
+        # absence is tolerated by the one reader, and a legacy bare-`chunk` fact still reads
+        from lib import plan_status
+        assert plan_status.fact_chunks(body) == ["02", "03"]
+        assert plan_status.fact_chunks(empty) == []
+        assert plan_status.fact_chunks({"chunk": "04"}) == ["04"]

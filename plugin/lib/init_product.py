@@ -223,17 +223,28 @@ def init_product(
     # a new product gets the directory and no shared log. The `.gitkeep` is what
     # makes it survive a clone: git drops an empty directory, and readers decide
     # that a repo records fragments by the directory existing. A repo that
-    # already keeps the single-file log is left on it; `migrate-change-log`
-    # converts it, and scaffolding the directory here would split its record.
+    # already keeps the single-file log is not converted here: the move is
+    # `migrate-change-log`, owner-confirmed, one revertable commit, and it may
+    # need the owner's `--default-type`. Scaffolding the directory beside the log
+    # would split the record instead. But since #1125 releases and the PR gate
+    # read only fragments, so the owner is told now rather than at the first PR.
     from . import change_fragments  # noqa: PLC0415 — lazy keeps this module's import surface small
     from .change_log import CHANGE_LOG_REL_PATH  # noqa: PLC0415 — same reason
 
     keep_rel = f"{change_fragments.FRAGMENT_DIR_REL}/.gitkeep"
-    if not (project_dir / CHANGE_LOG_REL_PATH).is_file() and not (project_dir / keep_rel).is_file():
+    on_legacy_log = (project_dir / CHANGE_LOG_REL_PATH).is_file()
+    if not on_legacy_log and not (project_dir / keep_rel).is_file():
         created.append(keep_rel)
         if apply:
             (project_dir / keep_rel).parent.mkdir(parents=True, exist_ok=True)
             (project_dir / keep_rel).write_text("", encoding="utf-8")
+    if on_legacy_log and not (project_dir / change_fragments.FRAGMENT_DIR_REL).is_dir():
+        warnings.append(
+            f"This repo records changes in {CHANGE_LOG_REL_PATH}. Releases and the PR gate read "
+            f"only {change_fragments.FRAGMENT_DIR_REL}/ and refuse an unreleased entry in that log, "
+            "so move it onto fragments before the next PR: /prawduct:doctor (check #22) runs "
+            "`prawduct-hook migrate-change-log` as a dry run first."
+        )
 
     # Learnings starter — a `.claude/rules/` file, so the harness loads it and no
     # prawduct code sits on the read path. `scaffold_core` owns the header
@@ -325,16 +336,20 @@ def init_product(
             (edited if gitignore_existed else created).append(".gitignore")
     else:
         # Predict: any required entry missing → the file will be written.
-        existing_lines = (
-            set(gitignore.read_text(encoding="utf-8").splitlines())
-            if gitignore_existed
-            else set()
-        )
+        # The same answers the apply path acts on: the shared contract diff (git's
+        # view, so a wholesale rule that already covers an entry predicts no write)
+        # plus the version marker.
         from .migrate_plugin import VERSION_MARKER
 
-        required = set(core.GITIGNORE_ENTRIES) | {VERSION_MARKER}
-        if not required.issubset(existing_lines):
+        would_edit = bool(
+            core.update_gitignore(project_dir, dry_run=True)["modified"]
+        ) or not core.gitignore_covers(project_dir, VERSION_MARKER)
+        if would_edit:
             (edited if gitignore_existed else created).append(".gitignore")
+
+    # Files a v2 repo commits (`core.V2_COMMITTED_PATHS`) that a rule of the owner's own still
+    # ignores (a wholesale `.prawduct/`, #762). Never repaired here; surfaced so onboard can say so.
+    ignored_by_rule = core.gitignore_contract_drift(project_dir)["ignored_by_rule"]
 
     return {
         "target": str(project_dir),
@@ -348,6 +363,9 @@ def init_product(
         # entries like the tracked-by-default build plan — gate-soundness
         # ch.3). The caller (onboard/doctor) should advise `git add` on these.
         "unignored": unignored,
+        # Committed-by-contract files hidden by an ignore rule onboarding will not edit: the rule
+        # is the owner's. `describe_ignored_by_rule` words the exact lines to offer.
+        "ignored_by_rule": ignored_by_rule,
         # The day-one Issues backend. On apply this is read BACK from
         # project-state.yaml, so it reports what the file holds. On a dry run it is
         # the requested value — nothing was written, and reporting what *would* be
@@ -488,6 +506,8 @@ def run(argv: list[str]) -> int:
         # Stale ignore lines stripped (managed files / retired entries like the
         # tracked-by-default build plan) — the onboard skill advises `git add`.
         print(f"  unignored   {f} — now tracked-by-contract; `git add` it if present")
+    for sentence in core.describe_ignored_by_rule(result.get("ignored_by_rule", [])):
+        print(f"  cannot fix automatically: {sentence}")
     if result.get("base_branch"):
         # Said out loud: it changes what every diff-base gate measures against,
         # and only the operator knows whether this repo really integrates there.

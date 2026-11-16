@@ -1506,6 +1506,223 @@ def capture_tree(project_dir: Path) -> dict:
                 pass  # already absent — git may never have created it
 
 
+def _split_z(out: str) -> list[str]:
+    return [p for p in out.split("\0") if p]
+
+
+def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str | None":
+    """Why the working tree may hold content these reports never ran against,
+    or ``None`` when every file the suite reads predates the start of the run
+    behind every report (#848 R-4).
+
+    ``--from-junit`` stamps the CURRENT tree onto the run it ingests, and that
+    stamp is what lets a later session or another worktree reuse the run. A
+    report's existence licenses "a run happened, with the scope its record
+    states"; it never licensed "against this tree", so the ingest stamps only
+    what this check cannot fault.
+
+    **The bound is when the run STARTED, not when its report was written**
+    (:func:`_report_run_start_ns`). A report's mtime is when the run ended, so an
+    edit made while the suite ran predated it and was stamped onto a run that
+    never read it. The start is the earlier of the report's mtime less its
+    recorded duration and a ``<testsuite timestamp>`` carrying its offset; a
+    report naming neither withholds. The duration and timestamp are the
+    producer's, and the mtime the reader's own observation; the earlier reading
+    wins, so a producer can only make the bound stricter by under-reporting.
+    A file the suite itself writes into a path it reads, not ignored, now
+    withholds too — as the live run path's before/after tree capture does.
+
+    Three questions, each over the paths ``coverage_algebra.affects_test_outcome``
+    keeps (with the repo's ``suite_coupled_prefixes``), the predicate the tree
+    clause itself judges by:
+
+    1. **Edits.** A tracked or untracked (not ignored) file newer than the
+       earliest run start — other than the reports and their scope records,
+       the run's own output, which a report kept in the tree always is.
+    2. **Uncommitted deletions.** A file in the index but gone from disk, or
+       deleted relative to ``HEAD``. A deleted file has no mtime; the directory
+       it left does, so each is dated by its nearest existing ancestor.
+    3. **Deletions that moved with ``HEAD``.** A commit, merge, checkout or
+       reset after the run started takes a file out of both of the above. Where
+       ``HEAD`` was when the run started (its reflog) is diffed against
+       ``HEAD`` now, and each path that left is dated the same way — so a
+       deletion made before the run and committed after it does not count.
+       A directory the run itself wrote into (a ``__pycache__`` beside the
+       tests) is dated by that write, so a deletion there made before the run
+       withholds too: the safe direction, paid only when something was deleted.
+
+    **Directories are consulted only for deletions, deliberately.** A bound over
+    every ancestor directory reads every entry created beside a test-affecting
+    file as a change to it: the producer's scope record is replaced in
+    ``.prawduct/`` after the JUnit writer runs, and ``.prawduct/`` holds
+    ``project-state.yaml``, so that bound withholds the stamp on every ingest of
+    the conventional report path — the double run the stamp exists to save.
+
+    **Blind spots, both toward a stamp:** a tool that preserves old mtimes
+    (``rsync -a``, archive extraction) makes new content look old; and an
+    untracked file removed after the run is in no listing to miss. A
+    filesystem whose mtime resolution is coarse can tie an edit with the run's
+    start, and a tie stamps. A start read from a duration rounded to the
+    millisecond can sit that much late. Every failure to ask (git, a stat, the
+    report's start) returns a
+    reason, which withholds the stamp: the safe direction costs a later re-run,
+    never a false green.
+    """
+    from . import core, coverage_algebra  # noqa: PLC0415 — lazy: leaf modules, ingest-only
+
+    if not reports:
+        return None
+    starts: list[int] = []
+    for report in reports:
+        start_ns, why = _report_run_start_ns(Path(report))
+        if start_ns is None:
+            return why
+        starts.append(start_ns)
+    report_ns = min(starts)
+    root = Path(project_dir)
+    prefixes = core.suite_coupled_prefixes(gitstate.get_prawduct_dir(project_dir))
+
+    def coupled(paths: "list[str]") -> "list[str]":
+        return coverage_algebra.suite_coupled_files(sorted(set(paths)), prefixes)
+
+    rc, out, err = run_git(
+        project_dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard",
+        strip=False,
+    )
+    if rc != 0:
+        return f"the files the suite reads could not be listed ({err or 'git ls-files failed'})"
+    # The run's own output is written after it started by construction: a
+    # report (and its scope record) kept inside the tree is not an edit.
+    from . import report_scope  # noqa: PLC0415 — lazy, as above
+
+    own_output: set[Path] = set()
+    for report in reports:
+        resolved = Path(report).resolve()
+        own_output.update({resolved, report_scope.record_path(resolved).resolve()})
+    gone: list[str] = []
+    for rel in coupled(_split_z(out)):
+        if (root / rel).resolve() in own_output:
+            continue
+        try:
+            mtime = (root / rel).lstat().st_mtime_ns
+        except FileNotFoundError:
+            gone.append(rel)
+            continue
+        except OSError as exc:
+            return f"{rel} could not be read ({exc})"
+        if mtime > report_ns:
+            return (
+                f"{rel}, a file the suite reads, changed after the run behind this "
+                "report started"
+            )
+
+    rc, head, _ = run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+    head = head if rc == 0 else ""
+    if head:
+        rc, out, err = run_git(
+            project_dir, "diff", "-z", "--no-renames", "--diff-filter=D", "--name-only",
+            "HEAD", strip=False,
+        )
+        if rc != 0:
+            return f"deletions since HEAD could not be listed ({err or 'git diff failed'})"
+        gone += _split_z(out)
+        # One second earlier than the run's start, because the reflog keeps
+        # whole seconds: a HEAD move in that second must count as after.
+        when = report_ns // 1_000_000_000 - 1
+        rc, then, err = run_git(
+            project_dir, "rev-parse", "--verify", "-q", f"HEAD@{{@{when} +0000}}"
+        )
+        if rc != 0 or not then:
+            return (
+                "where HEAD stood when the run behind this report started is not in the reflog "
+                f"({err or 'no entry'}), so a file removed by a later commit or "
+                "checkout cannot be ruled out"
+            )
+        if then != head:
+            rc, out, err = run_git(
+                project_dir, "diff", "-z", "--no-renames", "--diff-filter=D",
+                "--name-only", then, head, strip=False,
+            )
+            if rc != 0:
+                return f"what HEAD's move removed could not be listed ({err or 'git diff failed'})"
+            gone += _split_z(out)
+
+    for rel in coupled(gone):
+        parent = (root / rel).parent
+        while not parent.exists() and parent != root:
+            parent = parent.parent
+        try:
+            mtime = parent.stat().st_mtime_ns
+        except OSError as exc:
+            return f"the directory {rel} was deleted from could not be read ({exc})"
+        if mtime > report_ns:
+            return (
+                f"{rel}, a file the suite reads, was deleted after the run behind "
+                "this report started"
+            )
+    return None
+
+
+def _report_run_start_ns(report: Path) -> "tuple[int | None, str]":
+    """When the run behind a JUnit report STARTED, in ns, as early as the report
+    lets it be read — or ``(None, why)`` when it cannot be read at all.
+
+    The report's mtime is when the run ENDED, so a file edited while the suite
+    ran predates it and would be stamped as if the run had read it. Two
+    readings of the start, the earlier wins, because a start read too late is
+    the side that stamps:
+
+    * the report's mtime less its duration — the root ``<testsuites time>``
+      where given, else the sum of the ``<testsuite time>`` values (a sum
+      overstates suites that ran in parallel, which errs early, the safe way);
+    * the earliest ``<testsuite timestamp>`` that carries a UTC offset (pytest
+      writes the run's start that way). A naive timestamp is a local time on an
+      unknown clock, so it is not read — reading it would be the guess.
+
+    Neither present, or the report unparseable, withholds rather than guesses.
+    """
+    import xml.etree.ElementTree as ET  # noqa: PLC0415 — lazy: ingest-only
+
+    try:
+        mtime_ns = report.stat().st_mtime_ns
+        root = ET.parse(report).getroot()
+    except (OSError, ET.ParseError) as exc:
+        return None, f"when the run behind this report started could not be read ({exc})"
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+    candidates: list[int] = []
+
+    def seconds(value: "str | None") -> "float | None":
+        try:
+            parsed = float(value) if value is not None else None
+        except ValueError:
+            return None
+        return parsed if parsed is not None and parsed >= 0 else None
+
+    total = seconds(root.get("time")) if root.tag == "testsuites" else None
+    if total is None:
+        times = [seconds(s.get("time")) for s in suites]
+        total = sum(times) if times and all(t is not None for t in times) else None
+    if total is not None:
+        candidates.append(mtime_ns - int(total * 1_000_000_000))
+    for suite in suites:
+        stamp = suite.get("timestamp")
+        if not stamp:
+            continue
+        try:
+            started = datetime.fromisoformat(stamp)
+        except ValueError:
+            continue
+        if started.tzinfo is not None:
+            candidates.append(int(started.timestamp() * 1_000_000_000))
+    if not candidates:
+        return None, (
+            "when the run behind this report started cannot be read (no testsuite "
+            "`time`, and no `timestamp` with a UTC offset), so an edit made while "
+            "it ran cannot be ruled out"
+        )
+    return min(candidates), ""
+
+
 def tree_diff(
     project_dir: Path, tree_a: str, tree_b: str, paths: "list[str] | None" = None
 ) -> "list[str] | None":

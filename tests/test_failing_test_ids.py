@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from test_plugin_runtime import _git, _run_in  # noqa: E402
+from test_plugin_runtime import _git, _run_in, as_just_run  # noqa: E402
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -36,6 +36,7 @@ def _repo(tmp_path: Path) -> Path:
 def _record(repo: Path, xml: str, *extra: str):
     junit = repo / "report.xml"
     junit.write_text('<?xml version="1.0" encoding="utf-8"?>\n' + xml)
+    as_just_run(junit)
     res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit), *extra)
     ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
     return res, ev

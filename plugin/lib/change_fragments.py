@@ -67,6 +67,8 @@ CONSUMER_NOTE_HEADING = "## Consumer note"
 # must be followed by a letter or digit; hyphens keep the rule they had.
 _SCOPE_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]|\.(?=[a-z0-9]))*")
 _KEY_LINE_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):(.*)")
+#: One item of a YAML block list under an empty ``key:`` line.
+_BLOCK_ITEM_RE = re.compile(r"[ \t]+-[ \t]*(.*)")
 _NONE_RE = re.compile(r"none:(.*)", re.IGNORECASE)
 # `date.fromisoformat` accepts compact and week forms from Python 3.11 on, so the
 # shape is pinned first: the archive header is always `YYYY-MM-DD`.
@@ -312,7 +314,10 @@ def parse_fragment(text: str, *, filename: str) -> Fragment:
     """Split a fragment into frontmatter keys, narrative and consumer note.
 
     Raises :class:`FragmentError` only when there is no frontmatter block or a
-    line in it is not ``key: value``, because then no field can be trusted.
+    line in it is not ``key: value``, because then no field can be trusted. A
+    list may be written in flow form (``closes: [a, b]``) or as a YAML block list
+    (``closes:`` then ``  - a`` lines); both read as the same tuple, and any other
+    indented line is refused.
     Everything else is collected for :func:`validate_fragment` to judge, so one
     run reports every problem rather than the first.
     """
@@ -325,14 +330,28 @@ def parse_fragment(text: str, *, filename: str) -> Fragment:
     lines = text.splitlines()
     keys: dict[str, str | tuple[str, ...]] = {}
     duplicates: list[str] = []
+    # The key whose value is still open to a YAML block list: a `key:` with
+    # nothing after it, until a line that is not one of its `- item`s.
+    open_key: str | None = None
     for number, line in enumerate(lines[span[0] + 1 : span[1]], start=span[0] + 2):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         if line[:1] in (" ", "\t"):
-            raise FragmentError(
-                "bad-frontmatter-line",
-                f"line {number} is indented; fragment frontmatter is flat `key: value` lines",
-            )
+            item = _BLOCK_ITEM_RE.fullmatch(line.rstrip())
+            if open_key is None or item is None:
+                raise FragmentError(
+                    "bad-frontmatter-line",
+                    f"line {number} is indented; fragment frontmatter is flat `key: value` lines "
+                    "(a list is `closes: [a, b]`, or `closes:` followed by `  - a` lines)",
+                )
+            # The block form of a list reads exactly as the flow form: an agent
+            # writes it naturally, and the two spellings cannot mean different
+            # things, so refusing it would only stop a release over spelling.
+            value = _unquote(_strip_comment(item.group(1)).strip())
+            current = keys.get(open_key)
+            keys[open_key] = (*(current if isinstance(current, tuple) else ()), value)
+            continue
+        open_key = None
         match = _KEY_LINE_RE.fullmatch(line.rstrip())
         if not match:
             raise FragmentError(
@@ -343,6 +362,8 @@ def parse_fragment(text: str, *, filename: str) -> Fragment:
             duplicates.append(key)
             continue
         keys[key] = _parse_value(match.group(2))
+        if keys[key] == "":
+            open_key = key
 
     body_lines = lines[span[1] + 1 :]
     note_indices = [i for i, line in enumerate(body_lines) if line.rstrip() == CONSUMER_NOTE_HEADING]

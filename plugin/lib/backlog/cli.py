@@ -168,10 +168,12 @@ _OP_USAGE: dict[str, str] = {
     "link": (
         "  link     <id> --edge blocks|blocked-by|parent|child|related "
         "--to <target-id> [--repo owner/repo]\n"
+        "           `related` is written on both items\n"
     ),
     "unlink": (
         "  unlink   <id> --edge blocks|blocked-by|parent|child|related "
         "--to <target-id> [--repo owner/repo]\n"
+        "           `related` is written on both items\n"
     ),
     "provision": "  provision --repo owner/repo\n",
     # GV6. The id stays here, out of the operator's way: text emitted into a
@@ -452,7 +454,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
         elif op == "file-upstream":
             result = _run_file_upstream(rest, project_dir, transport)
         elif op in ("get", "show"):
-            result = _run_get(rest, transport)
+            result = _run_get(rest, transport, project_dir)
         elif op == "status":
             result = _run_status(rest, transport, project_dir)
         elif op == "update":
@@ -688,7 +690,7 @@ def _file_upstream_preview(project_dir, *, title, body, component):
     )
 
 
-def _run_get(rest: list[str], transport):
+def _run_get(rest: list[str], transport, project_dir=None):
     flags, positionals, err = _parse_flags(rest, valued={"repo"})
     if err:
         return core.error("validation", err)
@@ -704,9 +706,56 @@ def _run_get(rest: list[str], transport):
         default_owner = parsed[0]
         default_repo = parsed  # (owner, repo) — the repo a bare PFX resolves against
     transport = _resolve_transport(transport)
-    return core.get_item(
-        transport, id_raw=id_raw, default_owner=default_owner, default_repo=default_repo
+    warnings: list[str] = []
+
+    def on_gone(owner, repo, number):
+        _evict_gone(project_dir, owner, repo, number, warnings)
+
+    result = core.get_item(
+        transport,
+        id_raw=id_raw,
+        default_owner=default_owner,
+        default_repo=default_repo,
+        on_gone=on_gone if project_dir is not None else None,
     )
+    if warnings:
+        result["warnings"] = list(result.get("warnings") or []) + warnings
+    return result
+
+
+def _evict_gone(project_dir, owner, repo, number, warnings: list[str]) -> None:
+    """Evict a provider-confirmed hard-deleted item from the local cache (#1080).
+
+    The 410 verdict is already decided and a cache failure cannot change it, so a
+    failed eviction rides out as a warning (a ghost that stays is a stale open
+    row, which the operator should know) rather than altering the envelope. A
+    repo with no cache, or a cache for some other scope, has nothing to evict and
+    says nothing — the same two silent outcomes as the write mirror."""
+    from pathlib import Path  # noqa: PLC0415
+    from . import sync  # noqa: PLC0415 — lazy; no store import on other paths
+
+    stale = (
+        f"{owner}/{repo}#{number} was deleted on GitHub but could not be removed "
+        "from the local backlog cache ({}); cached reads stay stale until "
+        "`prawduct-hook backlog sync --rebuild`"
+    )
+    try:
+        outcome = sync.evict_gone(Path(project_dir), owner=owner, repo=repo, number=number)
+    # A supervisor boundary, as in `_with_mirror`: the cache is bookkeeping and the
+    # not_found verdict does not depend on it. Not silenced: it becomes a warning
+    # and the type reaches the diagnostic log.
+    #
+    # prawduct:allow prawduct/broad-except -- supervisor boundary; see above
+    except Exception as exc:
+        warnings.append(stale.format(type(exc).__name__))
+        core.log_diag(f"the backlog cache eviction raised: {type(exc).__name__}: {exc}")
+        return
+    if outcome.get("status") == "ok":
+        return
+    failure = outcome.get("error") or {}
+    if (failure.get("details") or {}).get("mirror") == sync.MIRROR_ABSENT:
+        return
+    warnings.append(stale.format(failure.get("message") or "unknown reason"))
 
 
 def _run_status(rest: list[str], transport, project_dir):

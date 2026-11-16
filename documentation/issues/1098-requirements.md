@@ -8,7 +8,7 @@ Related: #1071 (the authored-span fix this follows from), #304, #654 (base-advan
 
 Two Stop-gate questions are asked of different spans:
 
-- **Firing** ("did this session change anything judgeable?") uses the session-authored span. `_session_authored_paths` drops paths that differ only because a pull, merge, branch switch or reset brought in history the session did not write (`plugin/lib/gates.py`, "What this session CHANGED").
+- **Firing** ("did this session change anything judgeable?") uses the session-authored span. `_session_authored_paths` drops paths that differ only because a pull, merge, branch switch or reset brought in history the session did not write, or because another session in the same checkout committed while this one had no tool call or `!` command running, in files this one did not edit (`plugin/lib/gates.py`, "What this session CHANGED").
 - **Verdict** ("is the change reviewed?") is `session_review_verdict`, which composes review coverage over `.session-base-tree` → working tree via `coverage_algebra.coverage_verdict`. That interval contains the imported history. It is only relaxed when the primary span is not covered: then the merge-base span is asked, and a covered (or transferred) merge-base span stands in.
 
 So a session that both authored code and synced is *fired* on its own work but *judged* on its own work plus whatever it imported. The imported part has no review in the store on this session's behalf (it was reviewed, if at all, on another branch or clone, against other trees), so the verdict reads `uncovered` and the session is told to run a review whose subject is not its own.

@@ -211,7 +211,14 @@ class TestContractDriftHelper:
     def test_satisfied_contract_is_no_drift(self, tmp_path: Path):
         (tmp_path / ".gitignore").write_text("\n".join(GITIGNORE_ENTRIES) + "\n")
         d = gitignore_contract_drift(tmp_path)
-        assert d == {"missing": [], "incorrectly_ignored": []}
+        # The result gained `ignored_by_rule` and `basis` (#762); a satisfied contract is
+        # still empty on every list, and this also pins that it was judged by git.
+        assert d == {
+            "missing": [],
+            "incorrectly_ignored": [],
+            "ignored_by_rule": [],
+            "basis": "git",
+        }
 
     def test_managed_and_retired_entries_are_flagged(self, tmp_path: Path):
         managed = sorted(MANAGED_FILES)[0]

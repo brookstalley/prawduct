@@ -3,7 +3,8 @@
 <!-- Append-only queue of pre-merge human-verification items for visual /
      live-integration changes that automated tests can't fully cover.
 
-     Each entry is a level-2 heading: `## VRF-<id> — <Chunk N> — <one-line title>`.
+     Each entry is a level-2 heading: `## VRF-<id> — <Chunk N> — <one-line title>`
+     (the bracketed form `## [VRF-<id>] <title>` is read too).
      The first non-blank body line MUST be `**Status:** pending | verified | accepted`.
 
      That shape is the ONLY one recognised. Anything else — bullets, or a single

@@ -24,7 +24,7 @@ from lib import core
 
 STATE_TEMPLATE = core.TEMPLATES_DIR / "project-state.yaml"
 
-#: A column-0 ``key: true|false`` scalar — the shape :func:`core.read_bool_yaml_key`
+#: A column-0 ``key: true|false`` scalar — the shape :func:`core.read_bool_flag`
 #: recognises, so the scan and the reader agree on what counts as a flag.
 _BOOL_KEY_RE = re.compile(r"^([a-z_]+):\s*(true|false)\s*(?:#.*)?$")
 
@@ -67,7 +67,7 @@ def test_template_value_equals_code_default(flag: str, tmp_path) -> None:
     """
     empty_state = tmp_path / "project-state.yaml"
     empty_state.write_text("# no flags declared\n", encoding="utf-8")
-    code_default = core.read_bool_yaml_key(empty_state, flag)
+    code_default = core.read_bool_flag(empty_state, flag)["value"]
 
     template_value = _template_bool_keys()[flag]
     assert template_value == code_default, (
@@ -96,13 +96,13 @@ def test_every_template_boolean_is_a_registered_flag() -> None:
 def test_opt_in_means_false_by_default() -> None:
     """Pins the contract the registry's docstring states.
 
-    ``read_bool_yaml_key`` fails soft to False on every unreadable input, which
+    ``read_bool_flag`` reads False for an absent file or key, which
     is what makes these flags opt-in. A future edit making one default to True
     would silently turn a gate on in every repo that never asked for it.
     """
     missing = core.TEMPLATES_DIR / "does-not-exist.yaml"
     for flag in core.OPT_IN_FLAGS:
-        assert core.read_bool_yaml_key(missing, flag) is False, (
-            f"{flag} does not default to False on an unreadable state file; "
+        assert core.read_bool_flag(missing, flag)["value"] is False, (
+            f"{flag} does not default to False when the state file is absent; "
             f"opt-in flags must stay off until a product turns them on."
         )

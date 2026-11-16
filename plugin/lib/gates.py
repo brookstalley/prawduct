@@ -32,8 +32,7 @@ checkout's binding),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
 (the one resolver for the rules layout the cross-check nudge names),
 ``standing_block`` (the close the Stop deferral and the clear checks read), and ``core``
-(``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
-mirror), plus the stdlib.
+(``read_bool_flag`` — the one reader of a boolean opt-in flag), plus the stdlib.
 """
 
 
@@ -44,7 +43,9 @@ from datetime import datetime, timezone
 import re
 import shlex
 import sys
+import time
 from pathlib import Path
+from typing import NamedTuple
 
 from . import (
     buildplan_refs,
@@ -52,6 +53,7 @@ from . import (
     coverage_algebra,
     evidence,
     gitstate,
+    host,
     learnings_files,
     plan_status,
     standing_block,
@@ -59,7 +61,7 @@ from . import (
     verdict_cache,
     work_unit,
 )
-from .core import read_bool_yaml_key, suite_coupled_prefixes
+from .core import FLAG_UNREADABLE, read_bool_flag, suite_coupled_prefixes
 
 
 _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
@@ -131,10 +133,15 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # stating, because the next field will not have one. That rule exists for
     # the removed content-hash and ``git_sha`` mechanisms, which DERIVED
     # staleness from the tree and so produced false positives nobody asked for.
-    # This field derives nothing: it is present only because a coordinator
-    # wrote it, so it cannot fire on its own and there is no false-stale class
-    # for it to reintroduce. The only way to a wrong stale here is to assert a
-    # degradation that did not happen.
+    # This field derives nothing from the tree. It is present only because a
+    # coordinator wrote it, or because ``test-evidence record`` wrote it ahead
+    # of a record attempt that then did not land (the write-ahead void, #679:
+    # an observation of the recorder's own run, kept with the earlier counts,
+    # or a zero-count stub where no usable record stood).
+    # Neither fires on the tree's say-so, so there is no false-stale class for
+    # it to reintroduce. The only ways to a wrong stale here are to assert a
+    # degradation that did not happen, or to begin a record attempt and abandon
+    # it, which one record that lands clears.
     "degraded": (str,),
 }
 
@@ -321,6 +328,129 @@ def _parse_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     return record, ""
 
 
+#: ``test-status``'s labels for a record attempt that has not landed (#1178):
+#: its recorder is alive, or it is gone and nothing landed. Both exit 1, like
+#: ``stale:`` — the run is not evidence yet — and ``interrupted`` keeps the
+#: ``stale`` prefix because that is what it is.
+RUNNING_LABEL = "running"
+INTERRUPTED_LABEL = "stale (interrupted)"
+
+
+#: What to do about a suite verdict, by the state of this worktree's record —
+#: :func:`suite_remedy`'s ``state``, and the closed set the stale-evidence
+#: guard records as its ``reason`` slug.
+SUITE_RUNNING = "running"
+SUITE_INTERRUPTED = "interrupted"
+SUITE_FAILING = "failing"
+SUITE_DEGRADED = "degraded"
+SUITE_NOT_CURRENT = "not-current"
+SUITE_STATES = (
+    SUITE_RUNNING, SUITE_INTERRUPTED, SUITE_FAILING, SUITE_DEGRADED, SUITE_NOT_CURRENT,
+)
+
+#: The two remedies, stated once (#1178 R-4). Lower-case imperative clauses: a
+#: caller capitalises or embeds them, never rewords them.
+RUN_AND_RECORD = (
+    "run the suite and record it (`prawduct-hook test-evidence record`, or ingest "
+    "the report of a whole-suite run with `--from-junit`)"
+)
+WAIT_FOR_RUN = (
+    "wait for it to record — `prawduct-hook test-status --wait`, which exits 75 if "
+    "its timeout passes first (then wait again) — and do not start another run"
+)
+
+
+class SuiteStep(NamedTuple):
+    """:func:`suite_remedy`'s answer: which :data:`SUITE_STATES` member the
+    record is in, and the remedy clause for it."""
+
+    state: str
+    remedy: str
+
+
+def _cap(clause: str) -> str:
+    return clause[:1].upper() + clause[1:]
+
+
+def _in_progress_parts(run: dict) -> "tuple[str, str, str] | None":
+    """``(state, finding, remedy)`` for a record carrying the recorder's
+    ``in_progress`` stamp, or ``None`` when it carries none. The one place the
+    in-flight sentence is composed: :func:`record_in_progress` joins the two
+    halves for the refusal, :func:`suite_remedy` hands the remedy to callers
+    that write their own lead."""
+    stamp = run.get("in_progress")
+    if stamp is None:
+        return None
+    from . import record_progress  # noqa: PLC0415 — lazy: only an in-flight record needs it
+
+    previous = run.get("duration_seconds")
+    state, why = record_progress.recorder_state(stamp, previous)
+    who = record_progress.describe(stamp)
+    if state == record_progress.GONE:
+        return state, (
+            f"the record attempt ({who}) did not land, and its recorder is no longer "
+            f"running ({why}): it was refused, failed, or was killed"
+        ), RUN_AND_RECORD
+    where = f" ({why})" if why else ""
+    finding = (
+        f"a suite run is in progress ({who}; "
+        f"{record_progress.progress(stamp, previous)}){where}"
+    )
+    if state == record_progress.ELSEWHERE:
+        host = stamp.get("host") if isinstance(stamp.get("host"), str) else ""
+        return state, finding, (
+            f"{WAIT_FOR_RUN}; or, if no run is going on {host or 'that machine'}, "
+            f"{RUN_AND_RECORD} now"
+        )
+    return state, finding, (
+        f"{WAIT_FOR_RUN} (if it hangs, stop pid {stamp.get('pid')}: it then reads "
+        "as interrupted)"
+    )
+
+
+def record_in_progress(run: dict) -> "tuple[str, str] | None":
+    """``(state, reason)`` for a record carrying the recorder's ``in_progress``
+    stamp, or ``None`` when it carries none. ``state`` is
+    ``record_progress.RUNNING``, ``ELSEWHERE`` (another machine's, which cannot
+    be checked: treated as running until ``record_progress.unverified_bound``,
+    then as gone) or ``GONE``. One owner for the sentence, so the refusal every
+    gate prints and ``test-status``'s line say the same."""
+    parts = _in_progress_parts(run)
+    if parts is None:
+        return None
+    state, finding, remedy = parts
+    return state, f"{finding}. {_cap(remedy)}"
+
+
+def suite_remedy(project_dir: Path) -> SuiteStep:
+    """What to do about this worktree's suite verdict — the ONE owner (#1178 R-4).
+
+    Every caller that prints a remedy after :func:`tests_are_current`,
+    :func:`suite_vouches_for_tree` or :func:`run_refusal` takes it from here
+    rather than writing its own "run the suite": a record attempt in progress is
+    told to wait, and a reader that wrapped the verdict in its own remedy told
+    it to start a second suite on top of the first. The state is read off this
+    worktree's record in the order :func:`run_refusal` refuses it, so the two
+    cannot disagree about which condition answers.
+    """
+    record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+    if record is None:
+        return SuiteStep(SUITE_NOT_CURRENT, RUN_AND_RECORD)
+    parts = _in_progress_parts(record)
+    if parts is not None:
+        from . import record_progress  # noqa: PLC0415 — lazy, as in _in_progress_parts
+
+        state = SUITE_INTERRUPTED if parts[0] == record_progress.GONE else SUITE_RUNNING
+        return SuiteStep(state, parts[2])
+    failed = record.get("failed")
+    if isinstance(failed, int) and not isinstance(failed, bool) and failed > 0:
+        return SuiteStep(SUITE_FAILING, f"fix the failing test(s), then {RUN_AND_RECORD}")
+    degraded = record.get("degraded")
+    if isinstance(degraded, str) and degraded.strip():
+        return SuiteStep(SUITE_DEGRADED, f"{RUN_AND_RECORD}, uncontended")
+    return SuiteStep(SUITE_NOT_CURRENT, RUN_AND_RECORD)
+
+
 def run_refusal(run: dict) -> str:
     """Why a recorded run may not vouch for anything, or ``""`` if it may.
 
@@ -329,7 +459,17 @@ def run_refusal(run: dict) -> str:
     and a ``test-run`` fact alike — so the store cannot come to trust a run the
     record's own reader would refuse. A count that is not an integer refuses:
     a fact body is not schema-checked the way the record is.
+
+    **A record attempt in progress answers first (#1178).** The write-ahead void
+    keeps the previous run's counts, so without this a red earlier run would be
+    named as the reason and a green one would say "run the suite" — both of
+    which send a reader to start a second run on top of the first. While the
+    recorder lives the refusal says to wait; once it is gone, that the attempt
+    was interrupted. Only the worktree's own record carries the stamp.
     """
+    progress = record_in_progress(run)
+    if progress is not None:
+        return progress[1]
     failed = run.get("failed")
     if not isinstance(failed, int) or isinstance(failed, bool):
         return "the saved run carries no valid failure count"
@@ -1273,19 +1413,26 @@ def _session_untracked_paths(
 
 
 def session_work_span(
-    project_dir: Path, status_output: "str | None" = None
+    project_dir: Path,
+    status_output: "str | None" = None,
+    transcript_path: "str | None" = None,
 ) -> dict:
     """What this session CHANGED, committed work included.
 
-    ``{"changed": [non-metadata paths], "judgeable": bool, "source": str}``.
+    ``{"changed": [non-metadata paths], "judgeable": bool, "source": str,
+    "dropped": [{"sha", "paths", "why"}]}``.
 
     The span is the ``.session-base-tree`` marker (the ``HEAD^{tree}`` recorded
     at session start) against the WORKING TREE, so a session that commits its
     work is still holding that work — which the porcelain span, empty the
     moment you commit, is not. Paths that differ only because a pull, merge,
-    branch switch or reset brought in history the session did not write are
-    dropped (:func:`_session_authored_paths`), so the span holds what the
-    session AUTHORED, never more than the base-tree diff. ``judgeable`` is
+    branch switch or reset brought in history the session did not write, or
+    because another session in the same checkout committed while this one had
+    no tool call or ``!`` command running, in a commit touching no file this
+    session edited, are dropped (:func:`_session_authored_paths`; the second
+    needs ``transcript_path``, the Stop payload's, and without it those commits
+    count), so the span holds what the session AUTHORED, never more than the
+    base-tree diff. ``judgeable`` is
     ``coverage_algebra.judgeable_files`` over the non-metadata paths: the one
     judgeability predicate, never a second copy of it.
 
@@ -1298,10 +1445,21 @@ def session_work_span(
     uncommitted work — it never widens it — which is the direction authority
     must fail in.
 
+    ``dropped`` is the trace of the second kind of drop: each commit left out as
+    another session's, with its paths and why, so a wrong drop can be seen
+    rather than read as "this session changed nothing". It is empty whenever no
+    commit was dropped, including on every degraded span.
+
     **Cost bound: one ``git status`` and one ``git diff`` when nothing changed,
     one ``rev-parse`` more when HEAD's tree has not moved, and a reflog read,
-    one batched ``diff-tree`` and one ``git diff`` beyond that only when it has;
-    never a temp-index capture.** This runs on every Stop, which is every turn.
+    one ``log``, one batched ``diff-tree`` and one ``git diff`` beyond that only
+    when it has; never a temp-index capture.** A ``transcript_path`` adds, when
+    HEAD's tree has moved, one listing of the transcript folder; and only when
+    another session wrote beside this one, a read of the bytes this session's
+    transcript gained since the previous Stop (the whole transcript at the
+    first, through the ``.prawduct/.session-activity.json`` cache that
+    ``host.session_tool_activity`` describes) and one batched ``diff-tree`` per
+    kind of commit made while this session was idle. This runs on every Stop, which is every turn.
     ``evidence.capture_tree`` — which writes an index file and walks the whole
     tree — is deliberately not used: it belongs to the review data plane, whose
     callers run once per review rather than once per turn. ``status_output`` is
@@ -1324,11 +1482,12 @@ def session_work_span(
         if not gitstate._is_metadata_path(f)
     ]
 
-    def _span(changed: list[str], source: str) -> dict:
+    def _span(changed: list[str], source: str, dropped: "list[dict] | None" = None) -> dict:
         return {
             "changed": changed,
             "judgeable": bool(coverage_algebra.judgeable_files(changed)),
             "source": source,
+            "dropped": dropped or [],
         }
 
     base = _read_session_base_tree(prawduct_dir)
@@ -1344,14 +1503,18 @@ def session_work_span(
     untracked = _session_untracked_paths(project_dir, snapshot)
     changed += [p for p in untracked if p not in changed]
     changed = [f for f in changed if not gitstate._is_metadata_path(f)]
+    dropped: list[dict] = []
     authored = (
-        _session_authored_paths(project_dir, prawduct_dir, base, untracked)
+        _session_authored_paths(
+            project_dir, prawduct_dir, base, untracked,
+            transcript_path=transcript_path, dropped=dropped,
+        )
         if changed
         else None
     )
     if authored is not None:
         changed = [p for p in changed if p in authored]
-    return _span(changed, "base-tree")
+    return _span(changed, "base-tree", dropped)
 
 
 # HEAD reflog subjects, classified by whether the move carries work this
@@ -1396,12 +1559,150 @@ def _session_started_epoch(prawduct_dir: Path) -> "tuple[str, int] | None":
     return stamp, int(when.timestamp())
 
 
+#: The parsed-transcript cache under `.prawduct/` (``host.session_tool_activity``'s
+#: ``cache_path``): gitignored, per clone, keyed inside by transcript path, so a
+#: sibling session in the same checkout keeps its own entry.
+SESSION_ACTIVITY_FILE = ".session-activity.json"
+
+
+def _other_session_activity(
+    transcript_path: "str | None", started_at: int, prawduct_dir: Path
+) -> "host.ToolActivity | None":
+    """This session's own activity, when another session may have committed
+    beside it, or ``None`` when nothing can be told.
+
+    Two pieces of positive evidence are both required. Another session's
+    transcript was written in this checkout since this session started
+    (``host.other_session_wrote_since``), and this session's own transcript
+    was read in full (``host.session_tool_activity``, through the
+    :data:`SESSION_ACTIVITY_FILE` cache, so each Stop parses only what the
+    transcript gained since the last). Everything short of that keeps every
+    commit this session's.
+    """
+    if not transcript_path:
+        return None
+    if not host.other_session_wrote_since(transcript_path, started_at):
+        return None
+    return host.session_tool_activity(
+        transcript_path, cache_path=str(prawduct_dir / SESSION_ACTIVITY_FILE)
+    )
+
+
+def _checkout_paths(project_dir: Path, named: "frozenset[str]") -> "set[str]":
+    """The paths in ``named`` that are files of this checkout, relative to it
+    as git names them. Both sides are resolved, because one directory can be
+    reached by two spellings (``/tmp`` and ``/private/tmp`` on macOS). A
+    relative path is kept as it is: no tool names one, and if one did, reading
+    it as a checkout path can only keep a commit."""
+    try:
+        root = Path(project_dir).resolve()
+    except (OSError, RuntimeError):
+        return set(named)
+    paths: set[str] = set()
+    for name in named:
+        if not Path(name).is_absolute():
+            paths.add(name)
+            continue
+        try:
+            paths.add(Path(name).resolve().relative_to(root).as_posix())
+        except ValueError:  # outside this checkout
+            continue
+        except (OSError, RuntimeError):  # unresolvable: keep the literal spelling
+            paths.add(name)
+    return paths
+
+
+def _paths_per_commit(
+    project_dir: Path, shas: "list[str]", flags: "tuple[str, ...]"
+) -> "dict[str, list[str]] | None":
+    """Each commit's changed paths from one batched ``diff-tree``, or ``None``
+    when git fails or answers in a shape this reader does not follow. A commit
+    that changed nothing is listed with no paths."""
+    if not shas:
+        return {}
+    rc, out, _err = evidence.run_git(
+        project_dir, "diff-tree", "--stdin", "--name-only", "-z", *flags,
+        input="\n".join(shas) + "\n",
+    )
+    if rc != 0:
+        return None
+    wanted = set(shas)
+    per_commit: dict[str, list[str]] = {sha: [] for sha in shas}
+    current: "str | None" = None
+    for token in out.split("\0"):
+        if not token:
+            continue
+        if token in wanted:
+            current = token
+        elif current is None:
+            return None
+        else:
+            per_commit[current].append(token)
+    return per_commit
+
+
+def _drop_other_sessions_commits(
+    project_dir: Path,
+    activity: "host.ToolActivity",
+    commits: "list[tuple[str, int]]",
+    merges: "list[tuple[str, int]]",
+    dropped: "list[dict] | None",
+) -> "tuple[list[tuple[str, int]], list[tuple[str, int]]]":
+    """``commits`` and ``merges`` less those another session made.
+
+    A commit is dropped only when all three hold: the transcript covers the
+    moment it was made, no tool call or ``!`` command of this session was
+    running then, and none of its paths is one this session's Edit/Write calls
+    targeted. The first two say who RAN ``git commit``; the gates ask who
+    AUTHORED the change, and a user who commits the session's edits from a
+    terminal between turns runs it with no call open. Every dropped commit is
+    appended to ``dropped`` with its paths and why, so a wrong drop can be seen.
+    When a commit's paths cannot be listed nothing is dropped.
+    """
+    edited = _checkout_paths(project_dir, activity.edited_paths)
+    kept_commits = list(commits)
+    kept_merges = list(merges)
+    found: dict[str, dict] = {}
+    for moves, flags in ((kept_commits, ("-r", "--root")), (kept_merges, ("--cc",))):
+        idle = [(sha, when) for sha, when in moves if activity.acting_at(when) is False]
+        if not idle:
+            continue
+        per_commit = _paths_per_commit(
+            project_dir, list(dict.fromkeys(sha for sha, _when in idle)), flags
+        )
+        if per_commit is None:
+            continue
+        for sha, when in idle:
+            paths = per_commit.get(sha, [])
+            if edited.intersection(paths):
+                continue
+            moves.remove((sha, when))
+            found.setdefault(sha, {
+                "sha": sha,
+                "paths": paths,
+                "why": (
+                    f"made at {datetime.fromtimestamp(when, timezone.utc):%Y-%m-%dT%H:%M:%SZ}"
+                    " while another session was writing in this checkout, with no tool"
+                    " call or ! command of this session running, and touching no file"
+                    " this session edited"
+                ),
+            })
+    # A sha this session's reflog and its log both list is dropped only when
+    # every listing of it was.
+    still_counted = {sha for sha, _when in kept_commits + kept_merges}
+    if dropped is not None:
+        dropped.extend(d for sha, d in found.items() if sha not in still_counted)
+    return kept_commits, kept_merges
+
+
 def _session_authored_paths(
     project_dir: Path,
     prawduct_dir: Path,
     base: str,
     untracked: "list[str]",
     why: "list[str] | None" = None,
+    transcript_path: "str | None" = None,
+    dropped: "list[dict] | None" = None,
 ) -> "set[str] | None":
     """The paths this session wrote, or ``None`` when that cannot be told —
     the caller then keeps the whole base-tree span.
@@ -1415,6 +1716,16 @@ def _session_authored_paths(
     making, even ones HEAD has since moved away from; the paths a merge it
     concluded by hand resolved; and whatever the working tree holds against
     HEAD now.
+
+    A second session working in the same checkout moves the same HEAD, so its
+    commits look like this session's in both the reflog and the log. Given
+    ``transcript_path`` (the Stop payload's), a commit or merge is dropped
+    when another session was writing beside this one, this session had no tool
+    call or ``!`` command running when it was made, and it touches no file this
+    session's Edit/Write calls targeted (:func:`_drop_other_sessions_commits`).
+    Without that evidence every commit above still counts. Each dropped commit
+    is appended to ``dropped``, when a list is passed, as ``{sha, paths, why}``
+    — only when this returns a set, since a ``None`` drops nothing.
 
     The walk is bounded by ``.session-start`` and must reach an entry older than
     it, or the reflog does not cover the session and cannot vouch for it. Every
@@ -1431,7 +1742,11 @@ def _session_authored_paths(
     Cost: one ``rev-parse`` when HEAD's tree has not moved since session start
     — the common case, which returns at once — else a reflog read, one ``log``,
     a batched ``diff-tree`` per kind of commit the session made, and one
-    ``diff``.
+    ``diff``. A ``transcript_path`` adds one listing of the transcript folder;
+    when another session wrote beside this one, a read of the bytes this
+    session's transcript gained since the previous read (the whole transcript
+    the first time; see ``host.session_tool_activity``), and one batched
+    ``diff-tree`` per kind of commit made while this session was idle.
     """
     def _cannot_tell(reason: str) -> None:
         if why is not None:
@@ -1452,8 +1767,10 @@ def _session_authored_paths(
     )
     if rc != 0:
         return _cannot_tell("the HEAD reflog could not be read")
-    commits: list[str] = []
-    merges: list[str] = []
+    # (sha, epoch) pairs: when HEAD moved, for a reflog entry; when it was
+    # committed, for a commit HEAD reaches.
+    commits: list[tuple[str, int]] = []
+    merges: list[tuple[str, int]] = []
     reached_start = False
     for line in out.splitlines():
         sha, selector, subject = (line.split("\0") + ["", ""])[:3]
@@ -1470,20 +1787,30 @@ def _session_authored_paths(
                 f"a HEAD reflog subject this reader does not recognise ({shown!r})"
             )
         if kind == "authored":
-            commits.append(sha)
+            commits.append((sha, int(moved_at.group(1))))
         elif kind == "merge-commit":
-            merges.append(sha)
+            merges.append((sha, int(moved_at.group(1))))
     if not reached_start:
         return _cannot_tell("the HEAD reflog does not reach back to the session start")
     authored: set[str] = set(untracked)
     rc, out, _err = evidence.run_git(
-        project_dir, "log", "--no-merges", f"--since={stamp}", "--format=", "--name-only",
-        "-z", "HEAD",
+        project_dir, "log", "--no-merges", f"--since={stamp}", "--format=%H %ct", "HEAD",
     )
     if rc != 0:
         return _cannot_tell("the session's commits could not be listed")
-    authored.update(p for p in out.split("\0") if p)
-    for shas, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
+    for line in out.splitlines():
+        sha, _, committed_at = line.partition(" ")
+        if not (gitstate.is_object_id(sha) and committed_at.isdigit()):
+            return _cannot_tell("the session's commits could not be listed")
+        commits.append((sha, int(committed_at)))
+    found_dropped: list[dict] = []
+    activity = _other_session_activity(transcript_path, started_at, prawduct_dir)
+    if activity is not None:
+        commits, merges = _drop_other_sessions_commits(
+            project_dir, activity, commits, merges, found_dropped
+        )
+    for moves, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
+        shas = list(dict.fromkeys(sha for sha, _when in moves))
         if not shas:
             continue
         rc, out, _err = evidence.run_git(
@@ -1497,6 +1824,8 @@ def _session_authored_paths(
     if rc != 0:
         return _cannot_tell("the working tree could not be diffed against HEAD")
     authored.update(p for p in out.split("\0") if p)
+    if dropped is not None:
+        dropped.extend(found_dropped)
     return authored
 
 
@@ -2339,9 +2668,10 @@ def _merge_base_verdict(
     unwedging fallback (see :func:`session_review_verdict`). ``None`` when
     the merge base cannot be resolved (the primary verdict then stands).
 
-    ``key_fn`` is required, not defaulted: a ``None`` key sends ``_find_path``
-    down the pairwise free-edge branch, which :func:`_tree_key_fn` measures on
-    this repo's store at ~5.6k ``git diff`` subprocesses. It used to default,
+    ``key_fn`` is required, not defaulted: a ``None`` key makes the evidence
+    graph (``coverage_algebra._EvidenceGraph.steps_from``, which every coverage
+    search walks) probe free edges pairwise, which :func:`_tree_key_fn`
+    measures on this repo's store at ~5.6k ``git diff`` subprocesses. It used to default,
     unreachably — the sole caller passes it — and an unreachable default for a
     silent slow path is a hang waiting for its first caller.
 
@@ -2406,7 +2736,9 @@ def _merge_base_verdict(
         return verdict
     tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
     if not tests_ok:
-        verdict["transfer_note"] = transfer_remedy(transfer, tests_reason)
+        verdict["transfer_note"] = transfer_remedy(
+            transfer, tests_reason, suite_step=suite_remedy(project_dir)
+        )
         return verdict
     # Recording is OPT-IN, and the reason is the second caller. This verdict is
     # read by the Stop gate (authority, session end) and by the session-start
@@ -2531,7 +2863,15 @@ def _repo_relative(project_dir: Path, path: Path) -> str:
         return path.as_posix()
 
 
-def test_status(project_dir: Path) -> int:
+def _in_progress_now(project_dir: Path) -> "tuple[str, str] | None":
+    """:func:`record_in_progress` for this worktree's saved record, or None."""
+    record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+    return record_in_progress(record) if record is not None else None
+
+
+def test_status(
+    project_dir: Path, *, wait: bool = False, timeout: "float | None" = None
+) -> int:
     """Print whether saved test evidence is fresh enough to trust.
 
     Used by builders and the Critic to decide whether to re-run the test suite.
@@ -2546,10 +2886,53 @@ def test_status(project_dir: Path) -> int:
     re-run" — this is disclosure, not a new gate, and the exit codes are
     unchanged.
 
+    **A record attempt that has not landed has its own two lines (#1178)**,
+    ahead of the freshness verdict: :data:`RUNNING_LABEL` while its recorder is
+    alive (with elapsed time against the last run's duration, as an estimate),
+    and :data:`INTERRUPTED_LABEL` once it is gone. Both exit 1.
+
+    ``wait`` blocks while a run is in progress — until its record lands, its
+    recorder dies, or ``timeout`` seconds pass — then prints the verdict. Never
+    called from a hook: a hook must not block on a suite.
+
     Exit codes:
       0  - tests are current; safe to skip re-running
-      1  - tests are stale or no evidence
+      1  - tests are stale or no evidence, or a run is in progress
+      75 - ``wait`` timed out with the run still in progress
+           (``record_progress.WAIT_TIMEOUT_EXIT``)
     """
+    from . import record_progress  # noqa: PLC0415 — lazy, as in record_in_progress
+
+    limit = record_progress.WAIT_DEFAULT_SECONDS if timeout is None else timeout
+    timed_out = False
+    if wait:
+        deadline = time.monotonic() + limit
+        while True:
+            # Each poll asks the process table afresh: the probe is memoised
+            # per verdict, and a wait spans many.
+            record_progress.forget()
+            progress = _in_progress_now(project_dir)
+            if progress is None or progress[0] == record_progress.GONE:
+                break
+            if time.monotonic() >= deadline:
+                timed_out = True
+                break
+            time.sleep(record_progress.WAIT_POLL_SECONDS)
+        record_progress.forget()
+    progress = _in_progress_now(project_dir)
+    if progress is not None:
+        state, reason = progress
+        label = INTERRUPTED_LABEL if state == record_progress.GONE else RUNNING_LABEL
+        print(f"{label}: {reason}")
+        if timed_out:
+            # Ends: a recorder this machine can check ends when its process
+            # does, and one it cannot reads as interrupted past its bound.
+            print(
+                f"timed out after waiting {limit:g}s with the run still in progress — "
+                "wait again (a longer --timeout if need be); do not start another run"
+            )
+            return record_progress.WAIT_TIMEOUT_EXIT
+        return 1
     is_current, reason, clause = tests_are_current(project_dir)
     if is_current:
         label = CURRENT_TREE_LABEL if clause == "tree" else CURRENT_SESSION_LABEL
@@ -2634,8 +3017,14 @@ def transfer_remedy(
     *,
     untracked: "list[str] | None" = None,
     index_deleted: "list[str] | None" = None,
+    suite_step: "SuiteStep | None" = None,
 ) -> str:
     """The remedy prose for a base-advance transfer that did not grant.
+
+    ``suite_step`` is :func:`suite_remedy`'s answer for this worktree (#1178).
+    When a suite run is already under way, its remedy — wait, from the one
+    owner — replaces "run the suite", which would start a second run on top of
+    the first; then the reader re-runs the gate.
 
     Both gates that attempt the transfer render this — the PR gate's `uncovered`
     block and the Stop gate's ``transfer_note`` — so the wording has one home
@@ -2684,6 +3073,12 @@ def transfer_remedy(
         "condition denying the transfer is that no saved suite run has met this "
         f"tree ({tests_reason})."
     )
+    if suite_step is not None and suite_step.state == SUITE_RUNNING:
+        return (
+            f"{lead} A suite run is already under way: {suite_step.remedy}. Then "
+            "re-run this gate: if the run met this tree, the coverage transfers and "
+            "no review is needed."
+        )
     if uncommitted:
         flag = "--include-untracked" if untracked else ""
         paths = " ".join(shlex.quote(p) for p in uncommitted)
@@ -3330,6 +3725,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
                 explained.get("uncommitted"),
                 untracked=explained.get("untracked"),
                 index_deleted=explained.get("index_deleted"),
+                suite_step=suite_remedy(project_dir),
             ),
             file=sys.stderr,
         )
@@ -3438,6 +3834,21 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     return 1
 
 
+def _void_without_coverage(evidence: object) -> bool:
+    """True for a record that is the recorder's void and carries no run's
+    coverage fields: a stub (``void_counts_from`` null — no run ever landed) or
+    a void over a record that had no ``verifier``. A void over a run that did
+    carry coverage keeps those fields and is judged on them, as
+    :func:`verify_coverage` documents for ``degraded`` records. Read off the
+    record's own fields, so no proxy decides the branch."""
+    if not isinstance(evidence, dict):
+        return False
+    void = evidence.get("void")
+    if not (isinstance(void, str) and void.strip()):
+        return False
+    return evidence.get("void_counts_from") is None or "verifier" not in evidence
+
+
 def verify_coverage(project_dir: Path) -> int:
     """Critic Goal-1 helper (v1.4 F4b): when ``coverage_required: true`` in
     project-state.yaml, verify every changed file in the diff appears in
@@ -3479,7 +3890,14 @@ def verify_coverage(project_dir: Path) -> int:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     state_path = prawduct_dir / "project-state.yaml"
 
-    if not read_bool_yaml_key(state_path, "coverage_required"):
+    flag = read_bool_flag(state_path, "coverage_required")
+    if flag["status"] == FLAG_UNREADABLE:
+        # A state file that exists and cannot be read leaves the opt-in unknown,
+        # which is not "false": refuse rather than skip a gate the repo may have
+        # turned on. Same form as this function's other refusals (exit 1).
+        print(f"error: {flag['reason']}", file=sys.stderr)
+        return 1
+    if not flag["value"]:
         print("skipped: coverage_required is false (default in v1.4)")
         return 0
 
@@ -3496,6 +3914,19 @@ def verify_coverage(project_dir: Path) -> int:
         evidence = json.loads(evidence_path.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         print(f"error: cannot read evidence: {exc}", file=sys.stderr)
+        return 1
+
+    if _void_without_coverage(evidence):
+        # The standing record is a recorder's write-ahead void that carries no
+        # run's coverage (#1181): the answer to "what next" is the suite
+        # verdict's, which `suite_remedy` owns — wait for a run in progress,
+        # run again after an interrupted one — not "emit F4a fields".
+        step = suite_remedy(project_dir)
+        print(
+            "error: coverage_required=true but the saved record is a record "
+            f"attempt's void, not a run ({step.state}): {step.remedy}.",
+            file=sys.stderr,
+        )
         return 1
 
     if "verifier" not in evidence:

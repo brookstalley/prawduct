@@ -1005,6 +1005,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.test-report.xml",
     ".prawduct/.test-report.xml.scope.json",
     ".prawduct/.critic-review-dispatch.json",
+    ".prawduct/.session-activity.json",
     ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",
@@ -2194,8 +2195,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     `--chunks` names chunks this review certifies (ST8; its span may certify
     more, `methodology/planning.md` "Chunk state"): a comma list, and
     repeatable — the lists join in the order given, a repeated id kept once.
-    `--chunk <id>` is its one-element alias, kept for one release; the two mix.
-    The joined list reaches `begin_review` as `chunks=[...]`; with neither flag
+    The retired one-element alias `--chunk` is refused, naming `--chunks`.
+    The joined list reaches `begin_review` as `chunks=[...]`; without the flag
     nothing is passed, and the consolidator's default (no chunks named) holds.
     An empty element (`--chunks 01,,03`) is refused rather than dropped, since
     a review naming fewer chunks than its caller meant completes fewer.
@@ -2216,7 +2217,13 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     `guard-refusal` fact, which no gate reads); exit 4 = round budget
     exhausted (census on stdout); exit 6 = verify-resolutions refused because
     the evidence store is unreadable or holds newer-schema records — a store or
-    plugin problem that no demoted review can repair; exit 1 = any other
+    plugin problem that no demoted review can repair; exit 7 =
+    verify-resolutions refused because saved test evidence exists and is stale,
+    red or degraded (`test-status`'s verdict, on stdout) — checked before
+    anything is derived, so no manifest and no marker; run the suite and
+    re-dispatch the same mode (`--force` dispatches anyway; one inert
+    `guard-refusal` fact is appended; absent evidence does not refuse);
+    exit 1 = any other
     dispatch failure (reason on stderr). The scheme these cite is prawduct's own API contract — its
     Error Model section, in the framework repo rather than in yours.
 
@@ -2243,7 +2250,14 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             opts["force"] = True
             i += 1
             continue
-        if arg not in flags and arg not in ("--chunks", "--chunk"):
+        if arg == "--chunk":
+            print(
+                "critic-begin: --chunk is gone — use --chunks (one id or a "
+                "comma-separated list: --chunks 01 or --chunks 01,03)",
+                file=sys.stderr,
+            )
+            return 1
+        if arg not in flags and arg != "--chunks":
             print(f"critic-begin: unknown argument {arg!r}", file=sys.stderr)
             return 1
         if i + 1 >= len(argv):
@@ -2251,8 +2265,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             return 1
         value = argv[i + 1]
         i += 2
-        if arg in ("--chunks", "--chunk"):
-            parts = [part.strip() for part in value.split(",")] if arg == "--chunks" else [value.strip()]
+        if arg == "--chunks":
+            parts = [part.strip() for part in value.split(",")]
             if not all(parts):
                 print(
                     f"critic-begin: {arg} {value!r} names an empty chunk id — "
@@ -2397,6 +2411,27 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         for note in result.get("notes") or []:
             print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         return 3
+    if result["status"] == "precondition-failed":
+        # Exit 7 (#724). Not 1: the skill's exit-1 row on verify-resolutions
+        # DEMOTES, and a wider mode would review the same tree over the same
+        # stale suite. Not 3: there IS something to review. Not 5: withdrawn
+        # with #167 and left unclaimed (api-contract.md, Error Model). Stdout,
+        # because like a 3 it is a normal outcome the caller acts on. The
+        # remedy is `gates.suite_remedy`'s, never written here: a run already
+        # in progress is told to wait, not to start a second (#1178 R-4).
+        remedy = result.get("remedy") or _gates().RUN_AND_RECORD
+        print(
+            "PRAWDUCT: verify-resolutions refused — the saved test evidence does "
+            f"not vouch for this tree: {result['reason']}.\n"
+            "  A verify pass rates only BLOCKING findings, so the reviewer would "
+            f"spend the round reporting this. {remedy[:1].upper()}{remedy[1:]}. "
+            "Then re-dispatch `/prawduct:critic verify-resolutions` "
+            "(`prawduct-hook test-status` exits 0 once the evidence is current) — "
+            "the same mode, never a demotion.\n"
+            "  To review anyway (only if the user asks): "
+            "`/prawduct:critic verify-resolutions --force`."
+        )
+        return 7
     if result["status"] != "ok":
         # Notes first, then the reason: a failed dispatch still learned things
         # about the tree, and the reason is what the reader acts on. Most error
@@ -2756,29 +2791,65 @@ def cmd_critic_consolidate(project_dir: Path, args: list[str] | None = None) -> 
     rejected = _reject_unknown_args("critic-consolidate", rest, {flag})
     if rejected is not None:
         return rejected
-    return critic_consolidate.consolidate(
+    # The branch the review was dispatched on, read before consolidation
+    # deletes the manifest: a review must never move the session's HEAD, and
+    # one did (#1177). Said here, to the caller of this command, for any review.
+    began_on = _manifest_branch(critic_consolidate.manifest_path(get_prawduct_dir(project_dir)))
+    rc = critic_consolidate.consolidate(
         project_dir, trigger="explicit", tree_changed_by_builder=reason
     )
+    from lib import head_guard  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    left = head_guard.left_branch(project_dir, began_on)
+    if left:
+        print(f"PRAWDUCT WARNING: {head_guard.message(left)}", file=sys.stderr)
+    return rc
+
+
+def _manifest_branch(path: Path) -> str | None:
+    """The ``branch`` a dispatch manifest recorded, or ``None`` when there is
+    no manifest or it cannot be read — consolidation itself reports either."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    branch = data.get("branch") if isinstance(data, dict) else None
+    return branch if isinstance(branch, str) and branch else None
 
 
 def cmd_native_review(project_dir: Path, argv: list[str]) -> int:
-    """``native-review record <review id>`` | ``native-review show [<review id>]``.
+    """``native-review prepare <review id> <session checkout>`` |
+    ``native-review record <review id> [--text-file <path>]`` |
+    ``native-review show [<review id>]``.
 
     The paired native review's record (#1130, ``lib/native_review.py``).
-    ``record`` is run by the wrapper a development build's boundary review
-    dispatches, once it has written the review's text: it appends one
+    ``prepare`` is the wrapper's first step, run from its own worktree (here,
+    ``project_dir``): it detaches that tree at the reviewed head (exit 0), or
+    refuses — in the session's checkout above all — and checks nothing out
+    (exit 1; #1177). ``record`` is run by the wrapper, from the session's
+    checkout, once it has written the review's text in its own worktree (the
+    harness refuses its Write to the session's files): it copies the text into
+    the session's ``.native-reviews/`` — from the wrapper's tree, which the
+    sidecar names, or from ``--text-file`` (an absolute path) — and appends one
     ``native.review`` ledger event (exit 0, also when already recorded) or says
     why there is nothing to record (exit 1). ``show`` prints a native review's
     text, the newest by default (exit 0), or why it cannot (exit 1). Exit 2 on a
     usage error."""
     from lib import gitstate, native_review  # noqa: PLC0415 — lazy; the dispatcher seeded sys.path
 
-    usage = "usage: prawduct-hook native-review record <review id> | show [<review id>]"
+    usage = (
+        "usage: prawduct-hook native-review prepare <review id> <session checkout> | "
+        "record <review id> [--text-file <absolute path>] | show [<review id>]"
+    )
     op = argv[0] if argv else None
     rest = argv[1:]
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    if op == "record" and len(rest) == 1:
+    if op == "prepare" and len(rest) == 2:
+        rc, message = native_review.prepare(project_dir, Path(rest[1]), rest[0])
+    elif op == "record" and len(rest) == 1:
         rc, message = native_review.record(project_dir, prawduct_dir, rest[0])
+    elif op == "record" and len(rest) == 3 and rest[1] == "--text-file" and rest[2]:
+        rc, message = native_review.record(project_dir, prawduct_dir, rest[0], text_file=Path(rest[2]))
     elif op == "show" and len(rest) <= 1:
         rc, message = native_review.show(prawduct_dir, rest[0] if rest else None)
     else:
@@ -3267,8 +3338,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Gate 1: Reflection
     # - Fires on THIS SESSION'S WORK SPAN — judgeable code changed between the
-    #   session base tree and the working tree, committed work included and
-    #   history a pull, merge or branch switch brought in excluded. No
+    #   session base tree and the working tree, committed work included;
+    #   history a pull, merge or branch switch brought in, and commits another
+    #   session in this checkout made while this one was idle and touching no
+    #   file it edited (read from the payload's transcript), excluded. No
     #   build-plan conjunct: a planless session that shipped code is exactly the
     #   session whose lesson never got written down, and the old plan conjunct
     #   made that the silent case. There is no advisory branch any more, because
@@ -3280,7 +3353,25 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     #   its trigger, so a session whose committed work is all docs does not
     #   fire. A carveout read from the session porcelain, which is empty once
     #   work is committed, would make exactly that session fire.
-    reflection_span = _gates().session_work_span(project_dir, status_output)
+    reflection_span = _gates().session_work_span(
+        project_dir, status_output, transcript_path=event.transcript_path
+    )
+    # The trace of that exclusion, so a wrong one is not silent: a dropped
+    # commit cannot fire the gates below, so this line is the only place it
+    # shows. One line, on stderr, and in the block text when another gate
+    # blocks; it repeats every turn while the commit stays in the span, so it
+    # stays out of the user's exit-0 message.
+    if reflection_span.get("dropped"):
+        stop_advisories.append(_LogOnlyAdvisory(
+            "PRAWDUCT NOTE: left out of this session's work as another session's "
+            "commits (made while another session wrote here and this one ran no "
+            "tool call or ! command, touching no file it edited): "
+            + "; ".join(
+                f"{d['sha'][:12]} ({', '.join(d['paths'][:3]) or 'no files'}"
+                f"{', …' if len(d['paths']) > 3 else ''})"
+                for d in reflection_span["dropped"]
+            )
+        ))
     # The Critic composition gate (Gate 2) reads the same span, read once here:
     # its trigger is `changed` and its doc-only carveout is `not judgeable`.
     critic_has_work = bool(reflection_span["changed"])
@@ -3394,8 +3485,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # if no later turn of that session ended dirty, the rule was never charged
     # and never recorded. `session_work_span` diffs the session's base tree
     # against the working tree, less history older than the session that a
-    # pull, merge or branch switch brought in, so committed work is still this
-    # session's work.
+    # pull, merge or branch switch brought in and less another session's
+    # commits in this checkout, so committed work is still this session's work.
     #
     # Reused rather than recomputed: the call costs git calls and Stop runs
     # every turn. The name upstream is its first consumer, not the span's
@@ -4457,8 +4548,12 @@ def _parse_evidence_counts(tokens: list[str]) -> tuple[dict | None, str]:
     return vals, ""
 
 
-def _scope_refusal_remedy(cause: str | None) -> str:
-    """The way forward for ONE refusal cause from ``lib.report_scope``.
+def _scope_refusal_remedy(
+    cause: str | None, *, site: str, extra: "list[str] | tuple[str, ...]" = ()
+) -> str:
+    """The way forward for ONE refusal cause from ``lib.report_scope``, as seen
+    from the SITE that refused: ``"ingest"`` (``--from-junit``) or
+    ``"fallback"`` (the undeclared run path, whose own arguments are ``extra``).
 
     Six conditions refuse an ingest and they do not share a remedy. The first
     version of this message was written for `partial` and printed for all of
@@ -4468,8 +4563,45 @@ def _scope_refusal_remedy(cause: str | None) -> str:
     advice it crowded out is the one `docs/test-report-contract.md` gives for
     that case. The generalisation is the standing one: a gate folding several
     conditions into one answer must not also decide how hard to fail.
+
+    **And they do not share a remedy across sites (#848 R-2).** At ingest the
+    recorder is a real way forward: it runs a fresh suite instead of reading
+    the report in hand. On the fallback it is the command that just refused —
+    the repo's own producer wrote the record beside the recorder's temp report,
+    so running it again reads the same producer and refuses the same way. There
+    the remedies are the ones that change what the next run reads: drop the
+    arguments that narrowed it (named, when there were any), fix the producer,
+    or declare ``test_command`` so the declaration defines the suite and the
+    record is not consulted. The record itself is the recorder's temp file
+    there, so "do not delete it" is advice about a file the operator never sees
+    and is not given.
     """
     rs = _report_scope()
+    if site == "fallback":
+        declare = (
+            "declare `test_command` in .prawduct/project-state.yaml, so the "
+            "declaration defines the suite and this record is not consulted"
+        )
+        if cause == rs.CAUSE_NARROWED:
+            if extra:
+                return (
+                    "  The reason above says what narrowed the run. Where it was the "
+                    f"arguments you passed ({' '.join(extra)}), run `prawduct-hook "
+                    "test-evidence record` again without them, so the fallback runs "
+                    f"the whole suite. Otherwise, fix what narrowed it, or {declare}."
+                )
+            return (
+                "  You passed no arguments, so the narrowing came from the runner's "
+                "own configuration or from a run that did not finish (the reason "
+                "above says which). Fix that before recording again, or "
+                f"{declare}."
+            )
+        return (
+            "  The record was written by this repo's own producer beside the report "
+            "this run just wrote, so recording again would read the same producer's "
+            "record and refuse the same way. Fix the producer (its contract is "
+            f"`docs/test-report-contract.md`), or {declare}."
+        )
     recorder = "    prawduct-hook test-evidence record\n"
     if cause == rs.CAUSE_NARROWED:
         return (
@@ -4495,6 +4627,134 @@ def _scope_refusal_remedy(cause: str | None) -> str:
         + "  Deleting the record to get past this is not a way forward: it "
         "makes the run's scope unknown rather than known-good."
     )
+
+
+def _void_test_evidence(evidence_path: Path, attempt: str) -> dict:
+    """Mark the standing record void before a record attempt runs anything (#679).
+
+    ``record`` rewrites ``.test-evidence.json`` only when a record LANDS. Every
+    refusal returns before that write, and a killed or hung run never reaches
+    one, so without this a previous green went on vouching for a tree whose
+    latest run failed or never finished. Written AHEAD of the run rather than
+    on each exit-2 path, because that one site covers every refusal and the
+    killed run too, which no refusal path reaches. A record that lands replaces
+    the void whole; anything else leaves it standing.
+
+    **The shape is one every reader already refuses.** Every freshness reader
+    (``test-status``, the Stop gate, ``/prawduct:pr``, ``/prawduct:critic``,
+    release readiness) goes through ``gates.run_refusal``, and that refuses a
+    record carrying a non-empty ``degraded`` — so the void is written there,
+    and no reader had to learn a new key. Three more edits make it hold:
+
+    * ``timestamp`` is now, so the void is the newest candidate in
+      ``gates._store_run_vouching``'s sort and a green ``test-run`` fact for this
+      tree from another worktree cannot answer over it;
+    * ``evidence_tree`` is removed, so the void claims no tree, and a refused run
+      with no tree denies there ("cannot tell" counts as met when refused);
+    * ``void`` names the attempt. No gate reads it; the restamp does, and refuses
+      a void record rather than carrying its counts onto a fresh tree;
+    * ``in_progress`` names the recorder (``record_progress.stamp``: pid, host,
+      start time, command), so ``test-status`` and the gates can tell a run
+      still going (wait) from one that died (interrupted) — #1178.
+
+    The counts, command and every other field are kept, so the record still
+    passes the schema and says which run its counts came from.
+
+    **With no usable record, a stub stands in (#1178 R-8).** No record, one that
+    cannot be read as a JSON object, or one the schema refuses has nowhere to
+    carry ``in_progress`` that a reader would see: every reader parses and
+    schema-checks before it looks for the stamp. Leaving it alone made a fresh
+    worktree's first run invisible — ``test-status`` said stale, ``--wait``
+    returned at once, and the reader started a second suite. So the void is
+    written as a stub instead: schema-valid, zero counts, ``degraded`` and
+    ``void`` set like any void, no tree. A refused first attempt therefore reads
+    as interrupted rather than as no evidence, and the clone's store cannot
+    vouch over it — the attempt is this worktree's newest word, as with any void.
+
+    Returns ``{"status": "voided" | "stubbed" | "error", "reason"?}``; the
+    caller proceeds either way, because a void that could not be written leaves
+    the reader exactly where it was before.
+    """
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    void = f"record attempt at {now} ({attempt}) did not complete"
+    prior, why_no_prior = None, "no record had landed in this worktree"
+    if evidence_path.is_file():
+        try:
+            prior = json.loads(evidence_path.read_text())
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+            prior, why_no_prior = None, f"the record on disk was unreadable ({exc})"
+        if prior is not None and not isinstance(prior, dict):
+            prior, why_no_prior = None, "the record on disk was not a JSON object"
+    if prior is not None:
+        ok, schema_err = _gates()._validate_evidence_schema(prior)
+        if not ok:
+            prior, why_no_prior = None, f"the record on disk was not usable ({schema_err})"
+    already_void = prior is not None and isinstance(prior.get("void"), str) and bool(
+        prior["void"].strip()
+    )
+    if prior is None or (already_void and prior.get("void_counts_from") is None):
+        # A stub, or a void of one: no run's counts to carry.
+        voided = {
+            "passed": 0, "failed": 0, "skipped": 0, "duration_seconds": 0,
+            "command": attempt, "verifier": "none (no record has landed)",
+            "tests_executed": [], "changes_referenced": [], "coverage_level": "referenced",
+        }
+        degraded = (
+            f"{void}, and {why_no_prior if prior is None else 'no record had landed before it'}, "
+            "so this record carries no counts. Run the suite through the recorder, or "
+            "ingest the report of a whole-suite run, and let that record land"
+        )
+        voided.update(timestamp=now, void=void, void_counts_from=None, degraded=degraded)
+        status = "stubbed"
+    else:
+        counts_from = prior.get("void_counts_from") if already_void else prior.get("timestamp")
+        if not isinstance(counts_from, str) or not counts_from:
+            counts_from = "(unknown)"
+        degraded = (
+            f"{void}, so the counts here, from the run recorded at {counts_from}, are "
+            "not the latest word on this tree. Run the suite through the recorder, or "
+            "ingest the report of a whole-suite run, and let that record land"
+        )
+        prior_degraded = prior.get("degraded")
+        if not already_void and isinstance(prior_degraded, str) and prior_degraded.strip():
+            degraded += f"; that run was already reported degraded: {prior_degraded.strip()}"
+        voided = {k: v for k, v in prior.items() if k != "evidence_tree"}
+        voided.update(
+            timestamp=now, void=void, void_counts_from=counts_from, degraded=degraded
+        )
+        status = "voided"
+    # Who is running, so a reader can tell this attempt still going from one
+    # that died (#1178): `test-status` says `running` and the gates say to
+    # wait while the recorder lives, and `stale (interrupted)` once it is gone.
+    # A record that lands carries no stamp; a refusal leaves it naming a
+    # process that has exited, which reads as interrupted.
+    try:
+        from lib import record_progress  # noqa: PLC0415 — lazy keeps top-level cheap
+
+        voided["in_progress"] = record_progress.stamp(attempt, now)
+    except ImportError as exc:
+        print(
+            f"note: the record attempt is not stamped as in progress ({exc}); "
+            "test-status will read it as stale until it lands.",
+            file=sys.stderr,
+        )
+    tmp = evidence_path.with_name(evidence_path.name + ".tmp")
+    try:
+        tmp.write_text(json.dumps(voided, indent=2, sort_keys=True) + "\n")
+        os.replace(tmp, evidence_path)
+    except OSError as exc:
+        consequence = (
+            "if the attempt does not land, the previous record keeps vouching"
+            if status == "voided"
+            else "test-status will not show this run as in progress"
+        )
+        print(
+            f"warning: could not mark the standing test evidence void before this "
+            f"record attempt ({exc}); {consequence}.",
+            file=sys.stderr,
+        )
+        return {"status": "error", "reason": str(exc)}
+    return {"status": status}
 
 
 #: How many failing ids a record keeps. The names exist so a reader can go
@@ -5135,12 +5395,27 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``) — with two
-    carve-outs, both refused with exit 2 and nothing written. An
+    carve-outs, both refused with exit 2 and no counts recorded. An
     interpreter-fallback run with zero passes and nonzero failures/errors
     (skips may accompany — the incident that taught this had 35) is a
     launch-environment error (see below). And a command that exited nonzero
     while its own report shows no failing test is a run the report does not
     account for, so its counts would record a failed run as green.
+
+    **A refusal does not leave the previous record vouching (#679).** Once the
+    arguments are validated and before a suite runs or a report is read, the
+    standing record is marked void (``_void_test_evidence``): it keeps its
+    counts, loses its tree, and carries ``degraded`` and ``void``, so every
+    reader reads it stale. A record that lands replaces it whole; every
+    refusal from there on, and a run killed before it records, leaves the void
+    standing. Usage errors refuse before that point and leave a good record
+    alone. ``--from-counts`` and ``--no-rerun`` run nothing and do not void,
+    and ``--no-rerun`` refuses a void record rather than restamp its counts.
+
+    **An ingest stamps a tree only when the report is at least as new as every
+    file the suite reads (#848).** A report proves a run happened, never which
+    tree it met; ``evidence.report_predates_tree`` owns the question, and a
+    report it faults records as session-fresh only, with no ``test-run`` fact.
 
     Gate-soundness ch.2 — two optional ``project-state.yaml`` knobs remove the
     one-repo-shape assumption that forced products (scriob) into wrapper
@@ -5511,6 +5786,23 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             return 2
         rerun_templates = templates
 
+    # Write-ahead void (#679): every argument and declaration check is behind
+    # us, so a refusal from here on is about the run or the report, not the
+    # invocation — and from here on the standing record must stop vouching
+    # until a new one lands. Usage errors above leave a good record untouched.
+    # A restamp and --from-counts run nothing and read no report, so they do
+    # not void. A scratch worktree writes no per-worktree record (DG2), so
+    # there is nothing of its own to void.
+    if (will_run or from_junits) and scratch_kind is None:
+        _void_test_evidence(
+            evidence_path,
+            "--from-junit " + " ".join(from_junits)
+            if from_junits
+            else " ; ".join(declared_commands)
+            if declared_commands
+            else " ".join(["python3 -m pytest -q", *extra]).strip(),
+        )
+
     roots: list = []  # parsed JUnit roots (run or --from-junit); empty for counts/restamp
     failed_ids: list[str] = []  # failing leaf ids, report order; empty when none were visible
     flaky: list[dict] = []  # tests that passed only after failing (`_flaky_entry`)
@@ -5547,6 +5839,20 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             print(
                 f"error: existing evidence is missing valid counts ({exc}); run a "
                 "full record.",
+                file=sys.stderr,
+            )
+            return 2
+        # A void record (#679) holds counts from a run a later attempt failed
+        # to supersede. Restamping it would put those counts on a fresh
+        # timestamp and the current tree, which is the void laundered.
+        prior_void = prior.get("void")
+        if isinstance(prior_void, str) and prior_void.strip():
+            print(
+                f"error: --no-rerun/--restamp cannot reuse this record: the last "
+                f"{prior_void.strip()}, so its counts are not the latest word on "
+                "this tree. Run the suite, or ingest a report you already have:\n"
+                "    prawduct-hook test-evidence record\n"
+                "    prawduct-hook test-evidence record --from-junit <report.xml>",
                 file=sys.stderr,
             )
             return 2
@@ -5643,7 +5949,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             if not verdict.ok:
                 print(
                     f"error: refusing to record {from_junit} as suite evidence "
-                    f"— {verdict.reason}.\n" + _scope_refusal_remedy(verdict.cause),
+                    f"— {verdict.reason}.\n"
+                    + _scope_refusal_remedy(verdict.cause, site="ingest"),
                     file=sys.stderr,
                 )
                 return 2
@@ -5738,7 +6045,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                         print(
                             "error: refusing to record this run as suite "
                             f"evidence — {verdict.reason}.\n"
-                            + _scope_refusal_remedy(verdict.cause),
+                            + _scope_refusal_remedy(
+                                verdict.cause, site="fallback", extra=extra
+                            ),
                             file=sys.stderr,
                         )
                         return 2
@@ -5757,6 +6066,17 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 # producer-wired repo writes one next to this temp file too;
                 # leaving it behind would litter the temp directory once per
                 # recorded run. Best-effort, like the report's own unlink.
+                #
+                # On the DECLARED path it is deleted unread, and that is the
+                # design, not a verdict thrown away (#848 R-1/R-6): the
+                # declaration defines the suite, so a deliberately narrow
+                # declared command is taken at its word and extra args are
+                # refused above; and completeness there is owned by the
+                # exit-status check below, which refuses a command that
+                # exited nonzero while its own report shows no failure (a run
+                # cut short with failures recorded stays red, never a false
+                # green). Only the undeclared fallback, which no declaration
+                # stands behind, consults the record (above).
                 for leftover in (junit, junit_scope):
                     try:
                         leftover.unlink()
@@ -5993,7 +6313,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # after writing it, or something outside the tests failed the command.
         # Recording those counts would put a green on a red run, and `failed`
         # is what `tests_are_current` and every gate after it read. Refused
-        # rather than marked `degraded`, which only a coordinator asserts.
+        # rather than recorded as `degraded`, which a coordinator asserts about
+        # a run's coverage (the write-ahead void also carries it, #679 — the
+        # standing record is void by now, so this refusal leaves it stale).
         # Judged per command, because another command's real failure says
         # nothing about why this one exited nonzero. Live runs only: one root
         # per command, in order. Ingest has no exit status to disagree with.
@@ -6028,8 +6350,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # by `affects_test_outcome` path rather than raw equality, because every run
     # writes caches and reports of its own — says the tree captured before the
     # first command still holds at the end. "Cannot tell" (a failed capture or
-    # diff) omits it too. That never marks the record `degraded` (a coordinator's assertion,
-    # never derived) and never makes it stale this session; it only withholds the
+    # diff) omits it too. That never marks the record `degraded` (a coordinator's assertion
+    # about coverage, or the write-ahead void's about an attempt that did not land — never
+    # derived from the tree) and never makes it stale this session; it only withholds the
     # tree clause, so no later session or other worktree reuses the run for a
     # tree it may not have exercised. Ingest and restamp have no run to bracket.
     evidence_tree = None
@@ -6059,7 +6382,26 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     elif from_counts is None:
         from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
         _cap = _evidence_mod.capture_tree(project_dir)
-        if _cap.get("status") == "ok":
+        # An ingested report proves a run happened with the scope its record
+        # states; it never proved WHICH tree that run met (#848 R-4). The
+        # current tree is stamped — and so becomes a `test-run` fact every
+        # worktree reuses — only when nothing the suite reads is newer than
+        # the report. Otherwise the record stays current this session only.
+        # A restamp keeps its own posture (the guard above), unchanged.
+        predates = (
+            _evidence_mod.report_predates_tree(project_dir, from_junits)
+            if from_junits and _cap.get("status") == "ok"
+            else None
+        )
+        if predates:
+            print(
+                f"warning: {predates}, so this record vouches for no tree — it stays "
+                "current this session only. To let a later session reuse a run, "
+                "ingest the report of a run made after your last edit, or run the "
+                "suite through the recorder.",
+                file=sys.stderr,
+            )
+        elif _cap.get("status") == "ok":
             evidence_tree = _cap.get("tree")
 
     # Judge the flakes against the branch. A restamp carries entries judged
@@ -6548,32 +6890,6 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
-# v1.4 F4b — coverage-required gate inputs.
-# Inline mirror of lib/core.read_bool_yaml_key: a column-0 key scan with a
-# fail-closed default of False. Inline rather than imported to keep the hook
-# surface flat on the session-start hot path (same discipline as
-# _read_str_yaml_key above); pinned to the lib helper by TestBoolKeyCallSiteParity.
-# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestBoolKeyCallSiteParity
-def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
-    """True if ``state_path`` has a top-level (column-0) ``key: true`` scalar."""
-    if not state_path.exists():
-        return False
-    try:
-        content = state_path.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    needle = f"{key}:"
-    for raw in content.splitlines():
-        if raw[:1] in (" ", "\t"):
-            continue
-        line = raw.split("#", 1)[0].rstrip()
-        if not line.startswith(needle):
-            continue
-        value = line.split(":", 1)[1].strip().lower()
-        return value == "true"
-    return False
-
-
 # =============================================================================
 # main
 # =============================================================================
@@ -6605,7 +6921,17 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
         return 0
 
     result = ov.run_check_operator_verification(project_dir)
+    # First, and before `required` is read: an unreadable state file leaves
+    # `required` unknown (None), which `not result["required"]` would otherwise
+    # treat as "gate off" and exit 0, the silent fail-open this branch closes.
+    # Exit 3 for the same reason as the unreadable queue below.
+    if result.get("queue_status") == ov.QUEUE_STATE_UNREADABLE:
+        print(result["message"], file=sys.stderr)
+        return 3
     if not result["required"]:
+        # Never gated, but an unreadable queue is worth one stderr line.
+        if result.get("note"):
+            print("NOTE: " + result["note"], file=sys.stderr)
         return 0
     # Order matters: an unreadable queue reports `pending: 0` because nothing
     # was parsed, so testing pending first would let the exact failure this
@@ -7087,7 +7413,7 @@ def _narrowed_run_lines(project_dir: Path) -> list[str]:
     return lines
 
 
-def cmd_test_status(project_dir: Path) -> int:
+def cmd_test_status(project_dir: Path, argv: list[str]) -> int:
     """Report whether the saved suite run is fresh enough to trust, and on
     which of the two grounds — the tree it ran against, or the session it ran
     in. Exit 0 does NOT by itself establish that the evidence covers the
@@ -7097,8 +7423,42 @@ def cmd_test_status(project_dir: Path) -> int:
     After the verdict line (first, so a reader of one line still has it), the
     delegates' narrowed runs (DG2), one line per scratch worktree — so a
     delegate's green is attributable to the tree and ceiling it ran on. They
-    change neither the verdict nor the exit code."""
-    rc = _gates().test_status(project_dir)
+    change neither the verdict nor the exit code.
+
+    ``--wait [--timeout N]`` (#1178) blocks while a record attempt is in
+    progress — until it lands, its recorder dies, or N seconds pass (default
+    ``record_progress.WAIT_DEFAULT_SECONDS``, at most ``WAIT_MAX_SECONDS``) —
+    then prints the verdict; a timeout with the run still going exits 75. No
+    hook calls it: a hook must never block on a suite. ``--timeout`` without
+    ``--wait``, a value that is not a positive number within the bound, and any
+    other token are usage errors (exit 2)."""
+    from lib import record_progress  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    rest = list(argv)
+    timeout = None
+    if "--timeout" in rest:
+        k = rest.index("--timeout")
+        raw = rest[k + 1] if k + 1 < len(rest) else ""
+        del rest[k : k + 2]
+        try:
+            timeout = float(raw)
+        except ValueError:
+            timeout = None
+        if timeout is None or not 0 < timeout <= record_progress.WAIT_MAX_SECONDS:
+            print(
+                f"test-status: --timeout takes a number of seconds above 0 and at most "
+                f"{record_progress.WAIT_MAX_SECONDS}, got {raw!r}",
+                file=sys.stderr,
+            )
+            return 2
+    rejected = _reject_unknown_args("test-status", rest, {"--wait"})
+    if rejected is not None:
+        return rejected
+    wait = "--wait" in rest
+    if timeout is not None and not wait:
+        print("test-status: --timeout applies only with --wait", file=sys.stderr)
+        return 2
+    rc = _gates().test_status(project_dir, wait=wait, timeout=timeout)
     for line in _narrowed_run_lines(project_dir):
         print(line)
     return rc
@@ -9273,7 +9633,11 @@ def cmd_update_gitignore(project_dir: Path, argv: list[str]) -> int:
     early-exits on an already-scaffolded repo and the session hooks must never
     edit a tracked file (the no-noise guarantee), so this on-demand command is
     how an existing repo picks up gitignore-contract changes. Prints each
-    unignored path so the caller can advise ``git add``.
+    unignored path so the caller can advise ``git add``. The contract is judged by
+    what git would ignore, so a wholesale rule (``.prawduct/``) counts as covering
+    the entries under it, and one that hides a file prawduct needs committed is
+    reported as ``cannot fix automatically:`` with the exact lines to paste. It is the
+    owner's rule: this command never edits or deletes it (#762).
 
     **Mutating by default, deliberately** — doctor calls it to REPAIR, so a
     preview-by-default would silently stop fixing the repos that need fixing.
@@ -9304,6 +9668,16 @@ def cmd_update_gitignore(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
     result = lib_core.update_gitignore(project_dir, dry_run=dry_run)
+    # What the fixer will NOT repair is said on both paths, and before the verdict
+    # line: "no changes needed" beside an ignored managed file would read as a
+    # clean bill. The owner's rule is theirs to edit (#762).
+    for sentence in lib_core.describe_ignored_by_rule(result.get("ignored_by_rule", [])):
+        print(f"cannot fix automatically: {sentence}")
+    if result.get("basis") == "literal":
+        print(
+            "note: git could not be asked, so this compared literal .gitignore lines "
+            "only; a wholesale rule such as `.prawduct/` would not show here"
+        )
     if dry_run:
         # Past tense would be a lie on this branch, and the caller is here
         # BECAUSE they wanted to know before anything moved.
@@ -10760,7 +11134,7 @@ _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--session-model <id>] [--scope <s>] [--chunks <id>[,<id>...]] [--force]|critic-end|critic-discard|"
     "critic-restore <review-id>|critic-consolidate|validate-partial <path>|"
-    "native-review record <review-id>|native-review show [<review-id>]|"
+    "native-review prepare <review-id> <session-checkout>|native-review record <review-id> [--text-file <path>]|native-review show [<review-id>]|"
     "subagent-stop|"
     "stop|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
@@ -11008,6 +11382,37 @@ _HARNESS_INVOKED_COMMANDS = frozenset({
 # `tests/test_binary_skew_guard.py` pins this to what every hooks.json
 # SessionStart entry runs, and to nothing the other events run.
 _SKEW_REPORTING_HOOK = ("clear", "--session-start")
+
+
+def _emit_pre_dispatch_notice(
+    command: str, argv: "list[str] | None", text: str, *, session_start_stdout: bool = True
+) -> None:
+    """The ONE owner of how a pre-dispatch notice behaves on a harness hook.
+
+    Both pre-dispatch guards (`_check_binary_skew`, `_check_ephemeral_worktree`)
+    say their NOTEs through here, so they cannot decide separately. The facts a
+    notice reports are properties of the session, not of a turn, and stderr at
+    exit 0 is only logged by the harness, so:
+
+    - `_SKEW_REPORTING_HOOK` (`clear --session-start`): once, on STDOUT, the
+      channel SessionStart output reaches the agent's context through.
+    - any other `_HARNESS_INVOKED_COMMANDS` verb (`stop`, `subagent-stop`):
+      silent. They fire every turn and the agent has nothing to act on.
+    - everything else, including an agent running `clear` itself: stderr, where
+      the agent that ran the command reads it.
+
+    ``session_start_stdout=False`` is for a notice whose wording is wrong for a
+    hook caller (a lib-only skew); it then goes to stderr under SessionStart
+    too, but stays silent on Stop like every other harness verb.
+    """
+    reporter, flag = _SKEW_REPORTING_HOOK
+    if command in _HARNESS_INVOKED_COMMANDS:
+        if command != reporter:
+            return
+        if flag in (argv or []) and session_start_stdout:
+            print(text)
+            return
+    print(text, file=sys.stderr)
 
 # Agent-invoked, state-mutating governance writes. A wrong-version write here
 # does not merely misreport — it corrupts or silently omits a persisted fact
@@ -11287,7 +11692,11 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # a plan.
     "plan": frozenset({"resolve", "status", "check-claims"}),
     # `show` prints a native review's text; `record` appends the ledger event.
-    "native-review": frozenset({"show"}),
+    # `prepare` is not read-only, and is admitted for the opposite reason: it
+    # writes nothing under this tree's `.prawduct/` (only the session checkout's
+    # sidecar, by its own path) and moves only this tree's HEAD — it exists to
+    # run in a disposable tree and refuses everywhere else (#1177).
+    "native-review": frozenset({"show", "prepare"}),
     # The one `evidence` read set the skew guard also reads. Its writes are
     # refused here on a narrower ground than this guard's usual one: none of
     # them can strand — the store, the notes ref and `.git/config` belong to
@@ -11471,7 +11880,9 @@ def _backlog_is_service_backed(project_dir: Path) -> bool:
         return False
 
 
-def _print_ephemeral_notice(kind: str | None, project_dir: Path) -> None:
+def _print_ephemeral_notice(
+    command: str, argv: list[str], kind: str | None, project_dir: Path
+) -> None:
     """The HEAD-snapshot notice, on every path that proceeds.
 
     One function because four callers emit it for four different reasons
@@ -11485,20 +11896,23 @@ def _print_ephemeral_notice(kind: str | None, project_dir: Path) -> None:
     word "ephemeral" would be false — but the READING half is unchanged, which
     is the whole reason the notice is separate from the refusal. Only the first
     clause varies; the fork-point warning is identical, because it is identical.
+
+    WHERE it goes is `_emit_pre_dispatch_notice`'s decision, shared with the
+    skew guard: once on stdout at SessionStart, silent on Stop, stderr for a
+    command the agent runs itself.
     """
     what = (
         f"an ephemeral {kind} worktree"
         if kind is not None
         else "a linked agent worktree"
     )
-    print(
+    _emit_pre_dispatch_notice(command, argv, (
         f"NOTE: this is {what} ({project_dir}). Every "
         "tracked file here — build plans, artifacts, learnings — is a "
         "snapshot of the commit it was forked from, so uncommitted changes "
         "in the dispatching session are NOT visible. Where a file and your "
-        "prompt disagree, your prompt is newer.",
-        file=sys.stderr,
-    )
+        "prompt disagree, your prompt is newer."
+    ))
 
 
 def _ephemeral_refusal_reason(command: str) -> str:
@@ -11528,15 +11942,16 @@ def _ephemeral_refusal_reason(command: str) -> str:
 def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) -> int:
     """0 to proceed; 1 when a state write from a disposable worktree must refuse.
 
-    Also emits the HEAD-snapshot notice for EVERY command that proceeds,
-    harness-invoked ones included: a
+    Also emits the HEAD-snapshot notice for every command that proceeds: a
     worktree-isolated agent reads every tracked file as a snapshot of the fork
     point, so a dispatcher's uncommitted governing artifacts are invisible to it.
     That silence is what made the source report's agent hold a build plan
-    contradicting its own prompt, and this is the only channel that reaches such
-    an agent without its cooperation — the briefing file the delegation
-    instruction names does not exist in an isolated worktree (it is gitignored,
-    so `git worktree add` never materializes it).
+    contradicting its own prompt. The notice must reach the agent without its
+    cooperation — the briefing file the delegation instruction names does not
+    exist in an isolated worktree (it is gitignored, so `git worktree add` never
+    materializes it) — so a harness hook says it ONCE, on SessionStart's stdout,
+    and not on Stop (`_emit_pre_dispatch_notice` owns that policy, shared with
+    `_check_binary_skew`; hook stderr is only logged, never read by the agent).
     """
     override = bool(os.environ.get(_EPHEMERAL_OVERRIDE_ENV))
     try:
@@ -11560,7 +11975,7 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
         # creates. Classified by PATH, deliberately: the question is "did the
         # harness fork this tree", which the branch cannot answer.
         if _gitstate().ephemeral_worktree_kind_of_path(project_dir) is not None:
-            _print_ephemeral_notice(None, project_dir)
+            _print_ephemeral_notice(command, argv, None, project_dir)
         return 0
 
     if command in _HARNESS_INVOKED_COMMANDS:
@@ -11574,14 +11989,15 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
         # chunk's contract is "every AGENT-invoked `.prawduct/`-mutating
         # command", not literally every one.
         #
-        # The NOTICE still fires, and the detection above now runs before this
+        # The NOTICE still fires (once, at SessionStart; see
+        # `_emit_pre_dispatch_notice`), and the detection above runs before this
         # branch so it can. An earlier form returned here first and justified the
         # hole partly by "a human driving it who can see the banner" — nothing in
         # the SessionStart banner or the session digest mentions ephemerality, so
         # that path emitted no signal at all on the one path where a human could
         # act. A justification naming a channel that carries nothing is worse
         # than an unjustified hole: it reads as coverage.
-        _print_ephemeral_notice(kind, project_dir)
+        _print_ephemeral_notice(command, argv, kind, project_dir)
         return 0
 
     if override or not _ephemeral_command_writes(command, argv, project_dir):
@@ -11589,7 +12005,7 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
         # questions — "may I write here" versus "how old is what I am reading" —
         # and a dispatcher who opted into writing has not thereby learned that
         # its artifacts are a fork-point snapshot.
-        _print_ephemeral_notice(kind, project_dir)
+        _print_ephemeral_notice(command, argv, kind, project_dir)
         return 0
 
     print(
@@ -11610,11 +12026,12 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
 
     Emits on stderr for every command but the harness's — the failure this
     closes was defined by its silence, so a quiet pass would reproduce it one
-    severity down. The skew is a property of the session, so SessionStart
-    (`_SKEW_REPORTING_HOOK`) says it once, in hook terms and on stdout, and the
-    `stop`/`subagent-stop` verbs stay silent whoever invokes them, rather than
-    repeat it every turn. A lib-only skew under `--session-start` is not a hook
-    (a hook runs its own plugin's script and lib), so it gets the ordinary note.
+    severity down. Where a notice goes is `_emit_pre_dispatch_notice`'s policy,
+    shared with the ephemeral guard: SessionStart (`_SKEW_REPORTING_HOOK`) says
+    it once, in hook terms and on stdout, and the `stop`/`subagent-stop` verbs
+    stay silent whoever invokes them, rather than repeat it every turn. A
+    lib-only skew under `--session-start` is not a hook (a hook runs its own
+    plugin's script and lib), so it gets the ordinary note.
     """
     skew = _binary_skew(project_dir)
     kind = "binary"
@@ -11643,7 +12060,7 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
             + [f"`{c} {op}`" for c, ops in sorted(_DATA_PLANE_WRITE_OPS.items())
                for op in sorted(ops)]
         )
-        print(
+        _emit_pre_dispatch_notice(command, argv, (
             f"NOTE: {SKEW_MARKER}: this session's hooks are running {running}, "
             f"not the plugin this repo carries ({repo_plugin}). Hooks always run "
             "the installed plugin, so this is expected while you work on the "
@@ -11655,11 +12072,12 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
             "code do the hooks' writes too, start the session with "
             f"`claude --plugin-dir {repo_plugin}`. Said once per session start; "
             "Stop and SubagentStop do not repeat it."
-        )
+        ))
         return 0
     if command in _HARNESS_INVOKED_COMMANDS - {reporter}:
         # Never refuse (see the set's comment), and never repeat what
-        # SessionStart already said: these fire every turn.
+        # SessionStart already said: these fire every turn. Silent here and in
+        # `_emit_pre_dispatch_notice`, which is what says every other NOTE.
         return 0
     detail = (
         f"{SKEW_MARKER}: {what}, but this repo carries {repo_plugin}. "
@@ -11674,7 +12092,9 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
             file=sys.stderr,
         )
         return 1
-    print(f"NOTE: {detail}", file=sys.stderr)
+    # A lib-only skew under `--session-start` is not a hook, so its wording stays
+    # the agent-side note, on stderr.
+    _emit_pre_dispatch_notice(command, argv, f"NOTE: {detail}", session_start_stdout=False)
     return 0
 
 
@@ -11739,7 +12159,6 @@ _NO_ARGUMENT_COMMANDS = frozenset({
     "critic-end",
     "print-install-reference",
     "resolve-base",
-    "test-status",
     "validate-evidence",
     "verify-coverage",
     "python-floor",
@@ -11893,7 +12312,7 @@ def _dispatch() -> int:
     elif command == "stop":
         return cmd_stop(project_dir, _read_stop_stdin())
     elif command == "test-status":
-        return cmd_test_status(project_dir)
+        return cmd_test_status(project_dir, sys.argv[2:])
     elif command == "validate-evidence":
         return cmd_validate_evidence(project_dir)
     elif command == "test-evidence":

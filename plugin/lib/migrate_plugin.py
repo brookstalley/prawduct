@@ -920,7 +920,9 @@ def ensure_marker_gitignored(project_dir: Path) -> bool:
     """Add the version marker to ``.gitignore`` when not already ignored."""
     gitignore = Path(project_dir) / ".gitignore"
     content = gitignore.read_text(encoding="utf-8") if gitignore.is_file() else ""
-    if VERSION_MARKER in content.splitlines():
+    # Covered by a broader shared rule (a wholesale `.prawduct/`, #762) counts too:
+    # a literal line beside it is redundant, and there is nothing to un-ignore.
+    if core.gitignore_covers(Path(project_dir), VERSION_MARKER):
         return False
     parts: list[str] = []
     if content and not content.endswith("\n"):

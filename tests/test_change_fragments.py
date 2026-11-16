@@ -316,6 +316,50 @@ def test_an_indented_frontmatter_line_is_named_as_indentation():
     assert "indented" in raised.value.problem.detail
 
 
+class TestABlockListIsTheSameList:
+    """`closes:` written as a YAML block list reads exactly as the flow form.
+
+    An agent wrote the block form naturally (`operator-verification-headings.md`),
+    and the strict parser refused it with no remedy, which stops a whole release.
+    The two spellings are not ambiguous, so the parser accepts both; indentation
+    that is not a list item under an empty key is still refused.
+    """
+
+    FLOW = "closes: [brookstalley/prawduct#811, brookstalley/prawduct#801]"
+    BLOCK = ["closes:", "  - brookstalley/prawduct#811", "  - brookstalley/prawduct#801"]
+
+    def test_the_block_form_parses_to_the_flow_forms_tuple(self):
+        flow = cf.parse_fragment(fragment_text(extra_lines=[self.FLOW]), filename="backlog-file-path.md")
+        block = cf.parse_fragment(fragment_text(extra_lines=self.BLOCK), filename="backlog-file-path.md")
+        assert block.closes == flow.closes == ("brookstalley/prawduct#811", "brookstalley/prawduct#801")
+        assert cf.validate_fragment(block) == []
+
+    def test_quoted_and_commented_items_read_like_flow_items(self):
+        lines = ["closes:", "  - 'brookstalley/prawduct#811'  # the heading fix", "\t- brookstalley/prawduct#801"]
+        fragment = cf.parse_fragment(fragment_text(extra_lines=lines), filename="backlog-file-path.md")
+        assert fragment.closes == ("brookstalley/prawduct#811", "brookstalley/prawduct#801")
+
+    def test_a_bad_item_is_still_judged_by_the_validator(self):
+        lines = ["closes:", "  - nope nope"]
+        assert codes(fragment_text(extra_lines=lines)) == ["bad-closes"]
+
+    @pytest.mark.parametrize(
+        "lines",
+        [
+            ["closes: [brookstalley/prawduct#811]", "  - brookstalley/prawduct#801"],
+            ["  - brookstalley/prawduct#801"],
+            ["closes:", "  nested: value"],
+        ],
+        ids=["item-under-a-valued-key", "item-under-no-key", "non-item-indentation"],
+    )
+    def test_other_indentation_is_still_refused_and_names_the_flow_form(self, lines):
+        with pytest.raises(cf.FragmentError) as raised:
+            cf.parse_fragment(fragment_text(extra_lines=lines), filename="backlog-file-path.md")
+        assert raised.value.problem.code == "bad-frontmatter-line"
+        assert "indented" in raised.value.problem.detail
+        assert "`closes: [a, b]`" in raised.value.problem.detail
+
+
 def test_a_quoted_value_keeps_its_colon_and_loses_its_quotes():
     fragment = cf.parse_fragment(
         fragment_text(with_("title", '"backlog file: own repo only"')), filename="backlog-file-path.md"
@@ -443,3 +487,31 @@ class TestFragmentScopeNamesItsPlan:
         # And the rule is live on this corpus: the two follow-ups ARE adjacent
         # to their parents by one segment, which only the interior bound excuses.
         assert not cf.scope_near_match("norm-lifecycle-stopgaps", "norm-lifecycle")
+
+
+class TestThisRepoSLiveFragmentsValidate:
+    """Every pending fragment in this repo passes the check the release runs.
+
+    The release gate refuses the whole pending set on one bad fragment
+    (`bad-change-fragment:`), and nothing earlier read the live directory: a
+    fragment written with `closes:` as a YAML block list merged and would have
+    stopped the next release. This walks the directory itself rather than
+    asking `load_pending`, so a reader that skipped a file cannot make it pass.
+    """
+
+    def test_every_live_fragment_is_valid_against_the_repo_s_plans(self):
+        repo = _REPO_ROOT.parent
+        directory = repo / cf.FRAGMENT_DIR_REL
+        paths = sorted(directory.glob("*.md"))
+        # The subject was reached. An empty directory is a legitimate state
+        # (straight after a release cut), so say which emptiness this is.
+        if not paths:
+            assert directory.is_dir(), f"{cf.FRAGMENT_DIR_REL}/ is missing, not merely empty"
+            pytest.skip(f"no pending fragment in {cf.FRAGMENT_DIR_REL}/ (just after a release cut)")
+        plans = cf.plan_scopes_for(repo)
+        assert plans, "no build plan was read, so the scope check against plans did not run"
+        refusals = {
+            path.name: [str(problem) for problem in cf.read_fragment_file(path, plan_scopes=plans).problems]
+            for path in paths
+        }
+        assert {name: found for name, found in refusals.items() if found} == {}

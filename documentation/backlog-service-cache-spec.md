@@ -276,6 +276,13 @@ matters: a stored citation resolves through the table, never by being parsed as 
 - **No scheduled deletion sweep.** `since` catches closes — *given `state=all` above* — and
   closed ≠ deleted; only hard deletion and transfer-out are invisible, and both are rare. Owner
   decision — accepted risk.
+- **Evict-on-410 is the one deletion signal, and it is not a sweep.** A `get` of a hard-deleted
+  issue gets **410 Gone** from GitHub; the transport maps it to a terminal, non-retryable
+  `not_found` (`details.http_status == 410`) and `get` evicts that one cached row. It reads
+  nothing it was not already asked to read, so the no-sweep decision stands: a ghost nobody
+  `get`s stays until a rebuild. A plain 404 is reported but never evicts — it also means "no
+  access", which is not proof of deletion. An eviction that cannot run (store unreadable) is a
+  warning on the `not_found` envelope, never a changed verdict.
 - **A full-scan rebuild path still exists** for first build, schema change, and lost or corrupt
   cache. It is a rebuild path, not a deletion sweep.
 - **W1 discharges #230.** `pick`'s ~12.4s full scan at ~6× the NFR floor is explicitly W1-gated;

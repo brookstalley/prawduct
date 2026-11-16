@@ -156,8 +156,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `--force` overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted
   — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
   (`methodology/planning.md` "Chunk state") — a comma list,
-  repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` stays as a one-element
-  alias for one release; omitted, the declared set is the code-derived proposal; an id the plan
+  repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` (the old one-element
+  alias) is gone and is a usage error (exit 1) naming `--chunks`; omitted, the declared set is the code-derived proposal; an id the plan
   does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a
   usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note;
   `--session-model <id>` is the model the dispatcher runs as, from which code answers the
@@ -175,11 +175,19 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   — exit 0 prints `ok`, exit 1 prints the parse error with its line and column or the validation
   reason (fix the file), exit 3 means nothing can check it: no manifest owns it, or it is keyed to
   another review (stop), exit 2 is a usage error; a reviewer runs it on its own file before
-  returning), `native-review record <review-id>` (mutating; the paired native review's wrapper
-  runs it after saving the text: appends one `native.review` ledger event from the sidecar
-  `critic-begin` wrote and the text, exit 0 — also when already recorded — exit 1 with the reason
-  when there is no sidecar or no text, or the id could leave `.prawduct/.native-reviews/`, exit 2
-  on a usage error), `native-review show [<review-id>]` (read-only; prints a native review's text,
+  returning), `native-review prepare <review-id> <session checkout>` (mutating; the paired native
+  review's wrapper runs it first, from its OWN isolated worktree: detaches that worktree at the
+  reviewed head and prints the path inside it where the wrapper saves the review text, exit 0 —
+  exit 1 with the reason, kept in the sidecar as `prepare_refused`, when the tree is the session's
+  own checkout, sits on a real branch, is dirty, belongs to another repository, or the sidecar names
+  no head; exit 2 on a usage error), `native-review record <review-id> [--text-file <absolute path>]` (mutating; the
+  paired native review's wrapper runs it from the session's checkout after saving the text in its
+  own worktree: copies the text into `.prawduct/.native-reviews/` from that worktree, which the
+  sidecar names, or from `--text-file`, deletes the copy in the review worktree, and appends one
+  `native.review` ledger event from the sidecar `critic-begin` wrote and the text, exit 0 — also
+  when already recorded — exit 1 with the reason when there is no sidecar or no text, the
+  `--text-file` is not an absolute path to a file, or the id could leave
+  `.prawduct/.native-reviews/`, exit 2 on a usage error), `native-review show [<review-id>]` (read-only; prints a native review's text,
   the newest by default, exit 0, or exit 1 with why), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
@@ -213,7 +221,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `--from-counts` there exit 2, since neither records a fact. A narrowed fact is attribution only —
   the freshness fallback neither vouches nor denies by it. `test-status` prints its verdict line
   first, then one line per scratch worktree's newest narrowed run (at most 10); its exit code is
-  unchanged.
+  unchanged. A record attempt that has not landed prints `running:` (its recorder alive) or
+  `stale (interrupted):` (gone) ahead of the verdict, both exit 1 (#1178). `test-status --wait
+  [--timeout N]` (default 300s, at most 3600) blocks until the record lands or the recorder dies
+  and then answers as a bare call would; a timeout with the run still going exits **75** (see
+  Error Model). No hook calls it.
 - **Evidence transport** — `review`, `resolution`, `chunk-imported` and `chunk-retracted` facts travel between clones
   as their store lines in notes on `refs/notes/prawduct` (`data-model.md` § Evidence Store).
   `evidence ingest [--all] [--json]` (mutating) appends the note lines the store lacks, bounded to
@@ -537,7 +549,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   shape this command was written to end.
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
   `verify-operator-verification` (both mutating). The check is three-way: 0 satisfied, 1 pending
-  entries, **3** the queue could not be parsed (see the third-outcome rule under § Error Model).
+  entries, **3** the queue could not be read or parsed, or `project-state.yaml` exists and could not
+  be read so the `operator_verification_required` flag is unknown (see the third-outcome rule under
+  § Error Model). An absent state file or flag is the gate off, exit 0; an unreadable one is never
+  folded into off. `verify-` and `accept-operator-verification` return an `error:` line, exit 1, for
+  an unreadable queue, never a traceback.
   `accept-operator-verification` refuses on that same unparsed queue rather than recording a bypass
   that covers no entries — an override reached by a different door must not inherit the defect the
   check just closed.
@@ -833,6 +849,8 @@ would have said, because the argument is only convincing in the concrete.
   1 it inherits "there are pending entries, drain or override the first one", and both remedies are
   inapplicable to a file that yielded no entries, leaving the caller at the queue file — the one
   move the refusal forbids. It still BLOCKS: 3 is non-zero, so the gate fails closed.
+  The same exit covers *an unreadable `project-state.yaml`* (#777): folded into 0 it reports the gate
+  off for a repo that turned it on; folded into 1 it claims pending entries nobody counted.
 - `check-learnings-pairing` (2026-08-27), *unreadable pair* — folded into 0 it reports a clean
   pairing off a corpus it could not decode, which is this scope's own subject; folded into 1 it
   claims a duplicate heading it never saw, sending an operator to hand-edit a file that is fine.
@@ -903,7 +921,20 @@ Fail-direction is deliberate and per-purpose:
   a plugin; a demoted one would append its fact to a store nothing can parse. **5 is withdrawn,
   not free:** #167's `self-inflicted-refusal` held it on `develop` until its 2026-09-20 revert,
   and never shipped in a release, so it is left unclaimed rather than given a new meaning;
-  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
+  `critic-begin` **7** = `verify-resolutions` refused on saved test evidence that exists and is
+  stale, red or degraded (added 2026-11-15, #724) — `gates.tests_are_current`'s reason on stdout,
+  checked before anything is derived (no manifest, no marker, one `guard-refusal` fact). Distinct
+  from **1** because exit 1 on `verify-resolutions` demotes, and a wider mode reviews the same tree
+  over the same stale suite; the remedy printed is `gates.suite_remedy`'s (wait for a record attempt
+  still running, else run the suite), then the same mode. Absent evidence does not
+  refuse. `--force` dispatches anyway;
+  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
+  `test-status --wait` **75** = the wait timed out with the run still in progress (added
+  2026-11-15, #1178). sysexits' EX_TEMPFAIL, "try again later", which is the remedy. Folded into
+  **1** it reads as stale, whose remedy (run the suite) starts the second run the wait exists to
+  prevent; folded into **3** it claims the subject could not be read, and it was read: the run is
+  still going. Not **5**, which stays withdrawn. 75 is also what testament exits for a verdict worth
+  asking for again, so agents in this ecosystem already read it that way.
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command went inert and was
   then removed (#303), so those two meanings were removed rather than given new ones. Retiring a
   meaning is what the additive-first norm permits; the thing it forbids is a new meaning wearing
@@ -934,7 +965,7 @@ Fail-direction is deliberate and per-purpose:
   BLOCKING findings still need `verify-resolutions`". Folded into 1 it would read as a dispatch
   failure and invite a retry in another mode, which is the round it exists to refuse. The refusal
   auto-ACCEPTs the outstanding **non-blocking** findings, renders the census to stdout, and appends
-  one `guard-refusal` fact; `verify-resolutions` is never counted and never refused, and no BLOCKING
+  one `guard-refusal` fact; `verify-resolutions` is never counted and never refused by the budget, and no BLOCKING
   finding is ever swept — so the budget can end a review loop and can never open a gate. `--force`
   dispatches anyway. No session state is written, so a 4 needs no `critic-end`. It is checked
   BELOW the free-interval refusal, so an interval that needs no review still answers 3: "the loop

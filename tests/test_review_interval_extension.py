@@ -44,6 +44,34 @@ BLOCKING = {"name": "Broken", "goal": "Nothing Is Broken",
 # unticked: MID leaves it and four more (a later review is owed); END leaves it alone.
 MID, END = 0, 4
 
+#: A stubbed branch range for the fixtures below that build facts by hand:
+#: ``feat/work``'s tip and the merge base it was cut from, newest first, the
+#: shape ``evidence_notes._branch_commits`` answers. Which review is the
+#: branch's is ``critic_consolidate.select_branch_review``'s to say, and it
+#: decides by where a review ANCHORS on this range, so a hand-built fact
+#: needs an anchor there, not only a branch name (#1180).
+TIP, MERGE_BASE, OFF_LINEAGE = "1" * 40, "2" * 40, "3" * 40
+
+
+def _on_the_branch(monkeypatch, facts: list, *, anchor: str = TIP,
+                   recorded_on: "str | None" = "feat/work",
+                   branch_range: "dict | None" = None) -> None:
+    """Make ``facts`` reviews recorded on ``recorded_on`` (``None``: no
+    ``actor.branch``, a pre-3.8 fact or a detached HEAD) and anchored at
+    ``anchor``, with ``feat/work`` checked out over the stubbed range."""
+    from lib import evidence, evidence_notes
+
+    for f in facts:
+        f["schema"] = evidence.SCHEMA_VERSION
+        f["actor"] = {"branch": recorded_on} if recorded_on else {}
+        f["body"]["head_commit"] = anchor
+    monkeypatch.setattr(critic_mode.gitstate, "current_branch", lambda _p: "feat/work")
+    monkeypatch.setattr(
+        evidence_notes, "_branch_commits",
+        lambda _p: branch_range or {"status": "ok", "commits": {TIP, MERGE_BASE},
+                                    "ordered": [TIP, MERGE_BASE]},
+    )
+
 
 def _plan(
     ticked: int, last_type: "str | None" = None, deliverables: "dict[int, str] | None" = None
@@ -95,7 +123,7 @@ def _scenario(
     )
     _git(repo, "checkout", "-b", "feat/work", "--quiet")
     (repo / "src/app.py").write_text("x = 2\n")
-    begin = _run_begin(repo, "--mode", "chunk", "--chunk", str(ticked + 1))
+    begin = _run_begin(repo, "--mode", "chunk", "--chunks", str(ticked + 1))
     assert begin.returncode == 0, begin.stderr
     manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
     _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=findings)
@@ -214,7 +242,7 @@ class TestAFixIsToldFromTheNextChunkByItsDeliverables:
             critic_mode.binding_progress(repo, work_unit.resolve(repo)),
         )
         assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
-        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "2")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "2")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["base_commit"] == reviewed, manifest["base_commit"]
@@ -338,7 +366,7 @@ class TestNothingOwedIsSkipped:
         plan.write_text(_plan(1))
         _commit_all(repo, "tick chunk 1")
         (repo / "src/other.py").write_text("y = 1  # chunk 2\n")
-        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "2")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "2")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"],
@@ -375,14 +403,14 @@ class TestNothingOwedIsSkipped:
         plan.write_text(_plan(1))
         _commit_all(repo, "tick chunk 1")
         (repo / "src/other.py").write_text("y = 1  # chunk 2\n")
-        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "2")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "2")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"],
                        findings=[{**BLOCKING, "files": ["src/other.py"]}])
         assert _run_consolidate(repo).returncode == 0
         (repo / "src/other.py").write_text("y = 2  # an attempted fix\n")
-        verify = _run_begin(repo, "--mode", "verify-resolutions", "--chunk", "2")
+        verify = _run_begin(repo, "--mode", "verify-resolutions", "--chunks", "2")
         assert verify.returncode == 0, verify.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[])
@@ -403,7 +431,7 @@ class TestNothingOwedIsSkipped:
         covers the fix' with every chunk already built."""
         repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False)
         _commit_all(repo, "fix")
-        begin = _run_begin(repo, "--mode", "cumulative", "--chunk", "1")
+        begin = _run_begin(repo, "--mode", "cumulative", "--chunks", "1")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[WARNING])
@@ -451,9 +479,7 @@ class TestReviewChain:
         cumulative = self._review("r2", "t0", "t1", ts, mode="cumulative (bundle review, ready for merge)")
         verify = self._review("r3", "t1", "t2", ts,
                               mode="verify-resolutions (delta review, prior findings only)")
-        for f in (chunk, cumulative, verify):
-            f["actor"] = {"branch": "feat/work"}
-        monkeypatch.setattr(critic_mode.gitstate, "current_branch", lambda _p: "feat/work")
+        _on_the_branch(monkeypatch, [chunk, cumulative, verify])
         from lib import evidence
         monkeypatch.setattr(evidence, "read_facts",
                             lambda _p: {"status": "ok", "facts": [chunk, cumulative, verify]})
@@ -473,13 +499,12 @@ class TestOnlyASuppliedChunkIdIsCredited:
     review chain — never record-lint's Status-derived graded chunk, which is
     the same first-unticked reading as ``progress.current_id`` (#911)."""
 
-    def _owed(self, monkeypatch, facts: list, states: dict, *, legacy: bool = False):
+    def _owed(self, monkeypatch, facts: list, states: dict, *, legacy: bool = False, **where):
         """``states`` maps id → ``ChunkState``: the answer ``plan_status`` gave.
-        The work since the newest review is stubbed to touch no Deliverables."""
+        The work since the newest review is stubbed to touch no Deliverables.
+        ``where`` places the facts on the branch (:func:`_on_the_branch`)."""
         from lib import evidence, gates, plan_status
-        for f in facts:
-            f["actor"] = {"branch": "feat/work"}
-        monkeypatch.setattr(critic_mode.gitstate, "current_branch", lambda _p: "feat/work")
+        _on_the_branch(monkeypatch, facts, **where)
         monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "ok", "facts": facts})
         monkeypatch.setattr(gates, "covered_frontier", lambda _p, **_k: {"commit": "abcdef1234567890"})
         monkeypatch.setattr(critic_mode, "_paths_since_tree", lambda _t, _p: set())
@@ -579,6 +604,85 @@ class TestOnlyASuppliedChunkIdIsCredited:
         owed = self._owed(monkeypatch, [chunk], states, legacy=True)
         assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
         assert self._owed(monkeypatch, [chunk], states) is None
+
+
+class TestTheDeferralStandsOnTheOwnersReview:
+    """#1180 — the deferral's question is "may this review be deferred, given
+    the newest review that covers this branch's lineage?". Which review covers
+    the lineage is ``critic_consolidate.select_branch_review``'s answer, the
+    one dispatch and inference use; it used to be a filter on the branch NAME
+    a fact carries, which answered a nearby question. Each case runs the full
+    predicate on one deferrable state (04 certified by r1, 05 still to build)
+    and moves only where r1 sits; the first is the control that defers."""
+
+    _owed = TestOnlyASuppliedChunkIdIsCredited._owed
+
+    def _deferrable(self) -> "tuple[list, dict]":
+        from lib.plan_status import ChunkState
+        chunk = {"kind": "review", "id": "r1", "body": {
+            "base_tree": "t0", "head_tree": "t1", "findings": [], "mode": "chunk",
+            "chunk": "04"}}
+        states = {c: ChunkState("done", imported=True) for c in ("01", "02", "03")}
+        states["04"] = ChunkState("done", fact_id="r1")
+        states["05"] = ChunkState("open")
+        return [chunk], states
+
+    def _deferred(self, monkeypatch, **where) -> bool:
+        owed = self._owed(monkeypatch, *self._deferrable(), **where)
+        return owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK
+
+    def test_a_review_anchored_on_this_branch_defers(self, monkeypatch):
+        assert self._deferred(monkeypatch)
+
+    def test_a_review_off_this_lineage_defers_nothing_though_it_carries_this_branchs_name(
+        self, monkeypatch
+    ):
+        """A reused branch name: `feat/work` deleted and cut again, its old
+        review still in the clone-wide store under the same name. That review
+        covers a lineage this branch is not on, so nothing it says can carry
+        this branch's fix — the name filter deferred on it."""
+        assert not self._deferred(monkeypatch, anchor=OFF_LINEAGE)
+
+    def test_a_review_past_the_merge_base_answers_whatever_branch_recorded_it(self, monkeypatch):
+        """A delegate's review merged in carries the delegate's branch name; a
+        pre-3.8 fact or a detached-HEAD review carries none. Anchored on a
+        commit of this branch, either covers this lineage — the name filter
+        could not see them."""
+        assert self._deferred(monkeypatch, recorded_on="delegate/chunk-04")
+        assert self._deferred(monkeypatch, recorded_on=None)
+
+    def test_at_the_merge_base_only_this_branchs_own_review_settles_it(self, monkeypatch):
+        """The merge base is shared with every sibling cut from it. There the
+        owner prefers a review recorded on this branch and, with none, falls
+        back to whichever it has — right for a verify anchor, but it does not
+        show this lineage was reviewed. Doubt keeps the review owed."""
+        assert self._deferred(monkeypatch, anchor=MERGE_BASE)
+        assert not self._deferred(monkeypatch, anchor=MERGE_BASE, recorded_on="feat/sibling")
+        assert not self._deferred(monkeypatch, anchor=MERGE_BASE, recorded_on=None)
+
+    def test_no_branch_range_defers_nothing(self, monkeypatch):
+        """No merge base resolves: no review can be placed on the lineage."""
+        assert not self._deferred(
+            monkeypatch, branch_range={"status": "unbounded", "reason": "no base branch"}
+        )
+
+    def test_the_answer_is_the_owners(self, monkeypatch):
+        """Settled, the review the deferral stands on is the one the cache
+        writer and verify dispatch select — not a second answer that agrees."""
+        from lib import evidence
+
+        older = {"kind": "review", "id": "r-old", "ts": "2026-09-22T09:00:00Z",
+                 "body": {"head_tree": "t0", "mode": "chunk"}}
+        newer = {"kind": "review", "id": "r-new", "ts": "2026-09-22T10:00:00Z",
+                 "body": {"head_tree": "t1", "mode": "chunk"}}
+        _on_the_branch(monkeypatch, [older])
+        _on_the_branch(monkeypatch, [newer], anchor=MERGE_BASE)
+        facts = [older, newer]
+        monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "ok", "facts": facts})
+        picked = critic_mode._newest_branch_review(Path("."))
+        # Depth, not recording order: the review further along the branch.
+        assert picked["id"] == "r-old"
+        assert picked is cc.select_branch_review(facts, [TIP, MERGE_BASE], "feat/work")
 
 
 CUMULATIVE_FINAL = "cumulative-final"
@@ -717,7 +821,7 @@ class TestBoundaryReviewOwed:
     def test_after_the_cumulative_nothing_rides_it(self, tmp_path):
         repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=False, last_type=CUMULATIVE_FINAL)
         _commit_all(repo, "fix")
-        begin = _run_begin(repo, "--mode", "cumulative", "--chunk", "5")
+        begin = _run_begin(repo, "--mode", "cumulative", "--chunks", "5")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[WARNING])
@@ -765,6 +869,26 @@ class TestBoundaryReviewOwed:
                 Path("."), Path(".prawduct"), object(), progress
             ) is owed, facts
 
+    def test_a_cumulative_off_this_lineage_does_not_discharge_the_boundary(self, monkeypatch):
+        """#1180, the boundary half: a `cumulative` recorded under this
+        branch's name on a lineage it is not on (the name reused) says nothing
+        about this branch, so the boundary review is still owed. The same
+        cumulative anchored on the branch discharges it — the control. Asked
+        through the real selection, not a stubbed one."""
+        from lib import evidence
+        monkeypatch.setattr(critic_mode, "declares_boundary_cumulative", lambda _p, _b: True)
+        progress = critic_mode.PlanProgress(5, 4, "05", ("05",), {}, False)
+        for anchor, owed in ((OFF_LINEAGE, True), (TIP, False)):
+            cumulative = {"kind": "review", "id": "r2",
+                          "body": {"mode": "cumulative (bundle review, ready for merge)",
+                                   "base_tree": "t1", "head_tree": "t2"}}
+            _on_the_branch(monkeypatch, [cumulative], anchor=anchor)
+            monkeypatch.setattr(evidence, "read_facts",
+                                lambda _p, f=[cumulative]: {"status": "ok", "facts": f})
+            assert critic_mode.boundary_cumulative_still_owed(
+                Path("."), Path(".prawduct"), object(), progress
+            ) is owed, anchor
+
 
 class TestShortPlanBoundaryOwed:
     """A short plan's boundary `cumulative` is every chunk's review, so on its
@@ -791,7 +915,7 @@ class TestShortPlanBoundaryOwed:
 
     def test_the_close_after_a_review_of_that_chunk_names_the_cumulative(self, tmp_path):
         _short_plan_branch(tmp_path, chunks=3, committed=("01", "02"))
-        begin = _run_begin(tmp_path, "--mode", "chunk", "--chunk", "3")
+        begin = _run_begin(tmp_path, "--mode", "chunk", "--chunks", "3")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((tmp_path / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(tmp_path, "reviewer", manifest["commit_reviewed"],

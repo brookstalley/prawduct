@@ -30,12 +30,14 @@ skipped both review gates.)
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
 from pathlib import Path
 
-from .change_log import CHANGE_LOG_REL_PATH, parse_change_log
+from .change_log import CHANGE_LOG_REL_PATH
 from .core import read_str_yaml_key, suite_coupled_prefixes
 
 _BASE_BRANCH_KEY = "base_branch"
@@ -1439,28 +1441,89 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     )
 
 
+#: The remedy every legacy-log verdict names, so the PR gate and the release send
+#: an author to the same place: since #1125 a change-log entry is no change record
+#: any release reads, and following "add an entry" would only be refused there.
+_MOVE_ONTO_FRAGMENTS = (
+    "releases read only `.prawduct/changes/` (they refuse an unreleased change-log entry), so "
+    "run /prawduct:doctor (check #22) to move this repo onto fragments, then add "
+    "`.prawduct/changes/<scope>.md` for this work"
+)
+
+
+def _legacy_pending_refused(content: str) -> bool:
+    """Print the release's own refusal for each unreleased entry in ``content``.
+
+    Returns whether any was printed. The lines are
+    ``release_readiness.legacy_pending_refusals``' verbatim, so this gate refuses
+    exactly the entries ``check-releasability`` and the cut would, with the same
+    ``/prawduct:doctor`` remedy.
+    """
+    from . import release_readiness  # noqa: PLC0415 — lazy; release_readiness imports gates
+
+    refusals = release_readiness.legacy_pending_refusals(content)
+    for refusal in refusals:
+        print(refusal, file=sys.stderr)
+    return bool(refusals)
+
+
+def _committed_log_pending_verdict(project_dir: Path) -> int | None:
+    """Exit 1 when the committed change-log holds an unreleased entry, else ``None``.
+
+    The release refuses such an entry whatever else the branch adds (#1125), so
+    both paths of :func:`check_change_log_entry` ask it: a fragment does not
+    launder a pending legacy entry, whether this branch added it or it was
+    already there. A log absent at ``HEAD`` has nothing to refuse.
+    """
+    listed = subprocess.run(
+        ["git", "ls-tree", "--name-only", "HEAD", "--", CHANGE_LOG_REL_PATH],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if listed.returncode != 0:
+        print(
+            f"git-failed: git ls-tree HEAD {CHANGE_LOG_REL_PATH} failed: {listed.stderr.strip()}."
+            " Check the change-log by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    if not listed.stdout.strip():
+        return None
+    shown = subprocess.run(
+        ["git", "show", f"HEAD:{CHANGE_LOG_REL_PATH}"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        errors="surrogateescape",
+        timeout=30,
+    )
+    if shown.returncode != 0:
+        print(
+            f"git-failed: git show HEAD:{CHANGE_LOG_REL_PATH} failed: {shown.stderr.strip()}."
+            " Check the change-log by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    return 1 if _legacy_pending_refused(shown.stdout) else None
+
+
 def _entry_check_without_history(project_dir: Path) -> int:
-    """The weaker entry check available when the change-log is untracked.
+    """The legacy-log verdict when the change-log is untracked. It never passes.
 
-    The gate's real contract is "this branch ADDED an entry" — that is what the
-    ``+## `` scan enforces, and why ``entry-edited-not-added`` is a separate
-    failure. An untracked file has no merge-base version, so that question is
-    unanswerable here, and no substitute exists: a change-log entry carries
-    ``scope`` and ``release`` (:mod:`lib.change_log`) and nothing that records
-    which branch wrote it.
-
-    So this is a deliberate, *named* weakening rather than parity, and the
-    message says which check the caller actually got. It reads the log from
-    disk — the same way :mod:`lib.release_readiness` already reads it — and
-    passes only when at least one entry parses. Degrading the check must not
-    disarm it: a missing or entry-less log still fails, because those are the
-    states the gate exists to catch and they are visible from disk.
-
-    Parsing goes through :func:`lib.change_log.parse_change_log` rather than a
-    local ``## `` scan. A private classifier here would be the fifth reading of
-    this format, and the last four disagreeing is what made this gate's history.
+    Git cannot say whether this branch added an entry to a file it does not
+    track, so this check used to read the log from disk and pass on any entry
+    there (``entry-present-untracked``). Since releases read only fragments
+    (#1125), no entry in that log is a change record a release reads, so nothing
+    on disk can vouch for this branch: an unreleased entry is refused with the
+    release's own ``legacy-pending-entry`` line, and anything else is
+    ``no-entry``. Both name ``/prawduct:doctor``, whose move onto fragments is the
+    remedy that clears this gate (an ignored fragment directory then gets
+    :func:`_fragment_check_without_history`).
     """
     path = project_dir / CHANGE_LOG_REL_PATH
+    untracked = f"{CHANGE_LOG_REL_PATH} is untracked here (gitignored, or never added)"
     # The same pair `release_readiness` reads the log with: a non-UTF-8 byte is
     # as unreadable as a missing file, and an exception escaping here would be
     # the one verdict Step 1c cannot route.
@@ -1468,39 +1531,18 @@ def _entry_check_without_history(project_dir: Path) -> int:
         content = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         print(
-            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (gitignored, or "
-            f"never added) and could not be read from disk either: {exc}. "
-            "Add the change-log before opening the PR.",
+            f"no-entry: {untracked} and could not be read from disk either: {exc}. "
+            f"No change record vouches for this branch: {_MOVE_ONTO_FRAGMENTS}.",
             file=sys.stderr,
         )
         return 1
-
-    # Only release-pending entries vouch for anything: an entry carrying
-    # `release=` shipped long ago, and a log that holds nothing but shipped
-    # entries would otherwise pass every branch forever. Same semantics as the
-    # STOP row's "scope= and no release=" the strong check enforces.
-    entries = parse_change_log(content)
-    pending = [entry for entry in entries if entry.tags.get("release") is None]
-    if not pending:
-        print(
-            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (gitignored, or "
-            "never added), and the copy on disk holds no release-pending entry "
-            f"({len(entries)} entr(ies), all carrying release=). Add a change-log "
-            "entry for this work before opening the PR.",
-            file=sys.stderr,
-        )
+    if _legacy_pending_refused(content):
         return 1
-
     print(
-        f"entry-present-untracked: {CHANGE_LOG_REL_PATH} is untracked here "
-        "(gitignored, or never added), so git cannot say whether THIS branch "
-        f"added an entry — only that the log on disk holds {len(pending)} "
-        "release-pending. That weaker "
-        "check passed. To restore the real one, track the log: `.prawduct/*` "
-        "plus `!.prawduct/change-log.md` (a bare `.prawduct/` cannot be "
-        "negated — git will not re-include a file under an excluded directory)."
+        f"no-entry: {untracked}, and no entry in it is a change record: {_MOVE_ONTO_FRAGMENTS}.",
+        file=sys.stderr,
     )
-    return 0
+    return 1
 
 
 def _fragment_check_without_history(project_dir: Path) -> int:
@@ -1589,8 +1631,8 @@ def _fragment_entry_verdict(
         cut = _cut_record_verdict(project_dir, base, record)
         if cut is not None:
             return cut
-        # A branch that adds a legacy entry instead still goes to the legacy
-        # checks, which is the dual-shape window: either record is accepted.
+        # A branch that adds a legacy entry instead goes to the legacy checks,
+        # which refuse an unreleased entry as the release does (#1125).
         if CHANGE_LOG_REL_PATH in files:
             return None
         from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
@@ -1656,12 +1698,13 @@ def _fragment_entry_verdict(
 
 
 def check_change_log_entry(project_dir: Path) -> int:
-    """PR-boundary probe: a code-changing branch must add a change-log entry.
+    """PR-boundary probe: a code-changing branch must add a change record.
 
     A branch whose ``merge-base...HEAD`` diff contains **judgeable** work — as
     :func:`coverage_algebra.is_judgeable_path` defines it, the same predicate
     ``check-pr-doc-only`` and the coverage gates ask — can only be shipped by the
-    release flow if a change-log entry exists for it. Historically nothing
+    release flow if a change record exists for it: since #1125 a fragment, the
+    only record a release reads. Historically nothing
     checked this, so a branch could merge with NO entry and the gap surfaced only
     at release reconstruction (REL-6C3W — CRT-7B4M/#82, found at the v2.0.16
     release). The `/prawduct:pr` Create flow (Step 1c) runs this probe and STOPs
@@ -1679,18 +1722,25 @@ def check_change_log_entry(project_dir: Path) -> int:
       * the diff is empty, or holds no judgeable file, or
       * a judgeable diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
-        existing entry's text does not vouch for new work — and no tag line it
-        adds carries a retired key (``change_log.RETIRED_TAG_KEYS``), or
-      * the log is UNTRACKED and the copy on disk holds at least one entry
-        (``entry-present-untracked`` — the weaker check of
-        :func:`_entry_check_without_history`, which says so).
+        existing entry's text does not vouch for new work — no tag line it
+        adds carries a retired key (``change_log.RETIRED_TAG_KEYS``), and the
+        committed log holds no unreleased entry (a trunk branch whose entry
+        already carries ``release=``).
+
+    An unreleased entry in the committed log refuses as the release does
+    (#1125): ``legacy-pending-entry``, the release's own lines, naming
+    ``/prawduct:doctor``. An UNTRACKED log never passes
+    (:func:`_entry_check_without_history`).
 
     When the branch touches ``.prawduct/changes/``, the fragment checks of
     :func:`_fragment_entry_verdict` answer instead: exit 0 ``fragment-present``,
-    or exit 1 ``fragment-invalid`` / ``fragment-edited-not-added``.
+    or exit 1 ``fragment-invalid`` / ``fragment-edited-not-added``. A fragment
+    exit 0 is still refused (``legacy-pending-entry``) when the committed log
+    holds an unreleased entry, as the release would.
 
     Exit 1 otherwise, with a named reason on stderr (``no-entry``,
-    ``entry-edited-not-added``, ``retired-key``, ``no-base``, ``git-failed``). Un-evaluable
+    ``entry-edited-not-added``, ``retired-key``, ``legacy-pending-entry``,
+    ``no-base``, ``git-failed``). Un-evaluable
     git state fails closed — the caller falls back to manual judgment rather
     than silently skipping the probe (same posture as ``check_pr_doc_only``).
     An untracked log is not un-evaluable and must not be read as absent: the
@@ -1744,8 +1794,17 @@ def check_change_log_entry(project_dir: Path) -> int:
         )
         return 0
 
-    fragment_verdict = _fragment_entry_verdict(project_dir, base, files, judgeable)
+    # The fragment verdict's stdout is held back until the committed-log check
+    # has answered: a passing fragment still meets the release's refusal of a
+    # pending legacy entry (so the gate and `check-releasability` agree), and
+    # a `fragment-present` line beside that refusal would contradict the exit.
+    held = io.StringIO()
+    with contextlib.redirect_stdout(held):
+        fragment_verdict = _fragment_entry_verdict(project_dir, base, files, judgeable)
     if fragment_verdict is not None:
+        if fragment_verdict == 0 and _committed_log_pending_verdict(project_dir) is not None:
+            return 1
+        sys.stdout.write(held.getvalue())
         return fragment_verdict
 
     if CHANGE_LOG_REL_PATH not in files:
@@ -1776,9 +1835,8 @@ def check_change_log_entry(project_dir: Path) -> int:
         sample = ", ".join(judgeable[:3])
         more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         print(
-            f"no-entry: branch changes code ({sample}{more}) but "
-            f"{CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "
-            f"this work before opening the PR.",
+            f"no-entry: branch changes code ({sample}{more}) but adds no change record — "
+            f"{_MOVE_ONTO_FRAGMENTS}, before opening the PR.",
             file=sys.stderr,
         )
         return 1
@@ -1831,7 +1889,17 @@ def check_change_log_entry(project_dir: Path) -> int:
         )
         return 1
 
-    print(f"entry-present: {CHANGE_LOG_REL_PATH} adds a new entry in {base}...HEAD.")
+    # Judged as committed, as the fragment checks are: the release refuses an
+    # unreleased entry in the live log (#1125), so a branch adding one is refused
+    # here with the same lines, before it merges, rather than at the release.
+    pending = _committed_log_pending_verdict(project_dir)
+    if pending is not None:
+        return pending
+
+    print(
+        f"entry-present: {CHANGE_LOG_REL_PATH} adds a new entry in {base}...HEAD, "
+        "already tagged as released."
+    )
     return 0
 
 
