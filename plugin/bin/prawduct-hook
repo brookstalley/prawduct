@@ -6884,13 +6884,15 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
 
     Exit codes:
       0  - satisfied: the requirement is off (an unreadable queue is then a
-           stderr NOTE, never a block), or no entry is pending
+           stderr NOTE, never a block), or no entry is pending; also the
+           plugin's own ``lib/`` failing to import, which fails OPEN with a
+           stderr NOTE (api-contract § Error Model, "Unevaluable advisory gate")
       1  - pending entries; stderr names the first ID and the paths that can
            move them
-      3  - could not evaluate, and blocks: the queue holds content that parsed
-           as zero entries, the queue file cannot be read or decoded,
-           ``project-state.yaml`` cannot be read (so whether the gate is on is
-           unknown), or the plugin ``lib/`` could not be loaded
+      3  - could not evaluate the repo's subject, and blocks: the queue holds
+           content that parsed as zero entries, the queue file cannot be read
+           or decoded, or ``project-state.yaml`` cannot be read (so whether the
+           gate is on is unknown)
     """
     lib_root = _plugin_root()
     if lib_root not in sys.path:
@@ -6898,25 +6900,25 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
     try:
         from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
     except ImportError as exc:
-        # Fail CLOSED, with exit 3. A gate that could not load has not found
-        # the requirement off, and it cannot read the flag that would say so.
-        # Kept as a guard rather than an unguarded import (as `_gates()`
-        # callers do) because an uncaught ImportError exits 1 — this command's
-        # "pending entries, drain or override" — and sends the reader to two
-        # remedies that cannot work on a gate that never ran.
+        # Fail OPEN, exit 0 — the recorded contract (api-contract § Error Model,
+        # "Unevaluable advisory gate"): this is prawduct itself broken, not the
+        # repo's subject unreadable, and blocking every caller's PR on a broken
+        # install helps nobody, least of all the repos that never enabled the
+        # gate. Said on stderr so the skip is visible. A subject the gate could
+        # not read (queue, state file) is the different case below: exit 3.
         print(
-            "blocking: check-operator-verification could not evaluate: the plugin "
-            f"lib/ could not be loaded from {lib_root} ({exc}), so whether the "
-            "operator-verification gate is on, and what its queue holds, is "
-            "unknown. Repair or reinstall the plugin and re-run.",
+            "NOTE: check-operator-verification skipped — the plugin lib/ could not "
+            f"be loaded from {lib_root} ({exc}). Repair or reinstall the plugin; "
+            "this gate did not run.",
             file=sys.stderr,
         )
-        return 3
+        return 0
 
     result = ov.run_check_operator_verification(project_dir)
     # First, and before `required` is read: an unreadable state file leaves
     # `required` unknown (None), which `not result["required"]` would otherwise
-    # treat as "gate off" and exit 0, the silent fail-open this branch closes.
+    # treat as "gate off" and exit 0 — reporting the gate off for a repo that
+    # turned it on.
     # Exit 3 for the same reason as the unreadable queue below.
     if result.get("queue_status") == ov.QUEUE_STATE_UNREADABLE:
         print(result["message"], file=sys.stderr)
@@ -10507,8 +10509,10 @@ def cmd_archive_change_log(project_dir: Path, argv: list[str]) -> int:
             print(
                 "refused: git tracks this repo's change record but would ignore "
                 f"{change_log_archive.ARCHIVE_DIR_REL}/, so committing the move would drop the "
-                "moved entries from history — nothing moved. Un-ignore it — `prawduct-hook update-gitignore --dry-run` "
-                "prints the lines that re-include it — and re-run.",
+                "moved entries from history — nothing moved. Un-ignore it: after a `.prawduct/*` rule add "
+                f"`!{change_log_archive.ARCHIVE_DIR_REL}/`; a wholesale `.prawduct/` rule "
+                "cannot be narrowed by a `!` line, so replace it with the lines "
+                "`prawduct-hook update-gitignore --dry-run` prints. Then re-run.",
                 file=sys.stderr,
             )
             return 1

@@ -547,7 +547,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +9 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (review-protocol.md +9): the Goal 1 /
     # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
     # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
-    "dispatched-reviewer": 9600,
+    # -10 on 2026-11-16 (coherence-pass Critic round): critic-reviewer.md loses "the builder ran
+    # the tests before requesting review" — false since the suite moved to the boundary, and cut
+    # from the critic skill for that reason in Chunk 01. Ceiling lowered with it.
+    "dispatched-reviewer": 9590,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -697,16 +700,19 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +16 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (goals-1-3.md +16): the Goal 1 /
     # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
     # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
-    "dispatched-reviewer-inner": 5236,
+    # -10 on 2026-11-16 (coherence-pass Critic round): critic-reviewer.md loses "the builder ran
+    # the tests before requesting review" — false since the suite moved to the boundary, and cut
+    # from the critic skill for that reason in Chunk 01. Ceiling lowered with it.
+    "dispatched-reviewer-inner": 5226,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 5784,
     "single-pass-full": 10148,
-    "dispatched-reviewer": 9601,
+    "dispatched-reviewer": 9591,
     "coordinator-fork": 10818,
     "coordinator-fork-inner": 6454,
-    "dispatched-reviewer-inner": 5237,
+    "dispatched-reviewer-inner": 5227,
 }
 
 

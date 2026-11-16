@@ -17,13 +17,16 @@ separately disagreed. Each is fixed through one owner:
   `test-status` joins finding and remedy, and exit 7, the release check's `unproven-suite` line and
   the coverage-transfer note each print the finding plus `suite_remedy` once.
 - **`check-operator-verification` speaks in the voice of its state.** With the requirement off, an
-  unreadable queue prints a note that says nothing is blocked; a `lib/` that will not load exits 3
-  ("could not evaluate") instead of passing silently. The PR skill's exit-3 row names every state.
+  unreadable queue prints a note that says nothing is blocked; a plugin whose `lib/` will not load
+  still fails open (the recorded contract) but says the gate did not run. The PR skill's exit-3
+  row names every state it covers.
 - **The `.prawduct/` ignore advice is safe to follow and has one owner.** It leads with replacing a
   wholesale rule by the printed lines; deleting the rule says "then run `prawduct-hook
-  update-gitignore`" in the same sentence, so no session file is exposed. The PR gate, the PR
-  skill and `archive-change-log` point at `prawduct-hook update-gitignore --dry-run` instead of
-  spelling their own partial lines. `contract-ignored-by-rule` is a `warn` and its evidence no
+  update-gitignore`" in the same sentence, so no session file is exposed. The PR gate and the PR
+  skill point at `prawduct-hook update-gitignore --dry-run` instead of spelling their own partial
+  lines; `archive-change-log` names the one `!` line a `.prawduct/*` rule needs (the archive does
+  not exist before its first move, so the dry run cannot see it) and the dry run for a wholesale
+  rule. `contract-ignored-by-rule` is a `warn` and its evidence no
   longer names internal code.
 - **The PR gate refuses what the release refuses.** With the change log untracked,
   `check-change-log-entry` reads the on-disk log and refuses its pending legacy entries, as

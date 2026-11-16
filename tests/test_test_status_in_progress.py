@@ -693,6 +693,24 @@ class TestOneOwnerOfTheSuiteRemedy:
         control = gates.transfer_remedy(transfer, reason)
         assert "uncontended" not in control.lower(), control
 
+    def test_the_stash_route_carries_the_owners_clause_too(self, tmp_path):
+        """With suite-coupled paths uncommitted, the transfer note takes its
+        stash-run-pop route — which returned before the failing/degraded clause
+        was consulted, so a red or contended saved run was told only "run the
+        suite" and looped on a refusing gate."""
+        transfer = {"prior_fact_id": "rev-x", "files": ["a.py"], "reason": ""}
+        for state, remedy, must in (
+            (gates.SUITE_DEGRADED, f"{gates.RUN_AND_RECORD}, uncontended", "uncontended"),
+            (gates.SUITE_FAILING, f"fix the failing test(s), then {gates.RUN_AND_RECORD}",
+             "fix the failing test"),
+        ):
+            step = gates.SuiteStep(state, remedy)
+            note = gates.transfer_remedy(transfer, "r", ["a.py"], suite_step=step)
+            assert "git stash push" in note and note.lower().count(must) == 1, note
+        control = gates.transfer_remedy(transfer, "r", ["a.py"])
+        assert "git stash push" in control and "uncontended" not in control.lower(), control
+        assert "run the suite" in control, control
+
     def test_the_skill_and_review_cycle_rows_defer_to_the_printed_remedy(self):
         for rel in ("skills/critic/SKILL.md", "skills/critic/review-cycle.md"):
             text = " ".join((ROOT / rel).read_text(encoding="utf-8").split())

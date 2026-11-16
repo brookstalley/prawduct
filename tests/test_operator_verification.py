@@ -1645,10 +1645,14 @@ def test_off_gate_undecodable_queue_note_carries_no_blocking_voice(tmp_path):
     assert control.returncode == 3 and "NOT a clear queue" in control.stderr
 
 
-def test_a_gate_that_cannot_load_its_lib_fails_closed(tmp_path):
-    """The ImportError arm printed "gate skipped" and exited 0 — with the gate
-    ON. A plugin tree whose ``lib/`` lacks the module is the real failure: the
-    check exits 3, could-not-evaluate, the same code as an unreadable input."""
+def test_a_gate_that_cannot_load_its_lib_fails_open_by_contract(tmp_path):
+    """Renegotiated: a coherence pass moved this arm to exit 3, and the Critic held
+    it against the recorded contract — api-contract § Error Model, "Unevaluable
+    advisory gate": the plugin's OWN lib failing to import fails open, exit 0,
+    because prawduct is what is broken and blocking every caller's PR (most of
+    which never enabled the gate) helps nobody. What must hold is that the skip
+    is SAID: the NOTE names the gate as not run and the repair, and the old
+    "gate skipped" one-liner that read as a verdict is gone."""
     import shutil  # noqa: PLC0415
 
     plugin = tmp_path / "plugin"
@@ -1664,11 +1668,12 @@ def test_a_gate_that_cannot_load_its_lib_fails_closed(tmp_path):
         env={"CLAUDE_PROJECT_DIR": str(repo), "CLAUDE_PLUGIN_ROOT": str(plugin),
              "PATH": "/usr/bin:/bin"},
     )
-    assert proc.returncode == 3, proc.stdout + proc.stderr
-    assert "could not evaluate" in proc.stderr, proc.stderr
-    assert "gate skipped" not in proc.stderr, proc.stderr
-    # The control: the intact tree evaluates the same repo (empty queue → 0).
-    assert _run_hook_env(repo, "check-operator-verification").returncode == 0
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stderr.startswith("NOTE:"), proc.stderr
+    assert "did not run" in proc.stderr and "reinstall" in proc.stderr, proc.stderr
+    # The control: the intact tree evaluates the same repo (empty queue → 0, no NOTE).
+    control = _run_hook_env(repo, "check-operator-verification")
+    assert control.returncode == 0 and "did not run" not in control.stderr
 
 
 def test_the_handler_docstring_lists_every_exit():
@@ -1686,11 +1691,13 @@ def test_the_handler_docstring_lists_every_exit():
 
 
 def test_the_pr_skill_exit_3_row_names_every_exit_3_state():
-    """Exit 3 is three inputs the gate could not read and a gate that could not
-    load: the row must name each, or a reader meeting the state file's refusal
-    goes looking for a queue heading to blame."""
+    """Exit 3 is the three inputs the gate could not read: the row must name each,
+    or a reader meeting the state file's refusal goes looking for a queue heading
+    to blame. A plugin that cannot load its lib/ is NOT one of them — it fails open
+    by contract (exit 0), so the row must not claim it."""
     text = (_HOOK_PATH.parent.parent / "skills" / "pr" / "SKILL.md").read_text(encoding="utf-8")
     row = next(ln for ln in text.splitlines() if ln.startswith("- **Exit 3**"))
     for state in ("parsed as zero entries", "cannot be read or decoded",
-                  "project-state.yaml", "could not load"):
+                  "project-state.yaml"):
         assert state in row, (state, row)
+    assert "lib/" not in row, row

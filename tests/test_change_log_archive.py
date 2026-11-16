@@ -464,9 +464,35 @@ class TestCommand:
         assert _archive(prawduct) == {}
         assert (prawduct / "change-log.md").read_text(encoding="utf-8") == VERSIONED
 
-        # The remedy points at the one owner of the narrowing lines; following it — paste
-        # the lines `update-gitignore --dry-run` prints — un-ignores the archive and the
-        # move then goes through.
+        # A `.prawduct/*` rule that re-includes everything else: the archive does not exist
+        # before its first move, so `update-gitignore --dry-run` cannot see it and prints
+        # nothing for it. The remedy must name the one line itself; following it — adding
+        # exactly that backticked `!` line — lets the move go through.
+        bang = re.search(r"add `(![^`]+)`", proc.stderr)
+        assert bang, proc.stderr
+        before = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+        (tmp_path / ".gitignore").write_text(before + bang.group(1) + "\n", encoding="utf-8")
+        assert _cli(prawduct, "--apply").returncode == 0
+        assert _archive(prawduct) != {}
+
+    def test_a_wholesale_rule_hiding_the_archive_is_answered_by_the_dry_run(
+            self, tmp_path: Path) -> None:
+        """A bare `.prawduct/` rule cannot be narrowed by a `!` line; the remedy routes it
+        to `update-gitignore --dry-run`, and pasting the lines that prints is enough."""
+        prawduct = _repo(tmp_path, VERSIONED)
+        env = {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+               "HOME": str(tmp_path), "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"}
+
+        def git(*args: str) -> None:
+            subprocess.run(["git", *args], cwd=str(tmp_path), check=True,
+                           capture_output=True, env=env)
+
+        git("init", "-q", "-b", "main")
+        (tmp_path / ".gitignore").write_text(".prawduct/\n", encoding="utf-8")
+        git("add", "-f", ".gitignore", ".prawduct/change-log.md", ".prawduct/project-state.yaml")
+        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+        proc = _cli(prawduct, "--apply")
+        assert proc.returncode == 1 and "would ignore" in proc.stderr, proc.stderr
         assert "prawduct-hook update-gitignore --dry-run" in proc.stderr
         hook = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
         dry = subprocess.run([sys.executable, str(hook), "update-gitignore", "--dry-run"],

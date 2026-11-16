@@ -1488,11 +1488,13 @@ def _committed_log_pending_verdict(project_dir: Path) -> int | None:
     The release refuses such an entry whatever else the branch adds (#1125), so
     both paths of :func:`check_change_log_entry` ask it: a fragment does not
     launder a pending legacy entry, whether this branch added it or it was
-    already there. The log is judged as committed (``HEAD:``); a log git does not
-    track is judged as the release reads it, from disk, so a repo that ignores
+    already there. The log is judged as committed (``HEAD:``); a log no commit
+    holds is judged as the release reads it, from disk, so a repo that ignores
     ``.prawduct/`` wholesale is refused here exactly as ``check-releasability``
-    refuses it, unreadable log included (``no-change-log``). A log tracked but not
-    yet committed, or absent everywhere, has nothing to refuse.
+    refuses it, unreadable log included (``no-change-log``). The same holds for a
+    log git tracks but no commit holds yet (staged): HEAD has none, so the disk
+    copy is the one the release will read. A log absent everywhere has nothing to
+    refuse.
     """
     listed = subprocess.run(
         ["git", "ls-tree", "--name-only", "HEAD", "--", CHANGE_LOG_REL_PATH],
@@ -1509,18 +1511,8 @@ def _committed_log_pending_verdict(project_dir: Path) -> int | None:
         )
         return 1
     if not listed.stdout.strip():
-        from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
-
-        tracked = gitstate.git_path_is_tracked(project_dir, CHANGE_LOG_REL_PATH)
-        if tracked is None:
-            print(
-                f"git-failed: could not ask git whether {CHANGE_LOG_REL_PATH} is tracked."
-                " Check the change-log by hand.",
-                file=sys.stderr,
-            )
-            return 1
-        if tracked:
-            return None
+        # No commit holds the log, tracked (staged) or not: the release reads it
+        # from disk, so the gate does too, or the two disagree on the same entry.
         content, exc = _read_log_on_disk(project_dir)
         if isinstance(exc, FileNotFoundError):
             return None

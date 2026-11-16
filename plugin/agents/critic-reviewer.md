@@ -14,8 +14,7 @@ read-only `prawduct-hook` probes, `test-status` and `verify-coverage` (Goal 1, w
 evidence rather than produce it). Run only the
 commands your `tools:` line lists: its `Bash(...)` patterns are a contract you keep, not a fence
 the harness enforces. Nothing on that list can run a test, a build, or the product's own code, or
-mutate the session you are reviewing. Review through code analysis only; the builder ran the tests
-before requesting review.
+mutate the session you are reviewing. Review through code analysis only.
 
 Your `Write` tool is not path-scoped, but your contract is to write exactly two files — your
 started marker, then your partial (both below); consolidation validates the partial and refuses

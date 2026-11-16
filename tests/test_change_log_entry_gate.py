@@ -859,6 +859,29 @@ def test_an_ignored_log_pending_entry_beside_ignored_fragments_is_refused_like_t
     assert "fragment-present" not in gate.stdout, "stdout must not contradict the refusal"
 
 
+def test_a_staged_uncommitted_log_pending_entry_is_refused_like_the_release(tmp_path):
+    """The gate's other not-in-HEAD state: a log git tracks (staged) that no commit
+    holds yet. It was treated as "nothing to refuse" while the release reads the
+    on-disk log and refuses its pending entry — the same disagreement as the
+    ignored log, through the tracked door."""
+    repo = _make_branched_repo(tmp_path)
+    if (repo / CHANGE_LOG).exists():
+        _git(repo, "rm", "-q", CHANGE_LOG)
+        _git(repo, "commit", "-q", "-m", "drop the log from HEAD")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x"), "fragment")
+    (repo / CHANGE_LOG).parent.mkdir(parents=True, exist_ok=True)
+    (repo / CHANGE_LOG).write_text("# Change Log\n\n" + _PENDING_ENTRY)
+    _git(repo, "add", CHANGE_LOG)
+    assert _git(repo, "ls-files", "--", CHANGE_LOG).stdout.strip(), "premise: tracked"
+    assert not _git(repo, "ls-tree", "--name-only", "HEAD", "--", CHANGE_LOG).stdout.strip()
+    gate = _run_probe(repo)
+    release = _run_releasability(repo)
+    assert release.returncode == 1 and _legacy_lines(release.stderr), release.stderr
+    assert gate.returncode == 1, gate.stdout
+    assert _legacy_lines(gate.stderr) == _legacy_lines(release.stderr)
+
+
 def test_an_ignored_log_of_shipped_entries_beside_ignored_fragments_still_passes(tmp_path):
     # The control: the on-disk log is read, and a log with nothing pending refuses nothing.
     repo = _ignored_fragments_repo(tmp_path, {"x.md": _fragment("x")})

@@ -90,6 +90,28 @@ def test_no_shipped_prose_outside_doctor_cites_a_check_by_number():
     assert hits == {}, f"prose cites a doctor check by number: {hits}; name the check"
 
 
+#: A doctor check cited by name in prose or a printed string: `doctor`… *<Name>* check.
+CITED = re.compile(r"doctor[^\n]{0,40}?\*([A-Z][^*\n]{3,80})\* (?:check|procedure)")
+
+
+def test_every_check_cited_by_name_is_one_doctor_lists():
+    """A name only routes if doctor's list carries it: a rename there would leave the
+    citation pointing nowhere while every ordinal guard stays green."""
+    titles = re.findall(r"^\d+\. \*\*([^*]+)\*\*",
+                        (PLUGIN / "skills" / "doctor" / "SKILL.md").read_text(encoding="utf-8"),
+                        re.M)
+    roots = ["skills", "docs", "methodology", "agents", "templates"]
+    sources = [f for r in roots for f in (PLUGIN / r).rglob("*.md")] + _runtime_sources()
+    cited = {
+        (str(f.relative_to(PLUGIN)), name)
+        for f in sources
+        for name in CITED.findall(f.read_text(encoding="utf-8"))
+    }
+    assert len(cited) >= 8, f"control: the citations were reached ({sorted(cited)})"
+    unknown = sorted((f, n) for f, n in cited if not any(t.startswith(n) for t in titles))
+    assert not unknown, f"cited doctor checks doctor does not list: {unknown}"
+
+
 def test_the_name_cited_is_the_name_doctor_gives_the_check(tmp_path, capsys):
     """The name only helps if doctor's list carries it verbatim, and each message that
     sends an owner there for the legacy log says it."""

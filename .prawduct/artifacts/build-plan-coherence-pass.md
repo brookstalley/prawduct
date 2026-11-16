@@ -9,13 +9,29 @@ partition: "three Opus builders in isolated worktrees, one per chunk, on disjoin
 governed_by:
   - artifact: architecture
     dispositions:
-      - "authority fails closed; advice fails soft → conforms; the operator-verification ImportError arm stops failing open, and advice text loses blocking voice where nothing blocks"
-      - "every fact has one home → conforms; each chunk removes a second owner (suite remedy text, the .prawduct/ narrowing advice, the head-detach check) rather than adding one"
+      - "an independent reviewer never mutates the session it reviews → conforms; the HEAD-left-branch check moves into consolidate and reports, it changes nothing in the reviewed session"
+      - "authority fails closed; advice fails soft → conforms; an off operator-verification gate's note loses blocking voice (advice), and the plugin-lib ImportError arm keeps its recorded fail-open (api-contract § Error Model)"
+      - "local-first → inapplicable because no network surface or dependency changes"
+      - "the plugin writes nothing into a governed repo except its own state → conforms; the .gitignore advice still never edits the owner's rule, it prints lines"
+      - "written in Python, never specific to Python → inapplicable because no gate's language dispatch changes"
       - "guides and reviews, never implements → conforms"
+      - "goals and verification bind, method is advice → inapplicable because no goal or verification rule changes"
+      - "every fact has one home → conforms; each chunk removes a second owner (suite remedy text, the .prawduct/ narrowing advice, the head-detach check, the findings-cache reader) rather than adding one"
   - artifact: data-model
     dispositions:
-      - "facts immutable and append-only → conforms; no fact is rewritten, the manifest loses a key nothing reads"
+      - "verdicts computed from facts, no model in the write path → conforms; no verdict's inputs change"
+      - "facts immutable and append-only → conforms; no fact is rewritten, the manifest loses keys nothing reads"
       - "derived views never authoritative → conforms; the findings cache stays a view, a missing one is re-derived from the store"
+      - "a governance document reaches a terminal state → inapplicable because no plan or record lifecycle changes"
+      - "backlog issues conform to the title rules → inapplicable because no backlog write path changes"
+      - "a newer-schema fact is surfaced, never dropped → conforms; the review fact's schema is unchanged and an old manifest's bare `chunk` is still read"
+      - "two stores, two lifetimes → conforms; the findings cache (per-clone) and the evidence store (shared) keep their roles, and a missing cache now defers to the store"
+      - "backlog_service_repo selects the authoritative store → inapplicable because no backlog reader changes"
+  - artifact: api-contract
+    dispositions:
+      - "whole-surface semver; persisted data schema-versioned → conforms; the manifest drops keys within its own version, and a reader still accepts an old manifest's `chunk`"
+      - "exit codes are the contract → conforms; check-operator-verification's exits are unchanged from the recorded table (0 incl. lib-import fail-open, 1, 3), and the change-log gate's refusals reuse the release's verdict names"
+      - "additive-first evolution → conforms; no flag, exit meaning or --json key is repurposed — message text changes, and the contract-ignored-by-rule advisory id change is stated in the change fragment's consumer note"
 depends_on:
   - plugin/lib/gates.py
   - plugin/lib/core.py
@@ -24,6 +40,7 @@ depends_on:
   - plugin/lib/operator_verification.py
   - plugin/skills/critic/SKILL.md
   - plugin/skills/pr/SKILL.md
+  - .prawduct/artifacts/api-contract.md
 last_validated: 2026-11-16
 ---
 
@@ -63,13 +80,16 @@ their files and those cross-file prose tests; the full suite runs once, on the i
   `release_readiness` `unproven-suite` and the transfer note print finding + `suite_remedy()`.
   (4) `check-operator-verification` with the requirement off prints no blocking-voiced advice
   (`_unreadable_queue` derives its tail from the `required` state); the PR skill's exit-3 row names
-  all three exit-3 states. (10) The ImportError arm of `check-operator-verification` exits 3, not
-  0; its docstring lists every exit.
+  all three exit-3 states. (10) The ImportError arm of `check-operator-verification` keeps the
+  recorded fail-open (api-contract § Error Model, "Unevaluable advisory gate" — the pass's
+  finding was overruled by that contract at the cumulative review), says the gate did not run,
+  and its docstring lists every exit.
 - **Depends on:** none
 - **Deliverables:** the edits above with tests.
 - **Tests:** Red first: a running void during `verify-coverage`/release check prints the remedy
   once; gate-off + unreadable queue exits 0 with no "You can stop here"/blocking wording; the
-  ImportError arm exits 3; the grants admit `test-status --wait`.
+  ImportError arm exits 0 with a NOTE that the gate did not run; the grants admit
+  `test-status --wait`.
 - **Acceptance criteria:** the five pass-reported sites behave as above.
 - **Done when:**
   1. Acceptance criteria met and the chunk's own tests pass

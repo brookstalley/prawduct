@@ -3092,6 +3092,10 @@ def transfer_remedy(
             "re-run this gate: if the run met this tree, the coverage transfers and "
             "no review is needed."
         )
+    # A red or degraded saved run owes more than a re-run — fix the failures,
+    # or run uncontended — and the verdict reason above is the finding only,
+    # so the owner's clause is the one place that says so, on every route.
+    owed = suite_step is not None and suite_step.state in (SUITE_FAILING, SUITE_DEGRADED)
     if uncommitted:
         flag = "--include-untracked" if untracked else ""
         paths = " ".join(shlex.quote(p) for p in uncommitted)
@@ -3109,17 +3113,13 @@ def transfer_remedy(
         return (
             f"{lead} {len(uncommitted)} suite-coupled path(s) are uncommitted, so a "
             "suite run in this working tree records the working tree, not HEAD, and "
-            f"cannot meet it. {aside}, run the suite, `prawduct-hook test-evidence "
-            "record`, re-run the gate, then `git stash pop`: the coverage transfers "
+            f"cannot meet it. {aside}, "
+            + (suite_step.remedy if owed else "run the suite, `prawduct-hook test-evidence record`")
+            + ", re-run the gate, then `git stash pop`: the coverage transfers "
             "and no review is needed. Re-running on the same committed HEAD is safe "
             "because this gate's verdict never read those paths."
         )
-    # A red or degraded saved run owes more than a re-run — fix the failures,
-    # or run uncontended — and the verdict reason above is the finding only,
-    # so the owner's clause is the one place that says so.
-    run = "Run the suite and `prawduct-hook test-evidence record`"
-    if suite_step is not None and suite_step.state in (SUITE_FAILING, SUITE_DEGRADED):
-        run = _cap(suite_step.remedy)
+    run = _cap(suite_step.remedy) if owed else "Run the suite and `prawduct-hook test-evidence record`"
     return (
         f"{lead} {run}, then re-run: the coverage transfers and no review is needed. The "
         "suite is what vouches for the reviewed diff meeting the advanced base — a "
