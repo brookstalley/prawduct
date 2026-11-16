@@ -1724,8 +1724,22 @@ class TestTheSuiteMustBeProvenGreen:
         line = next(
             ln for ln in capsys.readouterr().err.splitlines() if ln.startswith("unproven-suite:")
         )
-        assert "test-status --wait" in line, line
+        assert line.count("test-status --wait") == 1, line
         assert "run the suite and record it" not in line, line
+
+    def test_a_degraded_run_prints_its_remedy_once(self, tmp_path, capsys):
+        """The verdict reason is the finding; the line appends the owner's
+        remedy. A reason that carried its own "run the suite again,
+        uncontended" printed the remedy twice."""
+        project = self._project(
+            tmp_path, evidence=_evidence(degraded="a worker died; ~half never reported"),
+        )
+        assert release_readiness.check_releasability(project) == 1
+        line = next(
+            ln for ln in capsys.readouterr().err.splitlines() if ln.startswith("unproven-suite:")
+        )
+        assert "a worker died" in line, line
+        assert line.lower().count("uncontended") == 1, line
 
     def test_recording_a_green_run_is_what_lifts_the_refusal(self, tmp_path, capsys):
         """**The refusal's EFFECT, with the un-recorded case as the control.**

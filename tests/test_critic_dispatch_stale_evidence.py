@@ -180,7 +180,7 @@ class TestTheRemedyFollowsTheRecordsState:
         _in_progress_record(repo, os.getpid())  # this test process: alive
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == STALE_EVIDENCE_EXIT, result.stdout + result.stderr
-        assert "test-status --wait" in result.stdout, result.stdout
+        assert result.stdout.count("test-status --wait") == 1, result.stdout
         assert "Run the declared suite" not in result.stdout, result.stdout
         assert "run the suite and record it" not in result.stdout.lower(), result.stdout
         assert _stale_guard_facts(repo)[0]["body"]["reason"] == "running"
