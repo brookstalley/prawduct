@@ -1,6 +1,6 @@
 # Critic: Goals 1-3 (`chunk` and `verify-resolutions`)
 
-**Self-contained by design**: do not open `review-protocol.md` or `review-cycle.md`. Target wall-clock: 1-2 minutes.
+**Self-contained by design**: do not open `review-protocol.md` or `review-cycle.md`.
 
 **Never run tests, builds, or executables**: review test quality and coverage by reading
 code. Both modes are **single-pass**: one reviewer, no coordinator.
@@ -53,7 +53,7 @@ re-derive or recount one. `chunk_graded`/`plan_graded` name the subject; `null` 
 
 ## 1. Nothing Is Broken
 
-- `prawduct-hook test-status`: exit 0 = current; stale/missing → no finding (**WARNING** only at the boundary, where the suite runs) — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**, listing the failing ids (`.test-evidence.json` `failed_tests`) in the finding's `failed_tests`. A `flaky:` line tagged `flaky_policy: warn` → **WARNING** at the boundary, an observation inside.
+- `prawduct-hook test-status`: exit 0 = current; stale/missing → no finding (**WARNING** only at the boundary, where the suite runs) — the *only* freshness signal; `running:` is a suite in flight, never a finding (`--wait`, or note it). Test failures in evidence → **BLOCKING**, listing the failing ids (`.test-evidence.json` `failed_tests`) in the finding's `failed_tests`. A `flaky:` line tagged `flaky_policy: warn` → **WARNING** at the boundary, an observation inside.
 - No "pre-existing" exception — every finding is yours regardless of when introduced. RATE it regardless; the bound is on the BUILDER, whose obligation to FIX is limited to BLOCKING (below that a recorded accept discharges it). Never omit or downgrade a finding on this ground.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change record.
@@ -62,7 +62,7 @@ re-derive or recount one. `chunk_graded`/`plan_graded` name the subject; `null` 
 - **No-behavior-change refactor**: output assertions are exact-match, not substring/contains (substring misses drift — double-prefix, error wrappers) → **WARNING**.
 - For math, data transforms, serialization, complex validation: if test-specs call for property-based tests and they're absent → observation.
 - **Security in changed code:** input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable; no injection vectors — SQL, command, XSS, path traversal → **BLOCKING**; no hardcoded secrets or credentials → **BLOCKING**; auth/authz on new endpoints or state-changing operations → **WARNING** if missing; dependencies with known critical vulnerabilities → **WARNING**.
-- **Symbol coverage:** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
+- **Symbol coverage:** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text; a `(running)` void is not a finding.
 - **Cross-component message contract:** when changed code produces or consumes messages across a process or component boundary (IPC, wire protocol, event stream, pub/sub), read *both* ends — matching types is necessary, never sufficient, and a fixture that synthesizes the producer's signal proves nothing. A consumer awaiting a signal the producer never emits, or ignoring a terminal/error signal it does emit → **BLOCKING**. Open the title with `cross-component-contract:` so its yield stays countable.
 
 ## 2. Nothing Is Missing

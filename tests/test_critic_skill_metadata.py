@@ -66,7 +66,7 @@ class TestCriticSkillDenyPatterns:
         (Chunk 5 repoint, replacing the retired `python3 tools/product-hook …`)."""
         expected = [
             "Read", "Glob", "Grep", "Bash(wc *)", "Write", "Agent",
-            "Bash(prawduct-hook test-status)",
+            "Bash(prawduct-hook test-status*)",
             "Bash(prawduct-hook infer-critic-mode*)",
         ]
         allowed = _extract_allowed_tools(_PLUGIN_CRITIC_SKILL.read_text())

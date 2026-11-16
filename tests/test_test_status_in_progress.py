@@ -701,3 +701,65 @@ class TestOneOwnerOfTheSuiteRemedy:
             at = text.index("**exit 7**") if "**exit 7**" in text else text.index("| **7** |")
             row = text[at:at + 260]
             assert "printed" in row, (rel, row)
+
+
+class TestTheCriticKnowsARunInFlight:
+    """A suite in flight is not a defect, and the Critic protocol said it was.
+
+    ``test-status`` exits 1 on ``running:`` as on ``stale:``, and
+    ``verify-coverage`` exits 1 on a record attempt's void, so every Critic
+    surface that read "exit 1 = stale" or "other exit-1 → BLOCKING" graded a
+    run that had not landed yet as a WARNING or a BLOCKING finding. Each of the
+    three carriers is pinned at the bullet (or step) that rates the command, so
+    a row reworded in one of them reds here; the remedy it names (``--wait``)
+    must be one the reader's grants admit.
+    """
+
+    _CARRIERS = (
+        "skills/critic/goals-1-3.md",
+        "skills/critic/review-protocol.md",
+        "skills/critic/SKILL.md",
+    )
+
+    @staticmethod
+    def _line(rel: str, needle: str) -> str:
+        lines = [ln for ln in (ROOT / rel).read_text(encoding="utf-8").splitlines()
+                 if needle in ln]
+        assert len(lines) == 1, (rel, needle, lines)
+        return lines[0]
+
+    @pytest.mark.parametrize("rel", _CARRIERS)
+    def test_the_test_status_row_says_a_running_suite_is_not_a_finding(self, rel):
+        row = self._line(rel, "run `prawduct-hook test-status`" if rel.endswith("SKILL.md")
+                         else "prawduct-hook test-status`:")
+        assert "`running:`" in row, (rel, row)
+        assert "never a finding" in row, (rel, row)
+        assert "--wait" in row, (rel, row)
+        assert "exit code is the *only* freshness signal" not in row, (rel, row)
+
+    @pytest.mark.parametrize("rel", _CARRIERS[:2])
+    def test_the_verify_coverage_row_excepts_a_running_void(self, rel):
+        row = self._line(rel, "run `prawduct-hook verify-coverage`")
+        assert "(running)" in row and "not a finding" in row, (rel, row)
+        assert "→ **BLOCKING** with the diagnostic" in row, "the control: other exit-1 still blocks"
+
+    @staticmethod
+    def _bash_patterns(text: str, field: str) -> list:
+        import re  # noqa: PLC0415
+        line = re.search(rf"^{field}:(.*)$", text, re.M).group(1)
+        return [t.strip()[len("Bash("):-1] for t in line.split(",")
+                if t.strip().startswith("Bash(") and t.strip().endswith(")")]
+
+    @pytest.mark.parametrize("rel, field", [
+        ("skills/critic/SKILL.md", "allowed-tools"),
+        ("agents/critic-reviewer.md", "tools"),
+    ])
+    def test_the_grants_admit_the_wait(self, rel, field):
+        import fnmatch  # noqa: PLC0415
+        patterns = self._bash_patterns((ROOT / rel).read_text(encoding="utf-8"), field)
+        assert patterns, rel
+        for cmd in ("prawduct-hook test-status", "prawduct-hook test-status --wait",
+                    "prawduct-hook test-status --wait --timeout 300"):
+            assert any(fnmatch.fnmatchcase(cmd, p) for p in patterns), (rel, cmd)
+        assert not any(fnmatch.fnmatchcase("prawduct-hook test-evidence record", p)
+                       for p in patterns), "the control: recording stays ungranted"

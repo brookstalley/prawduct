@@ -286,7 +286,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
     # -12 on 2026-11-15 (retire-chunk-status-shims, #1055): SKILL.md step 4 lost the retired
     # `--chunk` alias sentence.
-    "single-pass-inner": 5759,
+    # +24 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, goals-1-3.md +16): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    "single-pass-inner": 5783,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -410,7 +413,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
     # -12 on 2026-11-15 (retire-chunk-status-shims, #1055): SKILL.md step 4 lost the retired
     # `--chunk` alias sentence.
-    "single-pass-full": 10130,
+    # +17 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, review-protocol.md +9): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    "single-pass-full": 10147,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -538,7 +544,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +5 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: the reviewer contract's write step gives `validate-partial`'s three exits, net of cutting its duplicated closing sentence. Priced against
     # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
     # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
-    "dispatched-reviewer": 9591,
+    # +9 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (review-protocol.md +9): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    "dispatched-reviewer": 9600,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -629,7 +638,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
     # -12 on 2026-11-15 (retire-chunk-status-shims, #1055): SKILL.md step 4 lost the retired
     # `--chunk` alias sentence.
-    "coordinator-fork": 10800,
+    # +17 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, review-protocol.md +9): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    "coordinator-fork": 10817,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -661,7 +673,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
     # -12 on 2026-11-15 (retire-chunk-status-shims, #1055): SKILL.md step 4 lost the retired
     # `--chunk` alias sentence.
-    "coordinator-fork-inner": 6429,
+    # +24 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, goals-1-3.md +16): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    "coordinator-fork-inner": 6453,
     # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
     # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
@@ -679,16 +694,19 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +5 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: the reviewer contract's write step gives `validate-partial`'s three exits, net of cutting its duplicated closing sentence. Priced against
     # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
     # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
-    "dispatched-reviewer-inner": 5220,
+    # +16 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (goals-1-3.md +16): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    "dispatched-reviewer-inner": 5236,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5760,
-    "single-pass-full": 10131,
-    "dispatched-reviewer": 9592,
-    "coordinator-fork": 10801,
-    "coordinator-fork-inner": 6430,
-    "dispatched-reviewer-inner": 5221,
+    "single-pass-inner": 5784,
+    "single-pass-full": 10148,
+    "dispatched-reviewer": 9601,
+    "coordinator-fork": 10818,
+    "coordinator-fork-inner": 6454,
+    "dispatched-reviewer-inner": 5237,
 }
 
 
