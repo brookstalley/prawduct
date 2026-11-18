@@ -55,6 +55,35 @@ forked in, and forked in the session's checkout it detached the session's HEAD.
    the sheet is shuffled; its key entry's `first_source` says whether the Critic's or the native
    finding came first.
 
+### Joining the answers: `join.py` (#1197)
+
+    python3 -I .prawduct/research/native-review-paired/join.py --key <dir>/blind-key.json \
+        --answers <dir>/answers-*.json --repo <repo> [--repo <repo> ...]
+
+**Inputs** are all arguments (no scratch directory is assumed): the `blind-key.json` that
+`compare.py --out` wrote beside the sheet; each verifier's answers file (a JSON array of answers
+keyed by the sheet item's `id`; a later file wins for a repeated id); and the repos the sheet
+covers, read only to look up each Critic finding's goal and severity by (review id, finding id)
+and each review's stage. Run it from the same checkout state as the sheet was cut from; a sheet
+review the repos no longer hold is named in a `WARNING` and tallied under `(unknown)`.
+
+**Outputs**, to stdout: the verdict counts; per Critic goal the verified-real findings as
+`both / Critic only (minor) / native only (minor)`, with the **native share** (both plus native
+only, of all verified-real) beside the **non-minor native share** (the same over findings the
+verifier did not mark `minor`) and the Critic-unique findings per review; the same per stage
+(boundary, inner); the Critic's verified-real findings per severity and how many the native review
+also raised; and the re-raise candidates by instrument. Verdicts join to the key by id, never by
+position, so the order of the answers files does not matter. `missing` lists sheet ids with no
+answer.
+
+**Denominator.** Every rate is over the reviews the frozen sheet covers (the distinct `review`
+ids in the key), never over a live re-load of the repos' pairs, so a review paired after the
+sheet was cut changes no figure. A native finding's goal is the verifier's; a Critic finding's is
+the review fact's. A pair's `minor` is the verifier's single flag for the item (true only when
+every real finding in it is minor).
+
+The 2026-11-18 third check is reproduced by pointing it at that run's key and answers.
+
 ## Decision table (#1130 step 6)
 
 A goal is ceded to the native review when the native review raised most of that goal's
