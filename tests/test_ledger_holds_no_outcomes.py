@@ -125,9 +125,9 @@ class TestTheNamedCommandExists:
 
 #: Every place the ledger is described to a reader, and the smallest span that
 #: describes it. Each must say the ledger holds no outcomes by naming the
-#: command that shows them. `plugin/skills/critic/review-cycle.md`'s
-#: "The Governance-Event Ledger" paragraph belongs here too once it says so.
+#: command that shows them.
 _DESCRIPTIONS = (
+    ("plugin/skills/critic/review-cycle.md", _paragraph_naming, "The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored)"),
     ("plugin/docs/governance-telemetry.md", _paragraph_naming, "`.prawduct/.governance-ledger.jsonl` (gitignored)"),
     ("documentation/project-structure.md", _line_naming, ".governance-ledger.jsonl"),
     (".prawduct/artifacts/data-model.md", _paragraph_naming, "Append-only telemetry of governance events"),
