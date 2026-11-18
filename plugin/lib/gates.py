@@ -1683,30 +1683,48 @@ def _drop_other_sessions_commits(
 
     This session wrote a file when its Edit-family calls named it, or when the
     file in the checkout was last written (:func:`_written_moments`) while one
-    of its tool calls or ``!`` commands was running. The second reads a write
-    made by any means — Bash (``sed -i``, a heredoc, codegen), a delegate
-    subagent working inside the call that ran it, a background command — and it
-    is the same test the commit's own moment gets, applied to the moment its
-    file was written. What it cannot read is a file written again since by
-    someone else, or deleted: those are judged on the other two tests alone.
-    It keeps #1071's protection for a session that ran nothing while the other
-    one wrote and committed; a write at a moment both sessions were acting
-    cannot be told apart, and like a commit made then, it stays counted.
+    of its tool calls or ``!`` commands was running, BEFORE the commit was
+    made. The second reads a write made by any means — Bash (``sed -i``, a
+    heredoc, codegen), a delegate subagent working inside the call that ran
+    it, a background command — and it is the same test the commit's own moment
+    gets, applied to the moment its file was written.
+
+    The write must precede the commit because the time read is the file's
+    LAST write, and a write after a commit cannot be what the commit recorded:
+    this session checking out, stash-popping, formatting or copying over the
+    other session's committed file later would otherwise claim that session's
+    commit, which is #1071's error. Both times are this machine's clock — git
+    stamps the commit (``when``, whole seconds, truncated) and the kernel the
+    file — so the comparison takes no slack beyond that truncation. It needs
+    none in practice either: a commit dropped here was made outside every
+    call's slack, so a write inside a call is wholly before it or wholly after.
+
+    What this cannot read is a write overwritten since — by anyone, including a
+    later rewrite of the same bytes by this session — or a deleted file: those
+    commits are judged on the other two tests alone. That keeps #1071's
+    protection for a session that ran nothing while the other one wrote and
+    committed; a write at a moment both sessions were acting cannot be told
+    apart, and like a commit made then, it stays counted.
 
     Every dropped commit is appended to ``dropped`` with its paths and why, so
     a wrong drop can be seen. When a commit's paths cannot be listed nothing is
     dropped.
     """
     edited = _checkout_paths(project_dir, activity.edited_paths)
-    written_while_acting: dict[str, bool] = {}
+    # Each file's write moments that fell inside one of this session's calls,
+    # read once however many commits name the file; which of them a commit can
+    # claim depends on the commit's own time, so that test is per commit.
+    acting_writes: dict[str, tuple[float, ...]] = {}
 
-    def _written_while_acting(path: str) -> bool:
-        if path not in written_while_acting:
-            written_while_acting[path] = any(
-                activity.acting_at(moment) is True
-                for moment in _written_moments(project_dir, path)
+    def _written_while_acting(path: str, committed_at: int) -> bool:
+        if path not in acting_writes:
+            acting_writes[path] = tuple(
+                moment for moment in _written_moments(project_dir, path)
+                if activity.acting_at(moment) is True
             )
-        return written_while_acting[path]
+        # `committed_at` is whole seconds, truncated: a write in its second
+        # can still precede the commit.
+        return any(moment < committed_at + 1 for moment in acting_writes[path])
 
     kept_commits = list(commits)
     kept_merges = list(merges)
@@ -1722,7 +1740,7 @@ def _drop_other_sessions_commits(
             continue
         for sha, when in idle:
             paths = per_commit.get(sha, [])
-            if edited.intersection(paths) or any(_written_while_acting(p) for p in paths):
+            if edited.intersection(paths) or any(_written_while_acting(p, when) for p in paths):
                 continue
             moves.remove((sha, when))
             found.setdefault(sha, {
@@ -1732,7 +1750,7 @@ def _drop_other_sessions_commits(
                     f"made at {datetime.fromtimestamp(when, timezone.utc):%Y-%m-%dT%H:%M:%SZ}"
                     " while another session was writing in this checkout, with no tool"
                     " call or ! command of this session running, and touching no file"
-                    " this session wrote"
+                    " this session wrote before it"
                 ),
             })
     # A sha this session's reflog and its log both list is dropped only when
@@ -1745,24 +1763,51 @@ def _drop_other_sessions_commits(
 
 #: The Stop check id a commit left out of the span as another session's is
 #: recorded under (``evidence.append_stop_observation``), and the one reason it
-#: records: made while this session ran nothing, touching no file it wrote.
+#: records: made while this session ran nothing, touching no file it wrote
+#: before it.
 DROPPED_COMMIT_CHECK = "other-session-commit"
 DROPPED_COMMIT_REASON = "idle-and-unwritten"
 
 
-def record_dropped_commits(project_dir: Path, dropped: "list[dict]") -> "list[str]":
+def record_dropped_commits(
+    project_dir: Path, dropped: "list[dict]", *, session: "str | None"
+) -> "list[str]":
     """Record each commit :func:`session_work_span` left out as another
     session's (its ``dropped``) as a stop observation, so a wrong drop is a
     query (``prawduct-hook stats``, ``evidence list --kind guard-refusal``)
     rather than a stderr line at exit 0 that nobody reads.
 
     One fact per commit per session: the same commit is left out at every Stop
-    while it stays in the span, so the record is deduped on the
-    ``.session-start`` stamp and the sha. It carries the sha and how many files
-    the commit touched, never their names. Returns one line per record that did
-    not land, for the caller to show; a record is advice, so nothing raises.
+    while it stays in the span, so the record is deduped on ``session`` and the
+    sha. ``session`` is the Stop payload's ``transcript_path``, the one
+    identity that is this session's alone. The ``.session-start`` stamp is not:
+    every session in a checkout writes the same marker, and only a session
+    sharing its checkout drops a commit, so a key built on it let a second
+    session's drop of the same commit dedupe away. No drop is made
+    without a transcript, so ``session`` is always there in practice; when it
+    is not, nothing is recorded and a note says so — an unkeyed record would
+    count the commit again at every Stop, and a shared key would undercount.
+
+    The store is read once for every commit's dedupe probe (the appender's
+    ``known_facts``), not once per commit: this runs at every Stop while a
+    dropped commit stays in the span. The record carries the sha and how many
+    files the commit touched, never their names. Returns one line per record
+    that did not land, for the caller to show; a record is advice, so nothing
+    raises.
     """
-    session = _read_session_start(gitstate.get_prawduct_dir(project_dir)) or "unknown"
+    if not dropped:
+        return []
+    if not (isinstance(session, str) and session.strip()):
+        return [
+            f"NOTE: the {DROPPED_COMMIT_CHECK} observation for {str(d.get('sha'))[:12]} was not "
+            "recorded (no session identity to record it once under) — `prawduct-hook stats` "
+            "will undercount it"
+            for d in dropped
+        ]
+    try:
+        known = evidence.read_facts(project_dir).get("facts", [])
+    except Exception:  # prawduct:allow prawduct/broad-except -- an observation is advice; each append below probes the store itself instead
+        known = None
     notes: list[str] = []
     for d in dropped:
         sha = d.get("sha")
@@ -1772,7 +1817,8 @@ def record_dropped_commits(project_dir: Path, dropped: "list[dict]") -> "list[st
                 DROPPED_COMMIT_CHECK,
                 reason=DROPPED_COMMIT_REASON,
                 observed={"commit": sha, "files": len(d.get("paths") or [])},
-                dedupe_key=f"{session}:{sha}",
+                dedupe_key=f"{session}\0{sha}",
+                known_facts=known,
             )
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- an observation is advice; an escape would end the Stop with a crash
             result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
@@ -1818,7 +1864,8 @@ def _session_authored_paths(
     when another session was writing beside this one, this session had no tool
     call or ``!`` command running when it was made, and it touches no file this
     session wrote — named in an Edit-family call, or last written while one of
-    its calls or ``!`` commands ran (:func:`_drop_other_sessions_commits`).
+    its calls or ``!`` commands ran and before the commit was made
+    (:func:`_drop_other_sessions_commits`).
     Without that evidence every commit above still counts. Each dropped commit
     is appended to ``dropped``, when a list is passed, as ``{sha, paths, why}``
     — only when this returns a set, since a ``None`` drops nothing.

@@ -3366,14 +3366,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         stop_advisories.append(_LogOnlyAdvisory(
             "PRAWDUCT NOTE: left out of this session's work as another session's "
             "commits (made while another session wrote here and this one ran no "
-            "tool call or ! command, touching no file it wrote): "
+            "tool call or ! command, touching no file it wrote before the commit): "
             + "; ".join(
                 f"{d['sha'][:12]} ({', '.join(d['paths'][:3]) or 'no files'}"
                 f"{', …' if len(d['paths']) > 3 else ''})"
                 for d in reflection_span["dropped"]
             )
         ))
-        stop_advisories.extend(_LogOnlyAdvisory(n) for n in _gates().record_dropped_commits(project_dir, reflection_span["dropped"]))
+        stop_advisories.extend(_LogOnlyAdvisory(n) for n in _gates().record_dropped_commits(project_dir, reflection_span["dropped"], session=event.transcript_path))
     # The Critic composition gate (Gate 2) reads the same span, read once here:
     # its trigger is `changed` and its doc-only carveout is `not judgeable`.
     critic_has_work = bool(reflection_span["changed"])

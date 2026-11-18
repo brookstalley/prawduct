@@ -115,7 +115,7 @@ All three nest under a `learning` key, under the same envelope:
   checkout made while this one had no tool call or `!` command running, in
   files this one did not write — none named by its edit tools (Edit, Write,
   MultiEdit, NotebookEdit), and none last written while one of its tool calls or
-  `!` commands ran, which covers Bash, delegate and background writes (each
+  `!` commands ran and before the commit was made, which covers Bash, delegate and background writes (each
   dropped commit named on the Stop hook's stderr and recorded once as an
   `other-session-commit` observation, below) — so a rule written and
   committed in one turn is still counted at that turn's Stop. Without the
@@ -216,7 +216,7 @@ The Stop checks that record a reason (all observe without blocking):
 | `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: a live Critic review, or harness background tasks in flight while `.handoff-notes.md` is empty. `notes_present`: a non-empty `.handoff-notes.md`. `session_changed`: the session authored a non-metadata change, committed or not (`gates.session_work_span`) |
 | `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same three |
 | `close-pointer` | `points-above`, `points-below`: which way the close's reason points at the turn by position, under any disposition (`standing_block.POSITIONAL_POINTER_KINDS`); the phrase itself is not recorded. A `SAFE TO CLEAR` reason saying "is above" can fire this and `clear-reason` both | the same three |
-| `other-session-commit` | `idle-and-unwritten`: a commit left out of the session's span as another session's, made while this one ran nothing and touching no file it wrote (`gates.record_dropped_commits`). One fact per commit per session, deduped on the `.session-start` stamp and the sha, so a commit the span keeps leaving out is not re-counted at every Stop | `commit`: the sha. `files`: how many files it touched; their names are not recorded |
+| `other-session-commit` | `idle-and-unwritten`: a commit left out of the session's span as another session's, made while this one ran nothing and touching no file it wrote before the commit (`gates.record_dropped_commits`). One fact per commit per session, deduped on the session's transcript path (never stored: it is hashed into the id) and the sha, so a commit the span keeps leaving out is not re-counted at every Stop and two sessions dropping one commit are two facts; a Stop with no transcript records none | `commit`: the sha. `files`: how many files it touched; their names are not recorded |
 
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 

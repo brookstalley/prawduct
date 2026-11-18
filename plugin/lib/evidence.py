@@ -862,6 +862,7 @@ def append_stop_observation(
     reason: "str | None" = None,
     observed: "dict | None" = None,
     dedupe_key: "str | None" = None,
+    known_facts: "list[dict] | None" = None,
 ) -> dict:
     """Record that a non-blocking Stop check found what it looks for.
 
@@ -877,7 +878,9 @@ def append_stop_observation(
     ``dedupe_key`` is for a check that meets one standing event at every Stop
     (a commit it goes on leaving out of the span): the event is recorded once,
     and a later Stop's call returns ``{"status": "duplicate"}``, which is a
-    success (:func:`append_guard_refusal`).
+    success (:func:`append_guard_refusal`). ``known_facts`` is that dedupe
+    probe's input when the caller has read the store already, as it is there:
+    a caller recording several events at one Stop reads the store once.
     """
     return append_guard_refusal(
         project_dir,
@@ -886,6 +889,7 @@ def append_stop_observation(
         reason=reason,
         observed=observed,
         dedupe_key=dedupe_key,
+        known_facts=known_facts,
     )
 
 
