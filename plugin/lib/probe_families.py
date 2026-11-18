@@ -74,7 +74,7 @@ def register_all() -> None:
     register_adhoc_delegate()  # ad-hoc delegate worktree left unintegrated (its brief is the signal)
     register_oversized_state()  # governance files over this repo's size threshold
     register_evidence_size()  # clone-shared evidence store over its size threshold (#953)
-    register_stranded_branch()  # local branch checked out nowhere, commits no remote has (#843's local arm)
+    register_stranded_branch()  # #843: a branch checked out nowhere with commits no remote has; a finished, pushed, unmerged one
     register_git_hygiene()  # merged branches and dead worktrees whose removal loses nothing
     register_work_unit()  # plan-unbound-legacy: a plan governing through the retiring legacy window (#1050)
     register_testament_cache()  # causes that alone keep tests uncacheable, from testament's offline snapshot

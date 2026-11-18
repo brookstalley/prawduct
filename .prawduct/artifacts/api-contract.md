@@ -265,11 +265,16 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   and `/prawduct:onboard` runs it.
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
-- **Stranded work** — `worktrees [--json]` (read-only): every worktree with its inferred liveness
-  (active / recent / idle / unknown / missing, and which signal decided it) and uncommitted-file
-  count, plus the local branches checked out nowhere whose tip no remote-tracking ref reaches, with
-  their commit counts. The session briefing renders the worktree half as counts that name nothing;
-  each stranded branch is a `branch-landing:stranded-branch` advisory. Exit 0 whenever a report was
+- **Stranded work** — `worktrees [--json] [--prs]` (read-only): every worktree with its inferred
+  liveness (active / recent / idle / unknown / missing, and which signal decided it) and
+  uncommitted-file count, plus the local branches checked out nowhere whose tip no remote-tracking
+  ref reaches, with their commit counts, and the pushed branches every claiming build plan calls
+  finished that have not merged into their base, a day or more since their last commit. `--prs` is
+  the one network leg: one `gh pr list --state all` per such branch, oldest first, at most 8, asking
+  whether it ever had a pull request; the rest are named unchecked. The session briefing renders the
+  worktree half as counts that name nothing; each stranded branch is a
+  `branch-landing:stranded-branch` advisory and each finished unmerged one a
+  `branch-landing:finished-branch-unlanded` advisory, both offline. Exit 0 whenever a report was
   produced — a partial one names its failed probes in it — and 2 on an unknown argument.
 - **Git hygiene** — `git-tidy [--offline] [--json] [--apply <fingerprint>]` (mutating under
   `--apply`): the dry run lists the merged branches, merged remote branches, dead worktree entries
@@ -769,9 +774,12 @@ files to touch previews first. That framing is descriptive — the binding rule 
   - `worktrees --json` → **no skill consumer today**: top-level `schema_version`, `worktrees[]`
     (`path`, `branch` — null when detached — `is_current`, `ephemeral`, `state`, `last_activity`
     as `{source, at}` or null, `dirty` — null when git could not be asked), `branches[]` (`name`,
-    `last_commit`, `unique_commits` — null when the count failed), `worktrees_checked` (false when
-    git could not list worktrees: every count is then "not checked", never "none"), `has_remotes`,
-    `problems[]`. The briefing and the advisory read the report in-process, not this payload.
+    `last_commit`, `unique_commits` — null when the count failed), `unlanded[]` (`name`,
+    `last_commit`, `plans[]`, `pr_check` — `unchecked` / `none` / `found` / `failed`, where `failed`
+    is "could not ask", never "none" — and `pull_request`, `{number, state}` when found, else null),
+    `worktrees_checked` (false when git could not list worktrees: every count is then "not
+    checked", never "none"), `has_remotes`, `problems[]`. The briefing and the advisories read the
+    report in-process, not this payload.
     Named as unconsumed on purpose, like `cost-of-commit`; the key set is pinned by a test.
   - `git-tidy --json` → **no skill consumer today**: top-level `schema_version`, `fingerprint`,
     `fully_checked` (false when any part went unchecked, so an empty `actions[]` with it false means

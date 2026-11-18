@@ -571,7 +571,7 @@ def record_is_gone(record: dict) -> bool | None:
 
 def held_branches(records: list[dict]) -> set[str]:
     """Branches checked out in a worktree somebody could be working in — the one
-    definition of "held" that the stranded-branch scan and git hygiene share.
+    definition of "held" that the stranded-work scans and git hygiene share.
 
     A worktree whose directory is gone does not hold its branch: git still lists
     it, but nobody can be working there, and counting it would hide exactly the
