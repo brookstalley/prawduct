@@ -2077,21 +2077,30 @@ class TestBlockingRemedyLines:
         assert "the blocker above sits" in self._text([{"superseded": True}])
         assert "all 3 blockers above sit" in self._text([{"superseded": True}] * 3)
 
-    # -- #334: a superseded blocker inside the branch's review set is reachable
+    # -- #334: a superseded blocker the roll-call's composition counts is reachable
 
     @staticmethod
     def _branch_with_rounds(tmp_path) -> "tuple[Path, str, str]":
-        """Two review facts on the branch's lineage and one off it. Returns
-        (repo, an in-set review id, the off-lineage one)."""
+        """A blocked review on the branch's lineage and one off it. Returns
+        (repo, the on-lineage review id, the off-lineage one).
+
+        Renegotiated in the Chunk 04 fix round: the on-lineage review now
+        CARRIES the blocker its entry names. Reachability used to be set
+        membership, so a review with no findings stood in; it is now the gate's
+        own composition at the branch's newest review (what the roll-call
+        names), which counts only a blocker the store actually holds."""
         repo = _branch_repo(tmp_path)
         on = _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"],
-                   head_commit=_head(repo))
-        off = _fact(repo, "a" * 40, "b" * 40, ["feature.py"])
+                   head_commit=_head(repo),
+                   findings=[{"fid": "R-1", "severity": "blocking", "title": "on"}])
+        off = _fact(repo, "a" * 40, "b" * 40, ["feature.py"],
+                    findings=[{"fid": "R-1", "severity": "blocking", "title": "off"}])
         return repo, on, off
 
     def test_an_in_set_superseded_blocker_takes_the_verify_route(self, tmp_path):
-        """The verify roll-call names every unresolved blocker of the branch's
-        set, so "no verify-resolutions pass will name again" is false of it."""
+        """The verify roll-call names every blocker the gate's composition
+        counts at the pass's anchor, so "no verify-resolutions pass will name
+        again" is false of it."""
         repo, on, _ = self._branch_with_rounds(tmp_path)
 
         lines = gates.blocking_remedy_lines(
@@ -2105,8 +2114,9 @@ class TestBlockingRemedyLines:
         assert "/prawduct:critic cumulative" not in text
 
     def test_an_off_set_superseded_blocker_still_needs_the_spanning_review(self, tmp_path):
-        """Control: the set is what makes it reachable. A review off this
-        branch's lineage is named by no roll-call, so the old route stands."""
+        """Control: the composition is what makes it reachable. A review off
+        this branch's path is counted by no roll-call, so the old route
+        stands."""
         repo, on, off = self._branch_with_rounds(tmp_path)
 
         text = self._text_at(repo, [{"review_id": off, "superseded": True}])

@@ -1979,10 +1979,13 @@ def _branch_findings_line(project_dir: Path, facts) -> "str | None":
     The record above it is one review's counts, and a fresh session reading
     only that re-opens closed work or misses open work: an earlier round's
     unresolved blocker is invisible in the newest round's record. The set is
-    ``coverage.branch_review_ids`` — the one the round budget, the census and
-    the verify roll-call compose over — and the counts are
-    ``dispositions.census``'s summary: open blocking (no resolution fact lifts
-    it), undispositioned warning, and the rounds counted.
+    ``coverage.branch_review_ids`` — the one the round budget and the census
+    compose over — and the counts are ``dispositions.census``'s summary: open
+    blocking, undispositioned warning, and the rounds counted. Open blocking is
+    the GATE's answer (``coverage.branch_open_blockers``), so a blocker a clean
+    spanning review routed around is not reported open while the gate passes;
+    when that composition is unavailable the line says it counted resolution
+    facts alone.
 
     ``None`` when the store holds no review or no review is this branch's — a
     line about nothing is noise. When the store is unreadable or the set cannot
@@ -2008,7 +2011,14 @@ def _branch_findings_line(project_dir: Path, facts) -> "str | None":
             )
         if not answer["review_ids"]:
             return None
-        report = dispositions.census(store, review_ids=answer["review_ids"])
+        facts_list = store.get("facts") or []
+        gate = coverage.branch_open_blockers(
+            project_dir, facts_list, answer["review_ids"], read=store
+        )
+        report = dispositions.census(
+            store, review_ids=answer["review_ids"],
+            open_blockers=gate["blockers"] if gate.get("status") == "ok" else None,
+        )
         if report["status"] != "ok":
             return f"Branch findings: could not be composed ({report['reason']}) — {_NOT_CLEAN}"
         summary = report["summary"]
@@ -2018,10 +2028,16 @@ def _branch_findings_line(project_dir: Path, facts) -> "str | None":
             if store.get("schema_ahead")
             else ""
         )
+        basis = (
+            ""
+            if gate.get("status") == "ok"
+            else f" (counted by resolution facts alone — the gate's composition is "
+            f"unavailable: {gate.get('reason')})"
+        )
         return (
             f"Branch findings across this branch's {len(report['reviews'])} review "
             f"round(s), from evidence facts{partial}: {summary['open_blocking']} open "
-            f"blocking, {summary['undispositioned_warning']} undispositioned warning "
+            f"blocking{basis}, {summary['undispositioned_warning']} undispositioned warning "
             "(`prawduct-hook render-dispositions` lists them)."
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- display only: a failed composition is reported, never read as clean

@@ -1748,28 +1748,25 @@ def review_chain(facts: list[dict], newest: dict) -> list[dict]:
     """Every review fact on the chain ``newest`` stands on, newest first.
 
     The chain is structural: each review's ``base_tree`` is the ``head_tree`` of
-    the review before it (the link ``critic_consolidate.carried_blocking`` reads
-    one hop of). EVERY review standing at a linked tree is included, not only
-    the newest there, because a second review of an unchanged tree must not hide
-    the first; the walk steps back through the newest of them. Walked to the
-    end, because a chain can be several passes long.
+    a review recorded before it — ``coverage_algebra.linked_reviews``, the one
+    link rule the verify roll-call's anchor and ``plan_status``'s extended
+    line follow too. EVERY review standing at a linked tree is included, not
+    only the newest there, because a second review of an unchanged tree must
+    not hide the first; the walk steps back through the newest of them. Walked
+    to the end, because a chain can be several passes long.
     """
-    reviews = [f for f in facts if f.get("kind") == "review"]
     # Append order is recording order (the store is append-only); `ts` has
     # one-second resolution, so it cannot order two reviews in the same second.
-    position = {f.get("id"): i for i, f in enumerate(reviews)}
+    reviews = [f for f in facts if f.get("kind") == "review"]
     chain: list[dict] = []
     seen: set[str] = set()
     current: "dict | None" = newest
     while current is not None and current.get("id") not in seen:
         seen.add(current.get("id"))
         chain.append(current)
-        base = (current.get("body") or {}).get("base_tree")
-        here = position.get(current.get("id"), len(reviews))
         earlier = [
-            f for f in reviews
-            if f.get("id") not in seen and (f.get("body") or {}).get("head_tree") == base
-            and position[f.get("id")] < here
+            f for f in coverage_algebra.linked_reviews(reviews, current)
+            if f.get("id") not in seen
         ]
         for other in earlier[:-1]:
             seen.add(other.get("id"))

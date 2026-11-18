@@ -9219,11 +9219,11 @@ class TestAnEarlierRoundsBlockerIsNamedAgain:
     clean round 2 after it: the verify pass anchors to round 2, so the roll-call
     and the `NOT DONE` line named only round 2's blockers — none — and the gate
     routed round 1's to a whole spanning `cumulative`. The roll-call now names
-    the unresolved blockers of every review in the branch's set, so a `fixed`
+    every blocker the gate still counts at the anchor's tree, so a `fixed`
     resolution for round 1's finding clears it with no further round.
 
-    A real feature branch, so the set is bounded by lineage — the ordinary PR
-    shape — and real trees, so the gate composes over the same facts.
+    A real feature branch — the ordinary PR shape — and real trees, so the
+    roll-call and the gate compose over the same facts.
     """
 
     FIRST = "rev-first-0001"
@@ -9335,6 +9335,207 @@ class TestAnEarlierRoundsBlockerIsNamedAgain:
         assert "NOT DONE" in result.stdout
         record = json.loads((repo / FINDINGS_REL).read_text())
         assert f"{self.FIRST}/R-1" in record["next_action"]
+
+
+class TestABlockerTheGateRoutedAroundIsNotOpen:
+    """The Chunk 04 fix round (R-3/R-6): ONE predicate for "open blocker".
+
+    Round 1 left a blocker with no resolution fact; round 2 is clean; then a
+    clean `cumulative` spans the whole branch (merge base → round 2's tree).
+    The gate composes over that spanning edge, never stands at round 1's tree,
+    and passes. Every surface that reports open blockers must agree with it —
+    the set-based reading ("no resolution fact = open") put round 1's blocker
+    in the verify roll-call, counted it actionable so `no-review-needed` was
+    suppressed and a round manufactured, wrote a NOT DONE the gate contradicts,
+    and reported it open in the session briefing and the bare census.
+
+    Each test carries its control: the same surface with the cumulative absent
+    still names round 1's blocker (`TestAnEarlierRoundsBlockerIsNamedAgain`
+    pins the rest of that side), so a surface that went quiet for an unrelated
+    reason cannot pass here.
+    """
+
+    FIRST = TestAnEarlierRoundsBlockerIsNamedAgain.FIRST
+    SECOND = TestAnEarlierRoundsBlockerIsNamedAgain.SECOND
+    SPANNING = "rev-spanning-0003"
+
+    def _two_rounds(self, repo: Path) -> "tuple[str, str]":
+        return TestAnEarlierRoundsBlockerIsNamedAgain._two_rounds(self, repo)
+
+    def _spanned(self, repo: Path) -> "tuple[str, str]":
+        """The two rounds, then a clean `cumulative` over the whole branch.
+        Returns (head commit, its tree)."""
+        head, tree = self._two_rounds(repo)
+        resolved = coverage.resolve_merge_base_tree(repo)
+        assert resolved["status"] == "ok", resolved
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id=self.SPANNING, mode=CUMULATIVE_VERBOSE,
+            base_commit=resolved["merge_base"], base_tree=resolved["tree"],
+            head_tree=tree, head_commit=head,
+            files_changed=["src/app.py", "src/more.py"],
+            files_reviewed=["src/app.py", "src/more.py"],
+        )
+        _full_roster_partials(repo, head, findings_by_role={})
+        assert _run_consolidate(repo).returncode == 0
+        return head, tree
+
+    def test_the_premise_round_ones_blocker_has_no_resolution_and_the_gate_passes(
+        self, tmp_path, capsys
+    ):
+        repo = tmp_path / "r"
+        self._spanned(repo)
+        facts = _store_facts(repo)
+        first = next(f for f in facts if f.get("id") == self.FIRST)
+        assert ca_mod.unresolved_blocking(first, ca_mod.resolution_index(facts)), (
+            "premise: no resolution fact lifted round 1's blocker"
+        )
+        assert gates.check_cumulative_critic(repo) == 0, capsys.readouterr().err
+
+    def test_no_verify_round_is_manufactured(self, tmp_path):
+        """`begin_review`'s actionable count: nothing changed, nothing the gate
+        counts → no-review-needed (exit 3), not a dispatched round."""
+        repo = tmp_path / "r"
+        self._spanned(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 3, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert self.FIRST not in result.stdout
+
+    def test_a_verify_pass_carries_nothing_and_is_not_told_not_done(self, tmp_path):
+        repo = tmp_path / "r"
+        head, tree = self._spanned(repo)
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-verify-0004", mode=VERIFY_MODE, roster=["reviewer"],
+            base_tree=tree, head_tree=tree, head_commit=head,
+        )
+        _write_partial(repo, "reviewer", head, resolutions=[])
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "NOT DONE" not in result.stdout
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        assert f"{self.FIRST}/R-1" not in record["next_action"]
+        # The dispatch roll-call and the derived record ask the same adapter.
+        facts = _store_facts(repo)
+        assert cc.gate_counted_blockers(repo, facts, tree) == []
+        verify = next(f for f in facts if f.get("id") == "rev-verify-0004")
+        assert f"{self.FIRST}/R-1" not in cc.branch_review_record(
+            repo / ".prawduct", verify, facts
+        )["next_action"]
+
+    def test_the_control_without_the_spanning_review_still_carries_it(self, tmp_path):
+        repo = tmp_path / "r"
+        _, tree = self._two_rounds(repo)
+
+        counted = cc.gate_counted_blockers(repo, _store_facts(repo), tree)
+
+        assert [(c["review_id"], c["fid"]) for c in counted] == [(self.FIRST, "R-1")]
+
+    def _briefing_line(self, repo: Path) -> str:
+        from lib import briefing  # noqa: PLC0415
+
+        return briefing._branch_findings_line(repo, lambda: evidence.read_facts(repo))
+
+    def test_the_briefing_reports_zero_open_blocking(self, tmp_path):
+        spanned, control = tmp_path / "s", tmp_path / "c"
+        self._spanned(spanned)
+        self._two_rounds(control)
+
+        assert ": 0 open blocking," in self._briefing_line(spanned)
+        assert ": 1 open blocking," in self._briefing_line(control)
+
+    def _census(self, repo: Path) -> dict:
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "render-dispositions", "--json"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)["summary"]
+
+    def test_the_bare_census_reports_zero_open_blocking(self, tmp_path):
+        spanned, control = tmp_path / "s", tmp_path / "c"
+        self._spanned(spanned)
+        self._two_rounds(control)
+
+        summary = self._census(spanned)
+        assert summary["open_blocking"] == 0, summary
+        assert summary["open_blocking_basis"] == "gate"
+        assert self._census(control)["open_blocking"] == 1
+
+
+class TestTheEmptySpanFallbackIsBounded:
+    """R-2: with no commits in `merge_base..HEAD` (trunk after a push, a branch
+    cut and not yet committed to), the branch set fell back to EVERY review
+    this worktree ever recorded — all scopes, all branches, all time. An old
+    blocker from earlier, integrated work then reached the census, the
+    handoff and (through them) the builder as open debt. The owner now bounds
+    the fallback: by the scope when one is asked (the budget), else by the
+    chain of reviews linked to HEAD's tree."""
+
+    def _trunk_with_history(self, tmp_path: Path) -> "tuple[Path, str]":
+        repo, head = _trunk_repo(tmp_path)
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        # Earlier work, recorded from THIS worktree under another scope, at
+        # trees HEAD's tree never links to — with a blocker nobody resolved.
+        evidence.append_fact(
+            repo, "review", "rev-old-blocked",
+            {"base_tree": "a" * 40, "head_tree": "b" * 40, "mode": CUMULATIVE_VERBOSE,
+             "head_commit": head, "scope": "old-scope",
+             "findings": [{"fid": "R-1", "severity": "blocking", "title": "old",
+                           "goal": "Nothing Is Broken", "files": ["src/app.py"]}]},
+        )
+        # The work in flight: a dirty-tree review started from HEAD's tree.
+        (repo / "src" / "app.py").write_text("x = 2\n")
+        dirty = evidence.capture_tree(repo)["tree"]
+        evidence.append_fact(
+            repo, "review", "rev-now",
+            {"base_tree": head_tree, "head_tree": dirty, "mode": cc.MODE_TOKEN_TO_VERBOSE["chunk"],
+             "head_commit": None, "dispatch_commit": head, "scope": "now-scope",
+             "files_changed": ["src/app.py"], "files_reviewed": ["src/app.py"],
+             "findings": []},
+        )
+        return repo, head
+
+    def test_the_branch_set_excludes_unlinked_history(self, tmp_path):
+        repo, _ = self._trunk_with_history(tmp_path)
+        facts = evidence.read_facts(repo)["facts"]
+
+        assert coverage.branch_review_ids(repo, facts) == {
+            "status": "ok", "review_ids": ["rev-now"], "bound": cc.BOUND_WORKTREE,
+        }
+
+    def test_no_consumer_sees_the_old_blocker(self, tmp_path):
+        repo, _ = self._trunk_with_history(tmp_path)
+        from lib import briefing  # noqa: PLC0415
+
+        line = briefing._branch_findings_line(repo, lambda: evidence.read_facts(repo))
+        assert line is not None and "1 review round(s)" in line, line
+        assert ": 0 open blocking," in line, line
+
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "render-dispositions", "--json"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        report = json.loads(result.stdout)
+        assert [r["review_id"] for r in report["reviews"]] == ["rev-now"]
+        assert report["summary"]["open_blocking"] == 0
+
+    def test_the_budget_still_counts_its_scope_in_this_worktree(self, tmp_path):
+        """The scope bound is the budget's: its rounds count whatever tree they
+        stood at (the trunk-shape pins depend on it)."""
+        repo, _ = self._trunk_with_history(tmp_path)
+        facts = evidence.read_facts(repo)["facts"]
+
+        assert coverage.branch_review_ids(repo, facts, scope="old-scope")["review_ids"] == [
+            "rev-old-blocked"
+        ]
 
 
 class TestWideningBoundCountsTheCostSubset:
@@ -9665,9 +9866,16 @@ class TestRoundBudgetOnTheTrunkShape:
 
     def test_the_budget_narrows_the_branch_set_by_scope_on_both_bounds(self, tmp_path):
         """The extraction's refactor guard (#334). `coverage.branch_review_ids`
-        is the set; the budget's `review_ids` are exactly its in-scope members,
-        in order, under each bound — so the census, the verify roll-call and
-        this refusal cannot disagree about which reviews are this branch's."""
+        is the set; the budget's `review_ids` are exactly its answer for the
+        budget's scope, in order, under each bound — so the census and this
+        refusal cannot disagree about which reviews are this branch's.
+
+        Renegotiated in the Chunk 04 fix round (R-2). The scope is now passed
+        INTO the owner, because on the worktree bound it is the bound: without
+        one, the fallback is the chain linked to HEAD's tree, and these
+        fixtures' fake trees link to nothing — so the unscoped worktree set is
+        empty here, where it used to be every review this worktree recorded.
+        The lineage bound's unscoped set is unchanged."""
         trunk, head = _trunk_repo(tmp_path, budget="9")
         sibling = tmp_path / "sibling"
         _git(trunk, "worktree", "add", "--quiet", "-b", "other", str(sibling))
@@ -9683,14 +9891,16 @@ class TestRoundBudgetOnTheTrunkShape:
         _seed_round(branch, "rev-b-in-2", bhead, "budgeted")
 
         for repo, bound, branch_set, in_scope in (
-            (trunk, cc.BOUND_WORKTREE,
-             ["rev-t-in", "rev-t-other-scope", "rev-t-in-2"], ["rev-t-in", "rev-t-in-2"]),
+            (trunk, cc.BOUND_WORKTREE, [], ["rev-t-in", "rev-t-in-2"]),
             (branch, cc.BOUND_LINEAGE,
              ["rev-b-in", "rev-b-other-scope", "rev-b-in-2"], ["rev-b-in", "rev-b-in-2"]),
         ):
             facts = evidence.read_facts(repo)["facts"]
             assert coverage.branch_review_ids(repo, facts) == {
                 "status": "ok", "review_ids": branch_set, "bound": bound,
+            }
+            assert coverage.branch_review_ids(repo, facts, scope="budgeted") == {
+                "status": "ok", "review_ids": in_scope, "bound": bound,
             }
             verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
             assert verdict["review_ids"] == in_scope, verdict
@@ -10269,6 +10479,42 @@ class TestRoundTallyReachesTheBuilder:
         record, _ = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
         assert "recorded 3 review rounds" in record["next_action"]
         assert len(calls) == 1
+
+    def test_a_verify_consolidation_walks_the_lineage_once_too(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """The whole consolidation, on the close that also composes the carried
+        blockers (the native review's finding (b)): the carried blockers'
+        composition and the rounds clause share ONE merge-base resolution and
+        ONE lineage walk. A carried blocker is in play (the prior's R-1 is left
+        unresolved), so the composition really runs."""
+        repo, head = _budget_repo(tmp_path, 0)
+        base_tree = coverage.resolve_merge_base_tree(repo)["tree"]
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        # Real trees, so the carried blockers' composition has a path to walk.
+        _seed_prior_review_with_blocker(
+            repo, head, base_tree=base_tree, head_tree=head_tree, head_commit=head,
+        )
+        walks, resolutions = [], []
+        real_count, real_resolve = coverage.count_branch_rounds, coverage.resolve_merge_base_tree
+        monkeypatch.setattr(
+            coverage, "count_branch_rounds",
+            lambda *a, **k: walks.append(a) or real_count(*a, **k),
+        )
+        monkeypatch.setattr(
+            coverage, "resolve_merge_base_tree",
+            lambda *a, **k: resolutions.append(a) or real_resolve(*a, **k),
+        )
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+                        roster=["reviewer"], base_tree=head_tree, head_tree=head_tree,
+                        head_commit=head)
+        _write_partial(repo, "reviewer", head, findings=[], resolutions=[])
+        assert cc.consolidate(repo, trigger="explicit") == 0
+        line = json.loads((repo / FINDINGS_REL).read_text())["next_action"]
+        assert "NOT DONE" in line, "premise: the composition carried the prior's blocker"
+        assert len(walks) == 1, walks
+        assert len(resolutions) == 1, resolutions
 
 
 class TestBranchRoundsClause:
