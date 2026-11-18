@@ -27,6 +27,13 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-18.** "yes let's run now, 12-10 is too long to wait. yes to triage"
+In reply to two asks: (1) whether to blind-verify the Critic-vs-native comparison now, at 68 paired
+reviews (54 boundary pairs), or wait for #1130's stop at about 2026-12-10. It settles: verify now.
+This reverses the agent's recommendation to wait, and does not move the stop condition. (2) whether
+to triage the one untriaged downstream bug report now. Yes. The result lands as a comment on #1130,
+and the triage on the backlog.
+
 **2026-11-14.** "Yes to both of your recommendations."
 In reply to two asks after `feature/ci-testament` merged (PR #1172). It settles: (1) the norm row
 in `project-preferences.md` that the testament key is held by a CI job that runs no test and
