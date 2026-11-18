@@ -289,7 +289,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +24 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, goals-1-3.md +16): the Goal 1 /
     # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
     # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
-    "single-pass-inner": 5783,
+    # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): SKILL.md step 4 lost the exit-1 "apply the
+    # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
+    "single-pass-inner": 5753,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -416,7 +418,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +17 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, review-protocol.md +9): the Goal 1 /
     # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
     # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
-    "single-pass-full": 10147,
+    # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): SKILL.md step 4 lost the exit-1 "apply the
+    # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
+    "single-pass-full": 10117,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -644,7 +648,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +17 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, review-protocol.md +9): the Goal 1 /
     # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
     # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
-    "coordinator-fork": 10817,
+    # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): SKILL.md step 4 lost the exit-1 "apply the
+    # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
+    "coordinator-fork": 10787,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -679,7 +685,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +24 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, goals-1-3.md +16): the Goal 1 /
     # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
     # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
-    "coordinator-fork-inner": 6453,
+    # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): SKILL.md step 4 lost the exit-1 "apply the
+    # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
+    "coordinator-fork-inner": 6423,
     # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
     # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
@@ -707,11 +715,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5784,
-    "single-pass-full": 10148,
+    "single-pass-inner": 5754,
+    "single-pass-full": 10118,
     "dispatched-reviewer": 9591,
-    "coordinator-fork": 10818,
-    "coordinator-fork-inner": 6454,
+    "coordinator-fork": 10788,
+    "coordinator-fork-inner": 6424,
     "dispatched-reviewer-inner": 5227,
 }
 

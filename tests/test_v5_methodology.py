@@ -1135,7 +1135,10 @@ LAST_MEASURED_TOKENS = {
     # yields to the branch's review, and the manifest key list names `chunks`/`chunks_proposed`
     # for the retired `chunk`. Paid by cutting the paragraph's restatement of why a cross-branch
     # anchor misleads, which `critic_consolidate._prior_review_fact` owns.
-    "skills/critic/review-cycle.md": 8251,
+    # -2 on 2026-11-18 (backlog-roi Chunk 03, #662): the Demotion rows re-dispatch in the mode the
+    # refusal names (the no-`head_tree` trigger joins the undiffable row); paid by cutting the
+    # **Committed** flags, whose only job was steering the hand-applied property.
+    "skills/critic/review-cycle.md": 8249,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1341,7 +1344,10 @@ LAST_MEASURED_TOKENS = {
     # +8 on 2026-11-16 (coherence-pass Chunk 01), DECLARED: step 5 says `running:` is a suite in
     # flight, never a finding. Paid in part by cutting "the builder runs tests before requesting
     # review", false since the suite moved to the boundary. Priced in `test_reviewer_payload_budget.py`.
-    "skills/critic/SKILL.md": 3261,
+    # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): step 4's exit-1 `verify-resolutions` row and the
+    # demotion property stop telling the reader to apply the property by hand — `critic-begin` now
+    # names the covering mode on every demotion. Ceiling lowered with it.
+    "skills/critic/SKILL.md": 3231,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -6412,7 +6418,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3228 -> 3266 (verify-resolutions-lineage, #724, 2026-11-15) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3266 -> 3254 (retire-chunk-status-shims, #1055, 2026-11-15) — see LAST_MEASURED_TOKENS.
         # RAISED 3254 -> 3262 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3262, f"SKILL.md is ~{tokens} tokens, should be <3262"
+        # LOWERED 3262 -> 3232 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
+        assert tokens < 3232, f"SKILL.md is ~{tokens} tokens, should be <3232"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6758,7 +6765,8 @@ class TestReviewCycle:
         # RAISED 8187 -> 8256 (verify-resolutions-lineage, #1150/#1116/#724, 2026-11-15) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 8256 -> 8253 (branch-review-one-owner, #1179, 2026-11-15) — see LAST_MEASURED_TOKENS.
         # LOWERED 8253 -> 8252 (coherence-pass Chunk 03, 2026-11-16) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8252, f"review-cycle.md is ~{tokens} tokens, should be <8252"
+        # LOWERED 8252 -> 8250 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8250, f"review-cycle.md is ~{tokens} tokens, should be <8250"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

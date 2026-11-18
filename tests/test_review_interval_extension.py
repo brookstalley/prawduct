@@ -23,6 +23,7 @@ from lib import critic_consolidate as cc
 from lib import critic_mode, work_unit
 from lib.critic_mode import MODE_DEFERRED, infer_mode
 from test_critic_consolidate import (
+    FINDINGS_REL,
     HOOK,
     PARTIALS_REL,
     ROOT,
@@ -319,11 +320,11 @@ class TestCostOfCommit:
         assert answer["rides_next_review"] is None
 
 
-class TestWidenedFallback:
+class TestCoveringFallback:
     def test_final_is_recommended_when_a_frontier_sits_behind_the_commits(self, tmp_path):
         repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=True)
         head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
-        mode, why = cc._widened_fallback_mode(repo, head_tree, True)
+        mode, why = cc.covering_fallback_mode(repo, head_tree, True)
         assert mode == "final", why
         assert "last reviewed state" in why
 
@@ -340,7 +341,7 @@ class TestWidenedFallback:
         `final` would start at HEAD and miss them, so `cumulative` covers them."""
         repo, head_tree = self._unreviewed_commit(tmp_path)
         (repo / "src" / "wip.py").write_text("w = 1\n")
-        mode, why = cc._widened_fallback_mode(repo, head_tree, True)
+        mode, why = cc.covering_fallback_mode(repo, head_tree, True)
         assert mode == "cumulative", why
 
     def test_final_from_the_merge_base_when_nothing_judgeable_is_uncommitted(self, tmp_path):
@@ -348,7 +349,7 @@ class TestWidenedFallback:
         starts `final` at the merge-base, so it reaches them at inner-stage
         rigor. Red if the fallback re-derives the start instead of asking."""
         repo, head_tree = self._unreviewed_commit(tmp_path)
-        mode, why = cc._widened_fallback_mode(repo, head_tree, True)
+        mode, why = cc.covering_fallback_mode(repo, head_tree, True)
         assert mode == "final", why
         assert "merge-base" in why, why
 
@@ -925,3 +926,160 @@ class TestShortPlanBoundaryOwed:
         line = next(l for l in done.stdout.splitlines() if l.startswith("NEXT-ACTION:"))
         assert "This plan still owes its boundary `cumulative`" in line
         assert cc._RIDE_ALONG_ROUTE.strip() not in line
+
+
+class TestAnchorRefusalsNameACoveringMode:
+    """Every ``verify-resolutions`` demotion names the mode that covers the work
+    (#662). The exit-2 widening always did; the exit-1 anchor refusals (no
+    prior review on this lineage, a fact with no ``head_tree``, a prior tree
+    that cannot be diffed) returned prose only, and the reader applied the
+    demotion property by hand — the rule exit 2 moved out of prose because
+    prose did not hold. Each now carries ``kind: "anchor-unusable"`` and the
+    one recommender's ``fallback_mode``, at exit 1 still."""
+
+    def _reviewed_commit(self, tmp_path: Path, branch: str = "feat/work") -> Path:
+        """``branch`` cut from ``main``, one judgeable commit on it, reviewed
+        clean on a clean tree (so the review spans merge-base → that commit)."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
+        _git(repo, "checkout", "-b", branch, "--quiet")
+        _commit_file(repo, "src/app.py", "x = 2\n", "the chunk")
+        begin = _run_begin(repo, "--mode", "chunk")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert "src/app.py" in manifest["files_changed"], manifest
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[])
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, done.stderr
+        return repo
+
+    def _reword_the_reviewed_commit(self, repo: Path) -> None:
+        """Rewritten history: the reviewed commit's anchor leaves the lineage,
+        while its TREE — which the coverage composition reads — survives."""
+        reworded = _git(repo, "commit", "--amend", "-m", "the chunk, reworded", "--quiet")
+        assert reworded.returncode == 0, reworded.stderr
+
+    def test_committed_work_after_a_rewritten_anchor_names_final_from_the_frontier(
+        self, tmp_path
+    ):
+        """The issue's committed-delta case. Since #1150 a deleted cache alone
+        re-derives the anchor from this branch's review, so the refusal is
+        reached the way it now is: the reviewed commit was reworded (its anchor
+        is off the lineage, its tree still composes). Two commits after it, a
+        clean tree, the cache deleted. The named mode is `final`, and the
+        `final` it names starts at the frontier, so the two commits are in its
+        interval."""
+        repo = self._reviewed_commit(tmp_path)
+        self._reword_the_reviewed_commit(repo)
+        _commit_file(repo, "src/b.py", "b = 1\n", "after one")
+        _commit_file(repo, "src/c.py", "c = 1\n", "after two")
+        (repo / FINDINGS_REL).unlink()
+
+        refused = cc.begin_review(repo, "verify-resolutions")
+        assert refused["status"] == "error", refused
+        assert refused.get("kind") == "anchor-unusable", refused
+        assert refused.get("fallback_mode") == "final", refused
+        assert refused["reason"].startswith("no prior review to verify: "), refused
+        assert "Re-dispatch as `final`" in refused["reason"], refused
+        assert "last reviewed state" in refused["reason"], refused
+
+        final = cc.begin_review(repo, refused["fallback_mode"])
+        assert final["status"] == "ok", final
+        changed = final["manifest"]["files_changed"]
+        assert "src/b.py" in changed and "src/c.py" in changed, changed
+        assert "src/app.py" not in changed, changed  # it starts at the frontier
+
+    def test_a_branch_switch_with_a_stray_names_cumulative(self, tmp_path):
+        """A sibling branch's review in the cache, nothing reviewed on this
+        lineage, committed work, and one stray judgeable untracked file: `final`
+        would start at HEAD and review the stray, so `cumulative` is named."""
+        repo = self._reviewed_commit(tmp_path, branch="feat/a")
+        _git(repo, "checkout", "main", "--quiet")
+        _git(repo, "checkout", "-b", "feat/b", "--quiet")
+        _commit_file(repo, "src/b.py", "b = 1\n", "unreviewed work")
+        (repo / "src" / "stray.py").write_text("s = 1\n")
+
+        refused = cc.begin_review(repo, "verify-resolutions")
+        assert refused.get("kind") == "anchor-unusable", refused
+        assert refused.get("fallback_mode") == "cumulative", refused
+        assert "not an ancestor of HEAD" in refused["reason"], refused
+        assert "Re-dispatch as `cumulative`" in refused["reason"], refused
+
+    def test_a_covered_head_with_uncommitted_work_names_final(self, tmp_path):
+        """The new arm: the frontier IS HEAD's tree (the reworded commit is
+        HEAD), so the committed work is covered and only the uncommitted part
+        remains — `final`, not the `cumulative` the fall-through gave."""
+        repo = self._reviewed_commit(tmp_path)
+        self._reword_the_reviewed_commit(repo)
+        (repo / "src" / "wip.py").write_text("w = 1\n")
+
+        refused = cc.begin_review(repo, "verify-resolutions")
+        assert refused.get("kind") == "anchor-unusable", refused
+        assert refused.get("fallback_mode") == "final", refused
+        assert "already covered" in refused["reason"], refused
+
+    def test_the_covered_head_arm_at_the_recommender(self, tmp_path):
+        """The same arm at the recommender, which the exit-2 door shares."""
+        repo = self._reviewed_commit(tmp_path)
+        (repo / "src" / "wip.py").write_text("w = 1\n")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        mode, why = cc.covering_fallback_mode(repo, head_tree, True)
+        assert mode == "final", why
+        assert "already covered" in why, why
+
+    def test_a_prior_fact_without_a_head_tree_names_a_mode(self, tmp_path, monkeypatch):
+        """The second refusal site: the prior fact records no ``head_tree``."""
+        repo = self._reviewed_commit(tmp_path)
+        (repo / "src" / "wip.py").write_text("w = 1\n")
+        real = cc._prior_review_fact
+
+        def headless(*args, **kwargs):
+            fact, note = real(*args, **kwargs)
+            assert fact is not None, note
+            return {**fact, "body": {**fact["body"], "head_tree": None}}, note
+
+        monkeypatch.setattr(cc, "_prior_review_fact", headless)
+        refused = cc.begin_review(repo, "verify-resolutions")
+        assert refused.get("kind") == "anchor-unusable", refused
+        assert refused.get("fallback_mode") == "final", refused
+        assert "records no head_tree" in refused["reason"], refused
+        assert "Re-dispatch as `final`" in refused["reason"], refused
+
+    def test_an_undiffable_prior_tree_names_a_mode(self, tmp_path, monkeypatch):
+        """The third refusal site: the prior tree cannot be diffed."""
+        repo = self._reviewed_commit(tmp_path)
+        _commit_file(repo, "src/b.py", "b = 1\n", "after")
+        monkeypatch.setattr(cc.evidence, "tree_diff", lambda *_a, **_k: None)
+        refused = cc.begin_review(repo, "verify-resolutions")
+        assert refused.get("kind") == "anchor-unusable", refused
+        assert refused.get("fallback_mode") == "final", refused
+        assert "cannot diff prior reviewed tree" in refused["reason"], refused
+        assert "Re-dispatch as `final`" in refused["reason"], refused
+
+    def test_the_cli_still_exits_1_and_names_the_mode(self, tmp_path):
+        repo = self._reviewed_commit(tmp_path)
+        self._reword_the_reviewed_commit(repo)
+        _commit_file(repo, "src/b.py", "b = 1\n", "after")
+        done = _run_begin(repo, "--mode", "verify-resolutions")
+        assert done.returncode == 1, (done.stdout, done.stderr)
+        assert "Re-dispatch as `final`" in done.stderr, done.stderr
+
+    def test_an_unusable_store_still_exits_6_and_names_no_mode(self, tmp_path):
+        """Control: no re-dispatch repairs a store, so it keeps its own exit
+        and names no mode."""
+        from lib import evidence
+
+        repo = self._reviewed_commit(tmp_path)
+        self._reword_the_reviewed_commit(repo)
+        store = evidence.store_path(repo)
+        with store.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"schema": max(evidence.SUPPORTED_SCHEMAS) + 1,
+                                 "kind": "review", "id": "from-the-future"}) + "\n")
+        result = cc.begin_review(repo, "verify-resolutions")
+        assert result.get("kind") == "store-unusable", result
+        assert "fallback_mode" not in result, result
+        done = _run_begin(repo, "--mode", "verify-resolutions")
+        assert done.returncode == 6, (done.stdout, done.stderr)
+        assert "Re-dispatch" not in done.stderr, done.stderr
