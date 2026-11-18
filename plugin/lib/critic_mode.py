@@ -1345,7 +1345,7 @@ def _progress_at_head(
     with tempfile.TemporaryDirectory(prefix="prawduct-plan-at-head-") as scratch:
         copy = Path(scratch) / Path(plan_path).name
         try:
-            copy.write_text(text, encoding="utf-8")
+            copy.write_text(text, encoding="utf-8", errors="backslashreplace")
         except OSError:
             return None
         return progress_of(copy, facts, repo_dir=Path(project_dir))
@@ -2101,7 +2101,8 @@ def _working_tree_is_empty(project_dir: Path) -> bool:
             ["git", "status", "--porcelain", "--untracked-files=all"],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
@@ -2118,7 +2119,8 @@ def _head_tree(project_dir: Path) -> str | None:
             ["git", "rev-parse", "HEAD^{tree}"],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
@@ -2144,7 +2146,8 @@ def _get_uncommitted_code_files(project_dir: Path) -> set[str]:
         ["git", "status", "--porcelain", "--untracked-files=all"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=10,
     )
     if proc.returncode != 0:
@@ -2166,7 +2169,8 @@ def _committed_files_since(project_dir: Path, sha: str) -> set[str]:
         ["git", "diff", "--name-only", f"{sha}..HEAD"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=10,
     )
     if proc.returncode != 0:
@@ -2185,7 +2189,8 @@ def _commit_resolves(project_dir: Path, sha: str) -> bool:
         ["git", "rev-parse", "--verify", f"{sha}^{{commit}}"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=10,
     )
     return proc.returncode == 0
@@ -2210,7 +2215,8 @@ def _commit_is_ancestor(project_dir: Path, sha: str) -> bool:
             ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):

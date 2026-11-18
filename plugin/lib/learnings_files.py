@@ -494,7 +494,7 @@ def scaffold_core(project_dir: str | Path) -> Path:
     path = Path(project_dir) / RULES_DIR_REL / CORE_NAME
     if not path.is_file():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(CORE_HEADER, encoding="utf-8")
+        path.write_text(CORE_HEADER, encoding="utf-8", errors="backslashreplace")
     return path
 
 
@@ -515,7 +515,8 @@ def rules_dir_is_gitignored(project_dir: str | Path) -> bool:
     try:
         proc = subprocess.run(  # noqa: S603 — list-form argv, no shell (project preference)
             ["git", "check-ignore", "-q", "--no-index", "--", probe],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+            encoding="utf-8", errors="surrogateescape",
+            cwd=str(project_dir), capture_output=True, timeout=10,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -537,7 +538,8 @@ def corpus_texts_at(project_dir: str | Path, tree: str) -> "list[str] | None":
     def _git(*args: str) -> "subprocess.CompletedProcess[str] | None":
         try:
             return subprocess.run(  # noqa: S603 — list-form argv, no shell (project preference)
-                ["git", *args], cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+                ["git", *args], cwd=str(project_dir), capture_output=True, timeout=30,
+                encoding="utf-8", errors="surrogateescape",
             )
         except (OSError, subprocess.TimeoutExpired):
             return None
@@ -602,7 +604,7 @@ def unit_hash(text: str) -> str:
     different rule to a reader, so "this rule has never fired" must not be
     answered from the text it used to have.
     """
-    return hashlib.sha256(normalize_unit(text).encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(normalize_unit(text).encode("utf-8", "surrogateescape")).hexdigest()[:16]
 
 
 def unit_citation(text: str, words: int = CITATION_WORDS) -> str:

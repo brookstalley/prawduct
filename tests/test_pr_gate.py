@@ -722,6 +722,60 @@ class TestCredentialShape:
         assert r.returncode == 1
         assert "id_rsa:1" in r.stdout and "private key" in r.stdout
 
+    def test_a_non_utf8_file_does_not_hide_the_rest_of_the_diff(self, tmp_path):
+        """#1188: a vendored header whose comment is Windows-1251 made the whole
+        diff "could not be read" (exit 3), so the credential in ANOTHER file went
+        unchecked. The control is the same branch without the legacy file."""
+        legacy = b"/* \xcf\xf0\xe8\xe2\xe5\xf2 */\nint x;\n"
+        repo = _repo(tmp_path, branch_files={"config.py": f"token = '{_TOKEN}'\n"})
+        (repo / "legacy.h").write_bytes(legacy)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "vendor a legacy header")
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        assert "config.py:1: github token" in r.stdout
+        assert "could not be read" not in r.stdout
+
+        clean = _repo(tmp_path / "clean")
+        (clean / "legacy.h").write_bytes(legacy)
+        _git(clean, "add", "-A")
+        _git(clean, "commit", "-qm", "vendor a legacy header")
+        r = _run(clean, "check-pr-hygiene")
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert "nothing to report" in r.stdout
+
+    def test_a_non_utf8_pathname_round_trips_and_prints(self, tmp_path):
+        """A pathname that is not UTF-8 must survive the trip back into
+        ``git show HEAD:<path>`` (the waiver on the line above is read from
+        there), and naming it must not crash the output. Built with plumbing,
+        because some filesystems refuse to store the name."""
+        repo = _repo(tmp_path)
+        name = b"n\xe9.cfg"
+
+        def plumb(*args: bytes, stdin: bytes | None = None) -> bytes:
+            proc = subprocess.run(
+                [b"git", *args], cwd=repo, input=stdin, capture_output=True, check=True,
+                env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                         GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"),
+            )
+            return proc.stdout
+
+        def commit(content: str) -> None:
+            blob = plumb(b"hash-object", b"-w", b"--stdin", stdin=content.encode()).strip()
+            plumb(b"update-index", b"--add", b"--cacheinfo", b"100644," + blob + b"," + name)
+            plumb(b"commit", b"-qm", b"add a legacy-named file")
+
+        commit(f"# {_WAIVER}\ntoken = '{_TOKEN}'\n")
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 0, (r.stdout, r.stderr)
+
+        commit(f"# nothing waived here\ntoken = '{_TOKEN}'\n")
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        # The byte prints as its escape: 0xE9 decoded to U+DCE9.
+        assert "n\\udce9.cfg:2: github token" in r.stdout
+        assert "Error" not in r.stderr
+
     def test_an_unreadable_diff_is_3_never_clean(self, tmp_path, monkeypatch):
         """Authority fails closed: the refusing check could not look."""
         from lib import record_lint

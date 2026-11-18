@@ -141,7 +141,8 @@ def _plan_work_possibly_unmerged(
             ["git", "merge-base", "--is-ancestor", "HEAD", base],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=10,
         )
         # rc 0 = HEAD is reachable from base (merged). rc 1 = not an ancestor
@@ -1715,7 +1716,9 @@ def generate_subagent_briefing(project_dir: Path) -> None:
     # loads them for a subagent exactly as it does for the main agent — embedding
     # a copy here would spend the subagent's context on text it already has, and
     # would go stale the moment the corpus was edited.
-    (prawduct_dir / ".subagent-briefing.md").write_text("\n".join(sections))
+    (prawduct_dir / ".subagent-briefing.md").write_text(
+        "\n".join(sections), encoding="utf-8", errors="backslashreplace"
+    )
 
 
 # =============================================================================
@@ -1734,7 +1737,8 @@ def _git_session_commits(project_dir: Path) -> list[str]:
         result = subprocess.run(
             ["git", "log", f"--since={since}", "--oneline", "--no-decorate"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )

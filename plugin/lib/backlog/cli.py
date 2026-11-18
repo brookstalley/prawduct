@@ -1425,7 +1425,7 @@ def _run_restructure_preview(rest: list[str]):
     )
     out_path = Path(flags["out"])
     try:
-        out_path.write_text(preview, encoding="utf-8")
+        out_path.write_text(preview, encoding="utf-8", errors="backslashreplace")
     except OSError as exc:
         # "unavailable", matching export's local-write failure class — an
         # environment failure, not bad input.

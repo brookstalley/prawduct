@@ -93,7 +93,7 @@ def _record_backlog_service_repo(project_dir: Path, spec: str) -> bool:
     if content and not content.endswith("\n"):
         content += "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content + block, encoding="utf-8")
+    path.write_text(content + block, encoding="utf-8", errors="backslashreplace")
     return True
 
 

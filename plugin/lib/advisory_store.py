@@ -418,7 +418,7 @@ def compute_id(feature: str, probe_type: str, probe_version: int, evidence: Iter
     illustrative and a probe simply chooses a short ``feature`` token.
     """
     joined = "\n".join(evidence)
-    digest = hashlib.sha256(joined.encode("utf-8")).hexdigest()[:6]
+    digest = hashlib.sha256(joined.encode("utf-8", "surrogateescape")).hexdigest()[:6]
     return f"{feature}-{probe_type}-v{probe_version}-{digest}"
 
 
@@ -462,7 +462,7 @@ def _preserve_corrupt(path: Path, raw: str) -> None:
     a failed preservation is swallowed rather than propagated.
     """
     try:
-        path.with_name(path.name + ".corrupt").write_text(raw)
+        path.with_name(path.name + ".corrupt").write_text(raw, encoding="utf-8", errors="backslashreplace")
     except OSError:
         pass  # best-effort: never let preservation break the (non-raising) read
 

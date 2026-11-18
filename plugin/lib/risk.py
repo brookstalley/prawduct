@@ -263,7 +263,7 @@ def _git_lines(project_dir: Path, *args: str) -> list[str] | None:
     try:
         proc = subprocess.run(
             ["git", *args],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+            cwd=str(project_dir), capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=30,
         )
     except Exception:  # prawduct:allow prawduct/broad-except -- verdict degrades per the declared fail-open/closed rule, never crashes
         return None

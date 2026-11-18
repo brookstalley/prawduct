@@ -233,21 +233,23 @@ class TestAddedLineScoping:
         found = _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "suite-total-claim")
         assert [f["line"] for f in found] == [2]
 
-    def test_a_diff_that_cannot_be_decoded_reports_unchecked(self, tmp_path):
-        """`git diff` output carries file CONTENT, and `text=True` decodes it
-        strictly — one non-UTF-8 byte in any consumer's changed `.md` used to
-        raise straight through `critic-begin`. It must degrade to a reported
-        non-answer, never a traceback and never a clean pass."""
+    def test_a_non_utf8_byte_in_the_diff_is_linted_not_unchecked(self, tmp_path):
+        """`git diff` output carries file CONTENT, so one non-UTF-8 byte in a
+        consumer's changed `.md` is ordinary input. It used to make the whole
+        diff unchecked (#1188), which hid every other line from every check; the
+        diff now decodes losslessly and the line beside the byte is still read.
+        An interval git cannot diff at all stays unchecked
+        (`TestUncheckedReporting`)."""
         repo = _make_repo(tmp_path)
         doc = repo / ".prawduct" / "artifacts" / "notes.md"
         doc.write_text("seed\n")
         base = _commit(repo, "seed")
-        doc.write_bytes("seed\nlatin1: caf\xe9\n".encode("latin-1"))
+        doc.write_bytes("seed\nlatin1: caf\xe9\nfull suite 900\n".encode("latin-1"))
         head = _commit(repo, "add")
 
         result = _lint(repo, [".prawduct/artifacts/notes.md"], base, head)
-        assert _checks(result, "suite-total-claim") == []
-        assert any("could not read the diff" in r for r in result["unchecked"])
+        assert [f["line"] for f in _checks(result, "suite-total-claim")] == [3]
+        assert not any("could not read the diff" in r for r in result["unchecked"])
 
     def test_line_numbers_point_at_the_added_line(self, tmp_path):
         repo = _make_repo(tmp_path)

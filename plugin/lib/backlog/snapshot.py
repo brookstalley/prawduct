@@ -102,7 +102,7 @@ def write(path: Path, scope: str, counts: dict, *, now: datetime | None = None) 
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=".tmp")
         try:
-            with os.fdopen(fd, "w") as handle:
+            with os.fdopen(fd, "w", encoding="utf-8", errors="backslashreplace") as handle:
                 json.dump(data, handle)
             os.replace(tmp, path)  # atomic on POSIX — the old file is never torn
         finally:

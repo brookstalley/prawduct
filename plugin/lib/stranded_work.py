@@ -205,9 +205,8 @@ def _mtime_signal(path: Path, source: str) -> Signal | None:
 
 def _git(cwd: Path, *args: str, strip: bool = True) -> str | None:
     """stdout of one git call through the shared runner, or None if git could
-    not answer (including output that is not valid UTF-8, which the runner
-    reports as a failed call). ``GIT_OPTIONAL_LOCKS=0`` so a read never
-    refreshes another tree's index."""
+    not answer. ``GIT_OPTIONAL_LOCKS=0`` so a read never refreshes another
+    tree's index."""
     env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
     rc, out, _err = evidence.run_git(cwd, *args, env=env, strip=strip)
     return out if rc == 0 else None

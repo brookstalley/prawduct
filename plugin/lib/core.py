@@ -210,9 +210,24 @@ def log(msg: str) -> None:
 
 
 def atomic_write_text(
-    path: Path, text: str, *, encoding: str = "utf-8", newline: str | None = None
+    path: Path,
+    text: str,
+    *,
+    encoding: str = "utf-8",
+    errors: str = "backslashreplace",
+    newline: str | None = None,
 ) -> None:
     """Write ``text`` to ``path`` atomically: tmp sibling + ``os.replace``.
+
+    ``errors`` defaults to ``backslashreplace``, the plugin's policy for every
+    text write (``tests/test_text_codec_policy.py``). Subprocess output decodes
+    with ``surrogateescape``, so a byte of a legacy encoding in a pathname or a
+    commit subject arrives here as a lone surrogate, which a strict encoder
+    raises on. ``backslashreplace`` writes it as ``\\udce9`` instead, so the
+    file stays valid UTF-8 and every strict reader of it keeps working. A file
+    that must mirror git's bytes exactly (``.session-git-baseline``, compared
+    line by line with fresh ``git status`` output) passes ``surrogateescape``
+    and is read back with it.
 
     ``encoding`` defaults to **utf-8**. It previously defaulted to ``None``,
     i.e. ``locale.getpreferredencoding(False)``, which made the round trip
@@ -224,8 +239,8 @@ def atomic_write_text(
     subprocess rather than asserting in-process.
 
     **The writer alone does not settle the round trip — each reader must ask
-    for utf-8 too.** There are 11 call sites (four of them in the extensionless
-    ``bin/prawduct-hook``, which a ``*.py``-filtered grep does not see), and
+    for utf-8 too.** Its call sites include the extensionless
+    ``bin/prawduct-hook``, which a ``*.py``-filtered grep does not see, and
     their readers were not uniformly utf-8: ``operator_verification`` wrote
     through here and read back with a bare ``read_text()``. That pair was
     self-inverse while both used the locale encoding and became asymmetric the
@@ -252,7 +267,7 @@ def atomic_write_text(
     the next write overwrites it.
     """
     tmp = path.with_name(path.name + ".tmp")
-    with tmp.open("w", encoding=encoding, newline=newline) as handle:
+    with tmp.open("w", encoding=encoding, errors=errors, newline=newline) as handle:
         handle.write(text)
     os.replace(tmp, path)
 
@@ -1009,7 +1024,7 @@ def write_template(src: Path, dst: Path, subs: dict[str, str], *, overwrite: boo
             return False  # Already up to date
 
     dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(content)
+    dst.write_text(content, encoding="utf-8", errors="backslashreplace")
     return True
 
 
@@ -1091,7 +1106,9 @@ def _shared_ignore_matches(
                     ["git", "init", "-q", "."],
                     cwd=scratch, env=env, check=True, capture_output=True, timeout=10,
                 )
-                (Path(scratch) / ".gitignore").write_text(content, encoding="utf-8")
+                (Path(scratch) / ".gitignore").write_text(
+                    content, encoding="utf-8", errors="backslashreplace"
+                )
             except (OSError, subprocess.SubprocessError):
                 return None
             rules = gitstate.git_ignore_rules(Path(scratch), paths, env=env)
@@ -1391,7 +1408,7 @@ def update_gitignore(target: Path, dry_run: bool = False) -> dict:
         modified = True
 
     if modified and not dry_run:
-        gitignore.write_text(content)
+        gitignore.write_text(content, encoding="utf-8", errors="backslashreplace")
 
     return {
         "modified": modified,

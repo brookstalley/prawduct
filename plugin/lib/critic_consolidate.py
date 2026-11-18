@@ -3325,7 +3325,7 @@ def native_review_sampled(review_id: "str | None") -> bool:
     what is measured."""
     if not isinstance(review_id, str) or not review_id:
         return False
-    digest = hashlib.sha256(review_id.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(review_id.encode("utf-8", "surrogateescape")).hexdigest()
     return int(digest, 16) % NATIVE_REVIEW_INNER_SAMPLE == 0
 
 

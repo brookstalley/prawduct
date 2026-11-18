@@ -109,7 +109,7 @@ def head_sha(project_dir: Path) -> str | None:
     try:
         proc = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+            cwd=str(project_dir), capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=30,
         )
     except Exception:  # prawduct:allow prawduct/broad-except -- envelope fields are nullable, never fatal
         return None
