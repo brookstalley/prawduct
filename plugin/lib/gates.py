@@ -3315,14 +3315,15 @@ def blocking_remedy_lines(
     A superseded blocker is one carried by a review fact no verify-resolutions
     pass will ANCHOR to again (``coverage_algebra._verify_anchor_id``). Whether
     a verify pass can still clear it depends on whether its roll-call NAMES
-    it, and since #334 the roll-call names the unresolved blockers of every
-    review in the branch's set (``critic_consolidate.carried_blocking`` over
-    ``coverage.branch_review_ids``). So with ``project_dir`` given, a
-    superseded entry whose review is in that set is REACHABLE — the standard
-    remedy clears it, and the message says the roll-call names it. Only one
-    outside the set is STRANDED: no pass will name it again, and the state
-    clears only through a spanning review. Without ``project_dir``, or when the
-    set cannot be derived, every superseded entry reads as stranded — the
+    it, and since #334 the roll-call names every blocker the gate's own
+    composition counts at the pass's anchor tree
+    (``critic_consolidate.carried_blocking`` over ``coverage.open_blockers``).
+    So with ``project_dir`` given, a superseded entry that composition counts
+    is REACHABLE (:func:`_roll_call_review_ids`) — the standard remedy clears
+    it, and the message says the roll-call names it. Only one it does not
+    count is STRANDED: no pass will name it again, and the state clears only
+    through a spanning review. Without ``project_dir``, or when the answer
+    cannot be derived, every superseded entry reads as stranded — the
     pre-#334 advice, which costs a round but never names a route that cannot
     work. ``facts`` is the store the caller already read, else it is read here
     (only when some entry is superseded).
@@ -3387,10 +3388,20 @@ def blocking_remedy_lines(
 def _roll_call_review_ids(
     project_dir: "Path | None", facts: "list[dict] | None"
 ) -> "set[str]":
-    """The review ids a ``verify-resolutions`` roll-call names blockers of —
-    this branch's review set (``coverage.branch_review_ids``) — or the empty
-    set when there is no ``project_dir`` or the set cannot be derived, which
-    :func:`blocking_remedy_lines` reads as "stranded", its pre-#334 advice."""
+    """The review ids a ``verify-resolutions`` roll-call names blockers of, or
+    the empty set when there is no ``project_dir`` or the answer cannot be
+    derived — which :func:`blocking_remedy_lines` reads as "stranded", its
+    pre-#334 advice.
+
+    The roll-call names every blocker the gate's composition counts at the tree
+    the pass anchors on (``critic_consolidate.carried_blocking`` over
+    ``coverage.open_blockers``), and the pass anchors on the branch's newest
+    review — so this asks the same owner the same question, at
+    ``coverage.newest_review_tree`` of the branch's review set
+    (``coverage.branch_review_ids``). Not the set's membership: a set member
+    whose blocker that composition no longer counts is named by no roll-call,
+    and one the composition counts from outside the set (a review standing at
+    the merge base) is."""
     if project_dir is None:
         return set()
     if facts is None:
@@ -3398,8 +3409,15 @@ def _roll_call_review_ids(
         if read.get("status") == "error":
             return set()
         facts = read.get("facts") or []
-    answer = coverage.branch_review_ids(project_dir, facts)
-    return set(answer["review_ids"]) if answer.get("status") == "ok" else set()
+    branch = coverage.branch_review_ids(project_dir, facts)
+    if branch.get("status") != "ok":
+        return set()
+    answer = coverage.open_blockers(
+        project_dir, facts, coverage.newest_review_tree(facts, branch["review_ids"])
+    )
+    if answer.get("status") != "ok":
+        return set()
+    return {b.get("review_id") for b in answer["blockers"]}
 
 
 def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:

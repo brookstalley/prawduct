@@ -1209,3 +1209,80 @@ class TestOneEvidenceGraph:
                         assert files is not None and not ca.judgeable_files(files), seed
                         assert step["files"] == files, (seed, kf)  # #1159
         assert composed > 100  # excused paths were actually produced and walked
+
+
+# ---------------------------------------------------------------------------
+# The review link and the counted blockers — one owner each (Chunk 04 fix round)
+# ---------------------------------------------------------------------------
+
+
+class TestTheReviewLink:
+    """`linked_reviews` / `prior_review` / `reviews_linked_from` are THE link
+    rule; `critic_mode.review_chain`, `plan_status._extended_reviews` and
+    `critic_consolidate.carried_blocking` follow it rather than restating it
+    (three copies had drifted: identity by `id()` vs fact id, every review at a
+    tree vs the newest, the pass excluded or not)."""
+
+    def _store(self):
+        return [
+            _review("a", T0, T1, ["x.py"]),
+            _review("b", T0, T1, ["x.py"]),   # a second review of the same tree
+            _review("c", T1, T2, ["x.py"]),
+            _review("d", T1, T3, ["x.py"]),   # recorded after c, also from T1
+        ]
+
+    def test_it_links_to_every_earlier_review_at_its_base_newest_last(self):
+        reviews = self._store()
+        assert [f["id"] for f in ca.linked_reviews(reviews, reviews[2])] == ["a", "b"]
+        assert ca.prior_review(reviews, reviews[2])["id"] == "b"
+
+    def test_strictly_earlier_excludes_the_fact_itself_and_anything_after_it(self):
+        reviews = self._store() + [_review("self", T1, T1, ["x.py"])]
+        assert ca.prior_review(reviews, reviews[-1])["id"] == "b"
+        # Placed by id when the caller holds a different dict for the same fact.
+        assert ca.prior_review(reviews, {"id": "a", "body": {"base_tree": T1}}) is None
+
+    def test_a_fact_not_yet_in_the_store_sees_every_review(self):
+        reviews = self._store()
+        probe = {"id": None, "body": {"base_tree": T1}}
+        assert ca.prior_review(reviews, probe)["id"] == "b"
+
+    def test_a_missing_base_links_to_nothing(self):
+        reviews = [{"kind": "review", "id": "x", "body": {"head_tree": None}}]
+        assert ca.linked_reviews(reviews, {"id": "y", "body": {}}) == []
+
+    def test_read_forward_from_a_root(self):
+        reviews = self._store() + [_review("off", T11, T_DEAD, ["x.py"])]
+        assert [f["id"] for f in ca.reviews_linked_from(reviews, T0)] == ["a", "b", "c", "d"]
+        assert [f["id"] for f in ca.reviews_linked_from(reviews, T1)] == ["a", "b", "c", "d"]
+        assert [f["id"] for f in ca.reviews_linked_from(reviews, T2)] == ["c"]
+        assert ca.reviews_linked_from(reviews, "") == []
+
+
+class TestBlockersCounted:
+    """The gate's answer to "is this blocker open", read off a verdict: a
+    blocker with no resolution fact that a clean spanning review routed around
+    is NOT counted."""
+
+    def test_a_routed_around_blocker_is_not_counted(self):
+        facts = [
+            _review("r1", T0, T1, ["x.py"], findings=[BLOCKER]),
+            _review("r2", T1, T2, ["x.py"]),
+            _review("span", T0, T2, ["x.py"]),
+        ]
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff({}))
+        assert verdict["status"] == "covered", verdict
+        assert ca.unresolved_blocking(facts[0], ca.resolution_index(facts)), "premise"
+        assert ca.blockers_counted(verdict) == []
+
+    def test_without_the_spanning_review_it_is_counted(self):
+        facts = [
+            _review("r1", T0, T1, ["x.py"], findings=[BLOCKER]),
+            _review("r2", T1, T2, ["x.py"]),
+        ]
+        counted = ca.blockers_counted(ca.coverage_verdict(facts, T0, T2, _diff({})))
+        assert [(c["review_id"], c["fid"]) for c in counted] == [("r1", "F-1")]
+
+    def test_no_path_is_unknown_not_none_open(self):
+        assert ca.blockers_counted({"status": "uncovered", "reason": "x"}) is None
+        assert ca.blockers_counted(None) is None

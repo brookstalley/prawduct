@@ -85,9 +85,9 @@ ACTIONS = (ACCEPT, FILE, FIXED)
 #: reader that ignores unknown keys still reads a version-2 report correctly —
 #: but the number is what lets a consumer say which shape it was written for,
 #: and a bump costs nothing next to a consumer guessing. 3 added the summary's
-#: ``open_blocking``/``undispositioned_warning`` pair (additive again), and a
-#: bare ``render-dispositions`` now renders the branch's review set rather than
-#: the newest review.
+#: ``open_blocking``/``undispositioned_warning`` pair and ``open_blocking_basis``
+#: (additive again), and a bare ``render-dispositions`` now renders the branch's
+#: review set rather than the newest review.
 REPORT_SCHEMA_VERSION = 3
 
 #: Display states a census row can carry, in the order the summary reports
@@ -691,6 +691,7 @@ def census(
     review_id: str | None = None,
     scope: str | None = None,
     review_ids: "list[str] | None" = None,
+    open_blockers: "list[dict] | None" = None,
 ) -> dict:
     """Derive the disposition census.
 
@@ -707,6 +708,16 @@ def census(
     With no selector, the newest review fact is rendered — a fallback for a
     caller that could not derive a set; ``render-dispositions`` passes the
     branch's review set (:func:`render_dispositions_cmd`).
+
+    ``open_blockers`` is the GATE's answer to which blockers are still open
+    (``coverage.branch_open_blockers``): the summary's ``open_blocking`` counts
+    the rows it names, because a blocker a clean spanning review routed around
+    has no resolution fact and gates nothing — counting it would report a
+    branch the gate just passed as blocked. ``None`` (no composition, or a
+    caller with no repository) counts blocking rows no resolution lifted, the
+    conservative over-count; ``summary["open_blocking_basis"]`` says which
+    (``"gate"`` / ``"resolution-facts"``) so no reader mistakes one for the
+    other.
     """
     review_facts = evidence.facts_of_kind(store, "review")
     if not review_facts:
@@ -786,11 +797,23 @@ def census(
 
     all_rows = [row for r in reviews for row in r["rows"]]
     all_observations = [row for r in reviews for row in r["observations"]]
-    return {
-        "status": "ok",
-        "reviews": reviews,
-        "summary": _summarize(all_rows, all_observations),
-    }
+    summary = _summarize(all_rows, all_observations)
+    if open_blockers is not None:
+        # The gate's answer narrows the summary's open count to the blockers it
+        # still counts. A row carries no review id, so the join is made here,
+        # where each row's review is in hand.
+        gate_open = {(b.get("review_id"), b.get("fid")) for b in open_blockers}
+        summary["open_blocking"] = sum(
+            1
+            for review in reviews
+            for row in review["rows"]
+            if _blocking_unresolved(row)
+            and (review["review_id"], row["fid"]) in gate_open
+        )
+    summary["open_blocking_basis"] = (
+        "resolution-facts" if open_blockers is None else "gate"
+    )
+    return {"status": "ok", "reviews": reviews, "summary": summary}
 
 
 def finding_state(key: "tuple[str, str]", dispositions: dict, resolutions: dict) -> str:
@@ -888,6 +911,12 @@ def _observation_row(
     }
 
 
+def _blocking_unresolved(row: dict) -> bool:
+    """A blocking row no resolution lifted — the store-only half of "open";
+    :func:`census` narrows it by the gate's answer when it has one."""
+    return row["severity"] == "blocking" and row["state"] not in RESOLVED_STATES
+
+
 def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> dict:
     by_severity: dict[str, int] = {}
     by_state: dict[str, int] = {}
@@ -902,13 +931,12 @@ def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> di
         # but which nothing measured before this renderer existed.
         "undispositioned": by_state.get(STATE_OPEN, 0),
         # The two numbers a reader resuming a branch needs first (#334), named
-        # on the gate's terms: a blocking finding is open until a RESOLUTION
-        # lifts it (an accepted disposition never does), and a warning is owed
-        # an answer until it has any.
-        "open_blocking": sum(
-            1 for r in rows
-            if r["severity"] == "blocking" and r["state"] not in RESOLVED_STATES
-        ),
+        # on the gate's terms: a blocking finding is open while the gate COUNTS
+        # it — a resolution lifts it, and so does a clean spanning review that
+        # routed around its tree (:func:`census` narrows this by the gate's
+        # answer when it has one); an accepted disposition never does. A
+        # warning is owed an answer until it has any.
+        "open_blocking": sum(1 for r in rows if _blocking_unresolved(r)),
         "undispositioned_warning": sum(
             1 for r in rows if r["severity"] == "warning" and r["state"] == STATE_OPEN
         ),
@@ -1176,21 +1204,41 @@ def disposition_cmd(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
-def _branch_selection(project_dir: Path, store: dict) -> "list[str] | None":
-    """What a bare ``render-dispositions`` renders: the branch's review set
-    (``coverage.branch_review_ids``), the same set the round budget and the
-    verify roll-call compose over (#334). Rendering the newest review alone hid
-    every earlier round's undispositioned findings while the census read clean.
+def _branch_selection(
+    project_dir: Path, store: dict
+) -> "tuple[list[str] | None, list[dict] | None]":
+    """What a bare ``render-dispositions`` renders, and the gate's answer its
+    summary counts open blockers by: ``(review_ids, open_blockers)``.
 
-    ``None`` — the newest review, as before — when the set is unavailable (no
-    merge base) or empty (no review anchors on this branch), with ONE stderr
-    line saying so, because a census of the newest review silently standing in
-    for the branch is the defect this replaces."""
+    The set is the branch's (``coverage.branch_review_ids``), the one the round
+    budget composes over (#334) — rendering the newest review alone hid every
+    earlier round's undispositioned findings while the census read clean. The
+    open blockers are ``coverage.branch_open_blockers`` over that set: the
+    gate's composition, so a blocker a clean spanning review routed around is
+    not reported open while the gate passes.
+
+    ``(None, None)`` — the newest review, as before — when the set is
+    unavailable (no merge base) or empty (no review anchors on this branch),
+    with ONE stderr line saying so, because a census of the newest review
+    silently standing in for the branch is the defect this replaces. A set with
+    no composed answer renders with ``None`` for the second, and one stderr line
+    saying the open count is by resolution facts alone."""
     from . import coverage  # noqa: PLC0415 — lazy: coverage pulls git helpers this module otherwise never needs
 
-    answer = coverage.branch_review_ids(project_dir, store.get("facts") or [])
+    facts = store.get("facts") or []
+    answer = coverage.branch_review_ids(project_dir, facts)
     if answer.get("status") == "ok" and answer["review_ids"]:
-        return answer["review_ids"]
+        gate = coverage.branch_open_blockers(
+            project_dir, facts, answer["review_ids"], read=store
+        )
+        if gate.get("status") == "ok":
+            return answer["review_ids"], gate["blockers"]
+        print(
+            "render-dispositions: open blocking is counted by resolution facts "
+            f"alone — the gate's composition is unavailable ({gate.get('reason')}).",
+            file=sys.stderr,
+        )
+        return answer["review_ids"], None
     why = (
         answer.get("reason")
         if answer.get("status") != "ok"
@@ -1201,7 +1249,7 @@ def _branch_selection(project_dir: Path, store: dict) -> "list[str] | None":
         f"review set is unavailable ({why}). Pass --review or --scope to choose.",
         file=sys.stderr,
     )
-    return None
+    return None, None
 
 
 def render_dispositions_cmd(project_dir: Path, argv: list[str]) -> int:
@@ -1250,10 +1298,13 @@ def render_dispositions_cmd(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
-    review_ids = None
+    review_ids = open_blockers = None
     if review_id is None and scope is None:
-        review_ids = _branch_selection(project_dir, store)
-    report = census(store, review_id=review_id, scope=scope, review_ids=review_ids)
+        review_ids, open_blockers = _branch_selection(project_dir, store)
+    report = census(
+        store, review_id=review_id, scope=scope, review_ids=review_ids,
+        open_blockers=open_blockers,
+    )
     if report["status"] == "error":
         print(f"render-dispositions: {report['reason']}", file=sys.stderr)
         return 1

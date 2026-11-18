@@ -777,24 +777,23 @@ def _extended_reviews(reviews: "list[dict]", fact: dict) -> "list[dict] | None":
     nearest review's anchor (:func:`evidence.review_anchor`). The commit then
     carries work both intervals reviewed, so the span is the line's — every
     review on it must certify too (:func:`chunk_states` asks). The link is
-    ``critic_mode.review_chain``'s: a review's ``base_tree`` is the
+    ``coverage_algebra.prior_review`` — the one rule ``critic_mode.review_chain``
+    and the verify roll-call follow too: a review's ``base_tree`` is the
     ``head_tree`` of the newest review recorded before it; followed back
-    through reviews recording no ``base_commit`` to the first that does.
-    ``reviews`` is the store's review facts in store order."""
+    through reviews recording no ``base_commit`` to the first that does. A
+    ``base_tree`` that is not an object id names no tree a commit could hold,
+    so the line ends there. ``reviews`` is the store's review facts in store
+    order."""
     line: list[dict] = []
-    position = {id(f): i for i, f in enumerate(reviews)}
     current = fact
     while not gitstate.is_object_id((current.get("body") or {}).get("base_commit")):
-        tree = (current.get("body") or {}).get("base_tree")
-        # Strictly earlier in store order, so the walk always ends.
-        here = position.get(id(current), len(reviews))
-        earlier = [
-            f for f in reviews[:here]
-            if gitstate.is_object_id(tree) and (f.get("body") or {}).get("head_tree") == tree
-        ]
-        if not earlier:
+        if not gitstate.is_object_id((current.get("body") or {}).get("base_tree")):
             return None
-        current = earlier[-1]
+        # Strictly earlier in store order (the link rule), so the walk ends.
+        prior = coverage_algebra.prior_review(reviews, current)
+        if prior is None:
+            return None
+        current = prior
         line.append(current)
     return line or None
 
