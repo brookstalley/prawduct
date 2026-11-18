@@ -573,7 +573,16 @@ LAST_MEASURED_TOKENS = {
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
     # -2 on 2026-11-13 (testament-evidence-wiring): the recorder sentence claimed `--from-counts`
     # ingests beside a declared command, which the recorder refuses; the corrected sentence is shorter.
-    "methodology/building.md": 5406,
+    # +260 on 2026-11-18 (backlog-roi Chunk 09, #1034 + #678), DECLARED: "A Requirement Surfaced
+    # Mid-Build" gains the late-requirement record's home and one-line shape, the two added
+    # triggers, and the impact walk's sources and limit (#1034's acceptance names building.md as
+    # their home, the step a builder reads at the moment of capture); The Critic gains the
+    # test-gate/review concurrency paragraph with its two orderings and reconcile point (#678).
+    # Paid in place where another file owns the claim: the evidence-model sentence drops "mode labels
+    # don't matter" and "blocking findings block until cleared" (review-cycle.md owns both, and the
+    # Modes paragraph beside it names what resolves findings). No other restatement was found
+    # to cut; the ceiling rises.
+    "methodology/building.md": 5666,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1135,7 +1144,12 @@ LAST_MEASURED_TOKENS = {
     # yields to the branch's review, and the manifest key list names `chunks`/`chunks_proposed`
     # for the retired `chunk`. Paid by cutting the paragraph's restatement of why a cross-branch
     # anchor misleads, which `critic_consolidate._prior_review_fact` owns.
-    "skills/critic/review-cycle.md": 8251,
+    # -2 on 2026-11-18 (backlog-roi Chunk 03, #662): the Demotion rows re-dispatch in the mode the
+    # refusal names (the no-`head_tree` trigger joins the undiffable row); paid by cutting the
+    # **Committed** flags, whose only job was steering the hand-applied property.
+    # -10 on 2026-11-18 (backlog-roi integration, #334): the PR-gate `Superseded:` exception is
+    # scoped to blockers the verify roll-call does not name. A READING; ceiling lowered with it.
+    "skills/critic/review-cycle.md": 8239,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1341,7 +1355,10 @@ LAST_MEASURED_TOKENS = {
     # +8 on 2026-11-16 (coherence-pass Chunk 01), DECLARED: step 5 says `running:` is a suite in
     # flight, never a finding. Paid in part by cutting "the builder runs tests before requesting
     # review", false since the suite moved to the boundary. Priced in `test_reviewer_payload_budget.py`.
-    "skills/critic/SKILL.md": 3261,
+    # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): step 4's exit-1 `verify-resolutions` row and the
+    # demotion property stop telling the reader to apply the property by hand — `critic-begin` now
+    # names the covering mode on every demotion. Ceiling lowered with it.
+    "skills/critic/SKILL.md": 3231,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1654,7 +1671,10 @@ LAST_MEASURED_TOKENS = {
     # section. A READING.
     # +17 on 2026-11-11 (bounded-cumulative Chunk 03): `cumulative-final` no longer claims the review spans
     # merge-base...HEAD, and says why either span covers `final`'s interval. A READING.
-    "methodology/planning.md": 5769,
+    # +10 on 2026-11-18 (backlog-roi, #1199): "Chunk state" names the merged-in side of a
+    # non-base merge as span credit — a description of the code, recorded as a departure under
+    # data-model.md D1 for the owner's confirmation. A READING.
+    "methodology/planning.md": 5779,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -3988,7 +4008,8 @@ class TestBuildingMethodology:
         # RAISED 5405 -> 5416 (review-round-cost Critic round, R-8) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5360 -> 5409 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
         # LOWERED 5409 -> 5407 (testament-evidence-wiring, 2026-11-13) with the reading's cut.
-        assert tokens < 5407, f"building.md is ~{tokens} tokens, should be <5407"
+        # RAISED 5407 -> 5667 (backlog-roi Chunk 09, #1034 + #678, 2026-11-18) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5667, f"building.md is ~{tokens} tokens, should be <5667"
 
 
 # =============================================================================
@@ -6412,7 +6433,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3228 -> 3266 (verify-resolutions-lineage, #724, 2026-11-15) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3266 -> 3254 (retire-chunk-status-shims, #1055, 2026-11-15) — see LAST_MEASURED_TOKENS.
         # RAISED 3254 -> 3262 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3262, f"SKILL.md is ~{tokens} tokens, should be <3262"
+        # LOWERED 3262 -> 3232 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
+        assert tokens < 3232, f"SKILL.md is ~{tokens} tokens, should be <3232"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6758,7 +6780,9 @@ class TestReviewCycle:
         # RAISED 8187 -> 8256 (verify-resolutions-lineage, #1150/#1116/#724, 2026-11-15) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 8256 -> 8253 (branch-review-one-owner, #1179, 2026-11-15) — see LAST_MEASURED_TOKENS.
         # LOWERED 8253 -> 8252 (coherence-pass Chunk 03, 2026-11-16) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8252, f"review-cycle.md is ~{tokens} tokens, should be <8252"
+        # LOWERED 8252 -> 8250 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
+        # LOWERED 8250 -> 8240 (backlog-roi integration, #334, 2026-11-18) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8240, f"review-cycle.md is ~{tokens} tokens, should be <8240"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

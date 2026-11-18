@@ -1567,6 +1567,98 @@ class TestIncrementalSync:
         assert after_cursor == before_cursor
 
 
+class TestOneScopesRebuildDoesNotStrandAnother:
+    """#1195's partial cache. The store is clone-shared and holds one repo, and a
+    rebuild discards EVERY item before writing its own — but it rewrote only its
+    own cursor row, so another scope's watermark survived over items no longer
+    there. That scope's next incremental sync then asked only for what changed
+    since its watermark, and everything untouched since stayed missing for good.
+    Seen on real clones: a store whose `backlog_service_repo` moved (a renamed or
+    re-pointed tracker) held cursor rows for the old scopes with zero items."""
+
+    OTHER = "other"
+
+    def _rebuild_other(self, fake, repo_dir):
+        filed = core.file_item(fake, owner=OWNER, repo=self.OTHER, title="cache: the other repo's item", body="b")
+        assert filed["status"] == "ok", filed
+        result = sync.full_rebuild(fake, project_dir=repo_dir, owner=OWNER, repo=self.OTHER, now=NOW)
+        assert result["status"] == "ok", result
+
+    @staticmethod
+    def _age_corpus(fake):
+        """Push every octo/repo issue's `updated_at` well behind the watermark a
+        later item earns, so the incremental window cannot re-read them: the
+        fake stamps every write within microseconds of one instant, which the
+        two-minute overlap would otherwise cover and turn this into a pass."""
+        for issue in fake._repo(OWNER, REPO).issues.values():
+            issue["updated_at"] = "2025-06-01T00:00:00Z"
+        _file(fake, title="cache: the one recent item")
+
+    def test_syncing_back_after_another_scopes_rebuild_holds_every_item(self, fake, repo_dir):
+        ids, closed = _corpus(fake)
+        self._age_corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        self._rebuild_other(fake, repo_dir)
+
+        # Nothing in octo/repo moved since its watermark.
+        result = _sync(fake, repo_dir, now=NOW + timedelta(hours=1))
+
+        assert result["status"] == "ok", result
+        held = {row["id"] for row in _domain_rows(repo_dir)}
+        assert set(ids) | {closed} <= held, f"missing after the sync: {set(ids) | {closed} - held}"
+
+    def test_a_rebuild_leaves_a_watermark_only_for_the_scope_it_rebuilt(self, fake, repo_dir):
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        self._rebuild_other(fake, repo_dir)
+
+        conn = cache.open_store(repo_dir, create=False)
+        try:
+            assert cache.cursor_scopes(conn) == [f"{OWNER}/{self.OTHER}"]
+        finally:
+            conn.close()
+
+    def test_a_store_already_holding_a_stranded_watermark_heals_on_its_next_sync(self, fake, repo_dir):
+        """The store an earlier plugin left behind: two cursor rows, one of them
+        claiming coverage over items a later rebuild discarded. Which one lies
+        cannot be told from the store, so any sync finding more than one rebuilds,
+        which leaves exactly one again — one rebuild per affected clone, once."""
+        ids, closed = _corpus(fake)
+        self._rebuild_other(fake, repo_dir)
+        conn = cache.open_store(repo_dir, create=False)
+        try:
+            with conn:
+                conn.execute(
+                    "INSERT INTO cursor (scope, since, etag, coverage_confirmed_at) VALUES (?, ?, ?, ?)",
+                    (SCOPE, (NOW + timedelta(days=30)).isoformat(), None, NOW.isoformat()),
+                )
+        finally:
+            conn.close()
+
+        result = _sync(fake, repo_dir, now=NOW + timedelta(hours=1))
+
+        assert result["status"] == "ok", result
+        assert result["data"]["rebuilt"] is True
+        assert any(f"{OWNER}/{self.OTHER}" in w for w in result["warnings"]), result["warnings"]
+        held = {row["id"] for row in _domain_rows(repo_dir)}
+        assert set(ids) | {closed} <= held
+        conn = cache.open_store(repo_dir, create=False)
+        try:
+            assert cache.cursor_scopes(conn) == [SCOPE]
+        finally:
+            conn.close()
+
+    def test_a_single_watermark_store_still_syncs_incrementally(self, fake, repo_dir):
+        """The control: the heal is keyed on a second scope, never on every sync."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+
+        result = _sync(fake, repo_dir, now=NOW + timedelta(hours=1))
+
+        assert result["status"] == "ok", result
+        assert result["data"]["rebuilt"] is False
+
+
 class TestLeavingScope:
     """An item stripped of its block and labels stops being an item.
 

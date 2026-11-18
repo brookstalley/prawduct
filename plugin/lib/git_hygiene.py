@@ -56,7 +56,9 @@ and ``git push --delete`` per remote removal; ``offline`` skips every leg and
 marks what it would have decided as unchecked. ``--after-merge`` has no offline
 form: it reads the merged request (``gh pr view`` or ``gh pr list``), retargets
 requests stacked on the branch (``gh pr edit --base``), deletes the remote
-branch and fetches the base. ``--reap`` makes no network call. All of it goes to
+branch and fetches the base. ``--reap`` makes no network call. Two lookups
+here serve other surfaces, each behind an explicit flag: :func:`merged_pr_for`
+(``plan status --probe-pr``) and :func:`any_pr_for` (``worktrees --prs``). All of it goes to
 the product's own remote and repo and carries none of its content; the egress
 inventory in ``project-state.yaml`` is pinned to these calls by a test.
 
@@ -305,6 +307,34 @@ def merged_pr_for(project_dir: Path, branch: str, sha: str | None = None) -> int
         ):
             return pr.get("number")
     return False
+
+
+def any_pr_for(project_dir: Path, branch: str) -> dict | None | bool:
+    """``{"number", "state"}`` of the newest pull request from this repo whose
+    head was ``branch``, in ANY state — open, closed or merged; False when there
+    has never been one; None when gh could not be asked.
+
+    The question #843's pushed-branch arm asks of a finished branch nobody
+    merged: did it ever reach a pull request? A query that could not run is
+    None, never False, so "could not ask" never reads as "never opened". A
+    request from a fork's branch of the same name is not this branch's.
+    Asked through the network — only from a deliberately run surface
+    (``prawduct-hook worktrees --prs``), never from a probe or a hook."""
+    prs = _gh_json(
+        project_dir, "pr", "list", "--state", "all", "--head", branch,
+        "--json", "number,state,isCrossRepository", "--limit", "20",
+    )
+    if prs is None:
+        return None
+    ours = [
+        pr for pr in prs
+        if isinstance(pr, dict) and pr.get("isCrossRepository") is False
+        and isinstance(pr.get("number"), int)
+    ]
+    if not ours:
+        return False
+    newest = max(ours, key=lambda pr: pr["number"])
+    return {"number": newest["number"], "state": str(newest.get("state") or "").lower()}
 
 
 # --- policy -------------------------------------------------------------------

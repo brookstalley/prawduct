@@ -13,7 +13,7 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | **Medium** (new feature, refactor) — non-chunked | One `final` review, mandatory after completion. |
 | **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). **A short plan** — at most 3 chunks, no `Critic mode:` declared on any chunk, nothing the branch changed a risk surface — owes no per-chunk review at all: the one `cumulative` at its last chunk is every chunk's review. Inference answers `deferred` mid-chunk (dispatch nothing), and the Stop gate WARNS instead of blocking on a non-final chunk, naming that boundary review; on the last chunk it blocks as ever. |
 | **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (on a `cumulative-final` plan it doubles as the last chunk's review, not a second pass). |
-| **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Falls through to `chunk`/`final` when the anchor is missing or scope widens past the demotion threshold. |
+| **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Demotes to the mode its refusal names when the anchor is unusable or scope widens past the demotion threshold. |
 
 The stop hook enforces review for code changes when a build plan exists: it asks whether composed review coverage spans the session's base tree → the current working tree with zero unresolved blocking findings (facts in the shared evidence store; see "Evidence and Composition" below). It also surfaces an advisory WARNING when no chunk is open (`prawduct-hook plan status`) but the latest review fact is neither `final` nor `cumulative` — run `/prawduct:critic final` before pushing.
 
@@ -57,7 +57,7 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 | **Review interval** (derived by `critic-begin`, recorded in the manifest) | Last blocker-free reviewed tree (else the merge-base if nothing judgeable is uncommitted, else HEAD's) → captured working tree | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle; bounded to the last clean boundary review's tree → HEAD when one stands on this branch and base (manifest `span`) | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
 | **Execution** (roster derived by `critic-begin`) | Always single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Always single-pass |
 | **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min | 1-2 min |
-| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to `chunk`/`final` when no usable prior fact exists or scope widens past the threshold. |
+| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to the mode its refusal names when no usable prior fact exists or scope widens past the threshold. |
 
 **Risk surface** = a changed path matching this repo's `risk_surfaces:` in `project-state.yaml` — the
 same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo that declares none runs
@@ -106,7 +106,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 **A repeat cumulative is bounded.** When an earlier `cumulative` on this branch reviewed the same base, sits on HEAD's history and has a clean path from the merge-base (`gates.boundary_frontier`), the interval starts at its tree instead (`span: bounded`, `bounded_from` its fact id). The fact composes with that review's to the same PR-gate verdict. The rest of the bundle reaches the reviewer as `files_context`, never rated on its own merits (`review-protocol.md` "Subject and oracle"), while record-lint and the chunk proposal still grade the whole bundle. Any failed condition falls back to the full span, and the dispatch says why (`span_reason`). A blocker on the path to that review is one of those conditions, so it forces the full span; one recorded after that review lies inside the bounded interval, which spans it. `/prawduct:critic cumulative full` asks for the whole bundle.
 
-`/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open the PR if the gate fails. Its stderr names the remedy: `uncovered` → run `/prawduct:critic cumulative`; `blocking` → fix, then `/prawduct:critic verify-resolutions` — no full re-review. A blocker marked `Superseded:` is the exception — a verify pass anchors only to the most recent review, so it clears only through a spanning `cumulative`. Everything below BLOCKING is advisory at the PR gate — it does not block.
+`/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open the PR if the gate fails. Its stderr names the remedy: `uncovered` → run `/prawduct:critic cumulative`; `blocking` → fix, then `/prawduct:critic verify-resolutions` — no full re-review. A `Superseded:` blocker the verify roll-call does not name is the exception: only a spanning `cumulative` clears it. Everything below BLOCKING is advisory at the PR gate — it does not block.
 
 `uncovered` caused only by the **base advancing** transfers instead of buying a round, at BOTH gates: `coverage.diagnose_base_advance_transfer` grants it when the branch's own diff is byte-identical across both spans and a suite run has met the tree that gate vouches for. A denial on that condition alone says so: the remedy is a run, not a review.
 
@@ -124,13 +124,13 @@ The anchor must also be **this branch's**. The findings cache is single-slot and
 
 **Demotion** (all detected by `critic-begin`, fail-closed — it refuses to anchor rather than silently shrinking the review):
 
-**Every row is governed by the demotion property** (`SKILL.md` step 4) — a demotion must name a mode whose interval can SEE the work. Rows flagged **Committed** are by construction the case `chunk`/`final` cannot cover.
+**Every refusal names the mode to re-dispatch in** — one whose interval can SEE the work (`SKILL.md` step 4's demotion property), computed by `critic-begin`.
 
 | Trigger (exit code) | Why it demotes |
 |---|---|
-| No readable findings cache, no `fact_id` in it, or the fact is gone from the store, and this branch has no review (1) | Nothing to anchor against — fall back per the property above, record `mode_chosen_by: "fallback-no-prior-findings"`. |
-| The prior tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. **Committed.** |
-| The prior fact's anchor commit is not an ancestor of HEAD, and this branch has no review (1) | Another lineage — a branch switch, or rewritten history; the delta would span the divergence. Same fallback. **Committed.** |
+| No readable findings cache, no `fact_id` in it, or the fact is gone from the store, and this branch has no review (1) | Nothing to anchor against — re-dispatch in the named mode, recording `mode_chosen_by: "fallback-no-prior-findings"`. |
+| The prior fact records no `head_tree`, or its tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. |
+| The prior fact's anchor commit is not an ancestor of HEAD, and this branch has no review (1) | Another lineage — a branch switch, or rewritten history; the delta would span the divergence. Same fallback. |
 | Delta > 2 × the prior count + 5 (2) | Scope widened beyond the prior surface — a partial review would mislead. Both counts are coverage-priced (the judgeable subset of each subject set, not the subject set), so prose riding along on a fix cannot demote the pass. Re-dispatch in the mode the refusal names, recording `mode_chosen_by: "fallback-scope-widened"`. |
 
 **Not a demotion.** Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it

@@ -3341,7 +3341,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     #   session base tree and the working tree, committed work included;
     #   history a pull, merge or branch switch brought in, and commits another
     #   session in this checkout made while this one was idle and touching no
-    #   file it edited (read from the payload's transcript), excluded. No
+    #   file it wrote before the commit (`gates._drop_other_sessions_commits`),
+    #   excluded. No
     #   build-plan conjunct: a planless session that shipped code is exactly the
     #   session whose lesson never got written down, and the old plan conjunct
     #   made that the silent case. There is no advisory branch any more, because
@@ -3357,21 +3358,23 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         project_dir, status_output, transcript_path=event.transcript_path
     )
     # The trace of that exclusion, so a wrong one is not silent: a dropped
-    # commit cannot fire the gates below, so this line is the only place it
-    # shows. One line, on stderr, and in the block text when another gate
+    # commit cannot fire the gates below, so it shows here and as a stop
+    # observation in the evidence store (`gates.record_dropped_commits`, which
+    # `prawduct-hook stats` counts). One line, on stderr, and in the block text when another gate
     # blocks; it repeats every turn while the commit stays in the span, so it
     # stays out of the user's exit-0 message.
     if reflection_span.get("dropped"):
         stop_advisories.append(_LogOnlyAdvisory(
             "PRAWDUCT NOTE: left out of this session's work as another session's "
             "commits (made while another session wrote here and this one ran no "
-            "tool call or ! command, touching no file it edited): "
+            "tool call or ! command, touching no file it wrote before the commit): "
             + "; ".join(
                 f"{d['sha'][:12]} ({', '.join(d['paths'][:3]) or 'no files'}"
                 f"{', …' if len(d['paths']) > 3 else ''})"
                 for d in reflection_span["dropped"]
             )
         ))
+        stop_advisories.extend(_LogOnlyAdvisory(n) for n in _gates().record_dropped_commits(project_dir, reflection_span["dropped"], session=event.transcript_path))
     # The Critic composition gate (Gate 2) reads the same span, read once here:
     # its trigger is `changed` and its doc-only carveout is `not judgeable`.
     critic_has_work = bool(reflection_span["changed"])
@@ -4082,7 +4085,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             # verify-resolutions route applies, needs an exception appended, or
             # must be replaced outright because every blocker is superseded.
             remedy = "".join(
-                f"  {ln}\n" for ln in _gates().blocking_remedy_lines(unresolved)
+                f"  {ln}\n" for ln in _gates().blocking_remedy_lines(unresolved, project_dir)
             )
             blockers.append(_attributed("critic",
                 "CRITIC REVIEW (unresolved blocking findings): review coverage composes\n"
@@ -11169,7 +11172,7 @@ _USAGE = (
     "review-stats [--json] [--since <stamp>] [--until <stamp>]|stats [--json] [--by-build] [--since <stamp>] [--until <stamp>]|contribute [--json]|contribute --send [--approve sha256:<digest>]|"
     "aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--collector] [--json]|"
     "classify-diff-risk [<base>]|"
-    "worktrees [--json]|"
+    "worktrees [--json] [--prs]|"
     "git-tidy [--offline] [--json] [--apply <fingerprint>] [--after-merge <branch> [--pr <n>]] [--reap <worktree>]|"
     "stale-plugin-caches [--json]|"
     "cost-of-commit [--json] [<paths>...]|"

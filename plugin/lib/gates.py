@@ -34,6 +34,7 @@ list, so it is not copied here to drift (a copy did, naming removed imports).
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 import re
 import shlex
@@ -1437,7 +1438,7 @@ def session_work_span(
     branch switch or reset brought in history the session did not write, or
     because another session in the same checkout committed while this one had
     no tool call or ``!`` command running, in a commit touching no file this
-    session edited, are dropped (:func:`_session_authored_paths`; the second
+    session wrote, are dropped (:func:`_session_authored_paths`; the second
     needs ``transcript_path``, the Stop payload's, and without it those commits
     count), so the span holds what the session AUTHORED, never more than the
     base-tree diff. ``judgeable`` is
@@ -1467,7 +1468,8 @@ def session_work_span(
     transcript gained since the previous Stop (the whole transcript at the
     first, through the ``.prawduct/.session-activity.json`` cache that
     ``host.session_tool_activity`` describes) and one batched ``diff-tree`` per
-    kind of commit made while this session was idle. This runs on every Stop, which is every turn.
+    kind of commit made while this session was idle, plus one ``lstat`` per
+    file of those commits that no Edit-family call named. This runs on every Stop, which is every turn.
     ``evidence.capture_tree`` — which writes an index file and walks the whole
     tree — is deliberately not used: it belongs to the review data plane, whose
     callers run once per review rather than once per turn. ``status_output`` is
@@ -1649,6 +1651,20 @@ def _paths_per_commit(
     return per_commit
 
 
+def _written_moments(project_dir: Path, path: str) -> "tuple[float, ...]":
+    """When the checkout's file at ``path`` (as git names it) was last written:
+    its modification time, and on POSIX its inode change time too, which a
+    rename (``mv``, ``git mv``) or ``cp -p`` moves while keeping the
+    modification time. Empty when there is no such file — a deletion leaves
+    nothing to read. Windows' ``st_ctime`` is the creation time and is not
+    read."""
+    try:
+        st = os.lstat(Path(project_dir) / path)
+    except (OSError, ValueError):
+        return ()
+    return (st.st_mtime,) if os.name == "nt" else (st.st_mtime, st.st_ctime)
+
+
 def _drop_other_sessions_commits(
     project_dir: Path,
     activity: "host.ToolActivity",
@@ -1660,14 +1676,56 @@ def _drop_other_sessions_commits(
 
     A commit is dropped only when all three hold: the transcript covers the
     moment it was made, no tool call or ``!`` command of this session was
-    running then, and none of its paths is one this session's Edit/Write calls
-    targeted. The first two say who RAN ``git commit``; the gates ask who
-    AUTHORED the change, and a user who commits the session's edits from a
-    terminal between turns runs it with no call open. Every dropped commit is
-    appended to ``dropped`` with its paths and why, so a wrong drop can be seen.
-    When a commit's paths cannot be listed nothing is dropped.
+    running then, and this session wrote none of its files. The first two say
+    who RAN ``git commit``; the gates ask who AUTHORED the change, and a user
+    who commits the session's work from a terminal between turns runs it with
+    no call open.
+
+    This session wrote a file when its Edit-family calls named it, or when the
+    file in the checkout was last written (:func:`_written_moments`) while one
+    of its tool calls or ``!`` commands was running, BEFORE the commit was
+    made. The second reads a write made by any means — Bash (``sed -i``, a
+    heredoc, codegen), a delegate subagent working inside the call that ran
+    it, a background command — and it is the same test the commit's own moment
+    gets, applied to the moment its file was written.
+
+    The write must precede the commit because the time read is the file's
+    LAST write, and a write after a commit cannot be what the commit recorded:
+    this session checking out, stash-popping, formatting or copying over the
+    other session's committed file later would otherwise claim that session's
+    commit, which is #1071's error. Both times are this machine's clock — git
+    stamps the commit (``when``, whole seconds, truncated) and the kernel the
+    file — so the comparison takes no slack beyond that truncation. It needs
+    none in practice either: a commit dropped here was made outside every
+    call's slack, so a write inside a call is wholly before it or wholly after.
+
+    What this cannot read is a write overwritten since — by anyone, including a
+    later rewrite of the same bytes by this session — or a deleted file: those
+    commits are judged on the other two tests alone. That keeps #1071's
+    protection for a session that ran nothing while the other one wrote and
+    committed; a write at a moment both sessions were acting cannot be told
+    apart, and like a commit made then, it stays counted.
+
+    Every dropped commit is appended to ``dropped`` with its paths and why, so
+    a wrong drop can be seen. When a commit's paths cannot be listed nothing is
+    dropped.
     """
     edited = _checkout_paths(project_dir, activity.edited_paths)
+    # Each file's write moments that fell inside one of this session's calls,
+    # read once however many commits name the file; which of them a commit can
+    # claim depends on the commit's own time, so that test is per commit.
+    acting_writes: dict[str, tuple[float, ...]] = {}
+
+    def _written_while_acting(path: str, committed_at: int) -> bool:
+        if path not in acting_writes:
+            acting_writes[path] = tuple(
+                moment for moment in _written_moments(project_dir, path)
+                if activity.acting_at(moment) is True
+            )
+        # `committed_at` is whole seconds, truncated: a write in its second
+        # can still precede the commit.
+        return any(moment < committed_at + 1 for moment in acting_writes[path])
+
     kept_commits = list(commits)
     kept_merges = list(merges)
     found: dict[str, dict] = {}
@@ -1682,7 +1740,7 @@ def _drop_other_sessions_commits(
             continue
         for sha, when in idle:
             paths = per_commit.get(sha, [])
-            if edited.intersection(paths):
+            if edited.intersection(paths) or any(_written_while_acting(p, when) for p in paths):
                 continue
             moves.remove((sha, when))
             found.setdefault(sha, {
@@ -1692,7 +1750,7 @@ def _drop_other_sessions_commits(
                     f"made at {datetime.fromtimestamp(when, timezone.utc):%Y-%m-%dT%H:%M:%SZ}"
                     " while another session was writing in this checkout, with no tool"
                     " call or ! command of this session running, and touching no file"
-                    " this session edited"
+                    " this session wrote before it"
                 ),
             })
     # A sha this session's reflog and its log both list is dropped only when
@@ -1701,6 +1759,84 @@ def _drop_other_sessions_commits(
     if dropped is not None:
         dropped.extend(d for sha, d in found.items() if sha not in still_counted)
     return kept_commits, kept_merges
+
+
+#: The Stop check id a commit left out of the span as another session's is
+#: recorded under (``evidence.append_stop_observation``), and the one reason it
+#: records: made while this session ran nothing, touching no file it wrote
+#: before it.
+DROPPED_COMMIT_CHECK = "other-session-commit"
+DROPPED_COMMIT_REASON = "idle-and-unwritten"
+
+
+def record_dropped_commits(
+    project_dir: Path, dropped: "list[dict]", *, session: "str | None"
+) -> "list[str]":
+    """Record each commit :func:`session_work_span` left out as another
+    session's (its ``dropped``) as a stop observation, so a wrong drop is a
+    query (``prawduct-hook stats``, ``evidence list --kind guard-refusal``)
+    rather than a stderr line at exit 0 that nobody reads.
+
+    One fact per commit per session: the same commit is left out at every Stop
+    while it stays in the span, so the record is deduped on ``session`` and the
+    sha. ``session`` is the Stop payload's ``transcript_path``, the one
+    identity that is this session's alone. The ``.session-start`` stamp is not:
+    every session in a checkout writes the same marker, and only a session
+    sharing its checkout drops a commit, so a key built on it let a second
+    session's drop of the same commit dedupe away. No drop is made
+    without a transcript, so ``session`` is always there in practice; when it
+    is not, nothing is recorded and a note says so — an unkeyed record would
+    count the commit again at every Stop, and a shared key would undercount.
+
+    The store is read once for every commit's dedupe probe (the appender's
+    ``known_facts``), not once per commit: this runs at every Stop while a
+    dropped commit stays in the span. The record carries the sha and how many
+    files the commit touched, never their names. Returns one line per record
+    that did not land, for the caller to show; a record is advice, so nothing
+    raises.
+    """
+    if not dropped:
+        return []
+    if not (isinstance(session, str) and session.strip()):
+        return [
+            f"NOTE: the {DROPPED_COMMIT_CHECK} observation for {str(d.get('sha'))[:12]} was not "
+            "recorded (no session identity to record it once under) — `prawduct-hook stats` "
+            "will undercount it"
+            for d in dropped
+        ]
+    try:
+        read = evidence.read_facts(project_dir)
+        # An error read carries no facts; `[]` would be a valid known set, so
+        # the dedupe probe would answer "absent" and re-append at every Stop.
+        known = read.get("facts") if read.get("status") != "error" else None
+    except Exception:  # prawduct:allow prawduct/broad-except -- an observation is advice; each append below probes the store itself instead
+        known = None
+    notes: list[str] = []
+    for d in dropped:
+        sha = d.get("sha")
+        try:
+            result = evidence.append_stop_observation(
+                project_dir,
+                DROPPED_COMMIT_CHECK,
+                reason=DROPPED_COMMIT_REASON,
+                observed={"commit": sha, "files": len(d.get("paths") or [])},
+                dedupe_key=f"{session}\0{sha}",
+                known_facts=known,
+            )
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- an observation is advice; an escape would end the Stop with a crash
+            result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
+        if result.get("status") not in ("appended", "duplicate"):
+            notes.append(
+                f"NOTE: the {DROPPED_COMMIT_CHECK} observation for {str(sha)[:12]} was not "
+                f"recorded ({result.get('reason', 'unknown')}) — `prawduct-hook stats` "
+                "will undercount it"
+            )
+        elif result.get("refused_fields"):
+            notes.append(
+                f"NOTE: the {DROPPED_COMMIT_CHECK} observation for {str(sha)[:12]} was "
+                f"recorded without its {', '.join(sorted(result['refused_fields']))}"
+            )
+    return notes
 
 
 def _session_authored_paths(
@@ -1730,7 +1866,9 @@ def _session_authored_paths(
     ``transcript_path`` (the Stop payload's), a commit or merge is dropped
     when another session was writing beside this one, this session had no tool
     call or ``!`` command running when it was made, and it touches no file this
-    session's Edit/Write calls targeted (:func:`_drop_other_sessions_commits`).
+    session wrote — named in an Edit-family call, or last written while one of
+    its calls or ``!`` commands ran and before the commit was made
+    (:func:`_drop_other_sessions_commits`).
     Without that evidence every commit above still counts. Each dropped commit
     is appended to ``dropped``, when a list is passed, as ``{sha, paths, why}``
     — only when this returns a set, since a ``None`` drops nothing.
@@ -1754,7 +1892,8 @@ def _session_authored_paths(
     when another session wrote beside this one, a read of the bytes this
     session's transcript gained since the previous read (the whole transcript
     the first time; see ``host.session_tool_activity``), and one batched
-    ``diff-tree`` per kind of commit made while this session was idle.
+    ``diff-tree`` per kind of commit made while this session was idle, plus
+    one ``lstat`` per file of those commits that no Edit-family call named.
     """
     def _cannot_tell(reason: str) -> None:
         if why is not None:
@@ -3155,7 +3294,11 @@ FIX_ORDER_AFTER_CUMULATIVE = (
 )
 
 
-def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
+def blocking_remedy_lines(
+    unresolved: "list[dict] | None",
+    project_dir: "Path | None" = None,
+    facts: "list[dict] | None" = None,
+) -> list[str]:
     """The whole remedy a blocking verdict prescribes, as unindented lines.
 
     Both blocking messages render this — this module's PR gate and the Stop
@@ -3172,15 +3315,26 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     verified tree is what gets committed. The order is composed from
     :data:`FIX_ORDER`, its one home, not restated here.
 
-    Three cases, because the standard remedy is *wrong* for a superseded
-    blocker: one carried by a review fact no verify-resolutions pass will
-    anchor to again (``coverage_algebra._verify_anchor_id``). A verify pass
-    resolves findings on the fact it anchors to, so it will never name that
-    round again, and the state clears only through a spanning review.
+    A superseded blocker is one carried by a review fact no verify-resolutions
+    pass will ANCHOR to again (``coverage_algebra._verify_anchor_id``). Whether
+    a verify pass can still clear it depends on whether its roll-call NAMES
+    it, and since #334 the roll-call names every blocker the gate's own
+    composition counts at the pass's anchor tree
+    (``critic_consolidate.carried_blocking`` over ``coverage.open_blockers``).
+    So with ``project_dir`` given, a superseded entry that composition counts
+    is REACHABLE (:func:`_roll_call_review_ids`) — the standard remedy clears
+    it, and the message says the roll-call names it. Only one it does not
+    count is STRANDED: no pass will name it again, and the state clears only
+    through a spanning review. Without ``project_dir``, or when the answer
+    cannot be derived, every superseded entry reads as stranded — the
+    pre-#334 advice, which costs a round but never names a route that cannot
+    work. ``facts`` is the store the caller already read, else it is read here
+    (only when some entry is superseded).
 
-    - none superseded → the standard golden-path remedy.
-    - some superseded → the standard remedy, then the exception.
-    - **all** superseded → the spanning review LEADS. Appending the exception
+    - none stranded → the standard golden-path remedy, plus one line naming
+      the earlier-round blockers the roll-call carries, if any.
+    - some stranded → that, then the exception.
+    - **all** stranded → the spanning review LEADS. Appending the exception
       after "run verify-resolutions" would hand the operator the one route
       that cannot work as their first instruction, which is the original
       defect in its total case rather than a fix for it.
@@ -3198,7 +3352,18 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
         "has not seen leaves the fix outside what it anchored (review-cycle.md",
         "§ Verify-resolutions anchoring and demotion).",
     ]
-    n = sum(1 for e in entries if e.get("superseded"))
+    superseded = [e for e in entries if e.get("superseded")]
+    if not superseded:
+        return standard
+    reachable = _roll_call_review_ids(project_dir, facts)
+    carried = [e for e in superseded if e.get("review_id") in reachable]
+    if carried:
+        noun, verb = ("finding", "sits") if len(carried) == 1 else ("findings", "sit")
+        standard = standard + [
+            f"{len(carried)} {noun} above {verb} on an earlier review round of this",
+            "branch: run verify-resolutions; its roll-call names these.",
+        ]
+    n = len(superseded) - len(carried)
     if not n:
         return standard
 
@@ -3221,6 +3386,41 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
         "/prawduct:critic cumulative instead — a review spanning the whole",
         "interval supplies a clean path when it records nothing blocking.",
     ]
+
+
+def _roll_call_review_ids(
+    project_dir: "Path | None", facts: "list[dict] | None"
+) -> "set[str]":
+    """The review ids a ``verify-resolutions`` roll-call names blockers of, or
+    the empty set when there is no ``project_dir`` or the answer cannot be
+    derived — which :func:`blocking_remedy_lines` reads as "stranded", its
+    pre-#334 advice.
+
+    The roll-call names every blocker the gate's composition counts at the tree
+    the pass anchors on (``critic_consolidate.carried_blocking`` over
+    ``coverage.open_blockers``), and the pass anchors on the branch's newest
+    review — so this asks the same owner the same question, at
+    ``coverage.newest_review_tree`` of the branch's review set
+    (``coverage.branch_review_ids``). Not the set's membership: a set member
+    whose blocker that composition no longer counts is named by no roll-call,
+    and one the composition counts from outside the set (a review standing at
+    the merge base) is."""
+    if project_dir is None:
+        return set()
+    if facts is None:
+        read = evidence.read_facts(project_dir)
+        if read.get("status") == "error":
+            return set()
+        facts = read.get("facts") or []
+    branch = coverage.branch_review_ids(project_dir, facts)
+    if branch.get("status") != "ok":
+        return set()
+    answer = coverage.open_blockers(
+        project_dir, facts, coverage.newest_review_tree(facts, branch["review_ids"])
+    )
+    if answer.get("status") != "ok":
+        return set()
+    return {b.get("review_id") for b in answer["blockers"]}
 
 
 def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
@@ -3387,10 +3587,13 @@ def check_cumulative_critic(project_dir: Path) -> int:
       findings (listed): fix them all in the working tree, then ONE
       ``/prawduct:critic verify-resolutions`` records the resolution facts —
       the same evidence then passes with no full re-review, and the verified
-      tree is what gets committed. A finding the message
-      marks *superseded* is the exception, and the message says so: it
-      sits on a round no verify pass anchors to again, so it clears only
-      through a spanning ``/prawduct:critic cumulative``. When EVERY
+      tree is what gets committed. A blocker on an earlier review round of
+      this branch rides the same route — the verify pass's roll-call names
+      it (#334). A finding the message marks *superseded* is the exception,
+      and the message says so: the verify roll-call does not name it (its
+      round is outside this branch's review set, or the gate's composition at
+      the anchor does not count it), so it clears only through a spanning
+      ``/prawduct:critic cumulative``. When EVERY
       blocker is superseded the message leads with that route instead
       (:func:`blocking_remedy_lines`).
     - ``uncovered`` — no evidence path composes: run ``/prawduct:critic
@@ -3668,7 +3871,9 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
             )
         if len(unresolved) > 5:
             print(f"  (+{len(unresolved) - 5} more)", file=sys.stderr)
-        for line in blocking_remedy_lines(unresolved):
+        for line in blocking_remedy_lines(
+            unresolved, project_dir, read.get("facts") or []
+        ):
             print(line, file=sys.stderr)
         return 1
 

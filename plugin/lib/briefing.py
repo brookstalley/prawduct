@@ -1463,7 +1463,9 @@ def _backlog_pending_line(
     NFR §6 "few s") is satisfied structurally, not by a timeout: a stalled or
     slow backend costs the briefing nothing because the backend is only reached
     by the fire-and-forget child. No snapshot yet → a clear "warming" line, and
-    the warm is still fired (the next session reads it).
+    the warm is still fired (the next session reads it). A failure the child
+    recorded (``snapshot.refresh_health``, #755) turns that into "stuck", and
+    annotates a snapshot's line with "refresh failing".
 
     **Pre-cutover** (key absent): parse the markdown backlog exactly as before.
     ``popen``/``now`` are injectable for tests.
@@ -1477,6 +1479,11 @@ def _backlog_pending_line(
 
         path = snapshot.snapshot_path(project_dir)
         snap = snapshot.read(path, scope, now=now) if path else None
+        # The last refresh's outcome, recorded by the detached child (#755). Read
+        # before this session's warm fires, like the snapshot: the line describes
+        # the attempt that has reported back, not the one just launched.
+        health = snapshot.refresh_health(path, scope, now=now) if path else None
+        failing = bool(health and health.get("last_error"))
         # Read the snapshot first, then warm — the warm's outcome decides what the
         # no-snapshot line may honestly claim, so its result is never discarded.
         warmed = _spawn_snapshot_warm(project_dir, scope, popen=popen)
@@ -1491,12 +1498,29 @@ def _backlog_pending_line(
             by_status = snap["counts"].get("by_status") or {}
             # OPEN_STATUSES derives from encode's status SoT — no out-of-band copy.
             pending = sum(by_status.get(status, 0) for status in encode.OPEN_STATUSES)
-            if pending:
+            # Zero pending prints nothing when healthy; while the refresh fails,
+            # "nothing pending" is no longer a claim the line can stand behind.
+            if pending or failing:
                 age = _humanize_age(snap.get("age_seconds"))
                 line = (
                     f"Backlog: {pending} pending{_untriaged_qualifier(snap['counts'])} "
                     f"on {scope} (snapshot {age}; /prawduct:backlog to triage)"
                 )
+            if failing:
+                # A growing snapshot age alone reads as a quiet backlog, not a
+                # broken refresh — say which it is.
+                line += (
+                    f" — refresh failing ({_refresh_failure(health)}); run `prawduct-hook "
+                    f"backlog refresh-counts --repo {scope}` to see the error"
+                )
+        elif failing:
+            # Never had counts, and the recorded attempt says why: "warming"
+            # would be a standing falsehood here (#755).
+            line = (
+                f"Backlog: counts stuck for {scope} — background refresh keeps failing "
+                f"({_refresh_failure(health)}); run `prawduct-hook backlog "
+                f"refresh-counts --repo {scope}` (/prawduct:backlog to triage)"
+            )
         elif warmed:
             # Degrade visibly, never silently (G3): the count is not available
             # yet, and the warm just fired — the next session start has it.
@@ -1522,6 +1546,24 @@ def _backlog_pending_line(
     # One count line, not a 5-item dump every session. /prawduct:backlog is the
     # triage path; dumping arbitrary items here was tax.
     return f"Backlog: {len(pending_items)} pending (/prawduct:backlog to triage)"
+
+
+#: How much of a recorded refresh error the briefing line carries; the full text
+#: is what the named `refresh-counts` command prints.
+_REFRESH_ERROR_CHARS = 160
+
+
+def _refresh_failure(health: dict) -> str:
+    """``<error>; last tried <age>`` for a failing refresh's briefing line — the
+    error's first line, bounded, since it lands on the most-read line."""
+    text = str(health.get("last_error") or "").strip().splitlines()[0:1]
+    error = text[0] if text else "error"
+    if len(error) > _REFRESH_ERROR_CHARS:
+        error = error[: _REFRESH_ERROR_CHARS - 1] + "…"
+    age = _humanize_age(health.get("attempt_age_seconds"))
+    if age.endswith(" old"):
+        age = age[: -len(" old")] + " ago"
+    return f"{error}; last tried {age}"
 
 
 def _untriaged_qualifier(counts: dict) -> str:
@@ -1796,7 +1838,7 @@ def _this_branchs_record(
         if fact.get("id") == named:
             return "", data
         record = critic_consolidate.branch_review_record(
-            prawduct_dir, fact, store.get("facts") or []
+            prawduct_dir, fact, store.get("facts") or [], read=store
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- display only: a lookup that fails must leave the cache's record shown, with the doubt named
         return unconfirmed(f"{type(exc).__name__}: {str(exc)[:80]}")
@@ -1842,6 +1884,12 @@ def _summarize_critic_findings(
     ``facts`` is a :func:`_read_facts_once` thunk the caller already holds, so
     the handoff parses the evidence store once for its plan table and this
     section; ``None`` reads it here, at most once.
+
+    **The record is one review; the branch is a set of them (#334).** Under the
+    record's lines, :func:`_branch_findings_line` appends one line composed
+    from facts over the branch's review set — open blocking, undispositioned
+    warning, rounds — so an earlier round's open finding is visible when the
+    newest record reads clean.
     """
     try:
         from . import critic_consolidate  # noqa: PLC0415 — lazy; a failed import is reported, not raised
@@ -1850,10 +1898,9 @@ def _summarize_critic_findings(
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a briefing must render; the failure is reported below, never swallowed
         return _unreadable_findings_record(f"{type(exc).__name__}: {str(exc)[:80]}")
     project_dir = project_dir or prawduct_dir.parent
+    facts = facts or _read_facts_once(project_dir)
     try:
-        lead, data = _this_branchs_record(
-            prawduct_dir, project_dir, read.record, facts or _read_facts_once(project_dir)
-        )
+        lead, data = _this_branchs_record(prawduct_dir, project_dir, read.record, facts)
         if data is None:
             if read.state != critic_consolidate.FINDINGS_ABSENT and read.record is None:
                 return _unreadable_findings_record(read.reason)
@@ -1912,9 +1959,87 @@ def _summarize_critic_findings(
         next_action = data.get("next_action")
         if next_action:
             parts.append(f"  NEXT-ACTION: {next_action}")
+        branch_line = _branch_findings_line(project_dir, facts)
+        if branch_line:
+            parts.append(branch_line)
         return "\n".join(parts)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a briefing must render whatever the record turns out to be; the failure is reported, never swallowed
         return _unreadable_findings_record(f"{type(exc).__name__}: {str(exc)[:80]}")
+
+
+#: The tail every degraded branch-findings line ends on: a count that could not
+#: be composed must never read as a clean branch.
+_NOT_CLEAN = "this is NOT a statement that the branch is clean."
+
+
+def _branch_findings_line(project_dir: Path, facts) -> "str | None":
+    """One line composed from FACTS over this branch's review set (#334), under
+    the newest review's summary.
+
+    The record above it is one review's counts, and a fresh session reading
+    only that re-opens closed work or misses open work: an earlier round's
+    unresolved blocker is invisible in the newest round's record. The set is
+    ``coverage.branch_review_ids`` — the one the round budget and the census
+    compose over — and the counts are ``dispositions.census``'s summary:
+    blocking with no resolution fact, undispositioned warning, and the rounds
+    counted. The blocking count is NOT the gate's answer, and the line says so
+    whenever it is non-zero. The gate's (``coverage.branch_open_blockers``)
+    also drops a blocker a clean spanning review routed around, but composing
+    it is a coverage walk measured at ~75s on a cold verdict memo (after any
+    plugin upgrade), which SessionStart would pay. So the line counts facts,
+    labels the count, and names `check-cumulative-critic`, which composes.
+
+    ``None`` when the store holds no review or no review is this branch's — a
+    line about nothing is noise. When the store is unreadable or the set cannot
+    be derived it says so, never a clean count: the reader is definitionally
+    the builder who lost the reviewer's report. ``facts`` is the caller's
+    :func:`_read_facts_once` thunk."""
+    try:
+        from . import coverage, dispositions  # noqa: PLC0415 — lazy, as this section's other lib imports are
+
+        store = facts()
+        if store.get("status") == "error":
+            return (
+                f"Branch findings: the evidence store could not be read "
+                f"({store.get('reason')}) — {_NOT_CLEAN}"
+            )
+        if not evidence.facts_of_kind(store, "review"):
+            return None
+        answer = coverage.branch_review_ids(project_dir, store.get("facts") or [])
+        if answer["status"] != "ok":
+            return (
+                f"Branch findings: this branch's review set could not be derived "
+                f"({answer['reason']}) — {_NOT_CLEAN}"
+            )
+        if not answer["review_ids"]:
+            return None
+        report = dispositions.census(store, review_ids=answer["review_ids"])
+        if report["status"] != "ok":
+            return f"Branch findings: could not be composed ({report['reason']}) — {_NOT_CLEAN}"
+        summary = report["summary"]
+        partial = (
+            f" (incomplete: {len(store['schema_ahead'])} record(s) carry a newer "
+            "schema than this reader)"
+            if store.get("schema_ahead")
+            else ""
+        )
+        basis = (
+            " with no resolution fact (a spanning review may have routed around "
+            "some; `prawduct-hook check-cumulative-critic` gives the gate's count)"
+            if summary["open_blocking"]
+            else ""
+        )
+        return (
+            f"Branch findings across this branch's {len(report['reviews'])} review "
+            f"round(s), from evidence facts{partial}: {summary['open_blocking']} open "
+            f"blocking{basis}, {summary['undispositioned_warning']} undispositioned warning "
+            "(`prawduct-hook render-dispositions` lists them)."
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- display only: a failed composition is reported, never read as clean
+        return (
+            f"Branch findings: could not be composed ({type(exc).__name__}: "
+            f"{str(exc)[:80]}) — {_NOT_CLEAN}"
+        )
 
 
 def _unreadable_findings_record(why: str) -> str:

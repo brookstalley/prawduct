@@ -131,6 +131,96 @@ def test_only_blocking_findings_are_carried():
     assert cc.carried_blocking(facts, "t1", "rev-B") == []
 
 
+# --- the gate's counted blockers, not the anchor alone (#334) ---------------
+#
+# Renegotiated in the Chunk 04 fix round. These tests first pinned a SET of
+# review ids whose blockers the pass owed when no resolution fact lifted them.
+# That is half of the gate's predicate: the gate also stops counting a blocker
+# a clean spanning review routed around, and a set-based roll-call kept naming
+# it — a manufactured round and a false NOT DONE. `counted` is now the gate's
+# own answer (`coverage.open_blockers`), and these pin what carried_blocking
+# does with it; the end-to-end shape lives in test_critic_consolidate.py
+# (`TestABlockerTheGateRoutedAroundIsNotOpen`).
+
+def _rounds_one_back():
+    """Round 1 left a blocker; round 2 (clean) is what the verify pass now
+    anchors to, so the anchor alone no longer names round 1."""
+    return [
+        _review("rev-1", "t0", "t1", [_blocking("R-1", "one round back")]),
+        _review("rev-2", "t1", "t2"),
+    ]
+
+
+def _counted(*pairs):
+    """The shape `coverage.open_blockers` lists (the verdict's entries)."""
+    return [
+        {"review_id": rid, "fid": fid, "severity": "BLOCKING", "title": title,
+         "superseded": True}
+        for rid, fid, title in pairs
+    ]
+
+
+def test_the_anchor_alone_strands_an_earlier_rounds_blocker():
+    """The defect, stated as the old reading: no composed answer, no earlier
+    round."""
+    assert cc.carried_blocking(_rounds_one_back(), "t2", "rev-v") == []
+
+
+def test_the_gates_count_carries_an_earlier_rounds_blocker():
+    counted = _counted(("rev-1", "R-1", "one round back"))
+
+    carried = cc.carried_blocking(_rounds_one_back(), "t2", "rev-v", counted)
+
+    assert carried == [{"review_id": "rev-1", "fid": "R-1", "title": "one round back"}]
+
+
+def test_a_blocker_the_gate_no_longer_counts_is_not_carried():
+    """The fix round's subject. Round 1's R-1 has no resolution fact — the old
+    set reading carried it — but the gate's composition did not count it (a
+    clean spanning review routed around round 1), so nothing is owed."""
+    facts = _rounds_one_back()
+
+    assert cc.carried_blocking(facts, "t2", "rev-v", []) == []
+    # Control: the same store, the anchor-alone posture, names round 2's (none).
+    assert cc.carried_blocking(facts, "t2", "rev-v") == []
+
+
+def test_counted_is_the_whole_answer_not_a_union_with_the_anchor():
+    """The anchor's blockers stand at the tree the gate composes to, so the
+    gate counts them whenever they are open; carrying the anchor's on top of an
+    empty count would re-introduce the second predicate through the side."""
+    facts = [_review("rev-A", "t0", "t1", [_blocking("R-1")])]
+
+    assert cc.carried_blocking(facts, "t1", "rev-B", []) == []
+    assert [c["fid"] for c in cc.carried_blocking(facts, "t1", "rev-B")] == ["R-1"]
+
+
+def test_the_pass_never_carries_its_own_findings_from_the_count():
+    """At consolidation the pass's own fact stands at a counted tree; its own
+    blockers are its counts, not an inheritance."""
+    facts = [_review("rev-B", "t1", "t2", [_blocking("R-1")])]
+
+    assert cc.carried_blocking(facts, "t1", "rev-B", _counted(("rev-B", "R-1", "x"))) == []
+
+
+def test_without_a_count_the_anchor_is_the_one_the_caller_chose():
+    """Native finding (a): the dispatch picks its prior from the findings
+    cache's pointer, which can name a DIFFERENT review at the same tree than the
+    link rule's newest. Excluding the prior's own findings by id then has to
+    exclude the same review the anchor-alone fallback reads, or the prior's
+    findings are counted twice."""
+    facts = [
+        _review("rev-P", "t0", "t1", [_blocking("R-1", "the prior's")]),
+        _review("rev-Q", "t0", "t1", [_blocking("R-2", "a second review at t1")]),
+    ]
+
+    by_link = cc.carried_blocking(facts, "t1", None)
+    chosen = cc.carried_blocking(facts, "t1", None, anchor_id="rev-P")
+
+    assert [c["review_id"] for c in by_link] == ["rev-Q"], "the link names the newest"
+    assert [c["review_id"] for c in chosen] == ["rev-P"]
+
+
 # --- the sentence the builder and the reviewer both read --------------------
 
 def test_next_action_refuses_to_say_the_review_is_over(tmp_path):
@@ -155,15 +245,20 @@ def test_next_action_names_the_prose_forms_that_produce_the_bug():
     assert "`resolutions`" in line
 
 
-def test_next_action_warns_about_the_supersession_deadline():
-    """Acting now is cheap; one more round makes it a full cumulative."""
+def test_next_action_sets_no_supersession_deadline():
+    """Since #334 the verify roll-call names every blocker the gate still
+    counts, not only the anchor's, so a newer round no longer strands a carried
+    blocker. The old "act now, or only a spanning cumulative clears them"
+    deadline would send the builder to a full review the gate no longer
+    requires (it routes a counted superseded blocker to verify-resolutions)."""
     line = cc.next_action_line(
         "rev-B", 0, 0, 0, None,
         carried=[{"review_id": "rev-A", "fid": "R-12"}],
     )
 
-    assert "cumulative" in line
-    assert "supersede" in line
+    assert "verify-resolutions" in line
+    assert "supersede" not in line
+    assert "cumulative" not in line
 
 
 def test_carried_overrides_the_warning_note_arm_too():

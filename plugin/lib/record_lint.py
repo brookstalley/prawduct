@@ -19,12 +19,15 @@ only as a finding of the review that carried it. What a result must never do is
 requires of the compliance canary), because an unrun check and a clean one are
 otherwise indistinguishable at the output.
 
-**Cost is proportional to the diff, never the repo** — with one named
-exception, ``retired-claim-survives``, whose subject is text the diff did not
-touch (``retired_claims`` states its cost). It is also the one check that reads
+**Cost is proportional to the diff, never the repo** — with two named
+exceptions. ``retired-claim-survives``'s subject is text the diff did not
+touch (``retired_claims`` states its cost); it is also the one check that reads
 beyond the record set, into every tracked file: the phrase it looks for is a
 record's own retired wording, so a hit grades the record's sweep, not the
-product's content. Consumers are ~20x this
+product's content. ``late-requirement-record`` checks an added record's id
+against every record in the product, so it searches the product's markdown for
+the section — one ``git grep``, paid only when the diff added a record.
+Consumers are ~20x this
 repo's size, so every line-scoped check reads only the lines a change *added*
 (``git diff --unified=0``) rather than re-scanning whole files. That is also why
 the tripwire below does not drown in history: ``.prawduct/change-log.md`` holds
@@ -69,7 +72,14 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import buildplan_refs, evidence, learnings_files, plan_index, retired_claims
+from . import (
+    buildplan_refs,
+    evidence,
+    late_requirements,
+    learnings_files,
+    plan_index,
+    retired_claims,
+)
 
 #: Every check this module can run, in manifest order. Named so a consumer can
 #: tell "ran and found nothing" from "never ran" (see ``unchecked`` below).
@@ -85,6 +95,7 @@ CHECKS = (
     "learnings-area-dead",
     "change-fragment",
     "retired-claim-survives",
+    "late-requirement-record",
 )
 
 #: Each check's severity at the boundary stage, ``None`` meaning an observation.
@@ -103,6 +114,7 @@ SEVERITY = {
     "learnings-area-dead": "warning",
     "change-fragment": "warning",
     "retired-claim-survives": "warning",
+    "late-requirement-record": "warning",
 }
 
 #: The checks whose blocking result stays a finding at the INNER stage too: a
@@ -493,6 +505,81 @@ def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]
             )
         )
     return findings
+
+
+def _check_late_requirements(
+    project_dir: Path,
+    records: list[str],
+    added_by_path: "dict[str, list[tuple[int, str]]]",
+    head_tree: str,
+) -> "tuple[list[dict], list[str], set[str]]":
+    """The record shape of each late requirement a change ADDED (#1034).
+
+    A record is a top-level item in a ``## Late requirements`` section
+    (:mod:`late_requirements` is the one parser). Only an added line inside a
+    section is graded, so a record already in history is never re-reported, and
+    a change that adds none never searches the product: with no section in the
+    diff this check costs nothing and says nothing (LR-M3).
+
+    Ids are unique per PRODUCT, so a duplicate is found against every record
+    :func:`late_requirements.scan` reads at ``head_tree``. The finding lands on
+    the added occurrence, never on the record that held the id first; two added
+    copies of one new id are one finding, on the later.
+    """
+    added_records: list[tuple[str, int]] = []
+    findings: list[dict] = []
+    for rel in records:
+        added = added_by_path.get(rel)
+        if not rel.endswith(".md") or not added:
+            continue
+        text = late_requirements.read_at(project_dir, rel, head_tree)
+        if text is None:
+            continue
+        in_section = {num for num, _line in late_requirements.record_lines(text)}
+        for line_num, line in added:
+            if line_num not in in_section:
+                continue
+            added_records.append((rel, line_num))
+            rec = late_requirements.parse_line(line, path=rel, line_num=line_num)
+            findings.extend(
+                _finding("late-requirement-record", rel, line_num, problem)
+                for problem in rec.problems
+            )
+    if not added_records:
+        return [], [], set()
+    try:
+        product = late_requirements.scan(project_dir, tree=head_tree)
+    except late_requirements.ScanError as exc:
+        gap = (
+            "late-requirement-record unchecked — could not read the product's "
+            f"late requirements to check id uniqueness ({exc})"
+        )
+        return findings, [gap], {"late-requirement-record"}
+    added_set = set(added_records)
+    by_id: "dict[str, list[late_requirements.LateReq]]" = {}
+    for rec in product:
+        if rec.id is not None:
+            by_id.setdefault(rec.id, []).append(rec)
+    for rec_id, holders in by_id.items():
+        if len(holders) < 2:
+            continue
+        # The id belongs to the first record the change did NOT add; when the
+        # change added every copy, to the first of those.
+        prior = [r for r in holders if (r.path, r.line) not in added_set]
+        owner = prior[0] if prior else holders[0]
+        for rec in holders:
+            if rec is owner or (rec.path, rec.line) not in added_set:
+                continue
+            findings.append(
+                _finding(
+                    "late-requirement-record",
+                    rec.path or "",
+                    rec.line,
+                    f"duplicate id {rec_id} — {owner.where} already holds it; "
+                    "ids are unique per product, so take the next free LR-<n>",
+                )
+            )
+    return findings, [], set()
 
 
 def _read_text(path: Path) -> "str | None":
@@ -1743,8 +1830,10 @@ def lint_records(
         no_answer.add("chunk-ref-missing")
 
     added_by_path: dict = {}
+    diff_unread = False
     if records:
         diffed = _added_lines(project_dir, base_tree, head_tree, records)
+        diff_unread = diffed is None
         if diffed is None:
             unchecked.append(
                 "suite-total-claim unchecked — git could "
@@ -1758,6 +1847,20 @@ def lint_records(
         added = added_by_path.get(rel)
         if added:
             findings.extend(_check_suite_totals(rel, added))
+    if diff_unread:
+        # The same unread diff: no added line is known, so no record is graded.
+        unchecked.append(
+            "late-requirement-record unchecked — git could not read the diff over "
+            "the changed records"
+        )
+        no_answer.add("late-requirement-record")
+    else:
+        lr_findings, lr_gaps, lr_no_answer = _check_late_requirements(
+            project_dir, records, added_by_path, head_tree
+        )
+        findings.extend(lr_findings)
+        unchecked.extend(lr_gaps)
+        no_answer.update(lr_no_answer)
 
     for rel in _plans_to_check(prawduct_dir, records):
         text = _read_text(project_dir / rel)

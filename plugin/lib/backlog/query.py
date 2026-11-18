@@ -36,6 +36,7 @@ from pathlib import Path
 from . import encode, snapshot
 from .core import (
     error,
+    failure_text,
     from_transport_error,
     log_diag,
     ok,
@@ -409,22 +410,34 @@ def refresh_counts(
 
     The write half of the counts story: :func:`counts` is the always-live read;
     this stamps the same rollup into the degenerate cache with a visible
-    ``fetched_at``. On a backend failure it returns the error envelope and writes
-    **nothing** — the prior snapshot survives intact (never a corrupt or
-    regressing write; the old counts stay readable with a growing visible age). If
-    persistence itself is unavailable (not a git repo, or a filesystem error) the
-    fresh counts are still returned, with a warning — the refresh degrades, never
-    hangs or crashes.
+    ``fetched_at``. **Every exit leaves an attempt record** (#755): a success
+    through ``snapshot.write``, a failure — returned as an envelope or raised —
+    through ``snapshot.record_attempt``, which moves only the attempt stamps, so
+    the prior counts survive intact (never a corrupt or regressing write; the old
+    counts stay readable with a growing visible age). This is the op the detached
+    warm runs with its stderr discarded, so the record is the only place its
+    failure can be seen. If persistence itself is unavailable (not a git repo, or
+    a filesystem error) the fresh counts are still returned, with a warning — the
+    refresh degrades, never hangs or crashes.
     """
-    result = counts(transport, owner=owner, repo=repo)
+    scope = f"{owner}/{repo}"
+    path = snapshot.snapshot_path(project_dir)
+    try:
+        result = counts(transport, owner=owner, repo=repo)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- records the attempt, then re-raises for the CLI boundary to envelope, as sync._recording does for the cache
+        if path is not None:
+            from .transport import scrub_secrets  # noqa: PLC0415 — only this path stamps
+
+            snapshot.record_attempt(path, scope, error=scrub_secrets(f"{type(exc).__name__}: {exc}"), now=now)
+        raise
     if result.get("status") != "ok":
+        if path is not None:
+            snapshot.record_attempt(path, scope, error=failure_text(result), now=now)
         return result  # backend down — do NOT clobber the last good snapshot
 
-    scope = f"{owner}/{repo}"
     data = dict(result["data"])
     warnings = list(result.get("warnings") or [])
 
-    path = snapshot.snapshot_path(project_dir)
     if path is None:
         warnings.append("counts not persisted: not inside a git repository")
         data["persisted"] = False

@@ -341,3 +341,10 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
    report) are dropped.
 4. #686 (retire three principles) is scheduled after #1188. #641 (stale assertions after a mechanism is
    deleted) is closed, pointing at the `Retires:` check (`retired-claim-survives`).
+
+**2026-11-18.** "Yes to your recs and merge and push" — answering two asks together:
+1. The #1199 departure from the #1082 ruling is confirmed. A clean edge review's span also credits
+   the first-parent commits on the merged-in side of a non-base merge in its interval, when the
+   subject carries the plan's scope and the chunk. A base merge still carries nothing. Lands in
+   `.prawduct/artifacts/data-model.md` D1 (the departure line) and `plan_status._Spans`.
+2. PR #1206 (`integration/backlog-roi-2026-11-18` → `develop`, the backlog ROI batch) is merged.

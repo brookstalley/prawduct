@@ -355,6 +355,92 @@ def unresolved_blocking(review_fact: dict, resolved: set[tuple[str, str]]) -> li
 
 
 # ---------------------------------------------------------------------------
+# The review link — which earlier review a review's interval starts from
+# ---------------------------------------------------------------------------
+
+
+def _store_position(reviews: list[dict], fact: dict) -> int:
+    """``fact``'s index in ``reviews`` (store order) — by identity, else by
+    fact id, else ``len(reviews)`` (a fact not yet in the store, as at
+    dispatch, comes after every review it holds)."""
+    for i, other in enumerate(reviews):
+        if other is fact:
+            return i
+    fid = fact.get("id")
+    if fid is not None:
+        for i, other in enumerate(reviews):
+            if other.get("id") == fid:
+                return i
+    return len(reviews)
+
+
+def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
+    """THE review-link rule: the reviews ``fact``'s interval starts from —
+    every review recorded strictly BEFORE it (store order) whose ``head_tree``
+    is its ``base_tree`` — oldest first, so ``[-1]`` is the one it links to
+    (:func:`prior_review`).
+
+    One rule for every reader that follows the link, because three copies of it
+    had already drifted (identity by ``id()`` vs by fact id; every review at
+    the tree vs the newest; the pass itself excluded or not):
+    ``critic_mode.review_chain`` walks it back through every review at each
+    linked tree, ``plan_status._extended_reviews`` follows it to the review
+    that records a commit, and ``critic_consolidate.carried_blocking`` takes
+    one hop of it as a verify pass's anchor.
+
+    **Strictly before** is what makes every walk end and what excludes the
+    pass from its own anchor: a review cannot start from one recorded after
+    it. ``reviews`` is the store's review facts in store order (append order is
+    recording order; ``ts`` has one-second resolution). ``fact`` need not be
+    in it — a dispatch asks before its fact exists, and then every review
+    counts as earlier. A ``base_tree`` that is not a non-empty string links to
+    nothing (a missing tree must not match another fact's missing tree).
+    """
+    base = (fact.get("body") or {}).get("base_tree")
+    if not isinstance(base, str) or not base:
+        return []
+    here = _store_position(reviews, fact)
+    return [
+        f for f in reviews[:here]
+        if f is not fact and (f.get("body") or {}).get("head_tree") == base
+    ]
+
+
+def prior_review(reviews: list[dict], fact: dict) -> "dict | None":
+    """The review ``fact`` links to — the newest of :func:`linked_reviews` —
+    or ``None`` when its interval starts at a tree no earlier review stands
+    at."""
+    linked = linked_reviews(reviews, fact)
+    return linked[-1] if linked else None
+
+
+def reviews_linked_from(reviews: list[dict], root_tree: str) -> list[dict]:
+    """Every review whose chain of links reaches back to ``root_tree``, in
+    store order: one standing AT it, one starting from it, and — the link rule
+    read forward — one starting from the ``head_tree`` of an earlier member.
+
+    The same relation :func:`linked_reviews` reads backward, from a root
+    instead of from a review, so the forward and backward readings cannot
+    disagree about what links. ``coverage.branch_review_ids`` bounds its
+    empty-span fallback with it."""
+    if not isinstance(root_tree, str) or not root_tree:
+        return []
+    reached = {root_tree}
+    out = []
+    for fact in reviews:
+        body = fact.get("body") or {}
+        head = body.get("head_tree")
+        base = body.get("base_tree")
+        # A malformed or newer-schema body can carry a non-string tree; a set
+        # lookup on an unhashable one would raise out of every gate reading this.
+        if (isinstance(base, str) and base in reached) or head == root_tree:
+            out.append(fact)
+            if isinstance(head, str) and head:
+                reached.add(head)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Edges (D6)
 # ---------------------------------------------------------------------------
 
@@ -590,9 +676,14 @@ def _verify_anchor_id(facts: list[dict], nodes: "set[str]") -> "str | None":
 
     This is what makes a blocking finding *reachable*. A verify pass reviews
     the delta from one prior fact and records resolutions against that fact
-    alone, so a blocker carried by any OTHER fact on the path is one no verify
-    pass will ever name again — it is superseded, and only a review spanning
-    the whole interval can supply a clean path around it.
+    alone, so a blocker carried by any OTHER fact on the path is superseded:
+    no verify pass will anchor to it again. Superseded is not stranded: since
+    #334 a verify pass's roll-call NAMES every blocker this module's verdict
+    counts when composing to the tree it anchors on
+    (``critic_consolidate.carried_blocking`` over :func:`blockers_counted`),
+    so a superseded blocker that composition still counts clears through
+    verify-resolutions; only one it does not count needs a review spanning the
+    whole interval (``gates.blocking_remedy_lines``).
 
     Two deliberate choices, because both directions of error are wrong advice:
 
@@ -699,10 +790,19 @@ def coverage_verdict(
     node can carry findings (CRT-5H2D).
 
     Each unresolved entry carries ``superseded``: True when its fact is not the
-    one a verify-resolutions pass would anchor to (:func:`_verify_anchor_id`),
-    which means no verify pass will revisit it and only a spanning review can
-    clear it. Gate messages need this to avoid prescribing a route the operator
-    cannot take; the verdict itself is unaffected — a blocker blocks either way.
+    one a verify-resolutions pass would anchor to (:func:`_verify_anchor_id`).
+    That alone no longer means only a spanning review can clear it: a verify
+    pass's roll-call names every blocker this verdict counts at its anchor's
+    tree (:func:`blockers_counted`, #334), so a superseded entry is stranded
+    only when that composition does not count it
+    (``gates.blocking_remedy_lines`` asks). The verdict itself is unaffected —
+    a blocker blocks either way.
+
+    A blocker the verdict does NOT list is not open, whatever its resolution
+    facts say: one recorded at a tree no composed path stands on (a clean
+    spanning review routed around it) gates nothing. :func:`blockers_counted`
+    is the one reading of that answer for every surface that reports open
+    blockers, so none of them can count one the gate has stopped counting.
     """
     if not isinstance(base_tree, str) or not base_tree:
         return {"status": "uncovered", "reason": "no base tree to compose from"}
@@ -758,6 +858,31 @@ def coverage_verdict(
             f"{target_tree[:12]} — a review at the current tree closes the gap"
         ),
     }
+
+
+def blockers_counted(verdict: dict) -> "list[dict] | None":
+    """The unresolved blocking findings a :func:`coverage_verdict` result
+    COUNTS — the gate's own answer to "is this blocker still open", read off
+    the verdict rather than re-derived.
+
+    A blocker is open when a resolution fact has not lifted it AND it stands at
+    a tree the composed path stands on (:func:`_unresolved_at_nodes`). The first
+    half alone is the tempting second predicate, and it is wrong after a clean
+    spanning review: the path routes around the round that raised the blocker,
+    the gate passes, and a surface asking only "is there a resolution fact"
+    keeps reporting it open — a manufactured round, a false NOT DONE.
+
+    ``[]`` for ``covered``; the listed entries for ``blocked`` (shape:
+    ``review_id``, ``fid``, ``title``, ``superseded``, …); ``None`` for
+    ``uncovered`` or anything else — no path composes, so the verdict counts no
+    blocker and cannot say which one a path would. ``None`` is "unknown", never
+    "none open": each caller picks its own degraded posture."""
+    status = verdict.get("status") if isinstance(verdict, dict) else None
+    if status == "covered":
+        return []
+    if status == "blocked":
+        return [dict(e) for e in verdict.get("unresolved") or []]
+    return None
 
 
 #: The most (forward-reached, backward-reached) tree pairs :func:`excused_gap_verdict`

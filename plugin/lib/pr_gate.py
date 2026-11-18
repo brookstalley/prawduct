@@ -216,16 +216,26 @@ def _legacy_log_touched(project_dir: Path, merge_base: str) -> str | None:
 def _closure_issues(project_dir: Path, scope: str, ids: list[str]) -> list[Result]:
     """Issues backend: each id through the local cache (``cachequery.resolve``),
     never the network. An open item is owed at merge — GitHub closes it from
-    the PR description's closing line — rather than a contradiction."""
+    the PR description's closing line — rather than a contradiction.
+
+    **A miss is a finding only when no backlog could resolve the id** — a
+    spelling that is neither an issue id nor a ``PFX`` alias. A well-formed id
+    the cache does not hold reads ``unchecked``: the cache can be stale or
+    partial (#1195), and this check stays offline rather than adding an egress
+    caller, so it names the command that can answer instead of guessing."""
     from datetime import datetime, timezone  # noqa: PLC0415
 
     from .backlog import cachequery  # noqa: PLC0415
+    from .backlog import ids as backlog_ids  # noqa: PLC0415
 
     now = datetime.now(timezone.utc)
     default_owner = scope.split("/", 1)[0] if "/" in scope else None
+    default_repo = backlog_ids.parse_repo(scope)
     unresolved: list[str] = []
     owed: list[str] = []
     failures: list[str] = []
+    not_cached: list[str] = []
+    other_repo: list[str] = []
     for item_id in ids:
         try:
             envelope = cachequery.resolve(
@@ -242,20 +252,49 @@ def _closure_issues(project_dir: Path, scope: str, ids: list[str]) -> list[Resul
             continue
         data = envelope.get("data") or {}
         if not data.get("resolved"):
-            reason = data.get("reason")
-            unresolved.append(f"{item_id}" + (f" [{reason}]" if reason else ""))
+            nid = backlog_ids.normalize_id(item_id, default_owner=default_owner, default_repo=default_repo)
+            # A `PFX` alias first: `ADR-12` also spells `owner/ADR#12`, and the
+            # alias reading is the one `resolve` tries first.
+            if backlog_ids.is_pfx(item_id):
+                not_cached.append(item_id)
+            # GitHub owner and repo names are case-insensitive, so the scope
+            # comparison is too: `Owner/Repo#N` is this repo's item.
+            elif nid.ok and default_repo and (nid.owner.lower(), nid.repo.lower()) != (
+                default_repo[0].lower(), default_repo[1].lower()
+            ):
+                other_repo.append(item_id)
+            elif nid.ok:
+                not_cached.append(item_id)
+            else:
+                reason = data.get("reason")
+                unresolved.append(f"{item_id}" + (f" [{reason}]" if reason else ""))
         elif not data.get("dead"):
             title = data.get("title")
             # A title is data, quoted, never an instruction.
             owed.append(f"Closes {item_id}" + (f" — {json.dumps(title)}" if title else ""))
+    unchecked: list[str] = []
+    if not_cached:
+        unchecked.append(
+            f"{', '.join(not_cached)} not in the local backlog cache for {scope}, which may be "
+            f"stale or partial — `prawduct-hook backlog sync --rebuild --repo {scope}`, then "
+            f"re-run, or `prawduct-hook backlog get <id>` to ask the backlog"
+        )
+    if other_repo:
+        unchecked.append(
+            f"{', '.join(other_repo)} name another repo than {scope}, whose items the local "
+            "cache never holds — `" + "`, `".join(f"prawduct-hook backlog get {i}" for i in other_repo)
+            + "` to ask the backlog"
+        )
+    if failures:
+        unchecked.append(
+            f"the backlog cache for {scope} could not answer for {'; '.join(failures)} — "
+            f"`prawduct-hook backlog sync --repo {scope}`, then re-run"
+        )
     results = []
-    if unresolved or failures:
+    if unresolved or unchecked:
         results.append(Result(
             "closes-unresolved", WARNING, unresolved,
-            unchecked=(
-                f"the backlog cache for {scope} could not answer for {'; '.join(failures)} — "
-                f"`prawduct-hook backlog sync --repo {scope}`, then re-run"
-            ) if failures else None,
+            unchecked="; ".join(unchecked) or None,
         ))
     if owed:
         results.append(Result("close-owed-at-merge", INFO, owed))

@@ -3,6 +3,17 @@
 `status: draft · stage: design · area: governance · added: 2026-09-20 · source: scheduled
 backlog session · issue: https://github.com/brookstalley/prawduct/issues/843`
 
+> **Pushed arm built, 2026-11-18 (backlog ROI batch, Chunk 08), with two departures.** (1) The
+> session-start probe (`branch-landing:finished-branch-unlanded`, in `stranded_branch_probes`) is
+> OFFLINE: probes must not touch the network (`backlog-service-requirements.md`, GV8 constraints;
+> `git_hygiene_probes` follows the same rule), which Decision 4's gated-at-sync call would have
+> broken. It names a finished, pushed, unmerged branch idle a day or more and recommends
+> `prawduct-hook worktrees --prs`, which asks `gh pr list --state all` per branch, at most 8.
+> (2) There was no `cmd_stop` call to extract: the Stop hook's `gh pr list` left with the PR
+> reviewer in 8f8c9d21. The lookup is `git_hygiene.any_pr_for`, on the existing `_gh_json` seam,
+> so the egress site count is unchanged. "Finished" is `plan_status.is_finished` (facts, #1051), not
+> `_has_unfinished_chunk`, and "unmerged" is `plan_lifecycle.observe` answering `in-progress`.
+>
 > **Partly built, 2026-09-28 (`feature/stranded-work`).** Two pieces of this design shipped there,
 > one of them changed. **Shipped:** Decision 4's parser move — `gitstate.worktree_records`, now read
 > by `adhoc_delegate_probes`, `briefing._detect_worktrees` and `stranded_work`, with one departure:

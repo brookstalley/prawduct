@@ -968,9 +968,33 @@ def format_branch_rounds(tally: "dict | None") -> str:
     )
 
 
+def branch_rounds_clause(tally: "dict | None") -> str:
+    """The round count as a clause on ``next_action`` — the line the builder
+    reads when deciding whether to fix and buy another round, which is before
+    the coverage gate's :func:`format_branch_rounds` would reach them.
+
+    Reads the same :func:`count_branch_rounds` answer. ``""`` below two rounds,
+    because round 1 → 2 is the ordinary verify of a first review and a note on
+    every consolidation trains its reader to skip it; and ``""`` on an empty
+    span, where the count is absent by property (see
+    :func:`format_branch_rounds`). An unavailable tally says so — advice fails
+    soft, not silent. Leading space included: the caller appends it.
+    """
+    if not tally or tally.get("status") != "counted":
+        return f" Round count unavailable ({(tally or {}).get('reason', 'unknown')})."
+    n = tally.get("rounds") or 0
+    if n < 2 or not tally.get("span_commits"):
+        return ""
+    return (
+        f" This branch has recorded {n} review rounds since the merge-base"
+        f"{_format_branch_spend(tally, n)}; name what round {n + 1} will do "
+        f"differently before you spend it."
+    )
+
+
 def _format_branch_spend(tally: dict, n: int) -> str:
-    """The ``, costing … so far (…)`` clause of :func:`format_branch_rounds`,
-    or ``""`` when no attributed round recorded a duration of either kind.
+    """The ``, costing … so far (…)`` clause of :func:`format_branch_rounds`
+    and :func:`branch_rounds_clause`, or ``""`` when no attributed round recorded a duration of either kind.
 
     **Clocked time leads, and an estimate is always named as one.** A round's
     duration is either read from the dispatch clock or recollected by the
@@ -1338,6 +1362,276 @@ def resolve_merge_base_tree(project_dir: Path) -> dict:
         "merge_base": merge_base,
         "tree": tree,
         "moving": base_branch == MOVING_FALLBACK_BASE,
+    }
+
+
+#: Which bound produced a branch review set (:func:`branch_review_ids`). The
+#: store is clone-wide, so the set always needs one; lineage is the primary and
+#: the worktree is what answers where an empty span leaves lineage with nothing
+#: to say. Named constants because they are written into a durable
+#: guard-refusal fact that a retirement query reads back.
+BOUND_LINEAGE = "lineage"
+BOUND_WORKTREE = "worktree"
+
+
+def branch_review_ids(
+    project_dir: Path,
+    facts: "list[dict]",
+    *,
+    scope: "str | None" = None,
+    resolved: "dict | None" = None,
+    tally: "dict | None" = None,
+) -> dict:
+    """THE answer to "which reviews are this branch's" — the set, where
+    ``critic_consolidate.select_branch_review`` answers "which ONE is its newest".
+
+    Every reader that composes over a branch's reviews rather than over one of
+    them asks this: the round budget (with its ``scope``), the disposition
+    census with no selector and the session handoff. One owner, so the census
+    and the budget refusal cannot disagree about which reviews are "this
+    branch's". Which of those reviews' blockers are still OPEN is a different
+    question with a different owner — the gate's composition
+    (:func:`open_blockers`) — because a blocker a clean spanning review routed
+    around is in this set and gates nothing.
+
+    **Lineage first.** The review facts :func:`count_branch_rounds` attributes
+    to ``merge_base..HEAD`` — including its documented lower bound (a dirty-tree
+    review taken before the branch's first commit sits AT the merge base and is
+    not counted).
+
+    **Where lineage cannot bound it, the WORKTREE does — and the worktree is
+    not bound enough on its own.** When the span holds no commits — a
+    trunk-based repo after every push, or a branch cut and not yet committed
+    to — an intersection with lineage is empty whatever was reviewed, so the
+    set is drawn from the review facts recorded from this worktree
+    (``actor.worktree == str(project_dir)``): the store sits in the clone's git
+    common dir and every worktree writes into it, and lineage was the thing
+    separating them. An ingested fact carries the writer's basename only, so it
+    never matches an absolute path here. The swap is keyed on the span rather
+    than on an empty result, so a branch that HAS commits and has simply bought
+    no review yet still answers by lineage.
+
+    But "every review this worktree ever recorded" is every scope, every
+    branch it was ever on and all of time — over a thousand facts in a
+    long-lived checkout, two dozen of them with blockers nobody owes any more
+    — so the worktree's facts are narrowed again, by the one bound that names
+    THIS body of work:
+
+    - **``scope`` given** (the round budget): the scope's facts. The budget's
+      declared unit is the scope, which may span several pushes on trunk, so
+      its rounds are counted whatever tree they stood at.
+    - **no scope** (the census, the handoff): the reviews linked to HEAD's tree
+      (``coverage_algebra.reviews_linked_from`` — the review-link rule read
+      forward). With an empty span HEAD's tree IS the merge-base tree, the
+      tree every review of the work now in flight started from; a review of
+      earlier, already-integrated work stands on a chain that never reaches it.
+
+    On the lineage bound ``scope`` narrows the same way, so the budget's
+    ``review_ids`` are exactly this function's answer under either bound.
+
+    ``resolved`` (:func:`resolve_merge_base_tree`'s answer) and ``tally``
+    (:func:`count_branch_rounds`' over the same ``facts``) are the caller's
+    when it already holds them, so one consolidation walks the lineage once.
+
+    Returns ``{"status": "ok", "review_ids", "bound"}`` with ids in store order
+    and ``bound`` one of :data:`BOUND_LINEAGE` / :data:`BOUND_WORKTREE`, or
+    ``{"status": "unavailable", "reason"}`` — no merge base, an unreadable
+    branch span, or a store that did not read. Never raises; each caller picks
+    its own degraded posture, and none of them may read "unavailable" as
+    "empty".
+    """
+    if not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "the evidence store did not read"}
+    if resolved is None:
+        resolved = resolve_merge_base_tree(project_dir)
+    if resolved.get("status") != "ok":
+        return {"status": "unavailable", "reason": resolved.get("reason", "unknown")}
+    if tally is None:
+        tally = count_branch_rounds(project_dir, facts, resolved["merge_base"])
+    if tally.get("status") != "counted":
+        return {"status": "unavailable", "reason": tally.get("reason", "unknown")}
+
+    def _in_scope(fact: dict) -> bool:
+        return scope is None or (fact.get("body") or {}).get("scope") == scope
+
+    if tally.get("span_commits"):
+        on_lineage = {r.get("id") for r in tally.get("reviews") or [] if r.get("id")}
+        return {
+            "status": "ok",
+            "review_ids": [
+                f.get("id") for f in facts
+                if f.get("kind") == "review" and f.get("id") in on_lineage and _in_scope(f)
+            ],
+            "bound": BOUND_LINEAGE,
+        }
+    here = _reviews_recorded_in_this_worktree(facts, project_dir)
+    if scope is not None:
+        bounded = [f for f in here if _in_scope(f)]
+    else:
+        from . import coverage_algebra  # noqa: PLC0415 -- lazy, as this module's other algebra imports are
+
+        bounded = coverage_algebra.reviews_linked_from(here, resolved.get("tree"))
+    return {
+        "status": "ok",
+        "review_ids": [f.get("id") for f in bounded],
+        "bound": BOUND_WORKTREE,
+    }
+
+
+def _reviews_recorded_in_this_worktree(
+    facts: "list[dict]", project_dir: Path
+) -> "list[dict]":
+    """The review facts recorded from THIS worktree (``actor.worktree ==
+    str(project_dir)``), in store order — the pool :func:`branch_review_ids`'
+    second bound narrows. ``actor.worktree`` is written by
+    ``evidence.append_fact`` on every fact the plugin has ever appended, so no
+    fact is invisible to this for want of the field; an ingested fact carries
+    the writer's basename only and never matches an absolute path."""
+    here = str(project_dir)
+    return [
+        f
+        for f in facts
+        if f.get("kind") == "review"
+        and f.get("id")
+        and (f.get("actor") or {}).get("worktree") == here
+    ]
+
+
+def open_blockers(
+    project_dir: Path,
+    facts: "list[dict]",
+    target_tree: "str | None",
+    *,
+    resolved: "dict | None" = None,
+    read: "dict | None" = None,
+) -> dict:
+    """THE answer to "which blocking findings are still open on this branch at
+    ``target_tree``" — the gate's own: the unresolved blockers
+    ``coverage_algebra.coverage_verdict`` counts composing merge-base tree →
+    ``target_tree``, read through ``coverage_algebra.blockers_counted``.
+
+    **Why not "no resolution fact".** That is half of the gate's predicate. The
+    other half is the path: a blocker recorded at a tree no composed path
+    stands on gates nothing, and a clean spanning ``cumulative`` makes exactly
+    that true of every earlier round it routed around. A surface counting
+    resolution facts alone then disagrees with the gate that just passed — it
+    names the blocker in a verify roll-call, counts it as actionable so
+    ``no-review-needed`` cannot answer, writes NOT DONE, and reports it open in
+    the handoff. Every one of those surfaces asks this instead
+    (``critic_consolidate.carried_blocking``'s callers, the disposition
+    census's ``open_blocking``, ``gates.blocking_remedy_lines``' reachability).
+
+    ``target_tree`` is the caller's: a verify pass asks at the tree it anchors
+    on (its ``base_tree``), a census at the newest review in its set
+    (:func:`branch_open_blockers`). The span starts where the gates' does
+    (:func:`resolve_merge_base_tree`; pass ``resolved`` when held). Composition
+    uses the gates' own diff and tree-key functions, memoized through
+    ``verdict_cache`` when ``read`` — the :func:`evidence.read_facts` result
+    ``facts`` came from, unfiltered — is given.
+
+    No composition is paid when no review in ``facts`` holds an unresolved
+    blocker: the gate's set is a subset of those, so the answer is ``[]``.
+
+    Returns ``{"status": "ok", "blockers": [entry, …]}`` (entries as
+    ``coverage_verdict`` lists them: ``review_id``, ``fid``, ``title``,
+    ``superseded``, …) or ``{"status": "unavailable", "reason"}`` — no merge
+    base, no target, or no path composes to it. Never raises; "unavailable" is
+    never "none open".
+    """
+    from . import coverage_algebra  # noqa: PLC0415 -- lazy, as this module's other algebra imports are
+
+    if not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "the evidence store did not read"}
+    resolution = coverage_algebra.resolution_index(facts)
+    if not any(
+        coverage_algebra.unresolved_blocking(f, resolution)
+        for f in facts
+        if f.get("kind") == "review"
+    ):
+        return {"status": "ok", "blockers": []}
+    if not isinstance(target_tree, str) or not target_tree:
+        return {"status": "unavailable", "reason": "no tree to compose to"}
+    if resolved is None:
+        resolved = resolve_merge_base_tree(project_dir)
+    if resolved.get("status") != "ok":
+        return {"status": "unavailable", "reason": resolved.get("reason", "unknown")}
+    # Lazy and one-way: gates imports this module at load, and these are the
+    # very diff/key functions (and memo) the gate composes with, so the two
+    # cannot differ on an edge.
+    from . import gates, verdict_cache  # noqa: PLC0415
+
+    diff_fn = gates._cached_diff_fn(project_dir)
+    key_fn = gates._tree_key_fn(project_dir)
+    try:
+        if read is not None and read.get("facts") is facts:
+            cache = verdict_cache.VerdictCache.for_read(project_dir, read)
+            try:
+                verdict = cache.verdict(facts, resolved["tree"], target_tree, diff_fn, key_fn)
+            finally:
+                cache.flush()
+        else:
+            verdict = coverage_algebra.coverage_verdict(
+                facts, resolved["tree"], target_tree, diff_fn, key_fn
+            )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advisory surfaces degrade on a failed composition; "unavailable" is never read as "none open"
+        return {"status": "unavailable", "reason": f"{type(exc).__name__}: {str(exc)[:80]}"}
+    counted = coverage_algebra.blockers_counted(verdict)
+    if counted is None:
+        return {
+            "status": "unavailable",
+            "reason": verdict.get("reason") or f"composition {verdict.get('status')}",
+        }
+    return {"status": "ok", "blockers": counted}
+
+
+def newest_review_tree(facts: "list[dict]", review_ids: "list[str]") -> "str | None":
+    """The ``head_tree`` of the newest of ``review_ids`` in store order — a set
+    of the branch's reviews' latest reviewed position, and the tree a verify
+    pass would anchor on (``critic_consolidate.select_branch_review`` picks the
+    branch's newest). ``None`` for an empty set."""
+    wanted = set(review_ids or ())
+    newest = None
+    for f in facts if isinstance(facts, list) else []:
+        if f.get("kind") == "review" and f.get("id") in wanted:
+            newest = f
+    return None if newest is None else (newest.get("body") or {}).get("head_tree")
+
+
+def branch_open_blockers(
+    project_dir: Path,
+    facts: "list[dict]",
+    review_ids: "list[str]",
+    *,
+    resolved: "dict | None" = None,
+    read: "dict | None" = None,
+) -> dict:
+    """Which of THESE reviews' blockers the gate still counts — for a census
+    over the branch's set: :func:`open_blockers` composed to
+    :func:`newest_review_tree`, narrowed to the set's reviews.
+
+    Composition is skipped when no review in the set holds a blocker without a
+    resolution fact: the gate's set is a subset of those, so the answer is
+    ``[]`` — which keeps a clean branch's session briefing from paying a
+    composition for blockers elsewhere in a clone-wide store. Same return shape
+    as :func:`open_blockers`."""
+    from . import coverage_algebra  # noqa: PLC0415 -- lazy, as this module's other algebra imports are
+
+    if not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "the evidence store did not read"}
+    wanted = set(review_ids or ())
+    members = [f for f in facts if f.get("kind") == "review" and f.get("id") in wanted]
+    resolution = coverage_algebra.resolution_index(facts)
+    if not any(coverage_algebra.unresolved_blocking(f, resolution) for f in members):
+        return {"status": "ok", "blockers": []}
+    answer = open_blockers(
+        project_dir, facts, newest_review_tree(facts, review_ids),
+        resolved=resolved, read=read,
+    )
+    if answer.get("status") != "ok":
+        return answer
+    return {
+        "status": "ok",
+        "blockers": [b for b in answer["blockers"] if b.get("review_id") in wanted],
     }
 
 

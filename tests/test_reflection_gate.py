@@ -884,6 +884,298 @@ class TestADropAsksWhoAuthoredTheWork:
         assert span["dropped"] == []
 
 
+def _tool_call(s: "_Session", start: int, end: int, name: str, args: dict) -> "list[dict]":
+    """One finished tool call of ``name`` from ``start`` to ``end`` seconds into
+    the session."""
+    call_id = f"toolu_{name}_{start}"
+    return [
+        {"type": "assistant", "timestamp": _iso(s.started + start),
+         "message": {"role": "assistant", "content": [
+             {"type": "tool_use", "id": call_id, "name": name, "input": args}]}},
+        {"type": "user", "timestamp": _iso(s.started + end),
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": call_id, "content": "ok"}]}},
+    ]
+
+
+def _write_at(s: "_Session", path: Path, text: str, at: int) -> None:
+    """``path`` written with its modification time ``at`` seconds into the
+    session. The fixture clock runs ahead of the real one (:class:`_Session`),
+    so the real write time is before the transcript begins and says nothing;
+    the modification time is what a write during the session would leave."""
+    path.write_text(text)
+    os.utime(path, (s.started + at, s.started + at))
+
+
+def _drop_observations(repo: Path, read_facts=None) -> "list[dict]":
+    """The recorded drops, read through ``read_facts`` when given — a test
+    counting calls to a patched reader passes the real one."""
+    from lib import evidence  # noqa: PLC0415
+
+    guard = evidence.STOP_OBSERVED_PREFIX + gates.DROPPED_COMMIT_CHECK
+    read = (read_facts or evidence.read_facts)(repo)
+    return [
+        f for f in evidence.facts_of_kind(read, "guard-refusal")
+        if f["body"].get("guard") == guard
+    ]
+
+
+class TestAFileThisSessionWroteByAnyMeans:
+    """#1184: authorship was read only off the Edit-family tools, so a file this
+    session wrote with Bash (``sed -i``, a heredoc, codegen) or through a
+    delegate subagent, committed from a terminal while another session wrote
+    here, left the span and disarmed the reflection and Critic gates. A file's
+    last write is on disk: a commit is now also kept when one of its files was
+    last written (modified, or its inode changed: a rename) while this session
+    had a tool call or ``!`` command running. A file written while this session
+    ran nothing is still not its own, so #1071's protection holds for a
+    session that sat idle while the other one worked."""
+
+    @pytest.mark.parametrize("writer", [
+        ("Bash", {"command": "sed -i '' 's/1/2/' code.py"}),
+        ("Agent", {"description": "delegate", "prompt": "fix code.py"}),
+    ], ids=["bash", "delegate"])
+    def test_a_terminal_commit_of_a_file_written_during_a_call_still_counts(
+        self, tmp_path, capsys, writer
+    ):
+        name, args = writer
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_tool_call(s, 100, 160, name, args)
+        )
+        _write_at(s, repo / "code.py", "x = 2\n", 130)  # inside the call
+        s.git_at(200, "commit", "-q", "-am", "committed from a terminal")  # idle
+        _their_session_commits(s)
+
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["code.py"]
+        assert [d["paths"] for d in span["dropped"]] == [["theirs.py"]]
+        rc = _hook.cmd_stop(repo, {"transcript_path": transcript})
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert BLOCKER in err
+
+    def test_a_file_written_while_this_session_was_idle_is_still_dropped(self, tmp_path):
+        """The control, and #1071's protection: the same terminal commit of a
+        file last written between this session's calls is the other one's."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)],
+            extra=_tool_call(s, 100, 160, "Bash", {"command": "pytest"}),
+        )
+        _write_at(s, repo / "code.py", "x = 2\n", 180)  # after the call ended
+        s.git_at(200, "commit", "-q", "-am", "their terminal commit")
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+        assert [d["paths"] for d in span["dropped"]] == [["code.py"]]
+
+    def test_a_write_after_their_commit_does_not_make_it_this_sessions(self, tmp_path):
+        """The Critic's finding on #1184's first cut: the file's time is its
+        LAST write, so this session rewriting another session's committed file
+        later — a checkout, a stash pop, a formatter, ``cp`` over it — moved
+        that time into one of its calls and kept the other session's idle
+        commit, which is #1071's error again. A write after a commit cannot be
+        what the commit recorded, so it is not read as the commit's author."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)],
+            extra=_tool_call(s, 500, 560, "Bash", {"command": "git stash pop"}),
+        )
+        _their_session_commits(s)  # idle, at 300
+        # The same bytes, rewritten inside this session's call: no diff against
+        # HEAD, so only the write's time could claim the commit.
+        _write_at(s, repo / "theirs.py", "their_work = 1\n", 530)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+        assert [d["paths"] for d in span["dropped"]] == [["theirs.py"]]
+
+    @pytest.mark.skipif(os.name == "nt", reason="st_ctime is creation time on Windows")
+    def test_a_rename_counts_by_its_inode_change(self, tmp_path):
+        """``mv`` keeps a file's modification time, so a renamed file is read
+        by when its inode last changed. The rename runs on the real clock, so
+        the call around it is placed there too."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        old = repo / "code.py"
+        idle = s.started - 700  # before the transcript begins: says nothing
+        os.utime(old, (idle, idle))
+        # The real clock is ~600 s before the session start.
+        transcript = _transcripts(
+            tmp_path, s, [(-620, -500)], covered_from=-630,
+        )
+        os.rename(old, repo / "renamed.py")
+        s.git_at(200, "rm", "-q", "--cached", "code.py")
+        s.git_at(200, "add", "renamed.py")
+        s.git_at(200, "commit", "-q", "-m", "git mv from a terminal")
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        # `git diff` reports a rename by its new name only.
+        assert span["changed"] == ["renamed.py"]
+        assert span["dropped"] == []
+
+    def test_each_drop_is_recorded_once_as_a_stop_observation(self, tmp_path, capsys):
+        """R-6: the drop's only trace was a stderr line at exit 0, which nobody
+        reads. Each dropped commit is now a stop observation in the evidence
+        store (``prawduct-hook stats``), once per session however many Stops
+        see it."""
+        from lib import evidence, stats  # noqa: PLC0415
+
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        sha = _git(repo, "rev-parse", "HEAD")
+
+        for _ in range(2):
+            assert _hook.cmd_stop(repo, {"transcript_path": transcript}) == 0
+        capsys.readouterr()
+        recorded = _drop_observations(repo)
+        assert len(recorded) == 1, recorded
+        body = recorded[0]["body"]
+        assert body["reason"] == gates.DROPPED_COMMIT_REASON
+        assert body["observed"] == {"commit": sha, "files": 1}
+        report = stats.aggregate(evidence.read_facts(repo)["facts"])
+        assert any(
+            v["stop_observations"]["by_gate"].get(gates.DROPPED_COMMIT_CHECK) == 1
+            for v in report.values()
+        ), report
+
+    @pytest.mark.parametrize("result, expected", [
+        ({"status": "error", "reason": "store locked"}, "was not recorded (store locked)"),
+        ({"status": "appended", "refused_fields": ["observed"]}, "without its observed"),
+        ({"status": "appended"}, None),
+        ({"status": "duplicate", "id": "x"}, None),
+    ], ids=["failed", "refused", "appended", "duplicate"])
+    def test_a_record_that_did_not_land_says_so(self, tmp_path, monkeypatch, result, expected):
+        """Advice fails soft, never silent: each record that did not land is
+        one line naming its commit, and a duplicate is a success."""
+        from lib import evidence  # noqa: PLC0415
+
+        monkeypatch.setattr(evidence, "append_stop_observation", lambda *a, **k: result)
+        notes = gates.record_dropped_commits(
+            _repo(tmp_path), [{"sha": "ab" * 20, "paths": ["theirs.py"], "why": "x"}],
+            session="/host/ours-session.jsonl",
+        )
+        if expected is None:
+            assert notes == []
+        else:
+            assert len(notes) == 1 and "abababababab" in notes[0] and expected in notes[0]
+
+    def test_the_store_is_read_once_per_stop(self, tmp_path, monkeypatch):
+        """The Critic's cost finding: the dedupe probe read the whole clone-wide
+        evidence store once per dropped commit, at every Stop the commits stay
+        in the span. One read now serves every commit's probe."""
+        from lib import evidence  # noqa: PLC0415
+
+        repo = _repo(tmp_path)
+        reads = {"n": 0}
+        real = evidence.read_facts
+
+        def _counting(project_dir):
+            reads["n"] += 1
+            return real(project_dir)
+
+        monkeypatch.setattr(evidence, "read_facts", _counting)
+        dropped = [{"sha": c * 40, "paths": ["theirs.py"], "why": "x"} for c in "abc"]
+        for _ in range(2):  # the second Stop finds all three already recorded
+            assert gates.record_dropped_commits(
+                repo, dropped, session="/host/ours-session.jsonl"
+            ) == []
+        assert reads["n"] == 2, reads
+        assert len(_drop_observations(repo, real)) == 3
+
+    def test_an_unreadable_store_names_each_commit_and_raises_nothing(
+        self, tmp_path, monkeypatch
+    ):
+        """The one read failing leaves each append to probe the store itself;
+        when that fails too, every commit is named and the Stop goes on."""
+        from lib import evidence  # noqa: PLC0415
+
+        def _broken(_project_dir):
+            raise OSError("store unreadable")
+
+        monkeypatch.setattr(evidence, "read_facts", _broken)
+        dropped = [{"sha": c * 40, "paths": ["theirs.py"], "why": "x"} for c in "ab"]
+        notes = gates.record_dropped_commits(
+            _repo(tmp_path), dropped, session="/host/ours-session.jsonl"
+        )
+        assert [n[n.index(" for ") + 5:][:12] for n in notes] == ["a" * 12, "b" * 12]
+        assert all("store unreadable" in n for n in notes), notes
+
+    def test_an_error_read_is_not_handed_down_as_an_empty_store(self, tmp_path, monkeypatch):
+        """`read_facts` REPORTS an unreadable store as an error envelope with no
+        facts. Read as `[]`, that is a valid known set, so the dedupe probe
+        answers "absent" and the same observation is re-appended at every Stop.
+        An error read hands nothing down, and each append probes for itself."""
+        from lib import evidence  # noqa: PLC0415
+
+        monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "error", "reason": "torn"})
+        seen = []
+
+        def _append(*args, **kwargs):
+            seen.append(kwargs.get("known_facts", "absent"))
+            return {"status": "appended"}
+
+        monkeypatch.setattr(evidence, "append_stop_observation", _append)
+        gates.record_dropped_commits(
+            _repo(tmp_path), [{"sha": "a" * 40, "paths": ["theirs.py"], "why": "x"}],
+            session="/host/ours-session.jsonl",
+        )
+        assert seen == [None], seen
+
+    def test_two_sessions_dropping_one_commit_are_two_records(self, tmp_path, capsys):
+        """The Critic's dedupe finding. Two sessions in one checkout share its
+        ``.session-start`` (each one's SessionStart writes it), and that is the
+        only population that drops a commit, so a key built on the stamp let
+        the second session's drop of a third session's commit dedupe away. The
+        key is now the session's own transcript."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        ours = _transcripts(tmp_path, s, [(10, 20)])
+        second = str(Path(ours).with_name("second-session.jsonl"))
+        Path(second).write_text(Path(ours).read_text())
+        _their_session_commits(s)
+
+        for transcript in (ours, second, ours, second):
+            assert _hook.cmd_stop(repo, {"transcript_path": transcript}) == 0
+        capsys.readouterr()
+        assert len(_drop_observations(repo)) == 2
+
+    def test_no_session_identity_records_nothing_and_says_so(self, tmp_path):
+        """With no transcript there is no key that is this session's alone: a
+        shared one undercounts, and none at all records the commit at every
+        Stop. Neither is recorded, and the note names the commit."""
+        repo = _repo(tmp_path)
+        notes = gates.record_dropped_commits(
+            repo, [{"sha": "ab" * 20, "paths": ["theirs.py"], "why": "x"}], session=None
+        )
+        assert _drop_observations(repo) == []
+        assert len(notes) == 1 and "abababababab" in notes[0]
+        assert "no session identity" in notes[0]
+
+    def test_the_telemetry_doc_has_the_checks_row(self):
+        """The reader's registry of Stop observations names this check and its
+        one reason, read off the module that records them."""
+        doc = (_ROOT / "docs" / "governance-telemetry.md").read_text()
+        rows = [
+            line for line in doc.splitlines()
+            if line.startswith(f"| `{gates.DROPPED_COMMIT_CHECK}` |")
+        ]
+        assert len(rows) == 1, rows
+        assert re.findall(r"`([a-z-]+)`", rows[0].split("|")[2])[0] == gates.DROPPED_COMMIT_REASON
+
+    def test_nothing_dropped_records_nothing(self, tmp_path, capsys):
+        """The control: the same commit read without the payload is counted."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        _stop(repo, capsys)
+        assert _drop_observations(repo) == []
+
+
 class _CountingFile:
     """A file object that counts the bytes its reader actually took."""
 

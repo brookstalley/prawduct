@@ -31,7 +31,7 @@ confirmed as the reported one.
 |---|---|---|
 | A. Sole-owner path | Chunk 2's diff touches a path that only chunk 4's Deliverables cover, most easily a new file under a directory chunk 4 lists. The `chunk`-mode proposal then names 02 and 04, and with no `--chunks` the proposal is what the fact names. | Open. Printed on stderr at dispatch as a proposal, with no flag that a one-chunk review is about to certify two. |
 | B. Declared | `--chunks` was passed with 04 in it. | A warning is printed when the declared set leaves the proposal, and both lists are on the fact. Nothing reads them back at `plan status`. |
-| C. Subject | A first-parent commit in the review's interval carries the plan's scope and `(Chunk 4)` in its subject. | By design (#1082). `plan status` prints the reason. |
+| C. Subject | A first-parent commit in the review's interval, or since #1199 one on the merged-in side of a non-base merge there, carries the plan's scope and `(Chunk 4)` in its subject. | By design (#1082). `plan status` prints the reason. |
 
 A fourth explanation is version skew: the installed plugin predated the one-owner rule while
 reporting `3.8.1-dev`. The requirements below hold whichever it was.
