@@ -5,7 +5,9 @@ scope: backlog-roi-2026-11-18
 branch: integration/backlog-roi-2026-11-18
 base: develop
 working-branches: []
-partition: "ten builders in isolated worktrees, one per chunk, on disjoint files; Opus-class for chunks 01-05 and 07-09 (design judgment inside settled designs), Sonnet-class for 06 and 10 (fully specified). Shared seams have one owner each — plugin/lib/critic_consolidate.py: chunk 02 owns next_action_line, merge_findings, fact_to_cache_record and the consolidation call site that renders next_action; chunk 03 owns begin_review's exit-1 refusals and _widened_fallback_mode; chunk 04 owns carried_blocking, account_for_prior_blockers_directive and _round_budget_verdict. plugin/lib/coverage.py: chunk 02 owns the format_branch_rounds neighbourhood, chunk 04 owns any branch_review_ids extraction. plugin/lib/gates.py: chunk 04 owns the superseded-blocker remedy, chunk 07 owns _drop_other_sessions_commits. plugin/lib/briefing.py: chunk 04 owns _summarize_critic_findings, chunk 05 owns the backlog warming/stuck branch. plugin/bin/prawduct-hook: chunk 08 owns cmd_stop; any other chunk edits only its own subcommand handler. plugin/methodology/building.md: chunk 09 only. plugin/skills/critic/SKILL.md and review-cycle.md: chunk 03 only. Change-log fragments: one file per chunk, named by its scope. Cross-file prose budgets and the merge are the coordinator's; the coordinator integrates, runs the suite once, and governs"
+dropped:
+  - "06: legs 2 and 3 of issue 745 already shipped on develop in 1e40d9d4 (2026-11-15); leg 1 needs a design choice of evidence source, so the issue is restaged to design"
+partition: "ten builders in isolated worktrees, one per chunk, on disjoint files; Opus-class for chunks 01-05 and 07-09 (design judgment inside settled designs), Sonnet-class for 06 and 10 (fully specified); chunk 06 returned no work (descoped, see its section). Shared seams have one owner each — plugin/lib/critic_consolidate.py: chunk 02 owns next_action_line, merge_findings, fact_to_cache_record and the consolidation call site that renders next_action; chunk 03 owns begin_review's exit-1 refusals and _widened_fallback_mode; chunk 04 owns carried_blocking, account_for_prior_blockers_directive and _round_budget_verdict. plugin/lib/coverage.py: chunk 02 owns the format_branch_rounds neighbourhood, chunk 04 owns any branch_review_ids extraction. plugin/lib/gates.py: chunk 04 owns the superseded-blocker remedy, chunk 07 owns _drop_other_sessions_commits. plugin/lib/briefing.py: chunk 04 owns _summarize_critic_findings, chunk 05 owns the backlog warming/stuck branch. plugin/bin/prawduct-hook: chunk 08 owns cmd_stop; any other chunk edits only its own subcommand handler. plugin/methodology/building.md: chunk 09 only. plugin/skills/critic/SKILL.md and review-cycle.md: chunk 03 only. Change-log fragments: one file per chunk, named by its scope. Cross-file prose budgets and the merge are the coordinator's; the coordinator integrates, runs the suite once, and governs"
 governed_by:
   - artifact: architecture
     dispositions:
@@ -126,6 +128,12 @@ only the tests for their files plus any prose budget test their edits touch, thr
 
 ### Chunk 06: Backlog decode degradations warn (#745)
 
+**Descoped 2026-11-18, nothing to build.** The delegate found legs 2 and 3 already on develop
+(1e40d9d4, 2026-11-15, with `tests/test_backlog_decode_degradations.py`), and leg 1 (deleted soft
+facet) undetectable from the data decode holds: telling deleted from never-set needs a prior value
+(a facet echo in the block, or a cache/timeline comparison at `get`), which is a design choice.
+#745 is restaged to `design` for leg 1. No commit; worktree reaped.
+
 - **Description:** the three degradations each emit a decode-envelope warning; returned values
   do not change.
 - **Depends on:** none
@@ -181,15 +189,12 @@ only the tests for their files plus any prose budget test their edits touch, thr
   1. Acceptance criteria met and the chunk's own tests pass
   2. Committed (reviewed at the plan boundary)
 
-## Status
+### Chunk 11: Integration, suite and cumulative review
 
-- [ ] Chunk 01
-- [ ] Chunk 02
-- [ ] Chunk 03
-- [ ] Chunk 04
-- [ ] Chunk 05
-- [ ] Chunk 06
-- [ ] Chunk 07
-- [ ] Chunk 08
-- [ ] Chunk 09
-- [ ] Chunk 10
+- **Description:** merge the delegate branches into the integration branch, resolve seams, run
+  the declared suite once, and run the cumulative Critic.
+- **Depends on:** Chunk 01, Chunk 02, Chunk 03, Chunk 04, Chunk 05, Chunk 07, Chunk 08, Chunk 09, Chunk 10
+- **Type:** cumulative-final
+- **Done when:**
+  1. Suite green on the integrated tree
+  2. Cumulative Critic: zero unresolved blocking
