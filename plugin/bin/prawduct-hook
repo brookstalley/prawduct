@@ -3357,15 +3357,16 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         project_dir, status_output, transcript_path=event.transcript_path
     )
     # The trace of that exclusion, so a wrong one is not silent: a dropped
-    # commit cannot fire the gates below, so this line is the only place it
-    # shows. One line, on stderr, and in the block text when another gate
+    # commit cannot fire the gates below, so it shows here and as a stop
+    # observation in the evidence store (`gates.record_dropped_commits`, which
+    # `prawduct-hook stats` counts). One line, on stderr, and in the block text when another gate
     # blocks; it repeats every turn while the commit stays in the span, so it
     # stays out of the user's exit-0 message.
     if reflection_span.get("dropped"):
         stop_advisories.append(_LogOnlyAdvisory(
             "PRAWDUCT NOTE: left out of this session's work as another session's "
             "commits (made while another session wrote here and this one ran no "
-            "tool call or ! command, touching no file it edited): "
+            "tool call or ! command, touching no file it wrote): "
             + "; ".join(
                 f"{d['sha'][:12]} ({', '.join(d['paths'][:3]) or 'no files'}"
                 f"{', …' if len(d['paths']) > 3 else ''})"
