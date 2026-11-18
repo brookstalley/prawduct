@@ -1,8 +1,8 @@
 """Which Critic control a finding is a firing of — a structured ``check``
 derived from the title token the reviewer already writes.
 
-A control shipped under the observable-yield obligation
-(``.prawduct/artifacts/nonfunctional-requirements.md`` § Direction) is
+A control shipped under prawduct's own observable-yield obligation (a
+Direction norm of the framework's nonfunctional requirements) is
 retired or kept on its yield, and yield is only measurable if a firing can be
 counted. The persisted ``goal`` cannot carry that: it is reviewer-written and
 drifts. So each such control tells the reviewer to open the finding's title

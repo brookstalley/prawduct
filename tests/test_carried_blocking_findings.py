@@ -209,15 +209,21 @@ def test_next_action_names_the_prose_forms_that_produce_the_bug():
     assert "`resolutions`" in line
 
 
-def test_next_action_warns_about_the_supersession_deadline():
-    """Acting now is cheap; one more round makes it a full cumulative."""
+def test_next_action_sets_no_supersession_deadline():
+    """Since #334 the verify roll-call names the unresolved blockers of every
+    review in the branch's set, not only the anchor's, so a newer round no
+    longer strands a carried blocker. The old "act now, or only a spanning
+    cumulative clears them" deadline would send the builder to a full review
+    the gate no longer requires (it routes an in-set superseded blocker to
+    verify-resolutions)."""
     line = cc.next_action_line(
         "rev-B", 0, 0, 0, None,
         carried=[{"review_id": "rev-A", "fid": "R-12"}],
     )
 
-    assert "cumulative" in line
-    assert "supersede" in line
+    assert "verify-resolutions" in line
+    assert "supersede" not in line
+    assert "cumulative" not in line
 
 
 def test_carried_overrides_the_warning_note_arm_too():
