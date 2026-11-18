@@ -98,7 +98,7 @@ Checked against `develop` at `0b0ddffc`.
    used. The unpushed-commit signal moves to R4, which compares the merged PR's head with the local
    tip before deleting.
 
-   *Departure raised during #1187's fix, 2026-11-18, awaiting the owner's confirmation:* a worktree
+   *Departure raised during #1187's fix and confirmed by the owner, 2026-11-18 (`.prawduct/owner-rulings.md`):* a worktree
    that holds submodules is removed with `git worktree remove --force`. Git refuses every such
    worktree unforced, whatever its state, so that refusal is not a safety judgment. A forced removal
    deletes the submodules' repositories, which live under the worktree's own git directory, so

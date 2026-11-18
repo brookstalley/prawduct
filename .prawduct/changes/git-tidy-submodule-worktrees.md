@@ -16,8 +16,8 @@ cannot hide changes, and nothing any of its refs reaches (branches, tags, its st
 missing from its remote-tracking branches. Absorbed, embedded and deinitialised submodules are all
 checked. If the proof fails, the worktree is kept, and the reason names the submodule and, for work
 already published under a tag, the command to remove the worktree by hand. A worktree without submodules
-is never forced. This departs from #1041's rule that worktrees are never forced; the departure is
-recorded in its requirements, awaiting the owner's confirmation.
+is never forced. This departs from #1041's rule that worktrees are never forced; the owner confirmed the
+departure on 2026-11-18, and it is recorded in #1041's requirements.
 
 ## Consumer note
 `prawduct-hook git-tidy --reap <worktree>` now removes a merged, clean delegate worktree that

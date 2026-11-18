@@ -323,3 +323,14 @@ same day's #1190 ruling. A clear stops no background agent, and its completion s
 a session that has lost its context. So what makes an in-flight delegate `SAFE TO CLEAR` is forward
 notes that carry what it was working on and why, beside where its result lands and what integration it
 owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate paragraph).
+
+**2026-11-18.** "yes to all of your recommendations" — answering four asks together:
+1. The #1187 departure from #1041 R2 is confirmed: git-tidy passes `--force` only to remove a worktree
+   that holds submodules, and only after the submodule proof (each submodule clean, and nothing any of
+   its refs reaches missing from its remote-tracking branches). Lands in
+   `documentation/issues/1041-requirements.md` R2.
+2. `fix/triage-batch-2026-11-18` goes to `develop` as a PR and is merged.
+3. #323 (handoff net misses an appended file) and #598 (a new review does not retire the prior findings
+   report) are dropped.
+4. #686 (retire three principles) is scheduled after #1188. #641 (stale assertions after a mechanism is
+   deleted) is closed, pointing at the `Retires:` check (`retired-claim-survives`).
