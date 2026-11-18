@@ -861,6 +861,7 @@ def append_stop_observation(
     *,
     reason: "str | None" = None,
     observed: "dict | None" = None,
+    dedupe_key: "str | None" = None,
 ) -> dict:
     """Record that a non-blocking Stop check found what it looks for.
 
@@ -872,6 +873,11 @@ def append_stop_observation(
     friction. The check itself does not block, so there is no ``stop`` id or
     ``co_gates``; another gate may still block the same Stop, and the two
     facts are not linked. Callers treat a failure as soft.
+
+    ``dedupe_key`` is for a check that meets one standing event at every Stop
+    (a commit it goes on leaving out of the span): the event is recorded once,
+    and a later Stop's call returns ``{"status": "duplicate"}``, which is a
+    success (:func:`append_guard_refusal`).
     """
     return append_guard_refusal(
         project_dir,
@@ -879,6 +885,7 @@ def append_stop_observation(
         {"gate": gate},
         reason=reason,
         observed=observed,
+        dedupe_key=dedupe_key,
     )
 
 

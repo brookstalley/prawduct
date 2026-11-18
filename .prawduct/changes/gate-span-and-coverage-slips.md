@@ -16,8 +16,10 @@ gate's trigger, which reads the same span.
 The span now drops a commit only when three things are all true. First, another session's
 transcript in this checkout's host transcript folder was written since this session started
 (only file times are read). Second, this session's own transcript, named in the Stop payload,
-shows no tool call and no `!` command running when the commit was made. Third, none of the
-commit's files is one this session's Edit, Write, MultiEdit or NotebookEdit calls targeted.
+shows no tool call and no `!` command running when the commit was made. Third, this session
+wrote none of the commit's files: none is one its Edit, Write, MultiEdit or NotebookEdit calls
+targeted, and none was last written while one of its tool calls or `!` commands ran (#1184,
+`stop-span-bash-authorship`).
 
 The third test is there because the first two say who ran `git commit`, and the gates ask who
 wrote the change. A user who commits the session's edits from a terminal between turns runs it
@@ -87,9 +89,12 @@ rather than in `_find_path`.
 ## Consumer note
 If you run two Claude Code sessions in the same checkout, a session that changed nothing is no
 longer asked for a reflection just because the other session committed. A session whose commit
-touches a file it changed with its edit tools (Edit, Write, MultiEdit, NotebookEdit) is still
-asked, including when you commit those edits yourself from a terminal or with `!git commit`. A
-file it wrote only through Bash, or that a delegate subagent edited, does not count as its edit
-here, so a terminal commit of such a file while another session is writing is left out. A commit left out this way is named on one line in the Stop hook's output.
+touches a file it wrote is still asked, including when you commit that work yourself from a
+terminal or with `!git commit`. A file it wrote is one its edit tools (Edit, Write, MultiEdit,
+NotebookEdit) named, or one last written while it had a tool call or `!` command running: through
+Bash, a delegate subagent or a background command. A file last written by someone else while
+this session ran nothing is not its own. A commit left out this way is named on one line in the
+Stop hook's output and recorded once as an `other-session-commit` observation that
+`prawduct-hook stats` counts.
 `update_gitignore` adds `.prawduct/.session-activity.json` to your `.gitignore` at the next
 session start.

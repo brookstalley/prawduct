@@ -3372,6 +3372,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 for d in reflection_span["dropped"]
             )
         ))
+        stop_advisories.extend(_LogOnlyAdvisory(n) for n in _gates().record_dropped_commits(project_dir, reflection_span["dropped"]))
     # The Critic composition gate (Gate 2) reads the same span, read once here:
     # its trigger is `changed` and its doc-only carveout is `not judgeable`.
     critic_has_work = bool(reflection_span["changed"])

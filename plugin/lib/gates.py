@@ -34,6 +34,7 @@ list, so it is not copied here to drift (a copy did, naming removed imports).
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 import re
 import shlex
@@ -1437,7 +1438,7 @@ def session_work_span(
     branch switch or reset brought in history the session did not write, or
     because another session in the same checkout committed while this one had
     no tool call or ``!`` command running, in a commit touching no file this
-    session edited, are dropped (:func:`_session_authored_paths`; the second
+    session wrote, are dropped (:func:`_session_authored_paths`; the second
     needs ``transcript_path``, the Stop payload's, and without it those commits
     count), so the span holds what the session AUTHORED, never more than the
     base-tree diff. ``judgeable`` is
@@ -1467,7 +1468,8 @@ def session_work_span(
     transcript gained since the previous Stop (the whole transcript at the
     first, through the ``.prawduct/.session-activity.json`` cache that
     ``host.session_tool_activity`` describes) and one batched ``diff-tree`` per
-    kind of commit made while this session was idle. This runs on every Stop, which is every turn.
+    kind of commit made while this session was idle, plus one ``lstat`` per
+    file of those commits that no Edit-family call named. This runs on every Stop, which is every turn.
     ``evidence.capture_tree`` — which writes an index file and walks the whole
     tree — is deliberately not used: it belongs to the review data plane, whose
     callers run once per review rather than once per turn. ``status_output`` is
@@ -1649,6 +1651,20 @@ def _paths_per_commit(
     return per_commit
 
 
+def _written_moments(project_dir: Path, path: str) -> "tuple[float, ...]":
+    """When the checkout's file at ``path`` (as git names it) was last written:
+    its modification time, and on POSIX its inode change time too, which a
+    rename (``mv``, ``git mv``) or ``cp -p`` moves while keeping the
+    modification time. Empty when there is no such file — a deletion leaves
+    nothing to read. Windows' ``st_ctime`` is the creation time and is not
+    read."""
+    try:
+        st = os.lstat(Path(project_dir) / path)
+    except (OSError, ValueError):
+        return ()
+    return (st.st_mtime,) if os.name == "nt" else (st.st_mtime, st.st_ctime)
+
+
 def _drop_other_sessions_commits(
     project_dir: Path,
     activity: "host.ToolActivity",
@@ -1660,14 +1676,38 @@ def _drop_other_sessions_commits(
 
     A commit is dropped only when all three hold: the transcript covers the
     moment it was made, no tool call or ``!`` command of this session was
-    running then, and none of its paths is one this session's Edit/Write calls
-    targeted. The first two say who RAN ``git commit``; the gates ask who
-    AUTHORED the change, and a user who commits the session's edits from a
-    terminal between turns runs it with no call open. Every dropped commit is
-    appended to ``dropped`` with its paths and why, so a wrong drop can be seen.
-    When a commit's paths cannot be listed nothing is dropped.
+    running then, and this session wrote none of its files. The first two say
+    who RAN ``git commit``; the gates ask who AUTHORED the change, and a user
+    who commits the session's work from a terminal between turns runs it with
+    no call open.
+
+    This session wrote a file when its Edit-family calls named it, or when the
+    file in the checkout was last written (:func:`_written_moments`) while one
+    of its tool calls or ``!`` commands was running. The second reads a write
+    made by any means — Bash (``sed -i``, a heredoc, codegen), a delegate
+    subagent working inside the call that ran it, a background command — and it
+    is the same test the commit's own moment gets, applied to the moment its
+    file was written. What it cannot read is a file written again since by
+    someone else, or deleted: those are judged on the other two tests alone.
+    It keeps #1071's protection for a session that ran nothing while the other
+    one wrote and committed; a write at a moment both sessions were acting
+    cannot be told apart, and like a commit made then, it stays counted.
+
+    Every dropped commit is appended to ``dropped`` with its paths and why, so
+    a wrong drop can be seen. When a commit's paths cannot be listed nothing is
+    dropped.
     """
     edited = _checkout_paths(project_dir, activity.edited_paths)
+    written_while_acting: dict[str, bool] = {}
+
+    def _written_while_acting(path: str) -> bool:
+        if path not in written_while_acting:
+            written_while_acting[path] = any(
+                activity.acting_at(moment) is True
+                for moment in _written_moments(project_dir, path)
+            )
+        return written_while_acting[path]
+
     kept_commits = list(commits)
     kept_merges = list(merges)
     found: dict[str, dict] = {}
@@ -1682,7 +1722,7 @@ def _drop_other_sessions_commits(
             continue
         for sha, when in idle:
             paths = per_commit.get(sha, [])
-            if edited.intersection(paths):
+            if edited.intersection(paths) or any(_written_while_acting(p) for p in paths):
                 continue
             moves.remove((sha, when))
             found.setdefault(sha, {
@@ -1692,7 +1732,7 @@ def _drop_other_sessions_commits(
                     f"made at {datetime.fromtimestamp(when, timezone.utc):%Y-%m-%dT%H:%M:%SZ}"
                     " while another session was writing in this checkout, with no tool"
                     " call or ! command of this session running, and touching no file"
-                    " this session edited"
+                    " this session wrote"
                 ),
             })
     # A sha this session's reflog and its log both list is dropped only when
@@ -1701,6 +1741,53 @@ def _drop_other_sessions_commits(
     if dropped is not None:
         dropped.extend(d for sha, d in found.items() if sha not in still_counted)
     return kept_commits, kept_merges
+
+
+#: The Stop check id a commit left out of the span as another session's is
+#: recorded under (``evidence.append_stop_observation``), and the one reason it
+#: records: made while this session ran nothing, touching no file it wrote.
+DROPPED_COMMIT_CHECK = "other-session-commit"
+DROPPED_COMMIT_REASON = "idle-and-unwritten"
+
+
+def record_dropped_commits(project_dir: Path, dropped: "list[dict]") -> "list[str]":
+    """Record each commit :func:`session_work_span` left out as another
+    session's (its ``dropped``) as a stop observation, so a wrong drop is a
+    query (``prawduct-hook stats``, ``evidence list --kind guard-refusal``)
+    rather than a stderr line at exit 0 that nobody reads.
+
+    One fact per commit per session: the same commit is left out at every Stop
+    while it stays in the span, so the record is deduped on the
+    ``.session-start`` stamp and the sha. It carries the sha and how many files
+    the commit touched, never their names. Returns one line per record that did
+    not land, for the caller to show; a record is advice, so nothing raises.
+    """
+    session = _read_session_start(gitstate.get_prawduct_dir(project_dir)) or "unknown"
+    notes: list[str] = []
+    for d in dropped:
+        sha = d.get("sha")
+        try:
+            result = evidence.append_stop_observation(
+                project_dir,
+                DROPPED_COMMIT_CHECK,
+                reason=DROPPED_COMMIT_REASON,
+                observed={"commit": sha, "files": len(d.get("paths") or [])},
+                dedupe_key=f"{session}:{sha}",
+            )
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- an observation is advice; an escape would end the Stop with a crash
+            result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
+        if result.get("status") not in ("appended", "duplicate"):
+            notes.append(
+                f"NOTE: the {DROPPED_COMMIT_CHECK} observation for {str(sha)[:12]} was not "
+                f"recorded ({result.get('reason', 'unknown')}) — `prawduct-hook stats` "
+                "will undercount it"
+            )
+        elif result.get("refused_fields"):
+            notes.append(
+                f"NOTE: the {DROPPED_COMMIT_CHECK} observation for {str(sha)[:12]} was "
+                f"recorded without its {', '.join(sorted(result['refused_fields']))}"
+            )
+    return notes
 
 
 def _session_authored_paths(
@@ -1730,7 +1817,8 @@ def _session_authored_paths(
     ``transcript_path`` (the Stop payload's), a commit or merge is dropped
     when another session was writing beside this one, this session had no tool
     call or ``!`` command running when it was made, and it touches no file this
-    session's Edit/Write calls targeted (:func:`_drop_other_sessions_commits`).
+    session wrote — named in an Edit-family call, or last written while one of
+    its calls or ``!`` commands ran (:func:`_drop_other_sessions_commits`).
     Without that evidence every commit above still counts. Each dropped commit
     is appended to ``dropped``, when a list is passed, as ``{sha, paths, why}``
     — only when this returns a set, since a ``None`` drops nothing.
@@ -1754,7 +1842,8 @@ def _session_authored_paths(
     when another session wrote beside this one, a read of the bytes this
     session's transcript gained since the previous read (the whole transcript
     the first time; see ``host.session_tool_activity``), and one batched
-    ``diff-tree`` per kind of commit made while this session was idle.
+    ``diff-tree`` per kind of commit made while this session was idle, plus
+    one ``lstat`` per file of those commits that no Edit-family call named.
     """
     def _cannot_tell(reason: str) -> None:
         if why is not None:
