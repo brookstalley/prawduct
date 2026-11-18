@@ -5,6 +5,8 @@ scope: backlog-roi-wave2-2026-11-18
 branch: integration/backlog-roi-wave2-2026-11-18
 base: develop
 working-branches: []
+dropped:
+  - "01: superseded by issue 1128 (commit 9e5087d3, 2026-11-10), which made a NOTE an observation at every stage; zero boundary NOTE findings since. Issue 830 closed as superseded"
 partition: "four Opus-class builders in isolated worktrees, one per chunk, stacked on integration/backlog-roi-2026-11-18 (PR #1206). Seams have one owner each. plugin/lib/critic_consolidate.py: chunk 01 owns next_action_line's disposition wording; chunk 02 owns validate_partial, merge_findings, FINDING_SCOPE_DIRECTIVE, account_for_prior_blockers_directive and the resolution path. plugin/lib/dispositions.py: chunk 01 only. plugin/lib/ledger.py: chunk 03 only. plugin/lib/gates.py: chunk 04 owns the post-fix coverage remedy text; chunk 01 touches no gates.py. plugin/skills/critic/review-cycle.md: chunk 01 owns the 'Severity does not exempt' passage, chunk 04 owns the Verify-resolutions anchoring derivation and the exit-3 qualifier. plugin/methodology/building.md and plugin/skills/pr/SKILL.md: chunk 04 only. Reviewer payload and prose budgets are the coordinator's to reconcile at merge. Commit subjects use THIS plan's scope: `<type>(backlog-roi-wave2-2026-11-18): … (Chunk NN)`, which is what credits a chunk in `plan status`."
 governed_by:
   - artifact: architecture
