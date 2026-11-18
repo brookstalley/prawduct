@@ -134,12 +134,13 @@ def _is_shell_script(path: Path, head: str) -> bool:
 def _executed_script(root: Path, words: "list[str]") -> "tuple[Path, str] | None":
     """The shell script inside ``root`` that ``words`` run, with its text: the
     first word naming an in-repo file that is a shell script (a shell shebang,
-    or a ``.sh``/``.bash`` suffix). Keyed to what the file IS rather than where
+    a ``.sh``/``.bash`` suffix, or a shell named just before it, as in
+    ``sh scripts/test``). Keyed to what the file IS rather than where
     it sits, so any prefix (``uv run``, ``timeout 900``, ``bash -o pipefail``)
     reaches it, and a test file handed to a runner as an argument is never one.
     Nothing outside the repo is read."""
     base = Path(root).resolve()
-    for word in words:
+    for i, word in enumerate(words):
         if word.startswith("-") or "{" in word or "=" in word:
             continue
         candidate = (base / word).resolve()
@@ -151,7 +152,8 @@ def _executed_script(root: Path, words: "list[str]") -> "tuple[Path, str] | None
             text = candidate.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if _is_shell_script(candidate, text[:200]):
+        handed_to_shell = i > 0 and Path(words[i - 1]).name in _SHELLS
+        if handed_to_shell or _is_shell_script(candidate, text[:200]):
             return candidate, text
     return None
 

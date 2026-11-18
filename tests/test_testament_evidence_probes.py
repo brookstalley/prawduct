@@ -126,6 +126,13 @@ class TestRunsTestament:
         _wrapper(tmp_path)
         assert tep.runs_testament(f"{prefix} scripts/test.sh --junit-xml={{junit_xml}}", tmp_path)
 
+    def test_a_file_a_shell_is_told_to_run_is_a_script(self, tmp_path):
+        (tmp_path / "scripts").mkdir()
+        (tmp_path / "scripts" / "test").write_text('testament run --junit-xml="$1"\n')
+        assert tep.runs_testament("sh scripts/test {junit_xml}", tmp_path)
+        # Control: the same file, not handed to a shell, is not known to be one.
+        assert not tep.runs_testament("scripts/test {junit_xml}", tmp_path)
+
     def test_a_script_known_by_its_shebang_is_read(self, tmp_path):
         (tmp_path / "bin").mkdir()
         (tmp_path / "bin" / "check").write_text('#!/usr/bin/env bash\ntestament run --junit-xml="$1"\n')
@@ -156,7 +163,7 @@ class TestRunsTestament:
         """pytest runs the test file; it does not execute it as a wrapper, so a
         test that QUOTES the wired command is not one."""
         (tmp_path / "tests").mkdir()
-        # An unquoted docstring line, so only program position keeps it out.
+        # An unquoted docstring line, so only the shell-script check keeps it out.
         (tmp_path / "tests" / "test_x.py").write_text(
             'def test_it():\n    """\n    testament run --junit-xml {junit_xml}\n    """\n')
         assert not tep.runs_testament("pytest tests/test_x.py --junit-xml={junit_xml}", tmp_path)
