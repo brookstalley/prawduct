@@ -35,8 +35,11 @@ review's record. That line comes from facts over the branch's set and gives the 
 the undispositioned warning count and the number of rounds. When the store is unreadable or the set
 cannot be derived, the line says so and does not report the branch clean.
 
-**One predicate for "open", and a bounded fallback.** Every surface above that reports an open
-blocker asks the gate's own question, `coverage.open_blockers`. It reads the coverage verdict from
+**One predicate for "open", and a bounded fallback.** The roll-call, the `NOT DONE` line, the
+verify dispatch's count, the gate's remedy and the census ask the gate's own question,
+`coverage.open_blockers`. The handoff line does not: composing it is a coverage walk measured at
+~75s on a cold verdict memo, which SessionStart would pay, so that line counts blockers with no
+resolution fact, says so, and names `check-cumulative-critic` for the gate's count. It reads the coverage verdict from
 the merge base through `coverage_algebra.blockers_counted`. A blocker is open only while the gate
 counts it. A resolution fact clears it, and so does a clean spanning review whose composed path
 never stands at the blocker's tree. Before this, a blocker with no resolution fact counted as open
