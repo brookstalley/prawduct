@@ -3341,7 +3341,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     #   session base tree and the working tree, committed work included;
     #   history a pull, merge or branch switch brought in, and commits another
     #   session in this checkout made while this one was idle and touching no
-    #   file it edited (read from the payload's transcript), excluded. No
+    #   file it wrote before the commit (`gates._drop_other_sessions_commits`),
+    #   excluded. No
     #   build-plan conjunct: a planless session that shipped code is exactly the
     #   session whose lesson never got written down, and the old plan conjunct
     #   made that the silent case. There is no advisory branch any more, because

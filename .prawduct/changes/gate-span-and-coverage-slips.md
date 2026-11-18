@@ -18,7 +18,7 @@ transcript in this checkout's host transcript folder was written since this sess
 (only file times are read). Second, this session's own transcript, named in the Stop payload,
 shows no tool call and no `!` command running when the commit was made. Third, this session
 wrote none of the commit's files: none is one its Edit, Write, MultiEdit or NotebookEdit calls
-targeted, and none was last written while one of its tool calls or `!` commands ran (#1184,
+targeted, and none was last written, before the commit, while one of its tool calls or `!` commands ran (#1184,
 `stop-span-bash-authorship`).
 
 The third test is there because the first two say who ran `git commit`, and the gates ask who
@@ -91,7 +91,7 @@ If you run two Claude Code sessions in the same checkout, a session that changed
 longer asked for a reflection just because the other session committed. A session whose commit
 touches a file it wrote is still asked, including when you commit that work yourself from a
 terminal or with `!git commit`. A file it wrote is one its edit tools (Edit, Write, MultiEdit,
-NotebookEdit) named, or one last written while it had a tool call or `!` command running: through
+NotebookEdit) named, or one last written before the commit while it had a tool call or `!` command running: through
 Bash, a delegate subagent or a background command. A file last written by someone else while
 this session ran nothing is not its own. A commit left out this way is named on one line in the
 Stop hook's output and recorded once as an `other-session-commit` observation that
