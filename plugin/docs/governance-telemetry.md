@@ -458,8 +458,8 @@ The definitions (their one home):
       `COMPLETE` turns, and its counts on either side of that release do not
       compare. Nor do `clear-reason`'s catches, which then began to require
       `session_changed`. Otherwise a reader was told to keep a
-      session open for nothing, which is a catch. An unreaped delegate is not
-      observable, so this rule leans towards catch, which is the direction
+      session open for nothing, which is a catch. A delegate whose task and
+      purpose are not yet in the forward notes is not observable, so this rule leans towards catch, which is the direction
       that keeps a gate. Its firings are now observations, not blocks
       (counts across that change do not compare), scored by this same rule
       under *observed only*.

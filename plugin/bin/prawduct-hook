@@ -775,9 +775,9 @@ def _clear_observations(project_dir: Path, work_in_flight: bool) -> dict:
     catch from a slip (``stats``). ``work_live`` also DECIDES one verdict: the
     clear-verdict check lets ``YOUR TURN`` + ``DO NOT CLEAR`` pass unrecorded only
     on an observed True, so every failure here must read as ``None``, never True. ``work_live``: harness background work or a
-    live Critic review, either of which makes ``DO NOT CLEAR`` true (an
-    unreaped delegate is invisible here, so it can read False when the hold
-    was right). ``notes_present``: a non-empty ``.handoff-notes.md``, so what
+    live Critic review, either of which makes ``DO NOT CLEAR`` true (a
+    delegate whose task and purpose are not yet in the forward notes is
+    invisible here, so it can read False when the hold was right). ``notes_present``: a non-empty ``.handoff-notes.md``, so what
     the turn held may already have a home. ``session_changed``: the session
     authored a non-metadata change, committed or not
     (``gates.session_work_span``), so a turn in a session that changed nothing

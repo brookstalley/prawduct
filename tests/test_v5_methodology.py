@@ -1793,7 +1793,11 @@ LAST_MEASURED_TOKENS = {
     # Stop-hook paragraph names the `close-pointer` record of a reason pointing "above". A READING.
     # +4 on 2026-11-11 (asks-last review round): the header is read only outside a code fence, and the
     # guide says so instead of "exactly". A READING.
-    "methodology/session-hygiene.md": 3434,
+    # +98 on 2026-11-18 (#1190, owner rulings that day): a clear stops no background agent, so
+    # "kill" is defined as losing the result, and the delegate paragraph names what the forward notes
+    # must carry to make an in-flight delegate clearable (what it is working on and why, where its
+    # result lands, what integration it owes) instead of claiming the delegate dies. A READING.
+    "methodology/session-hygiene.md": 3532,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1932,7 +1936,9 @@ LAST_MEASURED_TOKENS = {
     # onto that branch, and why. A READING.
     # -4 on 2026-11-11 (pr-reviewer-fold Chunk 03): the reviewer-dispatch sentence names the
     # Critic's skill alone. A READING.
-    "methodology/delegation.md": 2848,
+    # +14 on 2026-11-18 (#1190): the reaping paragraph's pointer says the clear verdict's home also
+    # says what the forward notes must carry about a delegate, which the delegating agent writes. A READING.
+    "methodology/delegation.md": 2862,
 }
 
 

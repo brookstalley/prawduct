@@ -316,3 +316,10 @@ were fixed limits, when each is one over its last reading. Lands in `tests/test_
 3. The twelve stale August `ready` items come back to the owner as a keep/drop list. #270 (opt-in
    output style) is dropped; #686 (retire three principles) and #641 (stale assertions after a
    mechanism is deleted) are decided separately, as design calls.
+
+**2026-11-18.** "background agents do survive clear, but it can be confusing of the handoff notes don't
+carry what they were working on and why ("Task 23 complete!" is not super useful)." This narrows the
+same day's #1190 ruling. A clear stops no background agent, and its completion still arrives, but into
+a session that has lost its context. So what makes an in-flight delegate `SAFE TO CLEAR` is forward
+notes that carry what it was working on and why, beside where its result lands and what integration it
+owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate paragraph).
