@@ -1264,6 +1264,8 @@ class TestUncheckedReporting:
                 "change-fragment": 0,
                 # Repo-wide, but this fixture declares no retired phrase.
                 "retired-claim-survives": 0,
+                # No record changed, so no late requirement was added to grade.
+                "late-requirement-record": 0,
             },
         }
 
@@ -2483,3 +2485,135 @@ class TestChangeFragments:
         assert _checks(result, "change-fragment") == []
         assert any("unknown-reopen-target unchecked" in u for u in result["unchecked"])
         assert result["counts"]["change-fragment"] is None
+
+
+# ---------------------------------------------------------------------------
+# late-requirement-record (#1034)
+# ---------------------------------------------------------------------------
+
+_LR_CHECK = "late-requirement-record"
+
+
+def _lr(n: int, why: str = "operating", surfaced: str = "03") -> str:
+    return f"- **LR-{n}** (2026-11-18 · why: {why} · surfaced: {surfaced}) — It must hold {n}."
+
+
+def _brief(*items: str) -> str:
+    body = "\n".join(items)
+    return f"# Product brief\n\nScope.\n\n## Late requirements\n\n{body}\n\n## Glossary\n\nTerms.\n"
+
+
+class TestLateRequirementRecord:
+    """The record shape is graded on the lines a change ADDED, product-wide for
+    ids, and is silent where no `## Late requirements` section exists (LR-M3)."""
+
+    BRIEF = ".prawduct/artifacts/product-brief.md"
+
+    def _seed(self, tmp_path: Path, *items: str) -> "tuple[Path, str]":
+        repo = _make_repo(tmp_path)
+        (repo / self.BRIEF).write_text(_brief(*items))
+        return repo, _commit(repo, "seed brief")
+
+    def test_a_duplicate_id_and_a_missing_why_are_one_finding_each(self, tmp_path):
+        # The issue's red-first acceptance fixture.
+        repo, base = self._seed(tmp_path, _lr(1), _lr(2))
+        (repo / self.BRIEF).write_text(_brief(
+            _lr(1), _lr(2),
+            _lr(2, why="constraint"),
+            "- **LR-3** (2026-11-18 · surfaced: 04) — Missing its why.",
+        ))
+        head = _commit(repo, "add two records")
+        found = _checks(_lint(repo, [self.BRIEF], base, head), _LR_CHECK)
+        assert len(found) == 2, found
+        dup, missing = sorted(found, key=lambda f: f["line"])
+        assert "LR-2" in dup["detail"] and "duplicate" in dup["detail"]
+        assert "`why`" in missing["detail"]
+        assert dup["path"] == self.BRIEF
+        # The finding sits on the ADDED duplicate, never on the original.
+        lines = (repo / self.BRIEF).read_text().splitlines()
+        assert lines[dup["line"] - 1] == _lr(2, why="constraint")
+        assert lines[missing["line"] - 1].startswith("- **LR-3**")
+
+    def test_a_why_outside_the_fixed_set_is_a_finding(self, tmp_path):
+        repo, base = self._seed(tmp_path, _lr(1))
+        (repo / self.BRIEF).write_text(_brief(_lr(1), _lr(2, why="hunch")))
+        found = _checks(_lint(repo, [self.BRIEF], base, _commit(repo)), _LR_CHECK)
+        assert len(found) == 1 and "`why: hunch`" in found[0]["detail"]
+
+    def test_well_formed_and_superseded_records_are_not_findings(self, tmp_path):
+        repo, base = self._seed(tmp_path, _lr(1))
+        superseded = _lr(1) + " SUPERSEDED 2026-11-19: replaced by LR-2."
+        (repo / self.BRIEF).write_text(_brief(superseded, _lr(2)))
+        result = _lint(repo, [self.BRIEF], base, _commit(repo))
+        assert _checks(result, _LR_CHECK) == []
+        assert result["counts"][_LR_CHECK] == 0
+
+    def test_two_added_duplicates_are_one_finding_not_two(self, tmp_path):
+        repo, base = self._seed(tmp_path)
+        (repo / self.BRIEF).write_text(_brief(_lr(4), _lr(4, why="constraint")))
+        found = _checks(_lint(repo, [self.BRIEF], base, _commit(repo)), _LR_CHECK)
+        assert len(found) == 1 and "LR-4" in found[0]["detail"]
+
+    def test_ids_are_unique_across_the_product_not_per_file(self, tmp_path):
+        repo, _ = self._seed(tmp_path, _lr(1))
+        plan = ".prawduct/artifacts/build-plan-x.md"
+        base = _tree(repo)
+        (repo / plan).write_text(_brief(_lr(1, why="constraint")))
+        found = _checks(_lint(repo, [plan], base, _commit(repo)), _LR_CHECK)
+        assert len(found) == 1
+        assert found[0]["path"] == plan and self.BRIEF in found[0]["detail"]
+
+    def test_only_added_lines_are_graded(self, tmp_path):
+        # A malformed record already in history is not re-reported when an
+        # unrelated well-formed one is added beside it.
+        repo, base = self._seed(tmp_path, "- **LR-1** (2026-11-18) — old, malformed.")
+        (repo / self.BRIEF).write_text(_brief(
+            "- **LR-1** (2026-11-18) — old, malformed.", _lr(2)
+        ))
+        assert _checks(_lint(repo, [self.BRIEF], base, _commit(repo)), _LR_CHECK) == []
+
+    def test_a_record_shaped_line_outside_the_section_is_not_graded(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        notes = ".prawduct/artifacts/notes.md"
+        (repo / notes).write_text("# Notes\n")
+        base = _commit(repo)
+        (repo / notes).write_text("# Notes\n\n- **LR-1** (bad) — not in a section.\n")
+        assert _checks(_lint(repo, [notes], base, _commit(repo)), _LR_CHECK) == []
+
+    def test_no_section_anywhere_emits_nothing(self, tmp_path, monkeypatch):
+        """LR-M3: with no `## Late requirements` section the check emits no
+        finding, no unchecked line, and never walks the product."""
+        from lib import late_requirements
+
+        def _no_scan(*_a, **_k):
+            raise AssertionError("scanned the product with no section in the diff")
+
+        monkeypatch.setattr(late_requirements, "scan", _no_scan)
+        repo = _make_repo(tmp_path)
+        doc = ".prawduct/artifacts/notes.md"
+        (repo / doc).write_text("# Notes\n")
+        base = _commit(repo)
+        (repo / doc).write_text("# Notes\n\n- an ordinary bullet\n")
+        result = _lint(repo, [doc], base, _commit(repo))
+        assert _checks(result, _LR_CHECK) == []
+        assert not any(u.startswith(_LR_CHECK) for u in result["unchecked"])
+        assert result["counts"][_LR_CHECK] == 0
+
+    def test_an_unreadable_product_scan_is_unchecked_not_clean(self, tmp_path, monkeypatch):
+        from lib import late_requirements
+
+        def _broken(*_a, **_k):
+            raise late_requirements.ScanError("git grep failed")
+
+        repo, base = self._seed(tmp_path)
+        (repo / self.BRIEF).write_text(_brief(_lr(1)))
+        head = _commit(repo)
+        monkeypatch.setattr(late_requirements, "scan", _broken)
+        result = _lint(repo, [self.BRIEF], base, head)
+        assert result["counts"][_LR_CHECK] is None
+        assert any(u.startswith(f"{_LR_CHECK} unchecked") for u in result["unchecked"])
+
+    def test_the_check_is_rated_and_advisory(self):
+        assert _LR_CHECK in record_lint.CHECKS
+        assert record_lint.SEVERITY[_LR_CHECK] == "warning"
+        assert _LR_CHECK not in record_lint.INNER_BLOCKING
