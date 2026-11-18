@@ -27,15 +27,20 @@ drives the real recorder on every such shape to pin the two together.
 
 **A declared command runs testament** when its words contain ``testament`` (the
 program, by basename, so a full path or a ``uv run`` prefix counts) with a later
-``run``, including inside a quoted ``sh -c`` string. It **records** from testament
-when it also carries the ``{junit_xml}`` placeholder the recorder fills. A script
-wrapping testament reads as not running it; the advisory is dismissable, and its
-evidence is the declared commands, so a dismissal holds until they change. One
+``run``, including inside a quoted ``sh -c`` string, or when it runs a shell
+script inside the repo with such a command (a comment or an ``echo``ed string
+does not count). It **records** from testament when it also carries the
+``{junit_xml}`` placeholder the recorder fills. A wrapper prawduct cannot read (a
+make target, a script outside the repo or in another language, a script another
+script calls) reads as not running testament, so the advisory says "as far as prawduct
+can read" and warns that replacing a wrapper drops what else it runs. It is
+dismissable, and its evidence is the declared commands, so a dismissal holds until
+they change. One
 entry among several that runs testament is enough: a repo may run part of its
 suite locally on purpose (prawduct's own does, for tests that need git history).
 
 Registered at the composition root (``lib/probe_families.register_all``).
-Read-only: it reads two files and runs nothing.
+Read-only: it reads two files, and any wrapper script a declared command names, and runs nothing.
 """
 
 from __future__ import annotations
@@ -102,18 +107,119 @@ def _words(command: str) -> "list[str]":
     return out
 
 
-def runs_testament(command: str) -> bool:
-    """Whether ``command``'s words run ``testament run``."""
-    words = _words(command)
+#: The largest script :func:`runs_testament` reads. A test wrapper is a few
+#: dozen lines; anything far larger is not one, and is not worth reading at
+#: session start.
+_SCRIPT_READ_LIMIT = 256 * 1024
+
+
+def _words_run_testament(words: "list[str]") -> bool:
     return any(
         Path(word).name == "testament" and "run" in words[i + 1 :]
         for i, word in enumerate(words)
     )
 
 
-def records_testament(command: str) -> bool:
-    """Whether ``command`` runs testament and writes the report the recorder reads."""
-    return runs_testament(command) and PLACEHOLDER in command
+#: Shells whose script a declared command or a wrapper line may hand off to.
+_SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh"})
+
+
+def _is_shell_script(path: Path, head: str) -> bool:
+    if path.suffix in (".sh", ".bash"):
+        return True
+    first = head.splitlines()[0] if head else ""
+    return first.startswith("#!") and any(Path(w).name in _SHELLS or w in _SHELLS for w in first[2:].split())
+
+
+def _executed_script(root: Path, words: "list[str]") -> "tuple[Path, str] | None":
+    """The shell script inside ``root`` that ``words`` run, with its text: the
+    first word naming an in-repo file that is a shell script (a shell shebang,
+    a ``.sh``/``.bash`` suffix, or a shell named just before it, as in
+    ``sh scripts/test``). Keyed to what the file IS rather than where
+    it sits, so any prefix (``uv run``, ``timeout 900``, ``bash -o pipefail``)
+    reaches it, and a test file handed to a runner as an argument is never one.
+    Nothing outside the repo is read."""
+    base = Path(root).resolve()
+    for i, word in enumerate(words):
+        if word.startswith("-") or "{" in word or "=" in word:
+            continue
+        candidate = (base / word).resolve()
+        if candidate == base or base not in candidate.parents:
+            continue
+        try:
+            if not candidate.is_file() or candidate.stat().st_size > _SCRIPT_READ_LIMIT:
+                continue
+            text = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        handed_to_shell = i > 0 and Path(words[i - 1]).name in _SHELLS
+        if handed_to_shell or _is_shell_script(candidate, text[:200]):
+            return candidate, text
+    return None
+
+
+def _line_words(words: "list[str]") -> "list[str]":
+    """A script line's words as the shell would run them: a word opening with
+    ``#`` starts a comment (``$#`` and ``${1#x}`` do not), and a quoted string is
+    a command only where a shell or ``eval`` is handed one (``bash -c "..."``),
+    so an ``echo "testament run"`` names no program."""
+    out: list[str] = []
+    expand_next = False
+    for word in words:
+        if word.startswith("#"):
+            break
+        if expand_next or (out and out[-1] == "eval"):
+            out.extend(_words(word))
+        else:
+            out.append(word)
+        expand_next = word == "-c"
+    return out
+
+
+def _script_commands(text: str) -> "list[list[str]]":
+    """Each command line of a shell script as the words it runs, continuation
+    lines joined. A line shlex cannot split is skipped."""
+    commands: list[list[str]] = []
+    pending = ""
+    for line in text.splitlines():
+        if line.rstrip().endswith("\\"):
+            pending += line.rstrip()[:-1] + " "
+            continue
+        joined, pending = pending + line, ""
+        try:
+            words = _line_words(shlex.split(joined))
+        except ValueError:
+            continue
+        if words:
+            commands.append(words)
+    return commands
+
+
+def runs_testament(command: str, root: "Path | None" = None) -> bool:
+    """Whether ``command`` runs ``testament run``: in its own words, or, given
+    the repo ``root``, in a command of the in-repo shell script it runs.
+
+    One level deep: a script that calls another script is not followed. A
+    wrapper prawduct cannot read (a make target, a script outside the repo, one
+    written in another language) still reads as not running testament, which is
+    why the advisory hedges.
+    """
+    words = _words(command)
+    if _words_run_testament(words):
+        return True
+    if root is None:
+        return False
+    found = _executed_script(root, words)
+    if found is None:
+        return False
+    return any(_words_run_testament(line) for line in _script_commands(found[1]))
+
+
+def records_testament(command: str, root: "Path | None" = None) -> bool:
+    """Whether ``command`` runs testament and writes the report the recorder
+    reads. A wrapper script is trusted to pass the ``{junit_xml}`` argument it
+    is given on to testament."""
+    return runs_testament(command, root) and PLACEHOLDER in command
 
 
 def uses_testament(root: Path) -> bool:
@@ -161,7 +267,7 @@ def from_counts_refusal(root: Path, declared: Declared) -> str:
     if not uses_testament(root):
         return head + generic
     lead = f"This repo's tests run on testament ({MANIFEST}). "
-    if any(records_testament(c) for c in commands):
+    if any(records_testament(c, root) for c in commands):
         return head + lead + (
             "A bare `test-evidence record` runs "
             + (
@@ -177,7 +283,7 @@ def from_counts_refusal(root: Path, declared: Declared) -> str:
                 else "a `testament run --junit-xml <report>` with `--from-junit <report>`."
             )
         )
-    if any(runs_testament(c) for c in commands):
+    if any(runs_testament(c, root) for c in commands):
         return head + lead + (
             f"The declared testament command has no `{PLACEHOLDER}` placeholder, so the "
             f"recorder cannot read its report: add `--junit-xml {PLACEHOLDER}` to it."
@@ -214,7 +320,7 @@ def probe_declared_command_skips_testament(state: ProjectState, codebase: Codeba
     if declared is None:
         _note("test_command/test_commands is declared in a shape the recorder refuses")
         return None
-    if any(runs_testament(c) for c in declared.commands):
+    if any(runs_testament(c, root) for c in declared.commands):
         # Wired, or wired without the placeholder, which the recorder's own
         # refusal names on the next record.
         return []
@@ -229,17 +335,21 @@ def probe_declared_command_skips_testament(state: ProjectState, codebase: Codeba
             evidence=tuple(sorted(f"declared: {c}" for c in declared.commands))
             or ("declared: none",),
             trigger_summary=(
-                f"This repo's tests run on testament ({MANIFEST}), but no suite command "
-                f"prawduct records evidence with runs it: {named}. Each evidence record "
-                "therefore runs the suite a second time, locally, after the testament run "
-                f"that verified it. To record from testament instead, {_fix(declared.key)} "
+                f"This repo's tests run on testament ({MANIFEST}), but as far as prawduct "
+                f"can read, no suite command it records evidence with runs it: {named}. "
+                "Unless one of them reaches testament where prawduct cannot see (a make "
+                "target, a script outside the repo or called by another script), each "
+                "evidence record runs the suite a second time, locally, after the testament "
+                f"run that verified it. To record from testament instead, {_fix(declared.key)} "
                 "in .prawduct/project-state.yaml; where no runner answers, testament runs "
                 "the same suite on this machine."
             ),
             owner_action=(
                 "Approve pointing the declared suite command at testament, so test "
                 "evidence comes from the testament run rather than a second local run of "
-                "the suite. Dismiss this if the local command is deliberate."
+                "the suite. If the declared command is a wrapper, check what else it runs "
+                "first (a lint, a build): replacing it drops those from test evidence. "
+                "Dismiss this if the local command is deliberate."
             ),
             # Owner-only: the fix is an edit to a committed file, which no single
             # allowlisted command makes.

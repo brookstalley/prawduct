@@ -1128,7 +1128,7 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
     The Stop hook fires at every turn end, while the reflection and Critic
     gates are about session end. A turn whose close says ``RUNNING`` and
     ``DO NOT CLEAR`` is the agent's own statement that it is
-    still working — a review in flight, a delegate not yet reaped — so both
+    still working — a review in flight, a delegate the notes do not yet describe — so both
     gates DEFER to the next Stop. Both, by owner ruling: the label is a
     required, user-facing claim, so misusing it to dodge a gate is visible to
     the person it misleads. The deferral is stateless: the next

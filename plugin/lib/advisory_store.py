@@ -323,6 +323,18 @@ def register_probe(
     }
 
 
+def registered_versions() -> dict[tuple[str, str], int]:
+    """``{(feature, type): version}`` for every type the registry can stamp.
+
+    The version each candidate of that type carries into its advisory id — the
+    same answer :func:`run_probes` stamps, read without running any probe."""
+    return {
+        (record["feature"], ctype): record["probe_version"]
+        for record in _REGISTRY.values()
+        for ctype in record["types"]
+    }
+
+
 def clear_registry() -> None:
     """Empty the registry. Primarily for test isolation."""
     _REGISTRY.clear()

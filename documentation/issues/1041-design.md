@@ -107,7 +107,9 @@ Build plan: `.prawduct/artifacts/build-plan-git-hygiene.md`.
    the owner approved is the operation-level approval (security-model norm).
 6. **`git-tidy --reap <worktree>`** (R5): the caller names the delegate worktree. The command
    removes it without `--force` once it is clean, unlocked and integrated, then deletes its
-   branch. No idle wait applies.
+   branch. No idle wait applies. A worktree holding submodules is the one exception to unforced
+   removal (R2's 2026-11-18 departure): it is forced only once every submodule is clean and has no
+   commit missing from its remotes.
 7. **Advisory `git-hygiene:tidy-available`** (R6), in a new `plugin/lib/git_hygiene_probes.py`:
    - It runs `git_hygiene.plan(offline=True)`.
    - Sibling worktrees' cleanliness and idleness come from `stranded_work.scan`, whose budgeted,

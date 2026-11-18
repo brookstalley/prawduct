@@ -63,7 +63,7 @@ If you cannot state the ownership boundary without re-reading the other briefs, 
 
 **Do not dispatch what this session cannot reap.** Expected runtime against the useful context you have left is a real comparison, and "no" means backlog. Reap at a work-cycle boundary, never as a mid-flow interrupt.
 
-**Reaping ends with the worktree, not with the merge.** Take the branch and the report, merge it, then `prawduct-hook git-tidy --reap <worktree>` removes the worktree and its branch; a brief left in a reused checkout raises an advisory about work nobody delegated. What an unreaped delegate does to the clear verdict is `/prawduct:methodology session-hygiene`.
+**Reaping ends with the worktree, not with the merge.** Take the branch and the report, merge it, then `prawduct-hook git-tidy --reap <worktree>` removes the worktree and its branch; a brief left in a reused checkout raises an advisory about work nobody delegated. What an in-flight or unreaped delegate does to the clear verdict, and what the forward notes must say about it, is `/prawduct:methodology session-hygiene`.
 
 ## Anti-patterns
 

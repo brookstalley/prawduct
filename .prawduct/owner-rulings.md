@@ -304,3 +304,33 @@ already declared and had reviewed (within one token of rounding), and the merge 
 same day's ruling that a trim, not a raise, pays for fitting #1152 under the ceilings — that ask assumed the ceilings
 were fixed limits, when each is one over its last reading. Lands in `tests/test_reviewer_payload_budget.py` and
 `tests/test_v5_methodology.py`.
+
+**2026-11-18.** "yes to to all of your recommendations" — answering three triage asks together:
+1. #1187 (git-tidy reap with submodules), #1189 (testament probe wrapper scripts) and #1192 (gitignore
+   probe evidence changed without a PROBE_VERSION bump) are fixed together on one branch off `develop`;
+   #1188 (strict decoding in the shared git runner) follows on its own branch.
+2. #1190: the SAFE TO CLEAR / DO NOT CLEAR label keys on what a `/clear` would actually lose (output
+   that lives only in the conversation), not on whether anything is in flight. This is conditional on
+   first establishing whether `/clear` terminates background subagents in Claude Code. Lands in
+   `methodology/session-hygiene.md` and the digest's closing-the-turn rule.
+3. The twelve stale August `ready` items come back to the owner as a keep/drop list. #270 (opt-in
+   output style) is dropped; #686 (retire three principles) and #641 (stale assertions after a
+   mechanism is deleted) are decided separately, as design calls.
+
+**2026-11-18.** "background agents do survive clear, but it can be confusing of the handoff notes don't
+carry what they were working on and why ("Task 23 complete!" is not super useful)." This narrows the
+same day's #1190 ruling. A clear stops no background agent, and its completion still arrives, but into
+a session that has lost its context. So what makes an in-flight delegate `SAFE TO CLEAR` is forward
+notes that carry what it was working on and why, beside where its result lands and what integration it
+owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate paragraph).
+
+**2026-11-18.** "yes to all of your recommendations" — answering four asks together:
+1. The #1187 departure from #1041 R2 is confirmed: git-tidy passes `--force` only to remove a worktree
+   that holds submodules, and only after the submodule proof (each submodule clean, and nothing any of
+   its refs reaches missing from its remote-tracking branches). Lands in
+   `documentation/issues/1041-requirements.md` R2.
+2. `fix/triage-batch-2026-11-18` goes to `develop` as a PR and is merged.
+3. #323 (handoff net misses an appended file) and #598 (a new review does not retire the prior findings
+   report) are dropped.
+4. #686 (retire three principles) is scheduled after #1188. #641 (stale assertions after a mechanism is
+   deleted) is closed, pointing at the `Retires:` check (`retired-claim-survives`).

@@ -185,6 +185,48 @@ class TestAClearGateRecordsWhyItFired:
         assert _hook.cmd_stop(repo, stop_input) == 0
         assert _observed_fact(repo, "clear-verdict")["observed"]["work_live"] is True
 
+    def test_background_work_the_notes_carry_is_not_live(self, tmp_path, capsys):
+        """A clear stops no background agent; once the forward notes say what the
+        work is, a clear loses nothing they do not hold, so the hold is no longer
+        right and the pair is recorded."""
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / ".handoff-notes.md").write_text(
+            "# notes\ndelegate in ../wt-a: porting the parser, so chunk 3 can land\n")
+        stop_input = {
+            "last_assistant_message": ASK_DNC_TURN,
+            "background_tasks": [{"id": "t1", "description": "delegate"}],
+        }
+        assert _hook.cmd_stop(repo, stop_input) == 0
+        observed = _observed_fact(repo, "clear-verdict")["observed"]
+        assert observed["work_live"] is False and observed["notes_present"] is True
+
+    def test_an_unreadable_marker_beside_notes_is_could_not_tell(self, tmp_path, capsys, monkeypatch):
+        """A review this hook cannot read may be live, so background work beside
+        written notes is not a confident 'not live'."""
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / ".handoff-notes.md").write_text("# notes\ndelegate porting the parser\n")
+
+        class Broken:
+            def review_active(self, _d):
+                raise OSError("marker unreadable")
+
+        monkeypatch.setattr(_hook, "_critic_marker", lambda: Broken())
+        stop_input = {
+            "last_assistant_message": ASK_DNC_TURN,
+            "background_tasks": [{"id": "t1", "description": "delegate"}],
+        }
+        assert _hook.cmd_stop(repo, stop_input) == 0
+        assert _observed_fact(repo, "clear-verdict")["observed"]["work_live"] is None
+
+    def test_a_live_review_stays_live_beside_written_notes(self, tmp_path, capsys):
+        from lib import critic_marker
+
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / ".handoff-notes.md").write_text("# notes\nreview running\n")
+        assert critic_marker.write_marker(repo / ".prawduct")
+        assert _stop(repo, _block("COMPLETE", "DO NOT CLEAR")) == 0
+        assert _observed_fact(repo, "clear-verdict")["observed"]["work_live"] is True
+
     def test_a_live_critic_review_is_observed_as_live(self, tmp_path, capsys):
         from lib import critic_marker
 

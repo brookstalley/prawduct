@@ -130,6 +130,6 @@ If they must speak it is `YOUR TURN` even when something also runs, naming it (`
 only if a clear would kill it — a server running on its own survives one); never predict that
 they will. Work in flight (a dispatched review, an unread agent) is `RUNNING`, never `COMPLETE`,
 and `COMPLETE` never says `DO NOT CLEAR`; a live review is `DO NOT CLEAR`, its reason a deadline
-from elapsed time and roster. Persist findings-only or delegate output to
-`.prawduct/.handoff-notes.md` first; a `SAFE TO CLEAR` whose reason cites the message is wrong.
+from elapsed time and roster. Persist findings-only output, and each running delegate's task and
+why, to `.prawduct/.handoff-notes.md` first; a `SAFE TO CLEAR` whose reason cites the message is wrong.
 Full rule: `methodology/session-hygiene.md`.

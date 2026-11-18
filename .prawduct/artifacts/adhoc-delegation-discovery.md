@@ -81,6 +81,10 @@ unread, and nothing regenerates it but re-running the work. So the record is wha
 > An in-flight ad-hoc delegate is `RUNNING` and `DO NOT CLEAR`. A **reaped** delegate whose debt is
 > on disk is `SAFE TO CLEAR`, and the debt's presence on disk is what makes it so.
 
+*Superseded 2026-11-18 (R10's amendment): the delegate does not die with the session; a clear
+loses only the context its completion arrives into, and notes carrying its task and purpose buy
+the clear whether it is running or reaped.*
+
 That inverts the feature from "a new way to spawn work" into "the discipline that makes clearing
 safe while work is outstanding," which is what actually resolves the hour-long-agent versus
 nearly-full-context tension in the ask.
@@ -180,7 +184,7 @@ makes the orphan advisory (§4.6) possible without inventing state.
 
 Every carrier already exists. Nothing new is introduced:
 
-- **In-session, unreaped** — the standing block's `RUNNING` / `DO NOT CLEAR`.
+- **In-session, unreaped** — the standing block's `RUNNING`, and `DO NOT CLEAR` only until the forward notes carry its task and purpose (R10's 2026-11-18 amendment).
 - **Across `/clear`** — `.prawduct/.handoff-notes.md`, in prose, naming the branch and what it
   still owes.
 - **When the tangent is a backlog item** — the item's own `accepted-by:` claim and
@@ -241,6 +245,15 @@ changes it. `off` remains a complete answer, honoured without ceremony.
 - **R10** The standing block accounts for ad-hoc delegates: unreaped is `RUNNING` and
   `DO NOT CLEAR`; reaped with its debt on disk may be `SAFE TO CLEAR`. The record on disk is what
   makes the clear safe.
+
+  *Amended by the owner, 2026-11-18 (`.prawduct/owner-rulings.md`, #1190):* "unreaped is
+  `DO NOT CLEAR`" rested on the delegate dying with the session, and it does not: a clear stops no
+  background agent, and its completion still arrives, into a session that has lost the context. The
+  recovery-cost test below stands; its answer changes. A delegate, running or unreaped, is
+  `DO NOT CLEAR` only while the conversation is the sole record of what it is doing and why, and
+  `SAFE TO CLEAR` once the forward notes carry its task and purpose, its worktree and branch, where
+  its result lands and what integration it owes. The record on disk is still what makes the clear
+  safe. Rule text: `methodology/session-hygiene.md`.
 - **R11** Reaping happens at a work-cycle boundary, not as a mid-flow interrupt — the mechanism
   that exists to protect focus must not be the thing that breaks it.
 - **R12** A delegate worktree left unintegrated is surfaced at session start as an advisory,
@@ -372,7 +385,7 @@ leaves the work alone.** A delegate fails that test where an evidence record pas
 delegate dies with the session, its branch is unfinished, its report unread, and nothing regenerates
 it but re-running the work. So an unreaped delegate is `DO NOT CLEAR` for the same reason a live
 review is, and a *reaped* delegate whose debt is recorded is `SAFE TO CLEAR` because what remains is
-on disk. R10 stands, on the recovery-cost reason rather than on a blanket on-disk rule.
+on disk. R10 stands, on the recovery-cost reason rather than on a blanket on-disk rule. (Its premise that the delegate dies with the session was falsified on 2026-11-18; see R10's amendment.)
 
 **The residual gap is real but small.** The digest carries the review exception without the test
 that generates it, so a reader of the digest alone has the special case and not the principle. That

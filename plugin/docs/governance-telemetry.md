@@ -211,7 +211,7 @@ The Stop checks that record a reason (all observe without blocking):
 
 | Gate | `reason` | `observed` |
 |---|---|---|
-| `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: harness background tasks in flight, or a live Critic review. `notes_present`: a non-empty `.handoff-notes.md`. `session_changed`: the session authored a non-metadata change, committed or not (`gates.session_work_span`) |
+| `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: a live Critic review, or harness background tasks in flight while `.handoff-notes.md` is empty. `notes_present`: a non-empty `.handoff-notes.md`. `session_changed`: the session authored a non-metadata change, committed or not (`gates.session_work_span`) |
 | `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same three |
 | `close-pointer` | `points-above`, `points-below`: which way the close's reason points at the turn by position, under any disposition (`standing_block.POSITIONAL_POINTER_KINDS`); the phrase itself is not recorded. A `SAFE TO CLEAR` reason saying "is above" can fire this and `clear-reason` both | the same three |
 
@@ -458,9 +458,14 @@ The definitions (their one home):
       `COMPLETE` turns, and its counts on either side of that release do not
       compare. Nor do `clear-reason`'s catches, which then began to require
       `session_changed`. Otherwise a reader was told to keep a
-      session open for nothing, which is a catch. An unreaped delegate is not
-      observable, so this rule leans towards catch, which is the direction
-      that keeps a gate. Its firings are now observations, not blocks
+      session open for nothing, which is a catch. `work_live` is a live Critic
+      review, or harness background work while the forward notes are empty:
+      since `clear-verdict-delegates` a clear is known to stop no background
+      agent, so background work beside written notes is a hold for nothing, and
+      `work_live` counts on either side of that release do not compare. Whether
+      the notes describe that work, and a finished delegate whose output was
+      never read, are not observable, so this rule leans towards catch, which
+      is the direction that keeps a gate. Its firings are now observations, not blocks
       (counts across that change do not compare), scored by this same rule
       under *observed only*.
     - `close-pointer` has no rule: a reason that points by position is the
