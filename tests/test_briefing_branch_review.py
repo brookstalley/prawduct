@@ -274,6 +274,86 @@ class TestTheBriefingShowsThisBranchsReview:
         assert "B's own defect" in out, "the carried blocker reaches the briefing"
 
 
+def _branch_line(out: str) -> str:
+    lines = [ln for ln in out.splitlines() if ln.startswith("Branch findings")]
+    assert len(lines) == 1, out
+    return lines[0]
+
+
+class TestTheBranchsOpenFindingsComeFromFacts:
+    """#334, the read side. The handoff summarized the newest review's record,
+    so a clean newest round hid an earlier round's open blocker from the fresh
+    session that reads it — which then re-opens closed work or misses open
+    work. A line composed from facts over the branch's review set now sits
+    under the record."""
+
+    def _clean_round_after_a_blocker(self, tmp_path: Path) -> Path:
+        """feature/a: round 1 (rev-a) carries a blocker; round 2 (rev-a2), at
+        the next commit, is clean — so the cache names a 0-blocking review."""
+        repo = _two_branches(tmp_path)
+        tip = _commit_file(repo, "src/a2.py", "w = 1\n", "feat: more of a")
+        tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _set_marker(repo)
+        _write_manifest(repo, tip, id="rev-a2-000002", head_tree=tree, head_commit=tip,
+                        files_changed=["src/a2.py"], files_reviewed=["src/a2.py"])
+        _full_roster_partials(repo, tip, findings_by_role={})
+        assert _run_consolidate(repo).returncode == 0
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        assert record["fact_id"] == "rev-a2-000002"
+        assert not [f for f in record.get("findings", []) if f.get("severity") == "blocking"], (
+            "the premise: the cache claims 0 blocking"
+        )
+        return repo
+
+    def test_the_cache_says_zero_and_the_facts_say_one(self, tmp_path):
+        repo = self._clean_round_after_a_blocker(tmp_path)
+
+        line = _branch_line(_summary(repo))
+
+        assert "2 review round(s)" in line, line
+        assert "1 open blocking" in line, line
+
+    def test_the_handoff_carries_it(self, tmp_path):
+        """At the layer the acceptance names: the session handoff."""
+        repo = self._clean_round_after_a_blocker(tmp_path)
+
+        text = briefing.render_session_handoff(repo).text
+
+        section = text.split("## Critic Findings", 1)[1].split("\n## ", 1)[0]
+        assert "1 open blocking" in _branch_line(section), section
+
+    def test_a_resolution_fact_closes_it(self, tmp_path):
+        """Control: the count is the gate's — a resolution fact lifts it."""
+        repo = self._clean_round_after_a_blocker(tmp_path)
+        evidence.append_fact(repo, "resolution", "res-a-R-1", {
+            "finding": {"review_id": "rev-a-000001", "fid": "R-1"},
+            "disposition": "fixed",
+        })
+
+        assert "0 open blocking" in _branch_line(_summary(repo))
+
+    def test_another_branchs_blocker_is_not_counted(self, tmp_path):
+        """The store is clone-wide: feature/b's blocker is not feature/a's."""
+        repo = self._clean_round_after_a_blocker(tmp_path)
+        evidence.append_fact(repo, "resolution", "res-a-R-1", {
+            "finding": {"review_id": "rev-a-000001", "fid": "R-1"},
+            "disposition": "fixed",
+        })
+
+        line = _branch_line(_summary(repo))
+
+        assert "2 review round(s)" in line and "0 open blocking" in line, line
+
+    def test_an_unreadable_store_is_said_never_clean(self, tmp_path):
+        repo = _two_branches(tmp_path)
+        evidence.store_path(repo).write_bytes(b"\xff\xfe not utf-8\n")
+
+        line = _branch_line(_summary(repo))
+
+        assert "could not be read" in line and "NOT a statement" in line, line
+        assert "open blocking" not in line, line
+
+
 _PLAN = (
     "---\nscope: s\n---\n\n# Build Plan — from plan (2026-10-25)\n\n"
     "**Size**: small | **Type**: refactor\n\n"

@@ -131,6 +131,60 @@ def test_only_blocking_findings_are_carried():
     assert cc.carried_blocking(facts, "t1", "rev-B") == []
 
 
+# --- the branch's review set, not the anchor alone (#334) -------------------
+
+def _rounds_one_back():
+    """Round 1 left a blocker; round 2 (clean) is what the verify pass now
+    anchors to, so the anchor alone no longer names round 1."""
+    return [
+        _review("rev-1", "t0", "t1", [_blocking("R-1", "one round back")]),
+        _review("rev-2", "t1", "t2"),
+    ]
+
+
+def test_the_anchor_alone_strands_an_earlier_rounds_blocker():
+    """The defect, stated as the old reading: no set, no earlier round."""
+    assert cc.carried_blocking(_rounds_one_back(), "t2", "rev-v") == []
+
+
+def test_the_branch_set_carries_an_earlier_rounds_blocker():
+    carried = cc.carried_blocking(_rounds_one_back(), "t2", "rev-v", ["rev-1", "rev-2"])
+
+    assert carried == [{"review_id": "rev-1", "fid": "R-1", "title": "one round back"}]
+
+
+def test_a_resolved_earlier_blocker_is_not_carried():
+    facts = _rounds_one_back() + [_resolution("res-1", "rev-1", "R-1")]
+
+    assert cc.carried_blocking(facts, "t2", "rev-v", ["rev-1", "rev-2"]) == []
+
+
+def test_a_review_outside_the_set_is_not_carried():
+    """The set is what bounds a clone-wide store: a sibling's blocker is not
+    this branch's debt, however recent."""
+    facts = _rounds_one_back() + [_review("rev-OTHER", "z0", "z1", [_blocking("R-99")])]
+
+    carried = cc.carried_blocking(facts, "t2", "rev-v", ["rev-1", "rev-2"])
+
+    assert [(c["review_id"], c["fid"]) for c in carried] == [("rev-1", "R-1")]
+
+
+def test_the_anchor_is_kept_when_the_set_omits_it():
+    """Widening never drops what the anchor alone carried: the lineage bound
+    undercounts a dirty-tree review at the merge base by design."""
+    facts = [_review("rev-A", "t0", "t1", [_blocking("R-1")])]
+
+    assert [c["fid"] for c in cc.carried_blocking(facts, "t1", "rev-B", [])] == ["R-1"]
+
+
+def test_the_pass_never_carries_its_own_findings_from_the_set():
+    """At consolidation the pass's own fact is in the branch set; its own
+    blockers are its counts, not an inheritance."""
+    facts = [_review("rev-B", "t1", "t2", [_blocking("R-1")])]
+
+    assert cc.carried_blocking(facts, "t1", "rev-B", ["rev-B"]) == []
+
+
 # --- the sentence the builder and the reviewer both read --------------------
 
 def test_next_action_refuses_to_say_the_review_is_over(tmp_path):

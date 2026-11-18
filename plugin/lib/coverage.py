@@ -1365,6 +1365,94 @@ def resolve_merge_base_tree(project_dir: Path) -> dict:
     }
 
 
+#: Which bound produced a branch review set (:func:`branch_review_ids`). The
+#: store is clone-wide, so the set always needs one; lineage is the primary and
+#: the worktree is what answers where an empty span leaves lineage with nothing
+#: to say. Named constants because they are written into a durable
+#: guard-refusal fact that a retirement query reads back.
+BOUND_LINEAGE = "lineage"
+BOUND_WORKTREE = "worktree"
+
+
+def branch_review_ids(project_dir: Path, facts: "list[dict]") -> dict:
+    """THE answer to "which reviews are this branch's" — the set, where
+    ``critic_consolidate.select_branch_review`` answers "which ONE is its newest".
+
+    Every reader that composes over a branch's reviews rather than over one of
+    them asks this: the round budget (which then narrows it to its scope), the
+    disposition census with no selector, the verify roll-call
+    (``critic_consolidate.carried_blocking``), the gate's superseded-blocker
+    remedy and the session handoff. One owner, so the census, the roll-call and
+    the budget refusal cannot disagree about which reviews are "this branch's".
+
+    **Lineage first.** The review facts :func:`count_branch_rounds` attributes
+    to ``merge_base..HEAD`` — including its documented lower bound (a dirty-tree
+    review taken before the branch's first commit sits AT the merge base and is
+    not counted).
+
+    **Where lineage cannot bound it, the WORKTREE does.** When the span holds no
+    commits — a trunk-based repo after every push, or a branch cut and not yet
+    committed to — an intersection with lineage is empty whatever was reviewed,
+    so the set is the review facts recorded from this worktree
+    (``actor.worktree == str(project_dir)``). That is a second bound, not a
+    dropped one: the store sits in the clone's git common dir and every
+    worktree writes into it, and lineage was the thing separating them. An
+    ingested fact carries the writer's basename only, so it never matches an
+    absolute path here. The swap is keyed on the span rather than on an empty
+    result, so a branch that HAS commits and has simply bought no review yet
+    still answers by lineage.
+
+    Not narrowed by scope: a scope can span branches and a branch can carry two
+    scopes, so a caller that bounds by scope (the round budget) narrows the
+    returned set itself.
+
+    Returns ``{"status": "ok", "review_ids", "bound"}`` with ids in store order
+    and ``bound`` one of :data:`BOUND_LINEAGE` / :data:`BOUND_WORKTREE`, or
+    ``{"status": "unavailable", "reason"}`` — no merge base, an unreadable
+    branch span, or a store that did not read. Never raises; each caller picks
+    its own degraded posture, and none of them may read "unavailable" as
+    "empty".
+    """
+    if not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "the evidence store did not read"}
+    resolved = resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return {"status": "unavailable", "reason": resolved["reason"]}
+    tally = count_branch_rounds(project_dir, facts, resolved["merge_base"])
+    if tally.get("status") != "counted":
+        return {"status": "unavailable", "reason": tally.get("reason", "unknown")}
+    if tally.get("span_commits"):
+        return {
+            "status": "ok",
+            "review_ids": [r["id"] for r in tally.get("reviews") or [] if r.get("id")],
+            "bound": BOUND_LINEAGE,
+        }
+    return {
+        "status": "ok",
+        "review_ids": _reviews_recorded_in_this_worktree(facts, project_dir),
+        "bound": BOUND_WORKTREE,
+    }
+
+
+def _reviews_recorded_in_this_worktree(
+    facts: "list[dict]", project_dir: Path
+) -> "list[str]":
+    """Review fact ids recorded from THIS worktree (``actor.worktree ==
+    str(project_dir)``), in store order — :func:`branch_review_ids`' second
+    bound. ``actor.worktree`` is written by ``evidence.append_fact`` on every
+    fact the plugin has ever appended, so no fact is invisible to this for want
+    of the field; an ingested fact carries the writer's basename only and never
+    matches an absolute path."""
+    here = str(project_dir)
+    return [
+        f.get("id")
+        for f in facts
+        if f.get("kind") == "review"
+        and f.get("id")
+        and (f.get("actor") or {}).get("worktree") == here
+    ]
+
+
 def _coverage_resolve_base(project_dir: Path) -> tuple[str | None, str]:
     """Pick the git diff base for coverage verification. Mirrors
     ``_resolve_base`` in ``bin/test-reference-verify`` so writer (verifier)

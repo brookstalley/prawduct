@@ -79,7 +79,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
-from . import coverage_algebra, critic_marker, dispositions, evidence, evidence_notes, gates, gitstate, ledger, model_tier
+from . import coverage, coverage_algebra, critic_marker, dispositions, evidence, evidence_notes, gates, gitstate, ledger, model_tier
 from .core import GITIGNORE_ENTRIES, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -800,19 +800,22 @@ def cost_lead(
 
 
 def carried_blocking(facts: list[dict], base_tree: "str | None",
-                     this_review_id: "str | None") -> list[dict]:
-    """Blocking findings from the review this verify pass anchors to that the
-    pass did NOT resolve.
+                     this_review_id: "str | None",
+                     review_ids: "list[str] | None" = None) -> list[dict]:
+    """Blocking findings this verify pass inherits and has NOT resolved: those
+    of the review it anchors to and, given the branch's review set, those of
+    EVERY review in it.
 
     **The failure this exists for.** A verify pass can discharge one finding by
     reference to another — "R-12 is implicitly closed by R-1's fix, same class"
     — and write a resolution fact for R-1 only. Its own counts are then 0
     blocking, so it reports the review is over, and the operator relays that.
     The gate disagrees: R-12 has no resolution fact and still blocks. Worse, by
-    then R-12 sits on a superseded round that no later verify pass will name
-    again, so the only remaining route is a full ``cumulative`` — a whole review
+    then R-12 sat on a superseded round that no later verify pass named again,
+    so the only remaining route was a full ``cumulative`` — a whole review
     round spent on bookkeeping for a defect that was fixed and confirmed fixed
-    two rounds earlier. Reported as #711, where it cost exactly that.
+    two rounds earlier. Reported as #711, where it cost exactly that; #334 is
+    why a later pass now names it (the branch set, below).
 
     **Why this reads facts and not the reviewer's prose.** The tempting fix is
     to parse "implicitly closed by" out of the summary and mint R-12's fact from
@@ -833,28 +836,65 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     worktree of the clone, so a sibling's newer review would otherwise be picked
     up as this branch's anchor.
 
-    Returns ``[]`` when there is no anchor to check against, which is the honest
-    answer rather than a defensive one: with no prior review linked to this
-    tree there is no inherited blocker to carry, so there is nothing to report.
+    **The branch's review set widens it past the anchor (#334).** The anchor
+    alone strands a blocker one round back: once a newer review lands, the
+    verify pass anchors to that one, and an earlier round's unresolved blocker
+    was named by no roll-call and no ``NOT DONE`` line again — the only route
+    left was a spanning ``cumulative``. ``review_ids`` is
+    ``coverage.branch_review_ids``' set (:func:`branch_review_set` reads it),
+    the same one the round budget and the disposition census compose over, so
+    the roll-call names every unresolved blocker those surfaces count. The
+    anchor still decides the pass's DIFF (:func:`_prior_review_fact`); this
+    decides which findings it OWES a verdict on. The anchor is kept in the
+    union, because the branch set's lineage bound has a documented lower
+    bound (a dirty-tree review at the merge base) and widening must never drop
+    what the anchor alone carried. ``None`` — the set could not be derived —
+    is the anchor alone, as before. Only BLOCKING is carried: warnings stay
+    reachable through ``disposition`` against their own review id.
+
+    Returns ``[]`` when there is nothing to carry, which is the honest answer
+    rather than a defensive one: with no prior review linked to this tree and
+    no unresolved blocker in the branch set, there is nothing inherited.
+    Entries are in store order, the anchor's among them.
     """
-    if not base_tree:
-        return []
-    anchor = None
-    for fact in evidence.facts_of_kind({"facts": facts}, "review"):
-        if fact.get("id") == this_review_id:
-            continue
-        if (fact.get("body") or {}).get("head_tree") == base_tree:
-            anchor = fact
-    if anchor is None:
+    reviews = evidence.facts_of_kind({"facts": facts}, "review")
+    anchor_id = None
+    if base_tree:
+        for fact in reviews:
+            if fact.get("id") == this_review_id:
+                continue
+            if (fact.get("body") or {}).get("head_tree") == base_tree:
+                anchor_id = fact.get("id")
+    owed = set(review_ids or ())
+    if anchor_id is not None:
+        owed.add(anchor_id)
+    owed.discard(this_review_id)
+    if not owed:
         return []
     resolved = coverage_algebra.resolution_index(facts)
     out = []
-    for finding in coverage_algebra.unresolved_blocking(anchor, resolved):
-        entry = {"review_id": anchor.get("id")}
-        entry.update({k: finding.get(k) for k in ("fid", "title", "files")
-                      if k in finding})
-        out.append(entry)
+    seen: set = set()
+    for fact in reviews:
+        rid = fact.get("id")
+        if rid not in owed or rid in seen:
+            continue
+        seen.add(rid)
+        for finding in coverage_algebra.unresolved_blocking(fact, resolved):
+            entry = {"review_id": rid}
+            entry.update({k: finding.get(k) for k in ("fid", "title", "files")
+                          if k in finding})
+            out.append(entry)
     return out
+
+
+def branch_review_set(project_dir: Path, facts: list[dict]) -> "list[str] | None":
+    """The branch's review ids for :func:`carried_blocking`, or ``None`` when
+    ``coverage.branch_review_ids`` cannot derive them — which
+    :func:`carried_blocking` reads as "the anchor alone", never as "none owed".
+    One adapter, so the dispatch roll-call, the consolidation ``NOT DONE`` line
+    and the derived cache record ask the owner identically."""
+    answer = coverage.branch_review_ids(project_dir, facts)
+    return answer["review_ids"] if answer.get("status") == "ok" else None
 
 
 def uncertified_clause(mode: str, open_chunks: "list[str]") -> str:
@@ -1164,9 +1204,10 @@ RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
 
 
 def account_for_prior_blockers_directive(carried: list[dict]) -> str:
-    """The roll-call a verify dispatch hands its reviewer: every blocking
-    finding of the round being verified, by id, each of which must come back
-    with a verdict.
+    """The roll-call a verify dispatch hands its reviewer: every unresolved
+    blocking finding this branch's reviews still owe — the round being verified
+    and any earlier round of the branch (:func:`carried_blocking`, #334) — by
+    id, each of which must come back with a verdict.
 
     **Why the consolidation check is not enough on its own.** That check acts
     AFTER the reviewer has written ``resolutions`` — it can refuse to let the
@@ -1199,8 +1240,10 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
         for c in carried
     )
     return (
-        "PRAWDUCT: the round you are verifying left these BLOCKING finding(s)"
-        " unresolved. Every one of them must come back with a verdict:\n"
+        "PRAWDUCT: this branch's reviews — the round you are verifying and any"
+        " earlier round — left these BLOCKING finding(s) unresolved. The ids name"
+        " their own review, so an earlier round's finding is resolved against"
+        " that review. Every one of them must come back with a verdict:\n"
         f"{lines}\n"
         "For each: put it in `resolutions` if it is fixed — INCLUDING one fixed"
         " by another finding's edit, which is still its own entry, because a"
@@ -1388,7 +1431,9 @@ FINDING_SCOPE_DIRECTIVE = (
 )
 
 
-def dispatch_directives(manifest: dict, facts: list[dict]) -> list[str]:
+def dispatch_directives(
+    manifest: dict, facts: list[dict], review_ids: "list[str] | None" = None
+) -> list[str]:
     """The directives a reviewer of this dispatch reads before assessing, in
     their order. The one renderer: ``critic-begin`` prints this list last in its
     output (the reviewing fork's copy), and :func:`begin_review` writes the same
@@ -1418,6 +1463,10 @@ def dispatch_directives(manifest: dict, facts: list[dict]) -> list[str]:
     ``goals-1-3.md``, which has no room for it, and ``verify-resolutions`` is in
     both sets — so it renders outside the verify-only branch while keeping its
     place in the order. ``final`` and ``cumulative`` are owed none.
+
+    ``review_ids`` is the branch's review set (:func:`branch_review_set`): the
+    roll-call names the unresolved blockers of every review in it, not only of
+    the anchor (:func:`carried_blocking`). ``None`` is the anchor alone.
     """
     verbose_mode = manifest["mode"]
     is_verify = verbose_mode == MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
@@ -1428,7 +1477,9 @@ def dispatch_directives(manifest: dict, facts: list[dict]) -> list[str]:
         directives.append(FINDING_SCOPE_DIRECTIVE)
     if is_verify:
         roll_call = account_for_prior_blockers_directive(
-            carried_blocking(facts, manifest.get("base_tree"), manifest.get("id"))
+            carried_blocking(
+                facts, manifest.get("base_tree"), manifest.get("id"), review_ids
+            )
         )
         if roll_call:
             directives.append(roll_call)
@@ -2705,47 +2756,10 @@ def _dirty_anchor_note(mode_label: str, excluded: "list[str] | None") -> str:
     )
 
 
-#: Which bound produced a round-budget count. The store is clone-wide, so the
-#: count always needs one; lineage is the primary and the worktree is what
-#: answers where an empty span leaves lineage with nothing to say. Named
-#: constants because they are written into a durable guard-refusal fact that a
-#: retirement query reads back.
-BOUND_LINEAGE = "lineage"
-BOUND_WORKTREE = "worktree"
-
-
-def _rounds_recorded_in_this_worktree(
-    facts: "list[dict]", project_dir: Path, scope: str
-) -> "list[dict]":
-    """This scope's review facts recorded from THIS worktree, shaped like
-    ``coverage.count_branch_rounds``'s ``reviews`` so one tail can count either.
-
-    The bound is ``actor.worktree`` and not "no bound at all" because the
-    evidence store sits in the clone's git common dir and every worktree of the
-    clone writes into it. Lineage was the only thing separating them; where the
-    span is empty it separates nothing, so something else has to, and dropping
-    the bound would charge a scope for rounds a sibling worktree bought on the
-    same plan. Overcounting a stopping rule is worse than undercounting it —
-    ``count_branch_rounds`` says why, and it is the reason this is a second
-    bound rather than a removed one.
-
-    ``actor.worktree`` is written by ``evidence.append_fact`` on every fact the
-    plugin has ever appended, so no fact is invisible to this for want of the
-    field. A path that does not match is simply not counted, which sells a round
-    — the direction this control fails in by design.
-    """
-    here = str(project_dir)
-    counted = []
-    for fact in facts:
-        if fact.get("kind") != "review":
-            continue
-        body = fact.get("body") or {}
-        if body.get("scope") != scope:
-            continue
-        if (fact.get("actor") or {}).get("worktree") != here:
-            continue
-        counted.append({"id": fact.get("id"), "mode": body.get("mode")})
-    return counted
+#: Which bound produced a round-budget count — re-exported from their one home,
+#: ``coverage.branch_review_ids``, which derives the set the budget narrows.
+BOUND_LINEAGE = coverage.BOUND_LINEAGE
+BOUND_WORKTREE = coverage.BOUND_WORKTREE
 
 
 def _round_budget_verdict(
@@ -2767,16 +2781,19 @@ def _round_budget_verdict(
     absent. Every review fact already records its scope, so the store answers
     the declared question directly and no new counter is added.
 
-    Lineage still bounds it: the count is the intersection of *this scope's*
-    facts with the rounds ``coverage.count_branch_rounds`` attributes to this
-    branch. Scope alone would sweep in a sibling worktree's rounds on the same
-    plan, and the store is shared by every worktree of the clone.
+    The branch still bounds it: the count is the intersection of *this scope's*
+    facts with the branch's review set, ``coverage.branch_review_ids`` — the
+    rounds ``coverage.count_branch_rounds`` attributes to this branch's
+    lineage. Scope alone would sweep in a sibling worktree's rounds on the same
+    plan, and the store is shared by every worktree of the clone. Taking the set
+    from its one owner is what keeps this refusal, the disposition census and
+    the verify roll-call agreeing about which reviews are this branch's.
 
     **Where lineage cannot bound it, the WORKTREE does.** An intersection with
     an empty set is empty, so on the trunk shape above the count was always 0
     and the ceiling never fired — the control was declared, documented and
-    inert. When the span holds no commits, this counts the scope's facts
-    recorded from this worktree instead (:func:`_rounds_recorded_in_this_worktree`).
+    inert. When the span holds no commits, the branch set is the review facts
+    recorded from this worktree instead, and this counts the scope's among them.
     That is a second bound, not a dropped one: the store is clone-wide, and the
     thing lineage was separating is worktrees. The swap is keyed on the span
     rather than on a zero count, so a branch that HAS commits and has simply not
@@ -2809,33 +2826,27 @@ def _round_budget_verdict(
             "budget bounds one body of work rather than one branch",
         }
 
-    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
-
-    resolved = coverage.resolve_merge_base_tree(project_dir)
-    if resolved["status"] != "ok":
-        return {"status": "unavailable", "reason": resolved["reason"]}
     store = evidence.read_facts(project_dir)
     if store["status"] == "error":
         return {"status": "unavailable", "reason": store["reason"]}
     facts = store.get("facts") or []
-    tally = coverage.count_branch_rounds(project_dir, facts, resolved["merge_base"])
-    if tally.get("status") != "counted":
-        return {"status": "unavailable", "reason": tally.get("reason", "unknown")}
+    branch = coverage.branch_review_ids(project_dir, facts)
+    if branch["status"] != "ok":
+        return {"status": "unavailable", "reason": branch["reason"]}
 
-    if tally.get("span_commits"):
-        bound = BOUND_LINEAGE
-        scope_of = {
-            f.get("id"): (f.get("body") or {}).get("scope")
-            for f in facts
-            if f.get("kind") == "review"
-        }
-        in_scope = [
-            r for r in tally.get("reviews") or [] if scope_of.get(r.get("id")) == scope
-        ]
-    else:
-        bound = BOUND_WORKTREE
-        in_scope = _rounds_recorded_in_this_worktree(facts, project_dir, scope)
-    spent = sum(1 for r in in_scope if mode_token_of(r.get("mode")) in FULL_ROUND_MODES)
+    body_of = {
+        f.get("id"): (f.get("body") or {})
+        for f in facts
+        if f.get("kind") == "review"
+    }
+    in_scope = [
+        rid for rid in branch["review_ids"]
+        if (body_of.get(rid) or {}).get("scope") == scope
+    ]
+    spent = sum(
+        1 for rid in in_scope
+        if mode_token_of(body_of[rid].get("mode")) in FULL_ROUND_MODES
+    )
     return {
         "status": "exhausted" if spent >= budget else "within",
         "spent": spent,
@@ -2845,11 +2856,11 @@ def _round_budget_verdict(
         # query — "did it ever refuse a round that turned out to be needed?" —
         # could not separate a fallback firing from a lineage one, which is the
         # question a retirement decision turns on.
-        "bound": bound,
+        "bound": branch["bound"],
         # Every round in scope, not just the full ones: the findings a verify
         # pass raised are as open as any other, and exhaustion has to answer all
         # of them or the census it renders is not a census.
-        "review_ids": [r["id"] for r in in_scope if r.get("id")],
+        "review_ids": in_scope,
     }
 
 
@@ -3870,6 +3881,11 @@ def begin_review(
     # would clear. Read by the free-interval refusal below, where it is the
     # conjunct that keeps the gate from deadlocking.
     pending_actionable = 0
+    # The branch's review set, derived once for a `verify-resolutions` dispatch
+    # (#334): the blockers it carries count as actionable below, and the
+    # roll-call the reviewer reads names them. `None` for every other mode, and
+    # when the set cannot be derived — the anchor alone, as before.
+    branch_reviews: "list[str] | None" = None
 
     base_extended_from: "str | None" = None
     # A `cumulative`'s span (bounded-cumulative design): `bounded` reviews the
@@ -4175,6 +4191,17 @@ def begin_review(
         actionable = (prior_counts.get("blocking") or 0) + (
             prior_counts.get("warning") or 0
         )
+        # An EARLIER round's unresolved blocker is as actionable as the
+        # anchor's: this pass's roll-call names it (#334), and the gate's
+        # remedy routes it here. Not counting it would refuse, as "nothing to
+        # verify", the one pass that can clear it.
+        store_facts = read_store().get("facts") or []
+        branch_reviews = branch_review_set(project_dir, store_facts)
+        actionable += sum(
+            1
+            for c in carried_blocking(store_facts, base_tree, None, branch_reviews)
+            if c.get("review_id") != prior.get("id")
+        )
         pending_actionable = actionable
         if not delta and not actionable:
             # Name the tree that was compared. Under the tree-inequality anchor
@@ -4209,7 +4236,8 @@ def begin_review(
                 "status": "no-review-needed",
                 "reason": (
                     "nothing to verify: the prior review has no blocking/warning "
-                    f"findings, and {head_anchor} ({head_tree[:12]}) is the same "
+                    "findings, no earlier review of this branch carries an "
+                    f"unresolved blocker, and {head_anchor} ({head_tree[:12]}) is the same "
                     f"tree it reviewed ({base_tree[:12]})"
                 ),
                 "free_files": [],
@@ -4639,7 +4667,9 @@ def begin_review(
     # fork hands the review to reads the same list here, since it never sees
     # the fork's tool output. Absent when no reviewer model is set, because then
     # the fork reviews inline and its copy is the printed one.
-    directives = dispatch_directives(manifest, read_store().get("facts") or [])
+    directives = dispatch_directives(
+        manifest, read_store().get("facts") or [], branch_reviews
+    )
     if manifest["reviewer_model"] is not None:
         manifest["dispatch_directives"] = directives
     if not _nonempty_str(session_model):
@@ -6496,11 +6526,15 @@ def branch_review_record(prawduct_dir: Path, fact: dict, facts: list[dict]) -> d
     """The findings record for ``fact``, built without writing it: the one
     renderer :func:`derive_branch_cache` writes into the cache and the session
     briefing shows when the single-slot cache still names another review. A
-    verify pass carries its anchor's unresolved blockers."""
+    verify pass carries the unresolved blockers of its anchor and of every
+    review in the branch's set, as consolidation carries them."""
     usable = _this_readers_facts(facts)
     body = fact.get("body") or {}
     carried = (
-        carried_blocking(usable, body.get("base_tree"), fact.get("id"))
+        carried_blocking(
+            usable, body.get("base_tree"), fact.get("id"),
+            branch_review_set(prawduct_dir.parent, usable),
+        )
         if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
         else []
     )
@@ -7980,7 +8014,8 @@ def _consolidate(
 
     carried = (
         carried_blocking(
-            store.get("facts") or [], manifest.get("base_tree"), review_id
+            store.get("facts") or [], manifest.get("base_tree"), review_id,
+            branch_review_set(project_dir, store.get("facts") or []),
         )
         if is_verify
         else []

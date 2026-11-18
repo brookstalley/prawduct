@@ -9214,6 +9214,129 @@ class TestCarriedBlockersReachTheirReaders:
         assert "NOT DONE" not in result.stdout
 
 
+class TestAnEarlierRoundsBlockerIsNamedAgain:
+    """#334, the write side. A blocker left on round 1 of a branch, with a
+    clean round 2 after it: the verify pass anchors to round 2, so the roll-call
+    and the `NOT DONE` line named only round 2's blockers — none — and the gate
+    routed round 1's to a whole spanning `cumulative`. The roll-call now names
+    the unresolved blockers of every review in the branch's set, so a `fixed`
+    resolution for round 1's finding clears it with no further round.
+
+    A real feature branch, so the set is bounded by lineage — the ordinary PR
+    shape — and real trees, so the gate composes over the same facts.
+    """
+
+    FIRST = "rev-first-0001"
+    SECOND = "rev-second-0002"
+
+    def _two_rounds(self, repo: Path) -> "tuple[str, str]":
+        """Round 1 at the branch's first commit with one blocker; round 2,
+        clean, at its second. Returns (second commit, its tree)."""
+        _init_repo(repo)
+        _commit_file(repo, ".gitignore", ".prawduct/\n", "ignore review bookkeeping")
+        merge_base_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _git(repo, "checkout", "--quiet", "-b", "feature")
+        rounds = (
+            (self.FIRST, "src/app.py", {"correctness": [
+                {"name": "One round back", "goal": "Nothing Is Broken",
+                 "severity": "blocking", "recommendation": "fix",
+                 "files": ["src/app.py"]},
+            ]}),
+            (self.SECOND, "src/more.py", {}),
+        )
+        base_tree = merge_base_tree
+        for rid, path, findings in rounds:
+            head = _commit_file(repo, path, "v = 1\n", f"feat: {path}")
+            tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+            _set_marker(repo)
+            _write_manifest(
+                repo, head, id=rid, base_tree=base_tree, head_tree=tree,
+                head_commit=head, files_changed=[path], files_reviewed=[path],
+            )
+            _full_roster_partials(repo, head, findings_by_role=findings)
+            assert _run_consolidate(repo).returncode == 0, rid
+            base_tree = tree
+        return head, base_tree
+
+    def test_the_gate_routes_it_to_verify_resolutions(self, tmp_path, capsys):
+        """Acceptance: no "no verify-resolutions pass will name again" for a
+        blocker inside the branch set — that is no longer true of it."""
+        repo = tmp_path / "r"
+        self._two_rounds(repo)
+
+        rc = gates.check_cumulative_critic(repo)
+        err = capsys.readouterr().err
+
+        assert rc == 1, "a superseded blocker still blocks"
+        assert f"{self.FIRST}/R-1" in err
+        assert "name again" not in err, err
+        assert "its roll-call names these" in err, err
+        assert "/prawduct:critic cumulative" not in err, err
+
+    def test_the_verify_roll_call_names_it(self, tmp_path):
+        repo = tmp_path / "r"
+        self._two_rounds(repo)
+        (repo / "src/more.py").write_text("v = 2  # a fix in flight\n")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "must come back with a verdict" in result.stdout
+        assert f"{self.FIRST}/R-1" in result.stdout
+
+    def test_with_nothing_changed_the_pass_is_still_dispatched(self, tmp_path):
+        """The anchor is clean and the tree has not moved, which read as
+        "nothing to verify" (exit 3) — refusing the one pass that can clear the
+        blocker the gate now routes to it."""
+        repo = tmp_path / "r"
+        self._two_rounds(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert f"{self.FIRST}/R-1" in result.stdout
+
+    def _verify(self, repo: Path, head: str, tree: str, resolutions: list) -> subprocess.CompletedProcess:
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-verify-0003", mode=VERIFY_MODE, roster=["reviewer"],
+            base_tree=tree, head_tree=tree, head_commit=head,
+        )
+        _write_partial(repo, "reviewer", head, resolutions=resolutions)
+        return _run_consolidate(repo)
+
+    def test_a_fixed_resolution_clears_it_with_no_cumulative(self, tmp_path, capsys):
+        repo = tmp_path / "r"
+        head, tree = self._two_rounds(repo)
+
+        result = self._verify(repo, head, tree, [
+            {"review_id": self.FIRST, "fid": "R-1", "disposition": "fixed"},
+        ])
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "NOT DONE" not in result.stdout
+        facts = _store_facts(repo)
+        first = next(f for f in facts if f.get("id") == self.FIRST)
+        assert ca_mod.unresolved_blocking(first, ca_mod.resolution_index(facts)) == []
+        rc = gates.check_cumulative_critic(repo)
+        out = capsys.readouterr()
+        assert rc == 0, out.err
+        assert "satisfied" in out.out
+
+    def test_a_pass_that_skips_it_is_not_done(self, tmp_path):
+        """The control: the consolidation side of the same set. Naming nothing
+        must not read as the review being over."""
+        repo = tmp_path / "r"
+        head, tree = self._two_rounds(repo)
+
+        result = self._verify(repo, head, tree, [])
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "NOT DONE" in result.stdout
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        assert f"{self.FIRST}/R-1" in record["next_action"]
+
+
 class TestWideningBoundCountsTheCostSubset:
     """The scope-widening threshold counts the COST subset on both sides, and
     the prior side must be re-narrowed even though it is already a subject set.
@@ -9539,6 +9662,39 @@ class TestRoundBudgetOnTheTrunkShape:
         assert cc._round_budget_verdict(
             branch, branch / ".prawduct", "budgeted"
         )["bound"] == cc.BOUND_LINEAGE
+
+    def test_the_budget_narrows_the_branch_set_by_scope_on_both_bounds(self, tmp_path):
+        """The extraction's refactor guard (#334). `coverage.branch_review_ids`
+        is the set; the budget's `review_ids` are exactly its in-scope members,
+        in order, under each bound — so the census, the verify roll-call and
+        this refusal cannot disagree about which reviews are this branch's."""
+        trunk, head = _trunk_repo(tmp_path, budget="9")
+        sibling = tmp_path / "sibling"
+        _git(trunk, "worktree", "add", "--quiet", "-b", "other", str(sibling))
+        _seed_round(trunk, "rev-t-in", head, "budgeted")
+        _seed_round(trunk, "rev-t-other-scope", head, "elsewhere")
+        _seed_round(sibling, "rev-t-sibling", head, "budgeted")
+        _seed_round(trunk, "rev-t-in-2", head, "budgeted")
+
+        branch, bhead = _budget_repo(tmp_path / "b", 0, budget="9")
+        _seed_round(branch, "rev-b-in", bhead, "budgeted")
+        _seed_round(branch, "rev-b-other-scope", bhead, "elsewhere")
+        _seed_round(branch, "rev-b-off-lineage", "f" * 40, "budgeted")
+        _seed_round(branch, "rev-b-in-2", bhead, "budgeted")
+
+        for repo, bound, branch_set, in_scope in (
+            (trunk, cc.BOUND_WORKTREE,
+             ["rev-t-in", "rev-t-other-scope", "rev-t-in-2"], ["rev-t-in", "rev-t-in-2"]),
+            (branch, cc.BOUND_LINEAGE,
+             ["rev-b-in", "rev-b-other-scope", "rev-b-in-2"], ["rev-b-in", "rev-b-in-2"]),
+        ):
+            facts = evidence.read_facts(repo)["facts"]
+            assert coverage.branch_review_ids(repo, facts) == {
+                "status": "ok", "review_ids": branch_set, "bound": bound,
+            }
+            verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+            assert verdict["review_ids"] == in_scope, verdict
+            assert verdict["bound"] == bound and verdict["spent"] == 2, verdict
 
     def test_critic_begin_actually_refuses_on_a_trunk_repo(self, tmp_path):
         """The gate, not the count.
