@@ -304,3 +304,15 @@ already declared and had reviewed (within one token of rounding), and the merge 
 same day's ruling that a trim, not a raise, pays for fitting #1152 under the ceilings — that ask assumed the ceilings
 were fixed limits, when each is one over its last reading. Lands in `tests/test_reviewer_payload_budget.py` and
 `tests/test_v5_methodology.py`.
+
+**2026-11-18.** "yes to to all of your recommendations" — answering three triage asks together:
+1. #1187 (git-tidy reap with submodules), #1189 (testament probe wrapper scripts) and #1192 (gitignore
+   probe evidence changed without a PROBE_VERSION bump) are fixed together on one branch off `develop`;
+   #1188 (strict decoding in the shared git runner) follows on its own branch.
+2. #1190: the SAFE TO CLEAR / DO NOT CLEAR label keys on what a `/clear` would actually lose (output
+   that lives only in the conversation), not on whether anything is in flight. This is conditional on
+   first establishing whether `/clear` terminates background subagents in Claude Code. Lands in
+   `methodology/session-hygiene.md` and the digest's closing-the-turn rule.
+3. The twelve stale August `ready` items come back to the owner as a keep/drop list. #270 (opt-in
+   output style) is dropped; #686 (retire three principles) and #641 (stale assertions after a
+   mechanism is deleted) are decided separately, as design calls.
