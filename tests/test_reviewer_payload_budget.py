@@ -420,10 +420,7 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
     # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): SKILL.md step 4 lost the exit-1 "apply the
     # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
-    # -26 on 2026-11-18 (backlog-roi integration, #1201): cross-checks.md's Records Pass narrows
-    # its second bar to `cumulative` and drops a superseded tally; review-cycle.md's `Superseded:`
-    # exception is scoped to the branch's review set (#334). Ceiling lowered with it.
-    "single-pass-full": 10091,
+    "single-pass-full": 10117,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -557,10 +554,7 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -10 on 2026-11-16 (coherence-pass Critic round): critic-reviewer.md loses "the builder ran
     # the tests before requesting review" — false since the suite moved to the boundary, and cut
     # from the critic skill for that reason in Chunk 01. Ceiling lowered with it.
-    # -26 on 2026-11-18 (backlog-roi integration, #1201): cross-checks.md's Records Pass narrows
-    # its second bar to `cumulative` and drops a superseded tally; review-cycle.md's `Superseded:`
-    # exception is scoped to the branch's review set (#334). Ceiling lowered with it.
-    "dispatched-reviewer": 9564,
+    "dispatched-reviewer": 9590,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -656,10 +650,7 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
     # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): SKILL.md step 4 lost the exit-1 "apply the
     # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
-    # -26 on 2026-11-18 (backlog-roi integration, #1201): cross-checks.md's Records Pass narrows
-    # its second bar to `cumulative` and drops a superseded tally; review-cycle.md's `Superseded:`
-    # exception is scoped to the branch's review set (#334). Ceiling lowered with it.
-    "coordinator-fork": 10761,
+    "coordinator-fork": 10787,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -725,9 +716,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 5754,
-    "single-pass-full": 10092,
-    "dispatched-reviewer": 9565,
-    "coordinator-fork": 10762,
+    "single-pass-full": 10118,
+    "dispatched-reviewer": 9591,
+    "coordinator-fork": 10788,
     "coordinator-fork-inner": 6424,
     "dispatched-reviewer-inner": 5227,
 }

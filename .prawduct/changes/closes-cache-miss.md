@@ -24,3 +24,6 @@ earlier plugin, rebuilds once and says why.
 ## Consumer note
 A clone whose backlog cache holds watermarks for more than one repo rebuilds its cache on the next
 sync, once. No action needed.
+
+An id spelled with different case (`Owner/Repo#N`) is this repo's item: GitHub owner and repo names are
+case-insensitive, so the scope comparison is too.

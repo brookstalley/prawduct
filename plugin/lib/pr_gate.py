@@ -257,7 +257,11 @@ def _closure_issues(project_dir: Path, scope: str, ids: list[str]) -> list[Resul
             # alias reading is the one `resolve` tries first.
             if backlog_ids.is_pfx(item_id):
                 not_cached.append(item_id)
-            elif nid.ok and default_repo and (nid.owner, nid.repo) != default_repo:
+            # GitHub owner and repo names are case-insensitive, so the scope
+            # comparison is too: `Owner/Repo#N` is this repo's item.
+            elif nid.ok and default_repo and (nid.owner.lower(), nid.repo.lower()) != (
+                default_repo[0].lower(), default_repo[1].lower()
+            ):
                 other_repo.append(item_id)
             elif nid.ok:
                 not_cached.append(item_id)

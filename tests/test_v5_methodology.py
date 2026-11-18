@@ -1380,10 +1380,7 @@ LAST_MEASURED_TOKENS = {
     # -5 on 2026-11-10 (critic-trim review round): the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. A READING; ceiling lowered.
     # -21 on 2026-11-11 (pr-reviewer-fold Chunk 03): the clause saying the PR reviewer does not
     # re-run the final-mode passes went with the reviewer. A READING; ceiling lowered with it.
-    # -26 on 2026-11-18 (backlog-roi integration, #1201): the Records Pass's second bar is
-    # `cumulative`-only (#771's fleet run put record-only fixed findings over their bars); paid by
-    # cutting the 36%-of-728-reviews tally, which #771's measurement supersedes. Ceiling lowered.
-    "skills/critic/cross-checks.md": 1682,
+    "skills/critic/cross-checks.md": 1708,
     # -17 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
     # +5 on 2026-11-10 (critic-trim review round), DECLARED: the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. A READING.
     # +30 on 2026-11-11 (reviewer-model-cap), DECLARED: step 2's 'no model override' sentence
@@ -6799,8 +6796,7 @@ class TestReviewCycle:
         # LOWERED 3387 -> 1735 (critic-trim, 2026-11-10) with the reading.
         # LOWERED 1735 -> 1730 (critic-trim review round) with the reading.
         # LOWERED 1730 -> 1709 (pr-reviewer-fold, 2026-11-11) with the reading.
-        # LOWERED 1709 -> 1683 (backlog-roi integration, #1201, 2026-11-18) with the reading.
-        assert tokens < 1683, f"cross-checks.md is ~{tokens} tokens, should be <1683"
+        assert tokens < 1709, f"cross-checks.md is ~{tokens} tokens, should be <1709"
 
     def test_coordinator_token_budget(self):
         # coordinator.md is read only by the fork on a coordinator roster (C-20).

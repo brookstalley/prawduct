@@ -328,6 +328,22 @@ class TestClosuresIssuesBackend:
         assert "prawduct-hook backlog get other/repo#5" in other_part
         assert pr_gate.hygiene_exit(report) == 0
 
+    def test_a_differently_cased_spelling_of_this_repo_is_this_repo(self, tmp_path, monkeypatch):
+        """GitHub owner and repo names are case-insensitive: `Owner/Repo#99` is
+        this repo's item, so a cache miss on it names the rebuild, never the
+        other-repo lookup. Control: `other/repo#5` still reads as another repo."""
+        import lib.backlog.cachequery as cq
+
+        miss = self._envelope({"resolved": False, "reason": None})
+        repo = _repo(tmp_path, state_extra=self.STATE, closes=["Owner/Repo#99", "other/repo#5"])
+        monkeypatch.setattr(cq, "resolve", self._resolver({"Owner/Repo#99": miss, "other/repo#5": miss}))
+        report = pr_gate.hygiene(repo)
+        result = {r.name: r for r in report.results}["closes-unresolved"]
+        stale_part, _, other_part = result.unchecked.partition("; ")
+        assert "Owner/Repo#99" in stale_part and "--rebuild --repo owner/repo" in stale_part
+        assert "Owner/Repo#99" not in other_part
+        assert "other/repo#5" in other_part
+
     def test_an_open_issue_missing_from_a_real_partial_cache_is_unchecked(self, tmp_path):
         """#1195 at the layer it was reported, through the real cache: `#1` was
         synced, `#2` was filed afterwards and never synced. Both are open on the

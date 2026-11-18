@@ -55,8 +55,7 @@ pass. Anything else you derive has a `files_reviewed` subject.
 
 That leaves one window — a shipping falsehood in a record, unreviewed — and this pass is its cover.
 At `final`/`cumulative` (`sustainability` under a coordinator roster), rate `files_oracle` against the
-three bars (`final` skips the second, #771) and **name the set you covered**, so the exclusion is
-visible rather than silent:
+three bars and **name the set you covered**, so the exclusion is visible rather than silent:
 
 - **It ships** — the inaccuracy reaches consumers as a false claim (release note, `CHANGELOG.md`, a
   published doc). *A change record asserting a guard that was never built → WARNING: a reader
@@ -76,7 +75,9 @@ Read the other way round, its stale-artifact WARNING makes every out-of-date nar
 the fix round this pass exists to stop buying.
 
 Everything else — an imprecise count, a narration one revision short, a phrasing that could be truer —
-clears no bar and is **not a finding**: correct, and not worth what clearing one costs.
+clears no bar and is **not a finding**. Record-only findings were 36% of all findings across 728
+measured reviews; the ones that clear a bar stay, and what this drops is the rest: correct, and not
+worth what clearing one costs.
 
 ### Record-Lint — recorded by consolidation, never by you
 
