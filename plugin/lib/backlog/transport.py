@@ -939,7 +939,8 @@ class GhTransport(Transport):
                 input=input_json,
                 stdin=None if input_json is not None else subprocess.DEVNULL,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="surrogateescape",
                 env=env,
                 timeout=self._timeout,
             )

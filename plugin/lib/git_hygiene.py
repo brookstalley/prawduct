@@ -153,7 +153,7 @@ def fingerprint(actions: list[Action]) -> str:
     """12 hex chars naming exactly this set of removals, independent of order.
     What an approval binds to: a branch whose tip moves changes it."""
     lines = sorted(f"{a.kind}\0{a.target}\0{a.sha}" for a in actions)
-    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha256("\n".join(lines).encode("utf-8", "surrogateescape")).hexdigest()[:12]
 
 
 # --- reading git and gh -------------------------------------------------------
@@ -239,7 +239,8 @@ def _gh_json(project_dir: Path, *args: str) -> list | None:
     when gh is missing, unauthenticated, slow or answers with something else."""
     try:
         proc = subprocess.run(
-            ["gh", *args], cwd=str(project_dir), capture_output=True, text=True, timeout=_gh_timeout(),
+            ["gh", *args], cwd=str(project_dir), capture_output=True, timeout=_gh_timeout(),
+            encoding="utf-8", errors="surrogateescape",
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -823,7 +824,8 @@ def _merged_pr(project_dir: Path, branch: str, number: str | None) -> dict | str
         try:
             proc = subprocess.run(
                 ["gh", "pr", "view", number, "--json", fields],
-                cwd=str(project_dir), capture_output=True, text=True, timeout=_gh_timeout(),
+                encoding="utf-8", errors="surrogateescape",
+                cwd=str(project_dir), capture_output=True, timeout=_gh_timeout(),
             )
             data = json.loads(proc.stdout) if proc.returncode == 0 else None
         except (OSError, subprocess.SubprocessError, ValueError):
@@ -875,7 +877,8 @@ def after_merge(project_dir: Path, branch: str, *, pr: str | None = None) -> lis
             continue
         try:
             proc = subprocess.run(["gh", "pr", "edit", number, "--base", base], cwd=str(project_dir),
-                                  capture_output=True, text=True, timeout=_gh_timeout())
+                                  encoding="utf-8", errors="surrogateescape",
+                                  capture_output=True, timeout=_gh_timeout())
             ok = proc.returncode == 0
         except (OSError, subprocess.SubprocessError):
             ok = False

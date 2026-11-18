@@ -441,7 +441,7 @@ class TestDegradation:
 
     def test_a_failed_status_leaves_the_dirty_count_unknown(self, clone, tmp_path, monkeypatch):
         git(clone, "worktree", "add", "-q", "-b", "side", str(tmp_path / "wt"))
-        self._fail(monkeypatch, "status", err="output is not valid UTF-8: ...")
+        self._fail(monkeypatch, "status", err="fatal: index file corrupt")
         rows = [w for w in _scan(clone).worktrees if not w.is_current]
         assert rows and all(w.dirty is None for w in rows)
 

@@ -82,7 +82,7 @@ def _uv_candidate(environ, run):
     try:
         found = run(
             [uv, "python", "find", ">=%s" % floor_text()],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return None

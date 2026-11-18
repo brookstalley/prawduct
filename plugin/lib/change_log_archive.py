@@ -89,7 +89,7 @@ class Block:
 
     @property
     def size(self) -> int:
-        return len(self.text.encode("utf-8"))
+        return len(self.text.encode("utf-8", "surrogateescape"))
 
     @property
     def key(self) -> str:
@@ -183,7 +183,7 @@ class Selection:
 
     @property
     def kept_bytes(self) -> int:
-        return len(self.preamble.encode("utf-8")) + sum(b.size for b in self.kept)
+        return len(self.preamble.encode("utf-8", "surrogateescape")) + sum(b.size for b in self.kept)
 
 
 def select(content: str, *, threshold: int, versions: bool) -> Selection:
@@ -192,7 +192,7 @@ def select(content: str, *, threshold: int, versions: bool) -> Selection:
     Raises :class:`ArchiveRefused` when the release validator reports errors.
     """
     preamble, blocks = split(content)
-    live_bytes = len(content.encode("utf-8"))
+    live_bytes = len(content.encode("utf-8", "surrogateescape"))
     errors, _warnings = change_log.validate_change_log_tags([b.entry for b in blocks])
     if errors:
         raise ArchiveRefused(
@@ -207,7 +207,7 @@ def select(content: str, *, threshold: int, versions: bool) -> Selection:
 
     pinned = [b for b in blocks if _pinned(b, versions)]
     selection.pinned_bytes = sum(b.size for b in pinned)
-    budget = threshold // 2 - len(preamble.encode("utf-8")) - len(ARCHIVE_POINTER) - 2
+    budget = threshold // 2 - len(preamble.encode("utf-8", "surrogateescape")) - len(ARCHIVE_POINTER) - 2
     budget -= selection.pinned_bytes
 
     # Newest first by header date; the file's own order breaks ties, since

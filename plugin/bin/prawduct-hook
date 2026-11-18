@@ -1084,7 +1084,8 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
         check = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1103,7 +1104,8 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
         ls = subprocess.run(
             ["git", "ls-files", "-z", "--", *_SESSION_GITIGNORED_PATHS],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1138,7 +1140,8 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
         rm = subprocess.run(
             ["git", "rm", "--cached", "--quiet", "-r", "--", *matched],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1458,7 +1461,10 @@ def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None
     baseline = _gitstate().git_status_output(project_dir)
     if baseline is not None:
         try:
-            _core().atomic_write_text(prawduct_dir / ".session-git-baseline", baseline)
+            # Byte-exact: its readers compare it line by line with fresh
+            # `git status` output, which decodes with `surrogateescape`.
+            _core().atomic_write_text(prawduct_dir / ".session-git-baseline", baseline,
+                                      errors="surrogateescape")
         except (OSError, ImportError) as exc:
             print(
                 f"NOTE: could not write .session-git-baseline ({exc}) — "
@@ -1478,7 +1484,7 @@ def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None
     try:
         tree_proc = subprocess.run(
             ["git", "rev-parse", "HEAD^{tree}"],
-            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+            capture_output=True, encoding="utf-8", errors="surrogateescape", cwd=str(project_dir), timeout=10,
         )
         if tree_proc.returncode == 0 and tree_proc.stdout.strip():
             _core().atomic_write_text(
@@ -3585,7 +3591,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             if not _budget_cmp:
                 _head_rc = subprocess.run(
                     ["git", "rev-parse", "HEAD^{tree}"],
-                    cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+                    encoding="utf-8", errors="surrogateescape",
+                    cwd=str(project_dir), capture_output=True, timeout=10,
                 )
                 _budget_cmp = _head_rc.stdout.strip() if _head_rc.returncode == 0 else ""
             _budget_findings, _budget_unchecked, _ = (
@@ -6503,7 +6510,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             merge_cmd += ["--tests-dir", tests_dir]
         if base:
             merge_cmd += ["--base", base]
-        mp = subprocess.run(merge_cmd, check=False, capture_output=True, text=True)
+        mp = subprocess.run(
+            merge_cmd, check=False, capture_output=True,
+            encoding="utf-8", errors="surrogateescape",
+        )
         if mp.stderr.strip():
             # Forward the verifier's warnings (e.g. zero test discovery —
             # TST-2H9P); capture_output would otherwise swallow them.
@@ -9000,7 +9010,7 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
             kept = lines[:heading] + lines[end:]
             tmp = plan_path.with_name(plan_path.name + ".import-status.tmp")
             try:
-                with open(tmp, "w", encoding="utf-8", newline="") as handle:
+                with open(tmp, "w", encoding="utf-8", newline="", errors="backslashreplace") as handle:
                     handle.write("".join(kept))
                 os.replace(tmp, plan_path)
             except OSError as exc:
@@ -10729,7 +10739,7 @@ def cmd_learnings_compact(project_dir: Path, argv: list[str]) -> int:
     report = {
         "applied": do_apply,
         "refusals": result.refusals,
-        "writes": {rel: len(c.encode("utf-8")) for rel, c in result.outputs.items()},
+        "writes": {rel: len(c.encode("utf-8", "surrogateescape")) for rel, c in result.outputs.items()},
         "deletions": result.deletions,
         "counts": result.counts,
         "over_cap": result.over_cap,
@@ -12135,7 +12145,18 @@ def main() -> int:
     plugin crashing. Commands still own their specific handling; this is the
     floor under all of them. `SystemExit` and `KeyboardInterrupt` are not
     `Exception`s and pass through untouched.
+
+    **Output never fails to encode.** Every subprocess decodes with
+    ``surrogateescape`` so a pathname or a line of legacy-encoded content keeps
+    its exact bytes (`lib/evidence.py` ``run_git``), and a strict stream would
+    then raise on the first such string any command prints. ``backslashreplace``
+    prints an escape instead (byte ``0xE9`` shows as ``\\udce9``), on every
+    command at once.
     """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(errors="backslashreplace")
     try:
         return _dispatch()
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- the boundary's floor: every unhandled error is attributed, never a traceback (error-model norm)

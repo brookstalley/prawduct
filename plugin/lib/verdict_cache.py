@@ -142,14 +142,14 @@ def probe_code_identity(plugin_dir: Path) -> str:
         #   and they key exactly as they did before this existed.
         tree = subprocess.run(
             ["git", "rev-parse", "HEAD:./"],
-            cwd=plugin_dir, capture_output=True, text=True, timeout=10,
+            cwd=plugin_dir, capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=10,
         )
         if tree.returncode == 0 and tree.stdout.strip():
             parts.append(tree.stdout.strip())
             dirty = subprocess.run(
                 ["git", "status", "--porcelain", "-z", "--untracked-files=all",
                  "--", str(plugin_dir)],
-                cwd=plugin_dir, capture_output=True, text=True, timeout=10,
+                cwd=plugin_dir, capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=10,
             )
             if dirty.returncode == 0 and dirty.stdout.strip("\0"):
                 parts.append(_dirty_content_digest(plugin_dir, dirty.stdout))
@@ -170,7 +170,7 @@ def _dirty_content_digest(plugin_dir: Path, porcelain_z: str) -> str:
     """
     top = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"],
-        cwd=plugin_dir, capture_output=True, text=True, timeout=10,
+        cwd=plugin_dir, capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=10,
     )
     root = Path(top.stdout.strip()) if top.returncode == 0 else plugin_dir
     digest = hashlib.sha256()
@@ -212,7 +212,7 @@ def module_digest(lib_dir: Path) -> str:
     """Digest of :data:`_IDENTITY_MODULES`' bytes under ``lib_dir``."""
     digest = hashlib.sha256()
     for name in _IDENTITY_MODULES:
-        digest.update(name.encode() + b"\0")
+        digest.update(name.encode("utf-8", "surrogateescape") + b"\0")
         try:
             digest.update((lib_dir / name).read_bytes())
         except OSError:
@@ -241,7 +241,7 @@ def code_identity() -> str:
             evidence._plugin_version() or "unversioned",
             _code_identity(),
             _module_digest(),
-        )).encode()
+        )).encode("utf-8", "surrogateescape")
     ).hexdigest()
 
 
@@ -301,7 +301,7 @@ def _key(base_tree: str, target_tree: str, fingerprint: str) -> str:
             base_tree,
             target_tree,
             fingerprint,
-        )).encode()
+        )).encode("utf-8", "surrogateescape")
     ).hexdigest()
 
 

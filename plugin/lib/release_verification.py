@@ -132,7 +132,8 @@ def _run(args: list[str], cwd: Path) -> tuple[int, str, str] | str:
     """
     try:
         result = subprocess.run(
-            args, capture_output=True, text=True, cwd=str(cwd), timeout=_TIMEOUT
+            args, capture_output=True, cwd=str(cwd), timeout=_TIMEOUT,
+            encoding="utf-8", errors="surrogateescape",
         )
     except FileNotFoundError:
         return MISSING

@@ -139,7 +139,8 @@ def _git(args: list[str], cwd: Path) -> tuple[int, str, str]:
         ["git", *args],
         cwd=str(cwd),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     return proc.returncode, proc.stdout, proc.stderr
@@ -391,6 +392,12 @@ def _merge_into(evidence_path: Path, new_fields: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # git output decodes with `surrogateescape` (lossless for pathnames), so a
+    # message quoting it must not raise on a strict stream: show the byte.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(
         prog="test-reference-verify",
         description="Floor coverage verifier — naive symbol-grep across changed files.",

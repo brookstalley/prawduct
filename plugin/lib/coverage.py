@@ -62,7 +62,8 @@ def _git_ref_exists(project_dir: Path, ref: str) -> bool:
         ["git", "rev-parse", "--verify", ref],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     return proc.returncode == 0
@@ -82,7 +83,8 @@ def _origin_head_ref(project_dir: Path) -> "str | None":
         ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc.returncode != 0:
@@ -1360,7 +1362,8 @@ def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
         ["git", "diff", "--name-only", base],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc.returncode != 0:
@@ -1371,7 +1374,8 @@ def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
         ["git", "ls-files", "--others", "--exclude-standard"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc2.returncode == 0:
@@ -1411,7 +1415,8 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
         ["git", "diff", "--name-only", f"{base}...HEAD"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc.returncode != 0:
@@ -1500,7 +1505,8 @@ def _committed_log_pending_verdict(project_dir: Path) -> int | None:
         ["git", "ls-tree", "--name-only", "HEAD", "--", CHANGE_LOG_REL_PATH],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if listed.returncode != 0:
@@ -1524,7 +1530,7 @@ def _committed_log_pending_verdict(project_dir: Path) -> int | None:
         ["git", "show", f"HEAD:{CHANGE_LOG_REL_PATH}"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         errors="surrogateescape",
         timeout=30,
     )
@@ -1687,7 +1693,7 @@ def _fragment_entry_verdict(
             ["git", "show", f"HEAD:{rel}"],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             # A non-UTF-8 byte must reach the validator as a problem, not crash the probe.
             errors="surrogateescape",
             timeout=30,
@@ -1783,7 +1789,8 @@ def check_change_log_entry(project_dir: Path) -> int:
         ["git", "diff", "--name-only", f"{base}...HEAD"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc.returncode != 0:
@@ -1873,7 +1880,8 @@ def check_change_log_entry(project_dir: Path) -> int:
         ["git", "diff", f"{base}...HEAD", "--", CHANGE_LOG_REL_PATH],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc2.returncode != 0:
@@ -2008,7 +2016,7 @@ def _working_tree_paths(project_dir: Path) -> "tuple[list[str] | None, str | Non
     try:
         proc = subprocess.run(
             ["git", "status", "--porcelain", "-uall"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+            cwd=str(project_dir), capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=30,
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- an advisory must not crash the caller; the cause is carried out in `reason`
         return None, f"git status failed ({str(exc).strip()[:80]})"

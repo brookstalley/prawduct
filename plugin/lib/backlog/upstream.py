@@ -336,7 +336,7 @@ def source_key(*, title: str, body: str) -> str:
     """
     digest = hashlib.sha256()
     for part in (title, body):
-        digest.update((part or "").encode("utf-8"))
+        digest.update((part or "").encode("utf-8", "surrogateescape"))
         digest.update(b"\x00")
     return f"sha256:{digest.hexdigest()}"
 
@@ -472,7 +472,7 @@ def canonical_bytes(payload: dict) -> bytes:
     """
     return json.dumps(
         payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    ).encode("utf-8", "surrogateescape")
 
 
 def payload_digest(payload: dict) -> str:

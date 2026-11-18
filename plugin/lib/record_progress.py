@@ -116,7 +116,7 @@ def this_machine() -> "str | None":
     try:
         proc = subprocess.run(
             ["sysctl", "-n", "kern.boottime"],
-            capture_output=True, text=True, timeout=2, check=False,
+            capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=2, check=False,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -268,7 +268,7 @@ def _probe(pid: int, in_progress: dict) -> "tuple[str, str, bool]":
     try:
         proc = subprocess.run(
             ["ps", "-o", "stat=,etime=", "-p", str(pid)],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=5, check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return (

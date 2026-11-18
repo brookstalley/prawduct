@@ -165,7 +165,7 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess | Exception:
         return subprocess.run(
             ["git", "-C", str(root), *args],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             # A non-UTF-8 ref name must not cost us the segment. This is the
             # primary guard; the ValueError below is the backstop. Removing this
             # does not crash — decoding raises, the backstop catches it, and the
@@ -286,7 +286,9 @@ def read_marker(prawduct_dir: Path) -> str | None:
 def write_marker(prawduct_dir: Path, version: str) -> None:
     """Record the now-seen version. Best-effort; never raises."""
     try:
-        (prawduct_dir / ".prawduct-version").write_text(version + "\n", encoding="utf-8")
+        (prawduct_dir / ".prawduct-version").write_text(
+            version + "\n", encoding="utf-8", errors="backslashreplace"
+        )
     except OSError as exc:
         print(f"NOTE: Prawduct banner could not update version marker: {exc}", file=sys.stderr)
 

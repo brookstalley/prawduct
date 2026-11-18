@@ -220,7 +220,7 @@ def _append_event(
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     line = json.dumps(event) + "\n"
     # "a" opens O_APPEND; one write() call keeps concurrent appends whole.
-    with open(path, "a", encoding="utf-8") as fh:
+    with open(path, "a", encoding="utf-8", errors="backslashreplace") as fh:
         fh.write(line)
     return path, dispatch_reason
 

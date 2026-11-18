@@ -489,7 +489,7 @@ def _append_line(path: Path, line: str) -> "dict | None":
         # below the text-IO buffer size — Critic ch.01 finding).
         fd = os.open(str(path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
         try:
-            os.write(fd, line.encode("utf-8"))
+            os.write(fd, line.encode("utf-8", "surrogateescape"))
         finally:
             os.close(fd)
     except OSError as exc:
@@ -996,7 +996,7 @@ def read_facts(project_dir: Path) -> dict:
         try:
             record = json.loads(raw)
         except json.JSONDecodeError:
-            coverage_hash.update(raw.encode("utf-8") + b"\n")
+            coverage_hash.update(raw.encode("utf-8", "surrogateescape") + b"\n")
             excluded += 1
             tail = (
                 " (torn tail from a crashed writer — heals on next append)"
@@ -1010,7 +1010,7 @@ def read_facts(project_dir: Path) -> dict:
             )
             continue
         if not _is_observational(record):
-            coverage_hash.update(raw.encode("utf-8") + b"\n")
+            coverage_hash.update(raw.encode("utf-8", "surrogateescape") + b"\n")
         if not isinstance(record, dict):
             excluded += 1
             print(
@@ -1240,7 +1240,14 @@ def run_git(
     part of its status code, and stripping it shifts the whole parse.
 
     A subcommand that reaches a remote (fetch, push, ls-remote…) takes
-    :func:`network_timeout` instead of the local budget."""
+    :func:`network_timeout` instead of the local budget.
+
+    Output decodes as UTF-8 with ``surrogateescape``, as every subprocess in
+    the plugin does (``tests/test_text_codec_policy.py``): git hands back
+    file content, commit messages and pathnames as raw bytes, so one byte of a
+    legacy encoding in a consuming repo must not turn a whole diff into "could
+    not be read" — and a pathname must survive the round trip back into a git
+    argument byte for byte."""
     network = bool(args) and args[0] in _NETWORK_SUBCOMMANDS
     timeout, unusable = network_timeout() if network else _git_timeout()
     if unusable is not None:
@@ -1250,7 +1257,8 @@ def run_git(
             ["git", *args],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=timeout,
             env=env,
             input=input,
@@ -1275,14 +1283,6 @@ def run_git(
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, "", str(exc)
-    except UnicodeDecodeError as exc:
-        # `text=True` decodes strictly, so a command whose output carries file
-        # CONTENT (a diff) raises on the first non-UTF-8 byte in any consuming
-        # repo — a binary blob, a latin-1 doc. Every caller here already treats
-        # a nonzero return as "could not read this", which is the honest answer
-        # and the fail-soft one; letting the exception escape instead takes down
-        # whichever gate happened to ask. Reported, never silent.
-        return 1, "", f"output is not valid UTF-8: {exc}"
     stdout = proc.stdout.strip() if strip else proc.stdout
     return proc.returncode, stdout, proc.stderr.strip()
 

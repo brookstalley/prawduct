@@ -582,7 +582,7 @@ def _store_scan(
     kept = dict(sorted(entries.items(), key=_read_at)[-ACTIVITY_CACHE_TRANSCRIPTS:])
     tmp = f"{cache_path}.{os.getpid()}.tmp"
     try:
-        with open(tmp, "w", encoding="utf-8") as out:
+        with open(tmp, "w", encoding="utf-8", errors="backslashreplace") as out:
             json.dump({"schema": _CACHE_SCHEMA, "transcripts": kept}, out)
         os.replace(tmp, cache_path)
     except OSError:

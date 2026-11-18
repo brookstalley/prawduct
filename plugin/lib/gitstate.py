@@ -89,7 +89,8 @@ def _git_toplevel(cwd: Path) -> Path | None:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(cwd),
             timeout=10,
         )
@@ -117,7 +118,8 @@ def git_common_dir(cwd: Path) -> Path | None:
         result = subprocess.run(
             ["git", "rev-parse", "--git-common-dir"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(cwd),
             timeout=10,
         )
@@ -392,7 +394,8 @@ def git_status_output(project_dir: Path) -> str | None:
         result = subprocess.run(
             ["git", "status", "--porcelain"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -464,7 +467,8 @@ def current_branch(project_dir: Path) -> str | None:
         result = subprocess.run(
             ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -487,7 +491,7 @@ def _run_git_text(project_dir: Path, *args: str) -> tuple[int, str]:
         result = subprocess.run(
             ["git", *args],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
@@ -593,7 +597,8 @@ def local_branches(project_dir: Path) -> set[str] | None:
         result = subprocess.run(
             ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads/"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -653,7 +658,8 @@ def _git_text(project_dir: Path, *args: str) -> tuple[int, str, str]:
         result = subprocess.run(
             ["git", *args],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -951,7 +957,7 @@ def git_has_session_changes(project_dir: Path, status_output: str | None = None)
         return ""
 
     try:
-        baseline = baseline_path.read_text()
+        baseline = baseline_path.read_text(encoding="utf-8", errors="surrogateescape")
     except (UnicodeDecodeError, OSError):
         return ""  # Corrupted baseline — treat as no baseline (safe: permits session end)
     # No whole-output .strip(): it eats the FIRST line's leading status space
@@ -1105,7 +1111,8 @@ def _git_head_sha(project_dir: Path) -> str:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1156,7 +1163,8 @@ def git_path_is_ignored(project_dir: Path, rel_path: str) -> bool:
         result = subprocess.run(
             ["git", "check-ignore", "-q", "--", rel_path],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1186,7 +1194,8 @@ def git_paths_ignored(project_dir: Path, rel_paths: "list[str]") -> "set[str]":
             ["git", "check-ignore", "--stdin", "-z"],
             input="\0".join(rel_paths),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1232,7 +1241,8 @@ def git_ignore_rules(
             ["git", "check-ignore", "--no-index", "-v", "--stdin", "-z"],
             input="\0".join(rel_paths),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
             env=env,
@@ -1275,7 +1285,8 @@ def git_path_is_tracked(project_dir: Path, rel_path: str) -> bool | None:
         result = subprocess.run(
             ["git", "ls-files", "-z", "--", f":(literal){rel_path}"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1311,7 +1322,8 @@ def git_merge_attribute(project_dir: Path, rel_path: str) -> str | None:
         result = subprocess.run(
             ["git", "check-attr", "-z", "merge", "--", rel_path],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1341,7 +1353,9 @@ def _get_session_changed_files(project_dir: Path, status_output: str | None = No
     if baseline_path.is_file():
         try:
             # Unstripped on both sides — see git_has_session_changes.
-            baseline_lines = set(baseline_path.read_text().splitlines())
+            baseline_lines = set(
+                baseline_path.read_text(encoding="utf-8", errors="surrogateescape").splitlines()
+            )
         except (UnicodeDecodeError, OSError):
             pass  # Corrupted baseline — same stance as the sibling readers above
     changed = []
