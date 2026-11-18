@@ -9440,13 +9440,21 @@ class TestABlockerTheGateRoutedAroundIsNotOpen:
 
         return briefing._branch_findings_line(repo, lambda: evidence.read_facts(repo))
 
-    def test_the_briefing_reports_zero_open_blocking(self, tmp_path):
+    def test_the_briefing_labels_its_fact_count_and_names_the_gate(self, tmp_path):
+        """Renegotiated at integration: the briefing does NOT compose the gate's
+        answer (a cold verdict memo measured ~75s at SessionStart), so a blocker
+        a spanning review routed around still counts there. What it owes is to
+        say what it counted and where the gate's answer is, so the line never
+        reads as the gate's verdict. The census and the roll-call keep the
+        gate's answer (the tests above)."""
         spanned, control = tmp_path / "s", tmp_path / "c"
         self._spanned(spanned)
         self._two_rounds(control)
 
-        assert ": 0 open blocking," in self._briefing_line(spanned)
-        assert ": 1 open blocking," in self._briefing_line(control)
+        for repo in (spanned, control):
+            line = self._briefing_line(repo)
+            assert ": 1 open blocking with no resolution fact" in line, line
+            assert "`prawduct-hook check-cumulative-critic` gives the gate's count" in line, line
 
     def _census(self, repo: Path) -> dict:
         result = subprocess.run(

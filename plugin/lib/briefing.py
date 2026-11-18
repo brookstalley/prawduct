@@ -1980,12 +1980,14 @@ def _branch_findings_line(project_dir: Path, facts) -> "str | None":
     only that re-opens closed work or misses open work: an earlier round's
     unresolved blocker is invisible in the newest round's record. The set is
     ``coverage.branch_review_ids`` — the one the round budget and the census
-    compose over — and the counts are ``dispositions.census``'s summary: open
-    blocking, undispositioned warning, and the rounds counted. Open blocking is
-    the GATE's answer (``coverage.branch_open_blockers``), so a blocker a clean
-    spanning review routed around is not reported open while the gate passes;
-    when that composition is unavailable the line says it counted resolution
-    facts alone.
+    compose over — and the counts are ``dispositions.census``'s summary:
+    blocking with no resolution fact, undispositioned warning, and the rounds
+    counted. The blocking count is NOT the gate's answer, and the line says so
+    whenever it is non-zero. The gate's (``coverage.branch_open_blockers``)
+    also drops a blocker a clean spanning review routed around, but composing
+    it is a coverage walk measured at ~75s on a cold verdict memo (after any
+    plugin upgrade), which SessionStart would pay. So the line counts facts,
+    labels the count, and names `check-cumulative-critic`, which composes.
 
     ``None`` when the store holds no review or no review is this branch's — a
     line about nothing is noise. When the store is unreadable or the set cannot
@@ -2011,14 +2013,7 @@ def _branch_findings_line(project_dir: Path, facts) -> "str | None":
             )
         if not answer["review_ids"]:
             return None
-        facts_list = store.get("facts") or []
-        gate = coverage.branch_open_blockers(
-            project_dir, facts_list, answer["review_ids"], read=store
-        )
-        report = dispositions.census(
-            store, review_ids=answer["review_ids"],
-            open_blockers=gate["blockers"] if gate.get("status") == "ok" else None,
-        )
+        report = dispositions.census(store, review_ids=answer["review_ids"])
         if report["status"] != "ok":
             return f"Branch findings: could not be composed ({report['reason']}) — {_NOT_CLEAN}"
         summary = report["summary"]
@@ -2029,10 +2024,10 @@ def _branch_findings_line(project_dir: Path, facts) -> "str | None":
             else ""
         )
         basis = (
-            ""
-            if gate.get("status") == "ok"
-            else f" (counted by resolution facts alone — the gate's composition is "
-            f"unavailable: {gate.get('reason')})"
+            " with no resolution fact (a spanning review may have routed around "
+            "some; `prawduct-hook check-cumulative-critic` gives the gate's count)"
+            if summary["open_blocking"]
+            else ""
         )
         return (
             f"Branch findings across this branch's {len(report['reviews'])} review "

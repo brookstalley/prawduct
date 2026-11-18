@@ -1147,10 +1147,9 @@ LAST_MEASURED_TOKENS = {
     # -2 on 2026-11-18 (backlog-roi Chunk 03, #662): the Demotion rows re-dispatch in the mode the
     # refusal names (the no-`head_tree` trigger joins the undiffable row); paid by cutting the
     # **Committed** flags, whose only job was steering the hand-applied property.
-    # -4 on 2026-11-18 (backlog-roi integration, #334): the PR-gate `Superseded:` exception is
-    # scoped to blockers outside the branch's review set, which the verify roll-call now names.
-    # A READING; ceiling lowered with it.
-    "skills/critic/review-cycle.md": 8245,
+    # -10 on 2026-11-18 (backlog-roi integration, #334): the PR-gate `Superseded:` exception is
+    # scoped to blockers the verify roll-call does not name. A READING; ceiling lowered with it.
+    "skills/critic/review-cycle.md": 8239,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -6782,8 +6781,8 @@ class TestReviewCycle:
         # LOWERED 8256 -> 8253 (branch-review-one-owner, #1179, 2026-11-15) — see LAST_MEASURED_TOKENS.
         # LOWERED 8253 -> 8252 (coherence-pass Chunk 03, 2026-11-16) — see LAST_MEASURED_TOKENS.
         # LOWERED 8252 -> 8250 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
-        # LOWERED 8250 -> 8246 (backlog-roi integration, #334, 2026-11-18) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8246, f"review-cycle.md is ~{tokens} tokens, should be <8246"
+        # LOWERED 8250 -> 8240 (backlog-roi integration, #334, 2026-11-18) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8240, f"review-cycle.md is ~{tokens} tokens, should be <8240"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

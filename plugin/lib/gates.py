@@ -3587,9 +3587,10 @@ def check_cumulative_critic(project_dir: Path) -> int:
       tree is what gets committed. A blocker on an earlier review round of
       this branch rides the same route — the verify pass's roll-call names
       it (#334). A finding the message marks *superseded* is the exception,
-      and the message says so: it sits on a round outside this branch's
-      review set, which no verify pass names again, so it clears only
-      through a spanning ``/prawduct:critic cumulative``. When EVERY
+      and the message says so: the verify roll-call does not name it (its
+      round is outside this branch's review set, or the gate's composition at
+      the anchor does not count it), so it clears only through a spanning
+      ``/prawduct:critic cumulative``. When EVERY
       blocker is superseded the message leads with that route instead
       (:func:`blocking_remedy_lines`).
     - ``uncovered`` — no evidence path composes: run ``/prawduct:critic
