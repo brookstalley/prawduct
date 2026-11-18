@@ -968,9 +968,33 @@ def format_branch_rounds(tally: "dict | None") -> str:
     )
 
 
+def branch_rounds_clause(tally: "dict | None") -> str:
+    """The round count as a clause on ``next_action`` — the line the builder
+    reads when deciding whether to fix and buy another round, which is before
+    the coverage gate's :func:`format_branch_rounds` would reach them.
+
+    Reads the same :func:`count_branch_rounds` answer. ``""`` below two rounds,
+    because round 1 → 2 is the ordinary verify of a first review and a note on
+    every consolidation trains its reader to skip it; and ``""`` on an empty
+    span, where the count is absent by property (see
+    :func:`format_branch_rounds`). An unavailable tally says so — advice fails
+    soft, not silent. Leading space included: the caller appends it.
+    """
+    if not tally or tally.get("status") != "counted":
+        return f" Round count unavailable ({(tally or {}).get('reason', 'unknown')})."
+    n = tally.get("rounds") or 0
+    if n < 2 or not tally.get("span_commits"):
+        return ""
+    return (
+        f" This branch has recorded {n} review rounds since the merge-base"
+        f"{_format_branch_spend(tally, n)}; name what round {n + 1} will do "
+        f"differently before you spend it."
+    )
+
+
 def _format_branch_spend(tally: dict, n: int) -> str:
-    """The ``, costing … so far (…)`` clause of :func:`format_branch_rounds`,
-    or ``""`` when no attributed round recorded a duration of either kind.
+    """The ``, costing … so far (…)`` clause of :func:`format_branch_rounds`
+    and :func:`branch_rounds_clause`, or ``""`` when no attributed round recorded a duration of either kind.
 
     **Clocked time leads, and an estimate is always named as one.** A round's
     duration is either read from the dispatch clock or recollected by the

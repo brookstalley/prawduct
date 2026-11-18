@@ -10001,6 +10001,266 @@ class TestTheCostLeadReachesBothCarriers:
         assert relayed, "the printed NEXT-ACTION line is not the record's `next_action`"
 
 
+_ROUND_BLOCKER = {"name": "Broken invariant", "goal": "Nothing Is Broken",
+                  "severity": "blocking", "recommendation": "Fix it"}
+
+
+class TestRoundTallyReachesTheBuilder:
+    """#815: the branch's round count rides `next_action`, where the builder
+    decides whether to buy the next round — not only the coverage gate, which
+    the builder meets after the round is bought.
+
+    The count is `count_branch_rounds` over the store consolidation re-reads
+    after appending this review, so it INCLUDES the review just consolidated:
+    after a branch's second round the clause says "recorded 2 review rounds"
+    and asks what round 3 will do differently. That is the issue's Decided
+    threshold ("the note first appears as round 3 is being decided"), and it
+    is the number the coverage gate prints for the same branch a moment later
+    — a count that excluded the current review would say "round 3" about a
+    round already spent, and disagree with the gate by one.
+    """
+
+    def _consolidate(self, repo, head, findings, capsys, **manifest):
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-tally-0001", roster=["reviewer"], **manifest)
+        _write_partial(repo, "reviewer", head, findings=findings)
+        assert cc.consolidate(repo, trigger="explicit") == 0
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        relayed = [ln for ln in capsys.readouterr().out.splitlines()
+                   if ln.startswith("NEXT-ACTION: ")]
+        return record, relayed
+
+    @pytest.mark.parametrize("prior", [1, 2])
+    def test_a_branch_past_its_first_round_names_the_next_one(self, tmp_path, capsys, prior):
+        repo, head = _budget_repo(tmp_path, prior)
+        record, relayed = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
+        recorded = prior + 1
+        line = record["next_action"]
+        assert line.startswith("1 BLOCKING finding(s) gate this work."), line
+        assert f"recorded {recorded} review rounds since the merge-base" in line, line
+        assert f"name what round {recorded + 1} will do differently before you spend it" in line
+        # The two carriers of one sentence are byte-identical.
+        assert relayed == ["NEXT-ACTION: " + line]
+
+    def test_a_branchs_first_round_carries_no_tally(self, tmp_path, capsys):
+        """Round 1 → 2 is the ordinary verify of a first review; a note on
+        every consolidation trains the reader to skip it."""
+        repo, head = _budget_repo(tmp_path, 0)
+        record, _ = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
+        assert record["next_action"].startswith("1 BLOCKING finding(s)")
+        assert "review rounds since the merge-base" not in record["next_action"]
+        assert "Round count unavailable" not in record["next_action"]
+
+    def test_the_trunk_shape_carries_no_tally(self, tmp_path, capsys):
+        """An empty span attributes no round to anything — absent by property,
+        however many reviews the store holds at HEAD."""
+        repo, head = _trunk_repo(tmp_path)
+        for i in range(3):
+            _seed_round(repo, f"rev-trunk-{i}", head, "budgeted")
+        resolved = coverage.resolve_merge_base_tree(repo)
+        assert coverage.count_branch_rounds(
+            repo, [], resolved["merge_base"])["span_commits"] == 0, "premise: empty span"
+        record, _ = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
+        assert record["next_action"].startswith("1 BLOCKING finding(s)")
+        assert "review round" not in record["next_action"]
+        assert "Round count unavailable" not in record["next_action"]
+
+    def test_an_underivable_count_says_so(self, tmp_path, capsys, monkeypatch):
+        """Advice fails soft, not silent: a vanished tally reads as round one."""
+        repo, head = _budget_repo(tmp_path, 3)
+        monkeypatch.setattr(
+            coverage, "resolve_merge_base_tree",
+            lambda _p: {"status": "error", "step": "resolve-base",
+                        "reason": "no base branch (injected)"},
+        )
+        record, relayed = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
+        assert record["next_action"].endswith(
+            " Round count unavailable (no base branch (injected))."
+        ), record["next_action"]
+        assert relayed == ["NEXT-ACTION: " + record["next_action"]]
+
+    def test_a_verify_resolutions_close_carries_the_tally(self, tmp_path, capsys):
+        """The path #716 observed: verify rounds were never shown a count."""
+        repo, head = _budget_repo(tmp_path, 0)
+        prior_id = _seed_prior_review_with_blocker(repo, head)  # round 1, on the branch
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+                        roster=["reviewer"])
+        _write_partial(repo, "reviewer", head, findings=[_ROUND_BLOCKER], resolutions=[
+            {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"}
+        ])
+        assert cc.consolidate(repo, trigger="explicit") == 0
+        line = json.loads((repo / FINDINGS_REL).read_text())["next_action"]
+        assert line.startswith("1 BLOCKING finding(s) gate this work."), line
+        assert "recorded 2 review rounds since the merge-base" in line
+        assert "name what round 3 will do differently before you spend it" in line
+        # The note sits after the remedy that names the verify pass, so it
+        # never reads as making that pass optional.
+        assert line.index("verify-resolutions") < line.index("recorded 2 review rounds")
+
+    def test_the_lineage_walk_is_paid_once_per_consolidation(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        repo, head = _budget_repo(tmp_path, 2)
+        real = coverage.count_branch_rounds
+        calls = []
+
+        def counted(*args, **kwargs):
+            calls.append(args)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(coverage, "count_branch_rounds", counted)
+        record, _ = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
+        assert "recorded 3 review rounds" in record["next_action"]
+        assert len(calls) == 1
+
+
+class TestBranchRoundsClause:
+    """`coverage.branch_rounds_clause` — the renderer, and the arms of
+    `next_action_line` that carry it."""
+
+    @staticmethod
+    def _tally(rounds, span=3, measured=None):
+        return {
+            "status": "counted", "rounds": rounds, "span_commits": span,
+            "measured": {"rounds": 1 if measured else 0, "seconds": measured},
+            "estimated": {"rounds": 0, "seconds": None}, "reviews": [],
+        }
+
+    def test_below_two_rounds_it_is_empty(self):
+        assert coverage.branch_rounds_clause(self._tally(0)) == ""
+        assert coverage.branch_rounds_clause(self._tally(1)) == ""
+
+    def test_an_empty_span_is_empty(self):
+        assert coverage.branch_rounds_clause(self._tally(0, span=0)) == ""
+        # Keyed on the span, not only the count: no round can be attributed.
+        assert coverage.branch_rounds_clause(self._tally(4, span=0)) == ""
+
+    def test_two_rounds_render_the_challenge(self):
+        assert coverage.branch_rounds_clause(self._tally(2)) == (
+            " This branch has recorded 2 review rounds since the merge-base; name "
+            "what round 3 will do differently before you spend it."
+        )
+
+    def test_the_spend_is_the_gates_own_clause(self):
+        tally = self._tally(2, measured=600.0)
+        clause = coverage.branch_rounds_clause(tally)
+        assert coverage._format_branch_spend(tally, 2) in clause
+        assert "dispatch clock" in clause
+
+    def test_unavailable_says_so(self):
+        assert coverage.branch_rounds_clause(
+            {"status": "unavailable", "reason": "no merge-base to count from"}
+        ) == " Round count unavailable (no merge-base to count from)."
+        assert coverage.branch_rounds_clause(None) == " Round count unavailable (unknown)."
+
+    CLAUSE = " This branch has recorded 2 review rounds — CLAUSE."
+
+    def test_the_blocking_arm_ends_on_it(self):
+        line = cc.next_action_line("rev-x", 1, 0, 0, "PRICE.", rounds_clause=self.CLAUSE)
+        assert line.endswith("PRICE." + self.CLAUSE)
+
+    def test_the_fix_tail_carries_it(self):
+        line = cc.next_action_line("rev-x", 0, 2, 0, "PRICE.", rounds_clause=self.CLAUSE)
+        assert line.endswith("PRICE." + self.CLAUSE)
+        obs = cc.next_action_line("rev-x", 0, 0, 0, None, observations=2,
+                                  rounds_clause=self.CLAUSE)
+        assert obs.endswith(self.CLAUSE)
+
+    def test_a_clean_close_does_not(self):
+        line = cc.next_action_line("rev-x", 0, 0, 0, "PRICE.", rounds_clause=self.CLAUSE)
+        assert line.startswith("0 blocking, 0 other findings")
+        assert self.CLAUSE not in line
+
+    def test_a_fix_that_rides_the_next_review_does_not(self):
+        line = cc.next_action_line("rev-x", 0, 2, 0, "PRICE.", rides_next_review="x",
+                                   rounds_clause=self.CLAUSE)
+        assert line.startswith(cc._RIDES_NEXT_REVIEW_LEAD.strip()[:30])
+        assert self.CLAUSE not in line
+
+    def test_the_carried_arm_does_not(self):
+        line = cc.next_action_line(
+            "rev-x", 1, 0, 0, "PRICE.",
+            carried=[{"review_id": "rev-p", "fid": "R-1"}], rounds_clause=self.CLAUSE,
+        )
+        assert line.startswith("NOT DONE.")
+        assert self.CLAUSE not in line
+
+
+class TestControlCheckIsPersisted:
+    """#548: a control's firing persists a structured `check`, derived at
+    consolidation from the title token (`lib/control_checks`), on the review
+    fact, the findings cache and the `review.critic` ledger row that copies it.
+    """
+
+    TITLES = {
+        "Scope-Trace: x": "scope-trace",
+        "foo.py: cross-component-contract — y": "cross-component-contract",
+        "rule-unenforced x": "rule-unenforced",
+        "Off-by-one in the span walk": None,
+    }
+
+    def _consolidate(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, roster=["reviewer"])
+        _write_partial(
+            repo, "reviewer", head,
+            findings=[
+                {"name": t, "goal": "Nothing Is Broken", "severity": "warning",
+                 "recommendation": "r"}
+                for t in self.TITLES
+            ],
+            observations=[
+                {"name": "read-cost: walks the store", "goal": "The Design Is Sound",
+                 "recommendation": "r"},
+                {"name": "an untokened observation", "goal": "The Design Is Sound",
+                 "recommendation": "r"},
+            ],
+        )
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        return repo
+
+    @staticmethod
+    def _by_title(items, key):
+        return {i[key]: i for i in items}
+
+    def test_the_fact_carries_check_and_an_untokened_finding_has_no_key(self, tmp_path):
+        repo = self._consolidate(tmp_path)
+        [fact] = _store_facts(repo, "review")
+        findings = self._by_title(fact["body"]["findings"], "title")
+        assert set(findings) == set(self.TITLES)
+        for title, slug in self.TITLES.items():
+            if slug is None:
+                assert "check" not in findings[title], "absent, never null"
+            else:
+                assert findings[title]["check"] == slug
+        observations = self._by_title(fact["body"]["observations"], "title")
+        assert observations["read-cost: walks the store"]["check"] == "read-cost"
+        assert "check" not in observations["an untokened observation"]
+
+    def test_the_cache_and_the_ledger_row_carry_it(self, tmp_path):
+        repo = self._consolidate(tmp_path)
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        rows = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines()
+                if ln.strip()]
+        [row] = [r for r in rows if r.get("event") == "review.critic"]
+        for findings in (record["findings"], row["review"]["findings"]):
+            by = self._by_title(findings, "summary")
+            for title, slug in self.TITLES.items():
+                if slug is None:
+                    assert "check" not in by[title]
+                else:
+                    assert by[title]["check"] == slug
+        for observations in (record["observations"], row["review"]["observations"]):
+            by = self._by_title(observations, "summary")
+            assert by["read-cost: walks the store"]["check"] == "read-cost"
+            assert "check" not in by["an untokened observation"]
+
+
 class TestIntervalExtension:
     """A chunk/final review starts at the covered frontier (#167).
 
