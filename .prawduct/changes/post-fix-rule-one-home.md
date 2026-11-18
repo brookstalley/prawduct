@@ -35,3 +35,6 @@ The `uncovered` and `blocking` messages from `check-cumulative-critic` and the S
 post-fix step differently. They no longer try to predict which tree a `verify-resolutions` pass
 graded. They tell you to commit the tree the pass graded exactly as it was, or, if the pass listed
 files it left out, to commit those files and verify the new changes. No exit code or verdict changes.
+
+The last code carrier, `begin_review`'s working-tree-anchor note for `verify-resolutions`, now prints
+`gates.POST_FIX_COVERAGE` too, so all three CLI surfaces print the one sentence.

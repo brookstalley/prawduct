@@ -6455,9 +6455,12 @@ class TestVerifyResolutionsDispatch:
         # The half above survived an edit that replaced "commit (or stash) the
         # fix and re-run verify-resolutions" — a superfluous round, and wrong on
         # the merits, since the commit carries the very tree this pass vouched
-        # for. An unpinned rule is what the next trim deletes first.
-        assert "Commit this tree VERBATIM and no further pass is needed" in result.stderr
-        assert "Only a selective or further-edited commit leaves a gap" in result.stderr
+        # for. An unpinned rule is what the next trim deletes first. Since #723
+        # the note carries the rule's one home, `gates.POST_FIX_COVERAGE`, so
+        # the rule is pinned through it: the constant itself, and the verbatim
+        # clause it must still say.
+        assert gates.POST_FIX_COVERAGE in result.stderr
+        assert "commit that tree verbatim and no further pass is owed" in result.stderr
 
     def _seed_dirty_tree_review_with_blocker(
         self, repo: Path
