@@ -11654,3 +11654,53 @@ class TestManifestChunkFields:
         assert plan_status.fact_chunks(body) == ["02", "03"]
         assert plan_status.fact_chunks(empty) == []
         assert plan_status.fact_chunks({"chunk": "04"}) == ["04"]
+
+
+class TestBranchReviewRecordComposesThroughTheMemo:
+    """The paired review of the #334 fix round: `branch_review_record` asked the
+    gate's composition with no `read`, so it skipped the verdict memo and paid
+    the walk cold (a minute and more on a large store) wherever it was reached:
+    the SessionStart briefing, mode inference, and the cache writer. A caller
+    holding the read passes it, and the composition is handed that read over
+    that read's own list, the shape `coverage.open_blockers` memoizes."""
+
+    def _verify_fact(self):
+        return {
+            "id": "rev-v", "kind": "review", "schema": evidence.SCHEMA_VERSION,
+            "body": {"mode": cc._VERBOSE_VERIFY_RESOLUTIONS, "base_tree": "t1", "head_tree": "t2",
+                     "findings": [], "counts": {}},
+        }
+
+    def _capture(self, monkeypatch):
+        seen = []
+
+        def _open_blockers(project_dir, facts, target_tree, *, resolved=None, read=None):
+            seen.append((facts, read))
+            return {"status": "ok", "blockers": []}
+
+        monkeypatch.setattr(coverage, "open_blockers", _open_blockers)
+        monkeypatch.setattr(cc, "fact_to_cache_record", lambda fact, **kw: {"fact_id": fact["id"]})
+        return seen
+
+    def test_a_caller_holding_the_read_composes_through_it(self, tmp_path, monkeypatch):
+        seen = self._capture(monkeypatch)
+        facts = [self._verify_fact()]
+        read = {"status": "ok", "facts": facts}
+        cc.branch_review_record(tmp_path / ".prawduct", facts[0], facts, read=read)
+        assert len(seen) == 1
+        got_facts, got_read = seen[0]
+        assert got_read is read and got_facts is read["facts"]
+
+    def test_without_a_read_it_composes_cold_on_this_readers_facts(self, tmp_path, monkeypatch):
+        seen = self._capture(monkeypatch)
+        facts = [self._verify_fact()]
+        cc.branch_review_record(tmp_path / ".prawduct", facts[0], facts)
+        assert len(seen) == 1 and seen[0][1] is None
+
+    def test_a_non_verify_fact_composes_nothing(self, tmp_path, monkeypatch):
+        seen = self._capture(monkeypatch)
+        fact = self._verify_fact()
+        fact["body"]["mode"] = "chunk"
+        facts = [fact]
+        cc.branch_review_record(tmp_path / ".prawduct", fact, facts, read={"facts": facts})
+        assert seen == []

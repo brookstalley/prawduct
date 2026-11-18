@@ -1805,7 +1805,10 @@ def record_dropped_commits(
             for d in dropped
         ]
     try:
-        known = evidence.read_facts(project_dir).get("facts", [])
+        read = evidence.read_facts(project_dir)
+        # An error read carries no facts; `[]` would be a valid known set, so
+        # the dedupe probe would answer "absent" and re-append at every Stop.
+        known = read.get("facts") if read.get("status") != "error" else None
     except Exception:  # prawduct:allow prawduct/broad-except -- an observation is advice; each append below probes the store itself instead
         known = None
     notes: list[str] = []

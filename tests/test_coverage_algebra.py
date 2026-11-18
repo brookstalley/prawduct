@@ -1286,3 +1286,13 @@ class TestBlockersCounted:
     def test_no_path_is_unknown_not_none_open(self):
         assert ca.blockers_counted({"status": "uncovered", "reason": "x"}) is None
         assert ca.blockers_counted(None) is None
+
+
+def test_reviews_linked_from_tolerates_an_unhashable_tree():
+    """A malformed or newer-schema body can carry a non-string `base_tree`; the
+    walk skips it rather than raising out of every gate that reads the set."""
+    from lib import coverage_algebra as ca  # noqa: PLC0415
+
+    odd = {"id": "r-odd", "kind": "review", "body": {"base_tree": ["t0"], "head_tree": "t9"}}
+    good = {"id": "r-ok", "kind": "review", "body": {"base_tree": "t0", "head_tree": "t1"}}
+    assert [f["id"] for f in ca.reviews_linked_from([odd, good], "t0")] == ["r-ok"]

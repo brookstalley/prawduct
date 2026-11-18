@@ -430,7 +430,10 @@ def reviews_linked_from(reviews: list[dict], root_tree: str) -> list[dict]:
     for fact in reviews:
         body = fact.get("body") or {}
         head = body.get("head_tree")
-        if body.get("base_tree") in reached or head == root_tree:
+        base = body.get("base_tree")
+        # A malformed or newer-schema body can carry a non-string tree; a set
+        # lookup on an unhashable one would raise out of every gate reading this.
+        if (isinstance(base, str) and base in reached) or head == root_tree:
             out.append(fact)
             if isinstance(head, str) and head:
                 reached.add(head)

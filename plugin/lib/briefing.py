@@ -1838,7 +1838,7 @@ def _this_branchs_record(
         if fact.get("id") == named:
             return "", data
         record = critic_consolidate.branch_review_record(
-            prawduct_dir, fact, store.get("facts") or []
+            prawduct_dir, fact, store.get("facts") or [], read=store
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- display only: a lookup that fails must leave the cache's record shown, with the doubt named
         return unconfirmed(f"{type(exc).__name__}: {str(exc)[:80]}")

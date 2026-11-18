@@ -1104,6 +1104,27 @@ class TestAFileThisSessionWroteByAnyMeans:
         assert [n[n.index(" for ") + 5:][:12] for n in notes] == ["a" * 12, "b" * 12]
         assert all("store unreadable" in n for n in notes), notes
 
+    def test_an_error_read_is_not_handed_down_as_an_empty_store(self, tmp_path, monkeypatch):
+        """`read_facts` REPORTS an unreadable store as an error envelope with no
+        facts. Read as `[]`, that is a valid known set, so the dedupe probe
+        answers "absent" and the same observation is re-appended at every Stop.
+        An error read hands nothing down, and each append probes for itself."""
+        from lib import evidence  # noqa: PLC0415
+
+        monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "error", "reason": "torn"})
+        seen = []
+
+        def _append(*args, **kwargs):
+            seen.append(kwargs.get("known_facts", "absent"))
+            return {"status": "appended"}
+
+        monkeypatch.setattr(evidence, "append_stop_observation", _append)
+        gates.record_dropped_commits(
+            _repo(tmp_path), [{"sha": "a" * 40, "paths": ["theirs.py"], "why": "x"}],
+            session="/host/ours-session.jsonl",
+        )
+        assert seen == [None], seen
+
     def test_two_sessions_dropping_one_commit_are_two_records(self, tmp_path, capsys):
         """The Critic's dedupe finding. Two sessions in one checkout share its
         ``.session-start`` (each one's SessionStart writes it), and that is the

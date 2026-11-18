@@ -997,7 +997,7 @@ def _verify_prior_record(
         return None  # the dispatch would refuse; inferring it buys an exit 1
     if answer["rederived"]:
         return critic_consolidate.branch_review_record(
-            prawduct_dir, answer["fact"], read.get("facts") or []
+            prawduct_dir, answer["fact"], read.get("facts") or [], read=read
         )
     # Not re-derived: the cache's own pointer is this branch's review.
     return data

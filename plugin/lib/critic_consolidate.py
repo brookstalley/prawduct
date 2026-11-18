@@ -2553,7 +2553,9 @@ def _prior_review_fact(
     if fact is None or not answer["rederived"]:
         return fact, answer["reason"]
     review = fact.get("id")
-    derived = derive_branch_cache(prawduct_dir, store.get("facts", []), answer["branch_commits"])
+    derived = derive_branch_cache(
+        prawduct_dir, store.get("facts", []), answer["branch_commits"], read=store
+    )
     if derived.get("status") not in ("derived", "current") or derived.get("review") != review:
         return None, (
             f"{answer['reason']}; this branch's review {review!r} could not be written "
@@ -6547,18 +6549,32 @@ def settled_branch_review(project_dir: Path, facts: list[dict]) -> "dict | None"
     return fact
 
 
-def branch_review_record(prawduct_dir: Path, fact: dict, facts: list[dict]) -> dict:
+def branch_review_record(
+    prawduct_dir: Path, fact: dict, facts: list[dict], *, read: "dict | None" = None
+) -> dict:
     """The findings record for ``fact``, built without writing it: the one
     renderer :func:`derive_branch_cache` writes into the cache and the session
     briefing shows when the single-slot cache still names another review. A
     verify pass carries the blockers the gate still counts at its anchor's
-    tree, as consolidation carries them (:func:`gate_counted_blockers`)."""
+    tree, as consolidation carries them (:func:`gate_counted_blockers`).
+
+    ``read`` is the :func:`evidence.read_facts` result ``facts`` came from.
+    Given it (and ``facts`` is its list), the composition goes through the
+    gate's verdict memo over the same facts the gate composes; without it, it
+    is paid cold, which on a large store is a minute and more. SessionStart
+    and mode inference reach this, so every caller holding a read passes it."""
     usable = _this_readers_facts(facts)
     body = fact.get("body") or {}
+    if read is not None and read.get("facts") is facts:
+        gate_facts, gate_read = facts, read
+    else:
+        gate_facts, gate_read = usable, None
     carried = (
         carried_blocking(
             usable, body.get("base_tree"), fact.get("id"),
-            gate_counted_blockers(prawduct_dir.parent, usable, body.get("base_tree")),
+            gate_counted_blockers(
+                prawduct_dir.parent, gate_facts, body.get("base_tree"), read=gate_read
+            ),
         )
         if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
         else []
@@ -6568,7 +6584,10 @@ def branch_review_record(prawduct_dir: Path, fact: dict, facts: list[dict]) -> d
     )
 
 
-def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "list[str]") -> dict:
+def derive_branch_cache(
+    prawduct_dir: Path, facts: list[dict], branch_commits: "list[str]",
+    *, read: "dict | None" = None,
+) -> dict:
     """Point ``.critic-findings.json`` at the newest review fact anchored on
     this branch, rendering it as consolidation would.
 
@@ -6620,7 +6639,10 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     candidate = prawduct_dir / ".critic-findings.json.derived"
     atomic_write_text(candidate, json.dumps(
-        branch_review_record(prawduct_dir, fact, usable), indent=2
+        branch_review_record(
+            prawduct_dir, fact, facts if read is not None and read.get("facts") is facts else usable,
+            read=read,
+        ), indent=2
     ))
     if not gates.validate_critic_findings(candidate):
         candidate.unlink(missing_ok=True)
