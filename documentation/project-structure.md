@@ -39,7 +39,7 @@ prawduct/
 │   │   ├── session-hygiene.md         # How a turn ends: the closing line and the forward notes
 │   │   ├── delegation.md              # When to delegate, what a delegate verifies, and what it costs
 │   │   └── session-digest.md          # SessionStart additionalContext digest
-│   ├── docs/                          # principles.md (the 26), norms.md, waivers.md, discipline.md,
+│   ├── docs/                          # principles.md (the roster), norms.md, waivers.md, discipline.md,
 │   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md,
 │   │                                  #   test-report-contract.md, project-state-keys.md, examples/
 │   └── templates/                     # Place-once + planning artifact templates for product repos

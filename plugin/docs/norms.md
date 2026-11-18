@@ -297,7 +297,7 @@ Either finding forces the same explicit fork: **re-affirm and schedule cleanup, 
 norm** — and the chosen arm is itself recorded (re-affirm ⇒ a cleanup backlog item, and for a
 decayed cited why a `Re-affirmed:` field naming the finished item; retire ⇒ an amendment), so an
 erosion finding cannot evaporate by nobody deciding. Norms are standing
-decisions subject to challenge (Principle 19 extended to products) — enforced, not worshipped.
+decisions subject to challenge (the principles' own amendment clause, extended to products) — enforced, not worshipped.
 
 ### Ambient norms — structural characteristics
 

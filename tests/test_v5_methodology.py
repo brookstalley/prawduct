@@ -2375,8 +2375,12 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # re-reads. The cut tried first, the live review's deadline derivation, is pinned on every
     # carrier (`test_a_live_review_moves_the_clear_verdict_on_every_carrier`) and stayed.
     # Digest 9475 -> 9506 characters.
-    "framework": 3064,
-    "product": 2185,
+    # framework 3064 -> 3053, product 2185 -> 2174 on 2026-11-18 (#686, owner decision
+    # 2026-08-19): the principles roster regrouped from six headings into three genera, and
+    # three retired principles leave it. A cut, not a relocation: the full text stays where
+    # it always lived, in `docs/principles.md`. Digest 9506 -> 9425 characters.
+    "framework": 3053,
+    "product": 2174,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -2547,8 +2551,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # one over each.
     # 3059 -> 3065, 2180 -> 2186 on 2026-11-18 (#1190): raised with the declared raise in the
     # reading above, one over each.
-    "framework": 3065,
-    "product": 2186,
+    # 3065 -> 3054, 2186 -> 2175 on 2026-11-18 (#686): ratcheted with the reading's cut,
+    # one over each.
+    "framework": 3054,
+    "product": 2175,
 }
 
 
@@ -7029,18 +7035,25 @@ class TestMethodologyPBT:
 
 
 # =============================================================================
-# docs/principles.md — the 26 principles (canonical source)
+# docs/principles.md — the principles (canonical source)
 # =============================================================================
 
 
 class TestPrinciplesDoc:
-    """All 26 principles are present, named, and numbered in the canonical source.
+    """Every principle is present, named, and keeps its number in the canonical source.
 
     Before M4 this contract was held by `test_v5_templates.py::TestProductClaudePrinciples`
     against the file-sync `product-claude.md` template *copy*. Chunk 4 deleted that
     template (and its test) as file-sync residue; this re-anchors the contract to the
     real source of truth — `docs/principles.md` — so an accidental drop or rename of a
     principle fails loud (M4 cumulative-Critic NOTE 1).
+
+    Numbers are permanent addresses: learnings, specs and code cite `(#15)` and
+    `Principle 6`, so the roster is grouped by genus rather than numeric order, a
+    retired principle keeps its number under § Retired Numbers with a pointer to the
+    principle that absorbed it, and no number is reused. Roster history: 24 added
+    2026-07-17 (MET-4V8Q); 25 and 26 added 2026-08-13 (owner decision 2026-08-12);
+    12, 19 and 20 retired by owner decision 2026-08-19 (brookstalley/prawduct#686).
     """
 
     PRINCIPLES = [
@@ -7055,15 +7068,12 @@ class TestPrinciplesDoc:
         (9, "Visible Costs"),
         (10, "Clean Deployment"),
         (11, "Proportional Effort"),
-        (12, "Scope Discipline"),
         (13, "Coherent Artifacts"),
         (14, "Independent Review"),
         (15, "Validate Before Propagating"),
         (16, "Root Cause Discipline"),
         (17, "Automatic Reflection"),
         (18, "Close the Learning Loop"),
-        (19, "Evolving Principles"),
-        (20, "Infer, Confirm, Proceed"),
         (21, "Structural Awareness"),
         (22, "Governance Is Structural"),
         (23, "Challenge Gently, Defer Gracefully"),
@@ -7072,26 +7082,115 @@ class TestPrinciplesDoc:
         (26, "Graceful Cession"),
     ]
 
+    #: number -> (former name, where it went). `None` is the preamble's amendment clause.
+    RETIRED = {
+        12: ("Scope Discipline", 2),
+        19: ("Evolving Principles", None),
+        20: ("Infer, Confirm, Proceed", 7),
+    }
+
+    #: The three genera, each a `## ` section holding exactly these numbers.
+    GENERA = {
+        "Craft": {1, 2, 3, 4, 5, 13, 15, 16, 24},
+        "Governance and Stance": {6, 7, 11, 14, 17, 18, 22, 23, 25, 26},
+        "Coverage": {8, 9, 10, 21},
+    }
+
+    @staticmethod
+    def _headings(text: str) -> list[tuple[int, str]]:
+        return [(int(n), rest) for n, rest in re.findall(r"^### (\d+)\. (.+)$", text, re.MULTILINE)]
+
+    @staticmethod
+    def _section(text: str, heading: str) -> str:
+        start = text.index(heading)
+        nxt = re.search(r"^#{2,3} ", text[start + len(heading):], re.MULTILINE)
+        return text[start: start + len(heading) + nxt.start()] if nxt else text[start:]
+
     @pytest.mark.parametrize("num,name", PRINCIPLES, ids=[f"{n}-{name}" for n, name in PRINCIPLES])
     def test_principle_present_and_numbered(self, num: int, name: str):
         principles = read_file("docs/principles.md")
-        assert f"### {num}. {name}" in principles, (
+        assert f"### {num}. {name}\n" in principles, (
             f"docs/principles.md is missing the `### {num}. {name}` heading — "
-            "the 26 principles are the framework's foundation; a drop or renumber must fail loud."
+            "the principles are the framework's foundation; a drop or rename must fail loud."
         )
 
-    def test_exactly_26_numbered_principles(self):
-        """No principle is added/removed without updating this contract.
-        24 (Retrieval Over Generation) added 2026-07-17 — MET-4V8Q, per Principle 19.
-        25 (Third Rework Is a Deletion Signal) and 26 (Graceful Cession) added
-        2026-08-13 — owner decision 2026-08-12, per Principle 19; the framing they
-        codify is documentation/purpose.md (framework repo)."""
-        import re
-        principles = read_file("docs/principles.md")
-        headings = re.findall(r"^### (\d+)\. ", principles, re.MULTILINE)
-        assert [int(h) for h in headings] == list(range(1, 27)), (
-            f"expected principle headings 1..26 in order, found {headings}"
+    def test_every_number_appears_once_and_none_is_reused(self):
+        """A principle is added, retired or renumbered only by updating this contract,
+        and a retired number is never handed to a new principle."""
+        headings = self._headings(read_file("docs/principles.md"))
+        numbers = [n for n, _ in headings]
+        assert sorted(numbers) == list(range(1, 27)), (
+            f"expected each principle number 1..26 exactly once, found {sorted(numbers)}"
         )
+        live = {n for n, rest in headings if not rest.startswith("Retired: ")}
+        assert live == {n for n, _ in self.PRINCIPLES}, (
+            f"live principles {sorted(live)} do not match the roster; a retired number "
+            f"must stay retired: {sorted(self.RETIRED)}"
+        )
+
+    @pytest.mark.parametrize("num", sorted(RETIRED), ids=lambda n: f"retired-{n}")
+    def test_retired_number_points_at_its_absorber(self, num: int):
+        principles = read_file("docs/principles.md")
+        name, absorber = self.RETIRED[num]
+        heading = f"### {num}. Retired: {name}"
+        assert heading in principles, f"retired #{num} lost its slot — `{heading}` is missing"
+        body = self._section(principles, heading)
+        if absorber is None:
+            assert "amendment clause" in body, f"retired #{num} must point at the amendment clause"
+            assert "**The constitution can be amended.**" in principles.split("\n## ")[0], (
+                "the preamble must carry the amendment clause that absorbed #19"
+            )
+        else:
+            absorber_name = dict(self.PRINCIPLES)[absorber]
+            assert f"#{absorber} {absorber_name}" in body, (
+                f"retired #{num} must point at #{absorber} {absorber_name}"
+            )
+
+    def test_absorbed_text_lives_in_its_absorber(self):
+        """Retiring a number must not drop its content: each absorber carries the
+        retired principle's operative sentence."""
+        principles = read_file("docs/principles.md")
+        assert "Do what was asked." in self._section(principles, "### 2. Complete Delivery\n")
+        assert "Lead with your reading, not a questionnaire" in self._section(
+            principles, "### 7. Bring Expertise\n"
+        )
+
+    @pytest.mark.parametrize("genus", sorted(GENERA))
+    def test_roster_is_grouped_by_genus(self, genus: str):
+        principles = read_file("docs/principles.md")
+        start = principles.index(f"\n## {genus}\n")
+        end = principles.index("\n## ", start + 1)
+        found = {n for n, _ in self._headings(principles[start:end])}
+        assert found == self.GENERA[genus], f"§ {genus} holds {sorted(found)}"
+
+    def test_governance_is_structural_frames_gates_as_backstops(self):
+        principles = read_file("docs/principles.md")
+        body = self._section(principles, "### 22. Governance Is Structural\n")
+        assert "**Gates are backstops.**" in body
+        assert "pass every gate the first time" in body
+
+    def test_session_digest_roster_matches_the_genera(self):
+        """The digest's grouped roster is the always-injected copy; it names every
+        live principle once, under its genus, and no retired one."""
+        digest = read_file("methodology/session-digest.md")
+        roster = digest[digest.index("## Principles\n"): digest.index("## How the agent shows up")]
+        flat = " ".join(roster.split())
+        labels = {"Craft": "**Craft** —", "Governance and Stance": "**Governance and stance** —",
+                  "Coverage": "**Coverage** —"}
+        names = dict(self.PRINCIPLES)
+        segments = {}
+        for genus, label in labels.items():
+            assert flat.count(label) == 1, f"digest roster must carry the {genus} group once"
+            segments[genus] = flat.split(label, 1)[1].split("- **", 1)[0]
+        for genus, seg in segments.items():
+            for n, name in names.items():
+                where = n in self.GENERA[genus]
+                assert (name in seg) is where, (
+                    f"digest lists {name} under {genus}" if not where
+                    else f"digest lacks {name} under {genus}"
+                )
+        for name, _ in self.RETIRED.values():
+            assert name not in flat, f"digest still lists retired principle {name}"
 
 
 class TestRigorIsStageKeyed:
@@ -7112,7 +7211,7 @@ class TestRigorIsStageKeyed:
     def test_principle_11_names_the_two_stages(self):
         principles = read_file("docs/principles.md")
         start = principles.index("### 11. Proportional Effort")
-        end = principles.index("### 12. ")
+        end = principles.index("\n### ", start)
         assert self.TWO_STAGES in principles[start:end], (
             "Principle 11 must carry the two-stage sentence — it is the principle "
             "the stage-keyed rigor norm amends, and the norm's `Ratified:` line "
