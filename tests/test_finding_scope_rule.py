@@ -323,10 +323,19 @@ def test_the_directive_has_a_size_ceiling() -> None:
 
     122 -> 109: the `none` answer for a mandated cross-check went with the
     cross-checks themselves; the ceiling came down by the same amount.
+
+    109 -> 150 on 2026-11-18 (#847 D1), DECLARED: the closing clause asks for
+    the scope answer as data (`scope`, `closure`, `members`), which is what a
+    later `fixed` resolution is graded against. It rides here because a `chunk`
+    or `verify-resolutions` reviewer meets the partial's fields nowhere else
+    (`goals-1-3.md` has no room). Priced against the dispatch: ~41 tokens on
+    every `chunk` and `verify-resolutions` dispatch, against a class finding
+    closed short of its members measured at well over the 3-a-month bar
+    (`tools/measure-class-member-closure.py`). The ceiling is unchanged.
     """
     tokens = _estimate(DIRECTIVE)
-    assert tokens == 109, (
-        f"FINDING_SCOPE_DIRECTIVE is ~{tokens} tokens; this pin says 109. "
+    assert tokens == 150, (
+        f"FINDING_SCOPE_DIRECTIVE is ~{tokens} tokens; this pin says 150. "
         f"Update it to {tokens} and say in the docstring what paid for the "
         "change — the ceiling below is not a budget to spend."
     )

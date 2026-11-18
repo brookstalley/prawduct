@@ -783,7 +783,10 @@ LAST_MEASURED_TOKENS = {
     # by cutting "Review test quality and coverage through code analysis only", which SKILL.md
     # and critic-reviewer.md state in every payload that reads this file. Priced in
     # `test_reviewer_payload_budget.py`.
-    "skills/critic/review-protocol.md": 4070,
+    # +40 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED: the Scope bullet asks for
+    # the answer as data (`scope`, `closure`, `members`), which consolidation grades a `fixed`
+    # resolution against. Priced in `test_reviewer_payload_budget.py`.
+    "skills/critic/review-protocol.md": 4110,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -5852,7 +5855,8 @@ class TestCriticSkill:
         # RAISED 3951 -> 3964 (review-round-cost Critic round, R-7/R-9) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4049 -> 4062 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
         # RAISED 4062 -> 4071 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 4071, f"review-protocol.md is ~{tokens} tokens, should be <4071"
+        # RAISED 4071 -> 4111 (backlog-roi-wave2 Chunk 02, #847) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 4111, f"review-protocol.md is ~{tokens} tokens, should be <4111"
 
 
 # =============================================================================
