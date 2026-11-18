@@ -1496,10 +1496,20 @@ def _scope_widened(delta_count: int, prior_count: int) -> bool:
     return delta_count > 2 * prior_count + 5
 
 
-def _widened_fallback_mode(
+def covering_fallback_mode(
     project_dir: Path, committed_head_tree: str, committed_differs: bool
 ) -> tuple[str, str]:
-    """Which full-review mode actually COVERS the delta that just widened.
+    """Which full-review mode actually COVERS the work a demoted
+    ``verify-resolutions`` leaves — the one recommender for both of its doors.
+
+    **Two doors (#662).** Exit 2 (the delta widened) passes the
+    ``committed_differs`` it computed. The exit-1 anchor refusals (no prior
+    review on this lineage, a fact with no ``head_tree``, a prior tree that
+    cannot be diffed) have no prior tree to compute it from, and pass ``True``:
+    assuming committed work moved lets :func:`working_tree_interval_base`
+    decide from the store's review facts — independent of the anchor that just
+    failed — and is never narrower than the truth. Two of those triggers (a
+    branch switch, rewritten history) are by construction the committed case.
 
     "Run a full review" meant `final`, unconditionally — and `final`'s interval
     was then HEAD-tree → working-tree, the *uncommitted* diff. So a delta that widened
@@ -1542,16 +1552,24 @@ def _widened_fallback_mode(
         start = working_tree_interval_base(
             project_dir, head_commit.strip(), committed_head_tree
         )
+        if start["origin"] == BASE_AT_HEAD_COVERED:
+            # Without this arm a covered HEAD fell through to `cumulative` — a
+            # whole-branch review of commits a review already covers.
+            return "final", (
+                "the committed work is already covered — the last reviewed "
+                "state is HEAD's own tree — so only the uncommitted work remains, "
+                "which is exactly `final`'s HEAD-tree → working-tree interval"
+            )
         if start["origin"] == BASE_AT_FRONTIER:
             return "final", (
-                "the delta includes committed work, and `final`'s interval starts at "
+                "committed work may be unreviewed, and `final`'s interval starts at "
                 f"the last reviewed state ({start['commit'][:12]}), so it covers "
                 "those commits and the uncommitted work — a narrower span than "
                 "a full `cumulative`'s merge-base…HEAD"
             )
         if start["origin"] == BASE_AT_MERGE_BASE:
             return "final", (
-                "the delta includes committed work, and with no reviewed state "
+                "committed work may be unreviewed, and with no reviewed state "
                 "behind HEAD and nothing judgeable uncommitted, `final`'s interval "
                 f"starts at the merge-base ({start['commit'][:12]}), so it covers "
                 "the committed work at inner-stage rigor"
@@ -1567,7 +1585,7 @@ def _widened_fallback_mode(
     # committed remainder. The coverage gate is where that remainder surfaces.
     if resolved["status"] != "ok":
         return "final", (
-            "the delta includes committed work, but no merge-base resolves "
+            "committed work may be unreviewed, but no merge-base resolves "
             f"({resolved['reason']}), so `cumulative` cannot dispatch — `final` "
             "sees only the uncommitted part"
         )
@@ -1577,17 +1595,36 @@ def _widened_fallback_mode(
         # reverts sits far ahead of the merge-base with an identical tree, takes
         # this path correctly, and would be told something false about itself.
         return "final", (
-            "the delta includes committed work, but HEAD's tree matches the "
+            "committed work may be unreviewed, but HEAD's tree matches the "
             "merge-base's, so `cumulative`'s interval is empty — `final` sees "
             "only the uncommitted part"
         )
     return "cumulative", (
-        "the delta includes committed work that `final` cannot reach — no "
+        "committed work may be unreviewed, and `final` cannot reach it — no "
         "reviewed state without an open blocker sits behind it for its interval "
         "to start from; `cumulative` spans merge-base…HEAD, or the delta since "
         "the last clean boundary review — either way the work this branch owes, "
         "composing to the PR gate's own span"
     )
+
+
+def _anchor_unusable(
+    project_dir: Path, committed_head_tree: str, notes: "list[str]", reason: str
+) -> dict:
+    """``begin_review``'s exit-1 ``verify-resolutions`` refusal: the prior
+    anchor is missing or unusable, so the pass demotes — to the mode
+    :func:`covering_fallback_mode` names, never to one the reader derives.
+    ``committed_differs=True`` because with no usable prior tree "did committed
+    work move" cannot be computed (the recommender's docstring says why that is
+    the safe assumption). The CLI keeps exit 1 for this kind."""
+    fallback, why = covering_fallback_mode(project_dir, committed_head_tree, True)
+    return {
+        "status": "error",
+        "kind": "anchor-unusable",
+        "fallback_mode": fallback,
+        "notes": list(notes),
+        "reason": f"{reason} — Re-dispatch as `{fallback}`: {why}.",
+    }
 
 
 #: The derived findings cache, in ``.prawduct/``: the single slot naming the
@@ -3600,9 +3637,13 @@ def begin_review(
     interval and silent about the repo, which reads as "nothing to do" when it
     means "your work is not in the interval I chose".
 
-    A ``scope-widened`` result also carries ``fallback_mode`` — the full-review
-    mode that covers the widened delta, named in ``reason`` so the re-dispatch
-    does not have to guess it.
+    Every ``verify-resolutions`` demotion carries ``fallback_mode`` — the
+    full-review mode that covers the work (:func:`covering_fallback_mode`),
+    named in ``reason`` so the re-dispatch does not have to guess it: a
+    ``scope-widened`` result (exit 2), and an ``anchor-unusable`` one (exit 1)
+    when the prior anchor is missing, records no ``head_tree``, or cannot be
+    diffed. ``store-unusable`` (exit 6) names no mode, because no review
+    repairs a store.
 
     Per-mode interval (design D8, chunk-03 refinements):
 
@@ -3949,21 +3990,26 @@ def begin_review(
             # another branch's review knows which findings this pass verifies.
             notes.append(reason)
         if prior is None:
-            refusal = {"status": "error", "reason": f"no prior review to verify: {reason}"}
             if _store_unusable(read_store()) is not None:
-                # The CLI maps this kind to its own exit, because the skill's
-                # exit-1 row demotes and re-dispatches — a round that cannot
-                # repair a store or update a plugin.
-                refusal["kind"] = "store-unusable"
-            return refusal
+                # Its own kind and exit (6), and no mode: a re-dispatched round
+                # cannot repair a store or update a plugin.
+                return {
+                    "status": "error",
+                    "kind": "store-unusable",
+                    "reason": f"no prior review to verify: {reason}",
+                }
+            return _anchor_unusable(
+                project_dir, capture["head_tree"], notes,
+                f"no prior review to verify: {reason}",
+            )
         prior_body = prior.get("body") or {}
         verify_anchor = prior
         base_tree = prior_body.get("head_tree")
         if not isinstance(base_tree, str) or not base_tree:
-            return {
-                "status": "error",
-                "reason": f"prior review fact {prior.get('id')!r} records no head_tree",
-            }
+            return _anchor_unusable(
+                project_dir, capture["head_tree"], notes,
+                f"prior review fact {prior.get('id')!r} records no head_tree",
+            )
         base_commit = prior_body.get("head_commit")
 
         # Intent-aware head anchor (CRT-7H2W). verify-resolutions serves two gate
@@ -4063,13 +4109,11 @@ def begin_review(
                     )
         delta = evidence.tree_diff(project_dir, base_tree, head_tree)
         if delta is None:
-            return {
-                "status": "error",
-                "reason": (
-                    f"cannot diff prior reviewed tree {base_tree[:12]} against "
-                    "the current tree (rewritten history?) — anchor unreliable"
-                ),
-            }
+            return _anchor_unusable(
+                project_dir, capture["head_tree"], notes,
+                f"cannot diff prior reviewed tree {base_tree[:12]} against "
+                "the current tree (rewritten history?) — anchor unreliable",
+            )
         prior_files = [
             f for f in (prior_body.get("files_reviewed") or []) if isinstance(f, str)
         ]
@@ -4100,7 +4144,7 @@ def begin_review(
         delta_priced = _ca.judgeable_files(delta)
         prior_priced = _ca.judgeable_files(prior_files)
         if _scope_widened(len(delta_priced), len(prior_priced)):
-            fallback, why = _widened_fallback_mode(
+            fallback, why = covering_fallback_mode(
                 project_dir, capture["head_tree"], committed_differs
             )
             return {
@@ -4135,7 +4179,7 @@ def begin_review(
             # free-interval refusal below: nothing here needs a review. It sat
             # above that path and fell out as a bare error, so it surfaced as
             # exit 1 — and `SKILL.md`'s exit table routes a 1 on
-            # `verify-resolutions` to "re-dispatch per the demotion property",
+            # `verify-resolutions` to a demotion,
             # which here means spending a full `cumulative` on a bundle the gate
             # already reports satisfied. That is a review round manufactured by
             # the framework's own routing.
