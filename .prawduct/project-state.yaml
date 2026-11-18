@@ -648,7 +648,7 @@ build_state:
 # branch, so a pointer left aimed at one is inert and there is no pointer step
 # at its merge. The plan is untouched: still live, still findable, archived by
 # scope at the release.
-active_build_plan: null
+active_build_plan: .prawduct/artifacts/build-plan-backlog-roi-2026-11-18.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
