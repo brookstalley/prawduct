@@ -83,7 +83,7 @@ DIGEST_SECTION_PLACEMENT = {
         "the trigger and the shortest true form of the rule"
     ),
     "Principles": (
-        "inline -- a 26-name roster in six groups, already the compressed form "
+        "inline -- the live roster by name, grouped by genus, already the compressed form "
         "of docs/principles.md"
     ),
     "How the agent shows up (stance)": (

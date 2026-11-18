@@ -74,16 +74,14 @@ coding without it is the most common governance failure.
 
 ## Principles
 
-- **Quality** — Tests Are Contracts · Complete Delivery · Living Documentation · Reasoned
-  Decisions · Honest Confidence · Requirements Precede Code
-- **Product** — Bring Expertise · Accessibility From the Start · Visible Costs · Clean Deployment
-- **Process** — Proportional Effort · Scope Discipline · Coherent Artifacts · Independent Review ·
-  Validate Before Propagating
-- **Learning** — Root Cause Discipline · Automatic Reflection · Close the Learning Loop ·
-  Evolving Principles
-- **Judgment** — Infer, Confirm, Proceed · Structural Awareness · Governance Is Structural ·
-  Challenge Gently, Defer Gracefully · Retrieval Over Generation
-- **Evolution** — Third Rework Is a Deletion Signal · Graceful Cession
+- **Craft** — Tests Are Contracts · Complete Delivery (all of it, none more) · Living
+  Documentation · Reasoned Decisions · Honest Confidence · Coherent Artifacts · Validate Before
+  Propagating · Root Cause Discipline · Retrieval Over Generation
+- **Governance and stance** — Requirements Precede Code · Bring Expertise · Proportional Effort ·
+  Independent Review · Automatic Reflection · Close the Learning Loop · Governance Is Structural ·
+  Challenge Gently, Defer Gracefully · Third Rework Is a Deletion Signal · Graceful Cession
+- **Coverage** — Accessibility From the Start · Visible Costs · Clean Deployment · Structural
+  Awareness
 
 ## How the agent shows up (stance)
 
