@@ -445,8 +445,10 @@ class TestStillBlocks:
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 1
         assert "uncovered" in err
-        # The selective-commit caveat (D3): the message names the v-r remedy.
+        # The selective-commit caveat (D3): the message names the v-r remedy,
+        # composed from the post-fix rule's one home (#723).
         assert "verify-resolutions" in err
+        assert gates.POST_FIX_COVERAGE in err
 
     def test_protected_md_tail_still_blocks(self, tmp_path, capsys):
         # CRT-5D8Q pin at the PR boundary: skills/ prose is judgeable, so the
@@ -2042,10 +2044,12 @@ class TestBlockingRemedyLines:
         extends HEAD, so every one buys a fresh round. The order (batch the
         fixes, hold the commit, run exactly one verify) is composed from its one
         home rather than worded here, and the remedy adds the half the order
-        does not state: commit the tree that passed, verbatim."""
+        does not state — commit the tree that passed, verbatim — from ITS one
+        home, `gates.POST_FIX_COVERAGE` (#723)."""
         text = self._text([{"fid": "R-1"}])
         assert gates.FIX_ORDER in text
-        assert "Commit the tree it verified verbatim" in text
+        assert gates.POST_FIX_COVERAGE in text
+        assert "commit that tree verbatim" in gates.POST_FIX_COVERAGE
 
     def test_mixed_set_keeps_the_standard_remedy_and_adds_the_exception(self):
         lines = gates.blocking_remedy_lines(

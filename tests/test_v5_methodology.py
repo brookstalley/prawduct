@@ -582,7 +582,10 @@ LAST_MEASURED_TOKENS = {
     # don't matter" and "blocking findings block until cleared" (review-cycle.md owns both, and the
     # Modes paragraph beside it names what resolves findings). No other restatement was found
     # to cut; the ceiling rises.
-    "methodology/building.md": 5666,
+    # -8 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): Resolve findings names `gates.FIX_ORDER`
+    # and cites the anchoring derivation instead of copying the order and restating what committing
+    # first does to the pass. A READING; ceiling lowered with it.
+    "methodology/building.md": 5658,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1358,7 +1361,9 @@ LAST_MEASURED_TOKENS = {
     # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): step 4's exit-1 `verify-resolutions` row and the
     # demotion property stop telling the reader to apply the property by hand — `critic-begin` now
     # names the covering mode on every demotion. Ceiling lowered with it.
-    "skills/critic/SKILL.md": 3231,
+    # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): the exit-3 qualifier stops restating which
+    # tree a `cumulative`/`verify-resolutions` pass anchored. A READING; ceiling lowered with it.
+    "skills/critic/SKILL.md": 3225,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -2925,12 +2930,18 @@ class TestBuildingMethodology:
         too until a note stopped being a finding; an observation is owed no
         disposition, and the same sentence now says so.)
         """
-        # Render consistency with the runtime half: the guide carries
-        # `gates.FIX_ORDER` verbatim, the string `_BATCH_FIX_DIRECTIVE` composes.
+        # Render consistency with the runtime half, renegotiated by #723: the
+        # guide carried `gates.FIX_ORDER` verbatim, which made correcting the
+        # order a two-file edit. It now NAMES the constant the runtime prints
+        # (`_BATCH_FIX_DIRECTIVE` and the gate's blocking remedy compose it),
+        # and must not paraphrase the order beside the name — a copy here is
+        # the drift this pin exists to stop, in either form.
         import sys
         sys.path.insert(0, str(ROOT))
         from lib import gates
-        assert gates.FIX_ORDER in self.content
+        assert "`gates.FIX_ORDER`" in self.content
+        assert gates.FIX_ORDER not in self.content
+        assert "over the uncommitted fixes" not in self.content
         assert "Warnings gate nothing" in self.content
         assert "an observation is owed no disposition" in self.content
         # The exact phrasings the runtime's own comment records rejecting.
@@ -4009,7 +4020,8 @@ class TestBuildingMethodology:
         # RAISED 5360 -> 5409 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
         # LOWERED 5409 -> 5407 (testament-evidence-wiring, 2026-11-13) with the reading's cut.
         # RAISED 5407 -> 5667 (backlog-roi Chunk 09, #1034 + #678, 2026-11-18) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5667, f"building.md is ~{tokens} tokens, should be <5667"
+        # LOWERED 5667 -> 5659 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 5659, f"building.md is ~{tokens} tokens, should be <5659"
 
 
 # =============================================================================
@@ -6434,7 +6446,8 @@ class TestCriticSkillRoutesByMode:
         # LOWERED 3266 -> 3254 (retire-chunk-status-shims, #1055, 2026-11-15) — see LAST_MEASURED_TOKENS.
         # RAISED 3254 -> 3262 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3262 -> 3232 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3232, f"SKILL.md is ~{tokens} tokens, should be <3232"
+        # LOWERED 3232 -> 3226 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 3226, f"SKILL.md is ~{tokens} tokens, should be <3226"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
