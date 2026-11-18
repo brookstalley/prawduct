@@ -590,9 +590,12 @@ def _verify_anchor_id(facts: list[dict], nodes: "set[str]") -> "str | None":
 
     This is what makes a blocking finding *reachable*. A verify pass reviews
     the delta from one prior fact and records resolutions against that fact
-    alone, so a blocker carried by any OTHER fact on the path is one no verify
-    pass will ever name again — it is superseded, and only a review spanning
-    the whole interval can supply a clean path around it.
+    alone, so a blocker carried by any OTHER fact on the path is superseded:
+    no verify pass will anchor to it again. Since #334 a verify pass's
+    roll-call still NAMES the blockers of every review in the branch's set
+    (``critic_consolidate.carried_blocking``), so one inside that set clears
+    through verify-resolutions; only one outside it needs a review spanning
+    the whole interval (``gates.blocking_remedy_lines``).
 
     Two deliberate choices, because both directions of error are wrong advice:
 

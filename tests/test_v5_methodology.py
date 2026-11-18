@@ -1147,7 +1147,10 @@ LAST_MEASURED_TOKENS = {
     # -2 on 2026-11-18 (backlog-roi Chunk 03, #662): the Demotion rows re-dispatch in the mode the
     # refusal names (the no-`head_tree` trigger joins the undiffable row); paid by cutting the
     # **Committed** flags, whose only job was steering the hand-applied property.
-    "skills/critic/review-cycle.md": 8249,
+    # -4 on 2026-11-18 (backlog-roi integration, #334): the PR-gate `Superseded:` exception is
+    # scoped to blockers outside the branch's review set, which the verify roll-call now names.
+    # A READING; ceiling lowered with it.
+    "skills/critic/review-cycle.md": 8245,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1377,7 +1380,10 @@ LAST_MEASURED_TOKENS = {
     # -5 on 2026-11-10 (critic-trim review round): the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. A READING; ceiling lowered.
     # -21 on 2026-11-11 (pr-reviewer-fold Chunk 03): the clause saying the PR reviewer does not
     # re-run the final-mode passes went with the reviewer. A READING; ceiling lowered with it.
-    "skills/critic/cross-checks.md": 1708,
+    # -26 on 2026-11-18 (backlog-roi integration, #1201): the Records Pass's second bar is
+    # `cumulative`-only (#771's fleet run put record-only fixed findings over their bars); paid by
+    # cutting the 36%-of-728-reviews tally, which #771's measurement supersedes. Ceiling lowered.
+    "skills/critic/cross-checks.md": 1682,
     # -17 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
     # +5 on 2026-11-10 (critic-trim review round), DECLARED: the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. A READING.
     # +30 on 2026-11-11 (reviewer-model-cap), DECLARED: step 2's 'no model override' sentence
@@ -1669,7 +1675,10 @@ LAST_MEASURED_TOKENS = {
     # section. A READING.
     # +17 on 2026-11-11 (bounded-cumulative Chunk 03): `cumulative-final` no longer claims the review spans
     # merge-base...HEAD, and says why either span covers `final`'s interval. A READING.
-    "methodology/planning.md": 5769,
+    # +10 on 2026-11-18 (backlog-roi, #1199): "Chunk state" names the merged-in side of a
+    # non-base merge as span credit — a description of the code, recorded as a departure under
+    # data-model.md D1 for the owner's confirmation. A READING.
+    "methodology/planning.md": 5779,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -6776,7 +6785,8 @@ class TestReviewCycle:
         # LOWERED 8256 -> 8253 (branch-review-one-owner, #1179, 2026-11-15) — see LAST_MEASURED_TOKENS.
         # LOWERED 8253 -> 8252 (coherence-pass Chunk 03, 2026-11-16) — see LAST_MEASURED_TOKENS.
         # LOWERED 8252 -> 8250 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8250, f"review-cycle.md is ~{tokens} tokens, should be <8250"
+        # LOWERED 8250 -> 8246 (backlog-roi integration, #334, 2026-11-18) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8246, f"review-cycle.md is ~{tokens} tokens, should be <8246"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to
@@ -6789,7 +6799,8 @@ class TestReviewCycle:
         # LOWERED 3387 -> 1735 (critic-trim, 2026-11-10) with the reading.
         # LOWERED 1735 -> 1730 (critic-trim review round) with the reading.
         # LOWERED 1730 -> 1709 (pr-reviewer-fold, 2026-11-11) with the reading.
-        assert tokens < 1709, f"cross-checks.md is ~{tokens} tokens, should be <1709"
+        # LOWERED 1709 -> 1683 (backlog-roi integration, #1201, 2026-11-18) with the reading.
+        assert tokens < 1683, f"cross-checks.md is ~{tokens} tokens, should be <1683"
 
     def test_coordinator_token_budget(self):
         # coordinator.md is read only by the fork on a coordinator roster (C-20).

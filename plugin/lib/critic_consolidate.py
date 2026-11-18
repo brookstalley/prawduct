@@ -1068,7 +1068,7 @@ def _next_action_core(
         )
         return (
             f"NOT DONE. This review has {own}{len(carried)} BLOCKING finding(s)"
-            f" from the review it verifies that are still unresolved: {named}."
+            f" from this branch's earlier review rounds that are still unresolved: {named}."
             " A verify pass records a resolution only for a finding it names in"
             " `resolutions`. One discharged in prose alone (\"implicitly closed"
             " by\", \"same class as\", \"recorded via\") got no fact, and the"
@@ -1082,9 +1082,6 @@ def _next_action_core(
             " its own entry in `resolutions` (a fix verified by the same edit is"
             " still its own entry). Leave one out only if it is still broken, and"
             " then say so rather than reporting the review complete."
-            " Act now: once a newer review supersedes that round, no verify pass"
-            " will name these again and only a spanning `/prawduct:critic"
-            " cumulative` can clear them."
         )
 
     if blocking:
