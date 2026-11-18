@@ -66,6 +66,20 @@ _LIST_WIRED = (
 )
 
 
+# The wrapper shape from the report: a script that lints, builds, then runs
+# testament with the report path it was given.
+_WRAPPED = "scripts/test.sh --junit-xml={junit_xml}"
+_WRAPPER_BODY = (
+    "#!/bin/sh\nset -e\nruff check .\nmake native\n"
+    "testament run --junit-xml=\"${1#--junit-xml=}\"\n"
+)
+
+
+def _wrapper(repo: Path, body: str = _WRAPPER_BODY) -> None:
+    (repo / "scripts").mkdir(parents=True, exist_ok=True)
+    (repo / "scripts" / "test.sh").write_text(body)
+
+
 class TestRunsTestament:
     @pytest.mark.parametrize("command", [
         "testament run --junit-xml {junit_xml}",
@@ -93,6 +107,24 @@ class TestRunsTestament:
     def test_running_without_the_placeholder_does_not_record(self):
         assert tep.runs_testament("testament run")
         assert not tep.records_testament("testament run")
+
+    def test_a_script_in_the_repo_that_runs_testament(self, tmp_path):
+        _wrapper(tmp_path)
+        assert tep.runs_testament(_WRAPPED, tmp_path)
+        assert tep.records_testament(_WRAPPED, tmp_path)
+        # Control: the command's own words do not run testament.
+        assert not tep.runs_testament(_WRAPPED)
+
+    def test_a_script_whose_testament_line_is_a_comment_does_not(self, tmp_path):
+        _wrapper(tmp_path, body="# testament run --junit-xml=\"$1\" (disabled)\npytest\n")
+        assert not tep.runs_testament(_WRAPPED, tmp_path)
+
+    def test_a_script_outside_the_repo_is_not_read(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _wrapper(tmp_path)  # tmp_path/scripts/test.sh, beside the repo, not in it
+        assert not tep.runs_testament("../scripts/test.sh --junit-xml={junit_xml}", repo)
+        assert tep.runs_testament(_WRAPPED, tmp_path), "control: the same script in its repo"
 
 
 # Each declaration shape the recorder resolves, with what it does on
@@ -153,6 +185,18 @@ class TestProbe:
         assert cand.evidence == (
             "declared: uv run --group raster pytest --junit-xml={junit_xml} -q",
         )
+
+    def test_a_declared_wrapper_that_runs_testament_is_wired(self, tmp_path):
+        repo = _repo(tmp_path, f"test_command: {_WRAPPED}\n")
+        _wrapper(repo)
+        assert _probe(repo) == []
+
+    def test_a_wrapper_that_does_not_run_testament_still_fires_hedged(self, tmp_path):
+        repo = _repo(tmp_path, f"test_command: {_WRAPPED}\n")
+        _wrapper(repo, body="#!/bin/sh\npytest --junit-xml=\"$1\"\n")
+        [cand] = _probe(repo)
+        assert "as far as prawduct can read" in cand.trigger_summary
+        assert "replacing it drops those from test evidence" in cand.owner_action
 
     def test_following_its_fix_silences_it(self, tmp_path):
         """The recommendation's effect, not its wording: apply it and the advisory goes."""
@@ -234,6 +278,19 @@ class TestFromCountsRefusal:
         err = _refusal(_git_repo(tmp_path, FIX))
         assert "A bare `test-evidence record` runs the declared command on testament" in err
         assert FIX.strip() not in err
+
+    def test_a_declared_wrapper_that_runs_testament_reads_as_wired(self, tmp_path):
+        repo = _git_repo(tmp_path, f"test_command: {_WRAPPED}\n")
+        _wrapper(repo)
+        err = _refusal(repo)
+        assert "A bare `test-evidence record` runs the declared command on testament" in err
+        assert "No declared command runs testament" not in err
+
+    def test_a_wrapper_given_no_report_path_is_named(self, tmp_path):
+        repo = _git_repo(tmp_path, "test_command: scripts/test.sh\n")
+        _wrapper(repo)
+        err = _refusal(repo)
+        assert "The declared testament command has no `{junit_xml}` placeholder" in err
 
     def test_wired_list_never_offers_the_testament_report_as_the_whole_suite(self, tmp_path):
         """prawduct's own shape: one report would record a third of the suite as green."""
