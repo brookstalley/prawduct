@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -2262,6 +2263,100 @@ class TestBacklogPendingLine:
         assert "warming" not in line
         assert "counts unavailable for octo/backlog" in line
         assert "refresh-counts --repo octo/backlog" in line  # the manual path
+
+    # --- #755: a recorded failure is stuck, not warming ------------------------
+
+    _T0 = datetime(2026, 7, 17, 12, 0, 0, tzinfo=timezone.utc)
+
+    def test_post_cutover_never_synced_and_failing_reads_stuck_not_warming(self, tmp_path):
+        from lib.backlog import snapshot
+
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        path = snapshot.snapshot_path(tmp_path)
+        # What the detached child records when its refresh fails.
+        snapshot.record_attempt(path, "octo/backlog", error="unavailable: gh auth failed", now=self._T0)
+        recorder = _PopenRecorder()
+        line = briefing._backlog_pending_line(
+            prawduct, tmp_path, popen=recorder, now=self._T0 + timedelta(hours=1)
+        )
+        assert line == (
+            "Backlog: counts stuck for octo/backlog — background refresh keeps failing "
+            "(unavailable: gh auth failed; last tried 1h ago); run `prawduct-hook backlog "
+            "refresh-counts --repo octo/backlog` (/prawduct:backlog to triage)"
+        )
+        assert _warmed_ops(recorder) == {"refresh-counts", "sync"}  # still retried
+
+    def test_post_cutover_stale_snapshot_and_failing_annotates_the_pending_line(self, tmp_path):
+        from lib.backlog import snapshot
+
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        path = snapshot.snapshot_path(tmp_path)
+        counts = {"total": 5, "by_status": {"open": 5}, "by_stage": {}}
+        snapshot.write(path, "octo/backlog", counts, now=self._T0)
+        snapshot.record_attempt(path, "octo/backlog", error="unavailable: down", now=self._T0 + timedelta(days=2))
+        line = briefing._backlog_pending_line(
+            prawduct, tmp_path, popen=_PopenRecorder(), now=self._T0 + timedelta(days=3)
+        )
+        assert line == (
+            "Backlog: 5 pending on octo/backlog (snapshot 3d old; /prawduct:backlog to triage)"
+            " — refresh failing (unavailable: down; last tried 1d ago); run `prawduct-hook "
+            "backlog refresh-counts --repo octo/backlog` to see the error"
+        )
+
+    def test_post_cutover_zero_pending_and_failing_is_not_silent(self, tmp_path):
+        """The zero-pending path prints nothing when healthy; with a failing
+        refresh, "nothing pending" is a claim the briefing can no longer stand
+        behind, so the failure is said."""
+        from lib.backlog import snapshot
+
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        path = snapshot.snapshot_path(tmp_path)
+        snapshot.write(path, "octo/backlog", {"total": 7, "by_status": {"shipped": 7}, "by_stage": {}}, now=self._T0)
+        snapshot.record_attempt(path, "octo/backlog", error="unavailable: down", now=self._T0 + timedelta(days=1))
+        line = briefing._backlog_pending_line(
+            prawduct, tmp_path, popen=_PopenRecorder(), now=self._T0 + timedelta(days=1)
+        )
+        assert line is not None
+        assert "0 pending on octo/backlog" in line and "refresh failing (unavailable: down" in line
+
+    def test_post_cutover_recorded_failure_cleared_by_a_later_success_stays_silent(self, tmp_path):
+        from lib.backlog import snapshot
+
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        path = snapshot.snapshot_path(tmp_path)
+        snapshot.record_attempt(path, "octo/backlog", error="unavailable: down", now=self._T0)
+        counts = {"total": 5, "by_status": {"open": 5}, "by_stage": {}}
+        snapshot.write(path, "octo/backlog", counts, now=self._T0 + timedelta(minutes=5))
+        line = briefing._backlog_pending_line(
+            prawduct, tmp_path, popen=_PopenRecorder(), now=self._T0 + timedelta(minutes=5)
+        )
+        assert line == (
+            "Backlog: 5 pending on octo/backlog (snapshot just now; /prawduct:backlog to triage)"
+        )
+
+    def test_refresh_failure_carries_a_bounded_first_line(self):
+        """The recorded error can be a multi-line stderr; the briefing line
+        carries its first line, bounded, and names the full-text command."""
+        long_first = "unavailable: " + "x" * 400
+        text = briefing._refresh_failure(
+            {"last_error": f"{long_first}\nsecond line\n", "attempt_age_seconds": 5}
+        )
+        error, _, tried = text.rpartition("; ")
+        assert len(error) == briefing._REFRESH_ERROR_CHARS and error.endswith("…")
+        assert "second line" not in text
+        assert tried == "last tried just now"
+        # Control: a short error passes through whole.
+        assert briefing._refresh_failure(
+            {"last_error": "unavailable: down", "attempt_age_seconds": 7200}
+        ) == "unavailable: down; last tried 2h ago"
 
     def test_humanize_age_buckets(self):
         assert briefing._humanize_age(5) == "just now"

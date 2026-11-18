@@ -1463,7 +1463,9 @@ def _backlog_pending_line(
     NFR §6 "few s") is satisfied structurally, not by a timeout: a stalled or
     slow backend costs the briefing nothing because the backend is only reached
     by the fire-and-forget child. No snapshot yet → a clear "warming" line, and
-    the warm is still fired (the next session reads it).
+    the warm is still fired (the next session reads it). A failure the child
+    recorded (``snapshot.refresh_health``, #755) turns that into "stuck", and
+    annotates a snapshot's line with "refresh failing".
 
     **Pre-cutover** (key absent): parse the markdown backlog exactly as before.
     ``popen``/``now`` are injectable for tests.
@@ -1477,6 +1479,11 @@ def _backlog_pending_line(
 
         path = snapshot.snapshot_path(project_dir)
         snap = snapshot.read(path, scope, now=now) if path else None
+        # The last refresh's outcome, recorded by the detached child (#755). Read
+        # before this session's warm fires, like the snapshot: the line describes
+        # the attempt that has reported back, not the one just launched.
+        health = snapshot.refresh_health(path, scope, now=now) if path else None
+        failing = bool(health and health.get("last_error"))
         # Read the snapshot first, then warm — the warm's outcome decides what the
         # no-snapshot line may honestly claim, so its result is never discarded.
         warmed = _spawn_snapshot_warm(project_dir, scope, popen=popen)
@@ -1491,12 +1498,29 @@ def _backlog_pending_line(
             by_status = snap["counts"].get("by_status") or {}
             # OPEN_STATUSES derives from encode's status SoT — no out-of-band copy.
             pending = sum(by_status.get(status, 0) for status in encode.OPEN_STATUSES)
-            if pending:
+            # Zero pending prints nothing when healthy; while the refresh fails,
+            # "nothing pending" is no longer a claim the line can stand behind.
+            if pending or failing:
                 age = _humanize_age(snap.get("age_seconds"))
                 line = (
                     f"Backlog: {pending} pending{_untriaged_qualifier(snap['counts'])} "
                     f"on {scope} (snapshot {age}; /prawduct:backlog to triage)"
                 )
+            if failing:
+                # A growing snapshot age alone reads as a quiet backlog, not a
+                # broken refresh — say which it is.
+                line += (
+                    f" — refresh failing ({_refresh_failure(health)}); run `prawduct-hook "
+                    f"backlog refresh-counts --repo {scope}` to see the error"
+                )
+        elif failing:
+            # Never had counts, and the recorded attempt says why: "warming"
+            # would be a standing falsehood here (#755).
+            line = (
+                f"Backlog: counts stuck for {scope} — background refresh keeps failing "
+                f"({_refresh_failure(health)}); run `prawduct-hook backlog "
+                f"refresh-counts --repo {scope}` (/prawduct:backlog to triage)"
+            )
         elif warmed:
             # Degrade visibly, never silently (G3): the count is not available
             # yet, and the warm just fired — the next session start has it.
@@ -1522,6 +1546,24 @@ def _backlog_pending_line(
     # One count line, not a 5-item dump every session. /prawduct:backlog is the
     # triage path; dumping arbitrary items here was tax.
     return f"Backlog: {len(pending_items)} pending (/prawduct:backlog to triage)"
+
+
+#: How much of a recorded refresh error the briefing line carries; the full text
+#: is what the named `refresh-counts` command prints.
+_REFRESH_ERROR_CHARS = 160
+
+
+def _refresh_failure(health: dict) -> str:
+    """``<error>; last tried <age>`` for a failing refresh's briefing line — the
+    error's first line, bounded, since it lands on the most-read line."""
+    text = str(health.get("last_error") or "").strip().splitlines()[0:1]
+    error = text[0] if text else "error"
+    if len(error) > _REFRESH_ERROR_CHARS:
+        error = error[: _REFRESH_ERROR_CHARS - 1] + "…"
+    age = _humanize_age(health.get("attempt_age_seconds"))
+    if age.endswith(" old"):
+        age = age[: -len(" old")] + " ago"
+    return f"{error}; last tried {age}"
 
 
 def _untriaged_qualifier(counts: dict) -> str:

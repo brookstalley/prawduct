@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import cache, encode
-from .core import error, from_transport_error, log_diag, ok
+from .core import error, failure_text, from_transport_error, log_diag, ok
 from .encode import parse_iso
 from .query import all_issues
 from .transport import Transport, TransportError, Validator
@@ -70,7 +70,7 @@ def _recording(project_dir: Path, scope: str, run) -> dict:
 
         _record_attempt(project_dir, scope, scrub_secrets(f"{type(exc).__name__}: {exc}"))
         raise
-    _record_attempt(project_dir, scope, _failure_of(result))
+    _record_attempt(project_dir, scope, failure_text(result))
     return result
 
 
@@ -105,15 +105,6 @@ def _record_attempt(project_dir: Path, scope: str, failure: str | None) -> None:
             conn.close()
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- bookkeeping must never replace the failure it is recording; logged, never swallowed silently
         log_diag(f"could not record the sync attempt: {type(exc).__name__}: {exc}")
-
-
-def _failure_of(result) -> str | None:
-    """The failure text of a sync envelope, or ``None`` when it succeeded."""
-    if not isinstance(result, dict) or result.get("status") != "error":
-        return None
-    err = result.get("error") or {}
-    code, message = err.get("code"), err.get("message")
-    return f"{code}: {message}" if code and message else (message or code or "error")
 
 
 def full_rebuild(
