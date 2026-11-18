@@ -11169,7 +11169,7 @@ _USAGE = (
     "review-stats [--json] [--since <stamp>] [--until <stamp>]|stats [--json] [--by-build] [--since <stamp>] [--until <stamp>]|contribute [--json]|contribute --send [--approve sha256:<digest>]|"
     "aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--collector] [--json]|"
     "classify-diff-risk [<base>]|"
-    "worktrees [--json]|"
+    "worktrees [--json] [--prs]|"
     "git-tidy [--offline] [--json] [--apply <fingerprint>] [--after-merge <branch> [--pr <n>]] [--reap <worktree>]|"
     "stale-plugin-caches [--json]|"
     "cost-of-commit [--json] [<paths>...]|"

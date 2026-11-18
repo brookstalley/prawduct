@@ -58,7 +58,9 @@ PINS: dict[tuple[str, str], tuple[int, tuple[str, ...]]] = {
 #: How many candidates build their evidence from live data and so are not
 #: pinned. A literal moved behind a helper or computed name lands here instead of
 #: in PINS; this count is what makes that visible.
-DYNAMIC_EVIDENCE_CANDIDATES = 21
+#: 22 since #843's pushed arm: `finished-branch-unlanded` names its branch, live
+#: data by nature, as `stranded-branch` already did — a new candidate, not a literal moved.
+DYNAMIC_EVIDENCE_CANDIDATES = 22
 
 
 def _digest(lines: list[str]) -> str:
