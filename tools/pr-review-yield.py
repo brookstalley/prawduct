@@ -12,9 +12,16 @@ question #2 asked and could not: *was the PR reviewer worth what it cost* — by
 splitting its findings by goal and severity, so its yield is graded rather than
 its wall clock alone.
 
+It also counts each control's firings by `check` (`lib/control_checks`), the
+structured field consolidation stamps on a Critic finding or observation (#548).
+Recorded `review.pr` rows predate the field, so a row without one has it derived
+on read from the same registry. `--event review.critic` reads the Critic's rows
+instead, never pooled with the PR reviewer's.
+
     tools/pr-review-yield.py                 # this repo
     tools/pr-review-yield.py ../discodon     # a consumer
     tools/pr-review-yield.py --json
+    tools/pr-review-yield.py --event review.critic   # control yield by check
 
 HAZARD, and it governs every duration this prints: `duration_seconds` is
 **self-reported by the reviewing model**, not a measured clock. Against the dispatch
@@ -37,14 +44,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin" / "lib"))
 
+from control_checks import derive_check  # noqa: E402
 from review_dispatch import event_interval_seconds  # noqa: E402
 from timewindow import in_window  # noqa: E402
 
 
 LEDGER = ".prawduct/.governance-ledger.jsonl"
 
+#: The populations this tool reads, one per run.
+EVENTS = ("review.pr", "review.critic")
 
-def load(repo: Path, since: str | None, until: str | None) -> list[dict]:
+
+def load(
+    repo: Path, since: str | None, until: str | None, event: str = "review.pr"
+) -> list[dict]:
     path = repo / LEDGER
     if not path.is_file():
         raise SystemExit(f"no ledger at {path}")
@@ -59,7 +72,7 @@ def load(repo: Path, since: str | None, until: str | None) -> list[dict]:
         except json.JSONDecodeError:
             corrupt += 1
             continue
-        if obj.get("event") != "review.pr":
+        if obj.get("event") != event:
             continue
         # One home, shared with `review-stats` (`lib/timewindow`): these two
         # instruments grade the same before/after split, and while each kept
@@ -94,11 +107,20 @@ def duration(row: dict) -> tuple[int | None, bool]:
     return (int(reported), False) if reported else (None, False)
 
 
+def check_of(item: dict) -> str | None:
+    """The control ``item`` (a finding or observation) is a firing of: its
+    stored ``check``, else derived from its ``summary`` by the registry that
+    stamps it, since rows written before the field carry none."""
+    stored = item.get("check")
+    return stored if isinstance(stored, str) and stored else derive_check(item.get("summary"))
+
+
 def report(rows: list[dict]) -> dict:
     durs, measured_n = [], 0
     by_month: dict[str, list[int]] = collections.defaultdict(list)
     by_goal: collections.Counter = collections.Counter()
     by_sev: collections.Counter = collections.Counter()
+    by_check: collections.Counter = collections.Counter()
     files: list[int] = []
     for row in rows:
         secs, measured = duration(row)
@@ -113,6 +135,15 @@ def report(rows: list[dict]) -> dict:
         for finding in review.get("findings") or []:
             by_goal[(finding.get("goal") or "(none)", finding.get("severity") or "(none)")] += 1
             by_sev[finding.get("severity") or "(none)"] += 1
+            check = check_of(finding)
+            if check:
+                by_check[(check, finding.get("severity") or "(none)")] += 1
+        # A control's firing may be an observation (`read-cost:` mostly is);
+        # counted under its own label so the severity split stays truthful.
+        for observation in review.get("observations") or []:
+            check = check_of(observation)
+            if check:
+                by_check[(check, "observation")] += 1
     total_findings = sum(by_sev.values())
     return {
         "reviews": len(rows),
@@ -124,6 +155,7 @@ def report(rows: list[dict]) -> dict:
         "findings_per_review": round(total_findings / len(rows), 2) if rows else None,
         "by_severity": dict(by_sev),
         "by_goal": {f"{g} / {s}": n for (g, s), n in by_goal.most_common()},
+        "by_check": {f"{c} / {s}": n for (c, s), n in by_check.most_common()},
         "median_files_reviewed": statistics.median(files) if files else None,
         "by_month": {
             m: {"n": len(v), "median_seconds": statistics.median(v)}
@@ -138,11 +170,13 @@ def main() -> int:
     ap.add_argument("--since", help="ISO timestamp lower bound (inclusive)")
     ap.add_argument("--until", help="ISO timestamp upper bound (inclusive)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--event", choices=EVENTS, default="review.pr",
+                    help="which reviewer's rows to read (default: review.pr)")
     args = ap.parse_args()
 
-    rows = load(args.repo, args.since, args.until)
+    rows = load(args.repo, args.since, args.until, args.event)
     if not rows:
-        print("no review.pr events in range", file=sys.stderr)
+        print(f"no {args.event} events in range", file=sys.stderr)
         return 1
     data = report(rows)
 
@@ -151,7 +185,8 @@ def main() -> int:
         print()
         return 0
 
-    print(f"PR review yield — {args.repo} ({data['reviews']} review(s))")
+    label = "PR review" if args.event == "review.pr" else "Critic review"
+    print(f"{label} yield — {args.repo} ({data['reviews']} review(s))")
     est = data["with_duration"] - data["measured_durations"]
     print(
         f"  duration: median {data['median_seconds']}s, {data['total_hours']}h total"
@@ -161,6 +196,9 @@ def main() -> int:
     print(f"  findings: {data['findings']} ({data['findings_per_review']}/review) {data['by_severity']}")
     print("\n  by goal x severity:")
     for label, n in data["by_goal"].items():
+        print(f"    {n:5d}  {label}")
+    print("\n  by check x severity:")
+    for label, n in data["by_check"].items():
         print(f"    {n:5d}  {label}")
     print("\n  by month:")
     for month, v in data["by_month"].items():

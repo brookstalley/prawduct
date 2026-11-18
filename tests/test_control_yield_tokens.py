@@ -21,6 +21,7 @@ countability is the easiest thing to lose to a reflow, and losing it is silent.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import re
@@ -28,6 +29,8 @@ import re
 import pytest
 
 PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
+if str(PLUGIN) not in sys.path:
+    sys.path.insert(0, str(PLUGIN))
 
 CRITIC_PROTOCOL = PLUGIN / "skills/critic/review-protocol.md"
 CRITIC_GOALS_13 = PLUGIN / "skills/critic/goals-1-3.md"
@@ -355,6 +358,60 @@ class TestReadCostToken:
         assert f"## {match.group(1)}" in headings, (
             f"the read-cost bullet cites data-model.md \"{match.group(1)}\", and the "
             f"template's sections are {headings}."
+        )
+
+
+class TestTheRegistryMatchesTheInstructions:
+    """`lib/control_checks.KNOWN_CHECKS` is the closed registry consolidation
+    derives a finding's structured `check` from (#548). It is only closed if it
+    and the protocols agree in both directions: a token instructed with no
+    registry entry fires uncounted, and a registry slug no protocol instructs
+    any more counts a control that can no longer fire.
+
+    An instruction is recognised by its shape, read from the prose rather than
+    from a list of files: a backticked `slug:` followed, within the sentence,
+    by the word "yield" — every copy says why the token exists. Shipped prose
+    only; `CHANGELOG.md` is history and quotes retired wording.
+    """
+
+    INSTRUCTION = re.compile(r"`([a-z]+(?:-[a-z]+)+):`[^`.]{0,60}\byield\b")
+
+    def _instructed(self) -> dict[str, list[str]]:
+        found: dict[str, list[str]] = {}
+        for path in sorted(PLUGIN.rglob("*.md")):
+            if path.name == "CHANGELOG.md":
+                continue
+            flowed = " ".join(path.read_text().split())
+            for m in self.INSTRUCTION.finditer(flowed):
+                found.setdefault(m.group(1), []).append(str(path.relative_to(PLUGIN)))
+        return found
+
+    def test_the_scan_reaches_the_known_copies(self) -> None:
+        # The scan's own falsifier: if the shape stopped matching, both
+        # directions below would agree with an empty set.
+        instructed = self._instructed()
+        assert "skills/critic/review-protocol.md" in instructed.get("scope-trace", [])
+        assert "agents/critic-reviewer.md" in instructed.get("rule-unenforced", [])
+        assert len(instructed) >= 4, instructed
+
+    def test_every_instructed_token_is_registered(self) -> None:
+        from lib import control_checks  # noqa: PLC0415
+
+        unregistered = set(self._instructed()) - set(control_checks.KNOWN_CHECKS)
+        assert not unregistered, (
+            f"{sorted(unregistered)} is instructed as a yield token but missing from "
+            "`control_checks.KNOWN_CHECKS`, so its firings persist with no `check` "
+            "and its yield is uncountable."
+        )
+
+    def test_every_registered_slug_is_still_instructed(self) -> None:
+        from lib import control_checks  # noqa: PLC0415
+
+        orphaned = set(control_checks.KNOWN_CHECKS) - set(self._instructed())
+        assert not orphaned, (
+            f"{sorted(orphaned)} is in `control_checks.KNOWN_CHECKS` but no reviewer "
+            "surface instructs it any more — retire the slug with the control, or "
+            "restore the instruction."
         )
 
 

@@ -290,6 +290,65 @@ class TestReport:
         assert len(yield_tool.load(repo, None, "2026-09-01T11:00:00Z")) == 0
 
 
+class TestByCheck:
+    """#548: a control's yield is counted by its structured `check`, not by a
+    title `startswith`. Recorded `review.pr` rows predate the field, so the tool
+    derives it on read from the same registry consolidation stamps it from
+    (`lib/control_checks`); a row that carries `check` is read as written."""
+
+    def _row(self, ts, summaries, *, event="review.pr", stamped=None, observations=()):
+        row = _event(ts, duration=300)
+        row["event"] = event
+        row["review"]["findings"] = [
+            {"goal": "G", "severity": "warning", "summary": s} for s in summaries
+        ]
+        if stamped is not None:
+            row["review"]["findings"].append(
+                {"goal": "G", "severity": "blocking", "summary": "no token here",
+                 "check": stamped}
+            )
+        if observations:
+            row["review"]["observations"] = [{"goal": "G", "summary": s} for s in observations]
+        return row
+
+    def test_findings_are_counted_by_check(self, tmp_path):
+        repo = _ledger(tmp_path, [self._row(
+            "2026-09-18T12:00:00Z",
+            ["Scope-Trace: x", "foo.py: scope-trace — y", "rule-unenforced z",
+             "The scope-trace: retire rule is polluted", "plain finding"],
+            stamped="cross-component-contract",
+        )])
+        data = yield_tool.report(yield_tool.load(repo, None, None))
+        assert data["by_check"] == {
+            "scope-trace / warning": 2,
+            "rule-unenforced / warning": 1,
+            "cross-component-contract / blocking": 1,
+        }
+
+    def test_critic_rows_are_read_only_when_asked_and_count_observations(self, tmp_path):
+        rows = [
+            self._row("2026-09-18T12:00:00Z", ["scope-trace: pr"]),
+            self._row("2026-09-18T12:30:00Z", ["scope-trace: critic"],
+                      event="review.critic", observations=["read-cost: walks the store"]),
+        ]
+        repo = _ledger(tmp_path, rows)
+        pr = yield_tool.report(yield_tool.load(repo, None, None))
+        assert pr["reviews"] == 1, "the default population stays the PR reviewer's"
+        critic = yield_tool.report(yield_tool.load(repo, None, None, event="review.critic"))
+        assert critic["reviews"] == 1
+        assert critic["by_check"] == {
+            "scope-trace / warning": 1, "read-cost / observation": 1,
+        }
+
+    def test_the_human_report_prints_the_by_check_table(self, tmp_path, monkeypatch, capsys):
+        repo = _ledger(tmp_path, [self._row("2026-09-18T12:00:00Z", ["scope-trace: x"])])
+        monkeypatch.setattr(sys, "argv", ["pr-review-yield.py", str(repo)])
+        assert yield_tool.main() == 0
+        out = capsys.readouterr().out
+        assert "by check x severity:" in out
+        assert "1  scope-trace / warning" in out
+
+
 class TestAgainstRealLedgerRows:
     """These rows are REAL, captured verbatim from this repo's ledger and committed at
     `tests/fixtures/real-pr-reviews.jsonl`.

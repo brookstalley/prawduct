@@ -891,6 +891,7 @@ def next_action_line(
     rides_next_review: "str | None" = None,
     uncertified: "tuple[str, list[str]] | None" = None,
     waived: "list[str] | None" = None,
+    rounds_clause: str = "",
 ) -> str:
     """:func:`_next_action_core`'s sentence, ending on :func:`uncertified_clause`
     when ``uncertified`` (the review's mode and the plan's open chunks) says a
@@ -908,7 +909,7 @@ def next_action_line(
         blocking = max(blocking - len(waived), 0)
     line = _next_action_core(
         fact_id, blocking, warning, note, price_sentence, carried, span,
-        observations, cost, rides_next_review,
+        observations, cost, rides_next_review, rounds_clause,
     )
     if waived:
         line = (
@@ -933,6 +934,7 @@ def _next_action_core(
     observations: int = 0,
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
+    rounds_clause: str = "",
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -972,7 +974,14 @@ def _next_action_core(
     anyway. For the same reason the blocking arm now also names the accept
     route: it already orders the builder to decide the WARNING/NOTE findings in
     the same pass, and the command for the cheapest of those decisions lived
-    only in the arm the builder does not reach when something is blocking."""
+    only in the arm the builder does not reach when something is blocking.
+
+    ``rounds_clause`` is :func:`coverage.branch_rounds_clause`'s output (#815),
+    passed in like ``price_sentence`` and for the same reason. It rides the
+    arms that offer a fix (the blocking arm and the fix tail), after the
+    price: it is the branch's count of rounds already bought, read where the
+    next one is decided. Not on a clean close, where nothing is to be fixed,
+    nor under ``rides_next_review``, where a fix buys no round."""
     ref = fact_id or "<review-id>"
     price = f" {price_sentence}" if price_sentence else ""
     # Leads the two zero-blocking arms that still carry a fix decision, and
@@ -985,7 +994,7 @@ def _next_action_core(
     # that will not be bought — so one lead replaces all four (see
     # `_RIDES_NEXT_REVIEW_LEAD`). The blocking arm below never reads either:
     # blockers clear only through `verify-resolutions`, whatever is owed later.
-    fix_tail = _IF_YOU_FIX_SOME + _RIDE_ALONG_ROUTE + price
+    fix_tail = _IF_YOU_FIX_SOME + _RIDE_ALONG_ROUTE + price + rounds_clause
     if rides_next_review:
         from . import critic_mode  # noqa: PLC0415 — lazy; critic_mode imports this module lazily too
 
@@ -1047,6 +1056,7 @@ def _next_action_core(
             + gates.BLAST_RADIUS_CHECK
             + _RIDE_ALONG_ROUTE
             + price
+            + rounds_clause
         )
     if not (warning or note):
         # "0 findings, N observations" is the modal close of an inner-stage
@@ -5568,7 +5578,14 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     as the record ``summary``). The ``fid`` is what resolution facts join on
     (D5) — a blocking finding without one could never be resolved, so the
     writer always assigns them.
+
+    ``check`` is the control the finding is a firing of, derived here from
+    the title token by :func:`control_checks.derive_check` and never written
+    by a reviewer (#548). Absent, never ``null``, when the title opens with
+    no registered token.
     """
+    from . import control_checks  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
     merged: dict[tuple, dict] = {}
     for partial in partials:
         for f in partial.get("findings", []):
@@ -5588,6 +5605,9 @@ def merge_findings(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            check = control_checks.derive_check(f["name"])
+            if check is not None:
+                entry["check"] = check
             tests = [t.strip() for t in (f.get("failed_tests") or [])]
             if tests:
                 # What `_waive_inherited_failures` matches against the base run.
@@ -5885,8 +5905,12 @@ def merge_observations(partials: list[dict]) -> list[dict]:
     stay unambiguous.
 
     Severity is dropped rather than carried; :func:`_validate_observations`
-    owns that decision and states why.
+    owns that decision and states why. ``check`` is derived as it is there:
+    a control whose firings land mostly as observations (``read-cost:``)
+    would otherwise read as one that rarely fires.
     """
+    from . import control_checks  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
     merged: dict[tuple, dict] = {}
     for partial in partials:
         for o in partial.get("observations") or []:
@@ -5903,6 +5927,9 @@ def merge_observations(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            check = control_checks.derive_check(o["name"])
+            if check is not None:
+                entry["check"] = check
             if partial.get("role") == RECORD_LINT_SOURCE:
                 entry["source"] = RECORD_LINT_SOURCE
             about = observation_about(o)
@@ -6564,6 +6591,7 @@ def fact_to_cache_record(
     store: dict,
     not_waived: "dict[str, str] | None" = None,
     prawduct_dir: "Path | None" = None,
+    rounds_clause: str = "",
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -6586,7 +6614,9 @@ def fact_to_cache_record(
     same way and for the same reason — and it must ride, because this record and
     the relayed ``NEXT-ACTION:`` line are two carriers of one sentence, and a
     builder who met them saying different things about the branch would have no
-    way to tell which was computed."""
+    way to tell which was computed. ``rounds_clause`` rides the same way: only
+    consolidation computes it, so a record re-rendered on ingest says nothing
+    about this branch's round count rather than something stale."""
     body = fact.get("body") or {}
     waived = dispositions.inherited_waivers(store, fact)
     findings = []
@@ -6600,6 +6630,10 @@ def fact_to_cache_record(
         }
         if f.get("files"):
             entry["files"] = list(f["files"])
+        # Additive, like `fix_cost`: the review.critic ledger row copies this
+        # record, which is how a control's yield reaches the ledger (#548).
+        if f.get("check"):
+            entry["check"] = f["check"]
         # Additive key; the schema validator checks required fields only and
         # `--json` readers tolerate unknown ones (api-contract § Direction).
         entry["fix_cost"] = finding_fix_cost(f.get("files"))
@@ -6628,6 +6662,8 @@ def fact_to_cache_record(
         }
         if o.get("files"):
             entry["files"] = list(o["files"])
+        if o.get("check"):
+            entry["check"] = o["check"]
         observations.append(entry)
     counts = body.get("counts") or {}
     blocking = counts.get("blocking", 0)
@@ -6674,7 +6710,7 @@ def fact_to_cache_record(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
             cost=cost, rides_next_review=rides_next_review, uncertified=uncertified,
-            waived=waived,
+            waived=waived, rounds_clause=rounds_clause,
         ) + _native_clause(prawduct_dir, fact.get("id")),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -7968,9 +8004,26 @@ def _consolidate(
         span = span_clause(answer, _span_commits(project_dir, answer))
 
     uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
+
+    # #815: how many rounds this branch has bought, said where the builder
+    # decides whether to buy another — the gate prints it only after one is
+    # bought. One lineage walk over the store just re-read, so the count
+    # includes this review and matches what the gate will print next. Rendered
+    # once and handed in like the price, so both carriers say the same thing.
+    merge_base = coverage.resolve_merge_base_tree(project_dir)
+    tally = (
+        coverage.count_branch_rounds(
+            project_dir, store.get("facts") or [], merge_base["merge_base"]
+        )
+        if merge_base["status"] == "ok"
+        else {"status": "unavailable", "reason": merge_base["reason"]}
+    )
+    rounds_clause = coverage.branch_rounds_clause(tally)
+
     record = fact_to_cache_record(
         fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
         store=store, not_waived=waiver_refusals, prawduct_dir=prawduct_dir,
+        rounds_clause=rounds_clause,
     )
     record["next_action"] = _lead_with_moved_head(moved, record["next_action"])
     findings_path = findings_cache_path(prawduct_dir)
