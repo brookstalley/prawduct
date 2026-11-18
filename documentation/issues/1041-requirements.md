@@ -97,6 +97,16 @@ Checked against `develop` at `0b0ddffc`.
    compare-and-delete removes only the commit just proven, and `-D` and `--force` are still never
    used. The unpushed-commit signal moves to R4, which compares the merged PR's head with the local
    tip before deleting.
+
+   *Departure raised during #1187's fix, 2026-11-18, awaiting the owner's confirmation:* a worktree
+   that holds submodules is removed with `git worktree remove --force`. Git refuses every such
+   worktree unforced, whatever its state, so that refusal is not a safety judgment. A forced removal
+   deletes the submodules' repositories, which live under the worktree's own git directory, so
+   `--force` is passed only after a further proof: each submodule is clean (read with
+   `--ignore-submodules=none`), and every commit its HEAD and branches reach is on one of its
+   remotes. Anything git cannot answer keeps the worktree. A worktree without submodules is still
+   never forced. Keeping R2 strictly would leave such a worktree's removal to a hand-run `--force`,
+   with none of these checks.
 3. **Remote branches.** A remote branch is a candidate only if it is on the repo's own remote (not
    a fork), not long-lived, and integrated, and no open PR uses it as its head or base. Deleting a
    stacked PR's base closes the child PR on GitHub, so the merge flow retargets such PRs first

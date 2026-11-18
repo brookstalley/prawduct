@@ -28,7 +28,8 @@ Its readers:
 What is never a candidate, whatever its state: a long-lived branch; a branch
 checked out in a worktree somebody could be working in; the main worktree and
 the current one; a locked worktree (the harness locks an agent's worktree while
-the agent runs); a worktree with tracked changes or untracked files; a detached
+the agent runs); a worktree with tracked changes or untracked files, or with a
+submodule that has either or holds a commit none of its remotes has; a detached
 or long-lived-branch worktree, which is a checkout kept for its own sake (an
 install a plugin runs from looks exactly like one); a remote branch an open pull
 request uses as its head or base (deleting a base closes the request stacked on
@@ -43,7 +44,10 @@ delete itself is conditional on the ref still naming the proven commit:
 remote delete. ``git branch -d`` is not used, because it asks whether the branch
 is merged into HEAD or its upstream — not into the long-lived branch that is the
 proof — and so refuses a branch merged into ``main`` while ``develop`` is checked
-out. Nothing here passes ``-D`` or ``--force``.
+out. Nothing here passes ``-D``. ``--force`` is passed only to remove a worktree
+that holds submodules, which git refuses unforced whatever its state, and only
+after proving each submodule clean and every commit it reaches published
+(:func:`_submodule_hold`), because a forced removal deletes their repositories.
 
 **Network.** The online dry run and ``--apply`` run ``git fetch --prune`` first
 (a proof against stale refs is not a proof), one ``gh pr list`` of open pull
@@ -547,6 +551,71 @@ def _prove_by_merged_pr(project_dir: Path, result: Plan, unproven: list[tuple[st
         )
 
 
+def _module_repos(modules: Path) -> list[Path]:
+    """The submodule repositories under a worktree's ``modules`` directory, nested
+    ones included (``modules/<a>/modules/<b>``). A deinitialised submodule keeps
+    its repository here too, so this finds it where the checkout no longer does."""
+    found: list[Path] = []
+    if not modules.is_dir():
+        return found
+    for child in sorted(modules.iterdir()):
+        if (child / "HEAD").is_file() and (child / "objects").is_dir():
+            found.append(child)
+            found.extend(_module_repos(child / "modules"))
+        elif child.is_dir():
+            # A module name with a slash (`vendor/lib`) nests one directory deeper.
+            found.extend(_module_repos(child))
+    return found
+
+
+def _submodule_hold(worktree: Path) -> tuple[str | None, bool]:
+    """``(why the worktree must be kept, whether it has submodules)``.
+
+    Git refuses to remove a worktree that holds submodules unless forced, and a
+    forced removal deletes the submodules' repositories with it: they live under
+    this worktree's own git directory, so a submodule commit that no remote has
+    exists nowhere else. Proving the worktree's own branch merged says nothing
+    about them. So a worktree with submodules is removed only when each one is
+    clean and every commit its HEAD and branches reach is on one of its remotes;
+    anything git cannot answer keeps the worktree."""
+    gitdir = _git(worktree, "rev-parse", "--absolute-git-dir")
+    if gitdir is None:
+        return "could not find its git directory, so its submodules could not be checked", False
+    root = Path(gitdir.strip()) / "modules"
+    repos = _module_repos(root)
+    if not repos:
+        return None, False
+    # `--ignore-submodules=none`: a repo or user `submodule.*.ignore` setting would
+    # otherwise hide the very changes a forced removal deletes.
+    status = _git(worktree, "status", "--porcelain", "--ignore-submodules=none")
+    if status is None:
+        return "could not read its submodules' status", True
+    if status.strip():
+        return "a submodule has uncommitted or untracked files; integrate or discard them first", True
+    unpublished: list[str] = []
+    for repo in repos:
+        name = repo.relative_to(root).as_posix()
+        out = _git(worktree, "--git-dir", str(repo), "rev-list", "--max-count=1",
+                   "HEAD", "--branches", "--not", "--remotes")
+        if out is None:
+            return f"could not read submodule {name}'s commits", True
+        if out.strip():
+            unpublished.append(name)
+    if unpublished:
+        return (
+            f"submodule {', '.join(unpublished)} holds commits no remote has, and removing the "
+            "worktree deletes them: push them from the submodule first", True,
+        )
+    return None, True
+
+
+def _remove_worktree_command(path: str, has_submodules: bool) -> tuple[str, ...]:
+    """``--force`` only for submodules, and only after :func:`_submodule_hold` has
+    cleared them: without submodules, git's own refusal of a dirty worktree is a
+    second guard worth keeping against an edit that lands after the checks."""
+    return ("git", "worktree", "remove", *(("--force",) if has_submodules else ()), path)
+
+
 def _sibling_removal(record, index, rows, local, proven_by, names) -> Action | None:
     """A removal for a sibling worktree holding a finished feature branch, idle a
     week, or None. Every condition is a reason to keep it; each is checked."""
@@ -562,11 +631,14 @@ def _sibling_removal(record, index, rows, local, proven_by, names) -> Action | N
     ref = f"refs/heads/{branch}"
     if ref not in proven_by or local.get(ref) != record.get("HEAD"):
         return None
+    hold, has_submodules = _submodule_hold(Path(path))
+    if hold is not None:
+        return None  # its submodules are not proven safe to delete
     days = stranded_work.IDLE_AFTER_SECONDS // 86400
     return Action(
         REMOVE_WORKTREE, path, record["HEAD"],
         f"clean, no activity for {days}+ days, and {branch} is reachable from {_shown(proven_by[ref])}",
-        ("git", "worktree", "remove", path), proven_by=proven_by[ref],
+        _remove_worktree_command(path, has_submodules), proven_by=proven_by[ref],
     )
 
 
@@ -615,6 +687,9 @@ def _reprove(project_dir: Path, action: Action, remote: str) -> str | None:
         status = _git(Path(action.target), "status", "--porcelain")
         if status is None or status.strip():
             return "it has uncommitted or untracked files now"
+        hold, _has_submodules = _submodule_hold(Path(action.target))
+        if hold is not None:
+            return hold
     elif action.kind == DELETE_BRANCH:
         tip = _git(project_dir, "rev-parse", "--verify", "--quiet", f"refs/heads/{action.target}")
         if (tip or "").strip() != action.sha:
@@ -880,7 +955,10 @@ def reap(project_dir: Path, worktree: str) -> list[Step]:
     if proof is None:
         return [Step(name, KEPT, "its work is not integrated: merge it into this branch first, or abandon "
                                  "it deliberately with `git worktree remove` and say why")]
-    ok, detail = _git_write(project_dir, "worktree", "remove", path)
+    hold, has_submodules = _submodule_hold(Path(path))
+    if hold is not None:
+        return [Step(name, KEPT, hold)]
+    ok, detail = _git_write(project_dir, *_remove_worktree_command(path, has_submodules)[1:])
     steps = [Step(name, REMOVED if ok else FAILED, "" if ok else detail)]
     if ok and branch and not is_long_lived(branch, names):
         ok, detail = _delete_local_branch(project_dir, branch, sha)

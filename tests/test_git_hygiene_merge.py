@@ -342,6 +342,60 @@ class TestReap:
         [step] = gh.reap(repo, str(wt))
         assert step.result == FAILED and "could not list" in step.detail and wt.exists()
 
+    # --- a delegate that added a submodule -----------------------------------
+    # Git refuses to remove such a worktree unforced, and a forced removal deletes
+    # the submodule's repository, which lives under the worktree's own git dir.
+
+    def _with_submodule(self, repo, tmp_path):
+        lib = tmp_path / "lib"
+        git(tmp_path, "init", "-q", str(lib))
+        commit(lib, "lib.txt")
+        wt = self._delegate(repo, tmp_path, integrate=False)
+        git(wt, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "vendor/lib")
+        git(wt, "commit", "-q", "-m", "add submodule")
+        return wt
+
+    def _integrate(self, repo):
+        git(repo, "merge", "-q", "--no-ff", "-m", "take delegate", "worktree-agent-1")
+
+    def test_an_integrated_delegate_with_a_published_submodule_goes(self, repo, tmp_path):
+        wt = self._with_submodule(repo, tmp_path)
+        self._integrate(repo)
+        steps = gh.reap(repo, str(wt))
+        assert [s.result for s in steps] == [REMOVED, REMOVED], steps
+        assert not wt.exists() and not has_branch(repo, "worktree-agent-1")
+
+    def test_a_submodule_commit_no_remote_has_keeps_the_worktree(self, repo, tmp_path):
+        wt = self._with_submodule(repo, tmp_path)
+        local_only = commit(wt / "vendor" / "lib", "local-only.txt")
+        git(wt, "add", "vendor/lib")
+        git(wt, "commit", "-q", "-m", "bump submodule")
+        self._integrate(repo)
+        [step] = gh.reap(repo, str(wt))
+        assert step.result == KEPT and "vendor/lib holds commits no remote has" in step.detail, step
+        assert wt.exists() and has_branch(repo, "worktree-agent-1")
+        assert git(wt / "vendor" / "lib", "cat-file", "-t", local_only).strip() == "commit"
+        # Control: once the commit is published, the same worktree goes.
+        git(wt / "vendor" / "lib", "push", "-q", "origin", "HEAD:refs/heads/published")
+        git(wt / "vendor" / "lib", "fetch", "-q", "origin")
+        assert [s.result for s in gh.reap(repo, str(wt))] == [REMOVED, REMOVED]
+
+    @pytest.mark.parametrize("ignore, caught_by", [
+        (None, "it has uncommitted"),  # the worktree's own status already sees it
+        # A setting that hides submodule changes from a plain `git status`; only
+        # the submodule proof, which overrides it, still sees them.
+        ("all", "a submodule has uncommitted"),
+    ], ids=["default", "submodule-ignore-all"])
+    def test_a_dirty_submodule_keeps_the_worktree(self, repo, tmp_path, ignore, caught_by):
+        wt = self._with_submodule(repo, tmp_path)
+        if ignore:
+            git(wt, "config", "submodule.vendor/lib.ignore", ignore)
+        self._integrate(repo)
+        (wt / "vendor" / "lib" / "scratch.txt").write_text("unsaved")
+        [step] = gh.reap(repo, str(wt))
+        assert step.result == KEPT and step.detail.startswith(caught_by), step
+        assert (wt / "vendor" / "lib" / "scratch.txt").exists()
+
     def test_the_main_worktree_cannot_be_reaped(self, repo, tmp_path):
         wt = self._delegate(repo, tmp_path)
         [step] = gh.reap(wt, str(repo))
