@@ -77,6 +77,17 @@ def from_transport_error(exc: TransportError) -> dict:
     return error(exc.code, exc.message, retryable=exc.retryable, details=exc.details)
 
 
+def failure_text(result) -> str | None:
+    """The failure text of an envelope, or ``None`` when it succeeded — the one
+    spelling every writer of an attempt record stamps (the cache's sync cursor
+    and the counts snapshot, #755)."""
+    if not isinstance(result, dict) or result.get("status") != "error":
+        return None
+    err = result.get("error") or {}
+    code, message = err.get("code"), err.get("message")
+    return f"{code}: {message}" if code and message else (message or code or "error")
+
+
 #: A write path's local-mirror hook: ``(issue, owner, repo) -> None``. Named once
 #: so the eight signatures that thread it agree by construction, and so a reader
 #: binding one in Chunk 03 has a shape to bind against rather than a bare `absorb`.

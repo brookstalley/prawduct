@@ -267,15 +267,19 @@ class TestClosuresIssuesBackend:
             return table[id_raw]
         return _resolve
 
-    def test_an_open_id_is_owed_at_merge_and_an_unknown_one_warns(self, tmp_path, monkeypatch):
+    def test_an_open_id_is_owed_at_merge_and_a_malformed_one_warns(self, tmp_path, monkeypatch):
         """Inputs that trip it: `#41` resolves open (owed: GitHub closes it from
-        the PR description), `#99` resolves to nothing (unresolved)."""
+        the PR description), `owner/repo#x` is no id spelling at all — no backlog
+        could resolve it, so it stays a finding. `resolve` reports the spelling's
+        complaint as `reason`, which is the shape it returns for one."""
         import lib.backlog.cachequery as cq
 
-        repo = _repo(tmp_path, state_extra=self.STATE, closes=["owner/repo#41", "owner/repo#99", "owner/repo#7"])
+        repo = _repo(tmp_path, state_extra=self.STATE, closes=["owner/repo#41", "owner/repo#x", "owner/repo#7"])
         monkeypatch.setattr(cq, "resolve", self._resolver({
             "owner/repo#41": self._envelope({"resolved": True, "dead": False, "status": "open", "title": "the widget"}),
-            "owner/repo#99": self._envelope({"resolved": False, "reason": "not-found"}),
+            "owner/repo#x": self._envelope({
+                "resolved": False, "reason": "issue number after '#' must be digits, got 'x'",
+            }),
             "owner/repo#7": self._envelope({"resolved": True, "dead": True, "status": "closed"}),
         }))
         report = pr_gate.hygiene(repo)
@@ -285,10 +289,69 @@ class TestClosuresIssuesBackend:
         assert results["close-owed-at-merge"].severity == "information"
         assert any("owner/repo#41" in i for i in results["close-owed-at-merge"].items)
         assert not any("#7" in i for i in results["close-owed-at-merge"].items)
-        assert any("owner/repo#99" in i for i in results["closes-unresolved"].items)
+        assert any("owner/repo#x" in i for i in results["closes-unresolved"].items)
+        assert results["closes-unresolved"].unchecked is None
         # Never the markdown-only result on this backend.
         assert "closes-still-open" not in results
         assert pr_gate.hygiene_exit(report) == 0
+
+    def test_a_well_formed_id_the_cache_does_not_hold_is_unchecked_not_unresolved(
+        self, tmp_path, monkeypatch
+    ):
+        """#1195. The local cache can be stale or partial, so a miss on a
+        well-formed id — an issue spelling or a `PFX` alias — says the cache
+        could not answer; it is never "the backlog does not resolve". An id on
+        another repo is one this single-repo store never holds and a rebuild
+        would not fetch, so it names the lookup that can answer instead.
+        `resolve`'s miss on a well-formed issue spelling carries `reason: None`."""
+        import lib.backlog.cachequery as cq
+
+        miss = self._envelope({"resolved": False, "reason": None})
+        repo = _repo(tmp_path, state_extra=self.STATE, closes=["owner/repo#99", "BKL-7M4Q", "other/repo#5"])
+        monkeypatch.setattr(cq, "resolve", self._resolver({
+            "owner/repo#99": miss,
+            "BKL-7M4Q": self._envelope({
+                "resolved": False, "reason": "unrecognized ID spelling 'BKL-7M4Q' (expected owner/repo#number)",
+            }),
+            "other/repo#5": miss,
+        }))
+        report = pr_gate.hygiene(repo)
+        results = {r.name: r for r in report.results}
+        assert set(results) == {"closes-unresolved"}, results
+        result = results["closes-unresolved"]
+        assert result.items == [], "a cache miss is not a finding"
+        assert result.unchecked is not None
+        stale_part, _, other_part = result.unchecked.partition("; ")
+        assert "owner/repo#99" in stale_part and "BKL-7M4Q" in stale_part
+        assert "prawduct-hook backlog sync --rebuild --repo owner/repo" in stale_part
+        assert "other/repo#5" in other_part and "--rebuild" not in other_part
+        assert "prawduct-hook backlog get other/repo#5" in other_part
+        assert pr_gate.hygiene_exit(report) == 0
+
+    def test_an_open_issue_missing_from_a_real_partial_cache_is_unchecked(self, tmp_path):
+        """#1195 at the layer it was reported, through the real cache: `#1` was
+        synced, `#2` was filed afterwards and never synced. Both are open on the
+        backend; before the fix `#2` read `closes-unresolved`."""
+        tests_dir = str(REPO_ROOT / "tests")
+        if tests_dir not in sys.path:
+            sys.path.insert(0, tests_dir)
+        from fakes.fake_github import FakeGitHub
+        from lib.backlog import core as backlog_core, sync
+
+        repo = _repo(tmp_path, state_extra=self.STATE, closes=["owner/repo#1", "owner/repo#2"])
+        fake = FakeGitHub(user={"login": "agent-a", "id": 1})
+        first = backlog_core.file_item(fake, owner="owner", repo="repo", title="gate: the synced item", body="b")
+        assert first["data"]["id"] == "owner/repo#1", first
+        assert sync.full_rebuild(fake, project_dir=repo, owner="owner", repo="repo")["status"] == "ok"
+        second = backlog_core.file_item(fake, owner="owner", repo="repo", title="gate: the unsynced item", body="b")
+        assert second["data"]["id"] == "owner/repo#2", second
+
+        report = pr_gate.hygiene(repo)
+        results = {r.name: r for r in report.results}
+        assert any("owner/repo#1" in i for i in results["close-owed-at-merge"].items), results
+        assert results["closes-unresolved"].items == []
+        assert "owner/repo#2" in results["closes-unresolved"].unchecked
+        assert "sync --rebuild" in results["closes-unresolved"].unchecked
 
     def test_a_cache_that_cannot_answer_is_unchecked_not_clean(self, tmp_path, monkeypatch):
         import lib.backlog.cachequery as cq

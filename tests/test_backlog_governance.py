@@ -20,6 +20,7 @@ Covers, against the transport-seam fake (offline, no ``gh``, no network):
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -132,6 +133,49 @@ class TestSnapshot:
     def test_snapshot_path_none_outside_git_repo(self, tmp_path):
         assert snapshot.snapshot_path(tmp_path) is None
 
+    # --- #755: the attempt record ---------------------------------------------
+
+    def test_record_attempt_creates_entry_with_no_counts(self, tmp_path):
+        """A scope that has never once refreshed still records that it was tried
+        and failed — the case the briefing otherwise calls "warming" forever."""
+        path = tmp_path / "counts.json"
+        snapshot.record_attempt(path, SCOPE, error="unavailable: gh auth failed", now=NOW)
+        health = snapshot.refresh_health(path, SCOPE, now=NOW + timedelta(seconds=30))
+        assert health == {
+            "last_attempt_at": "2026-07-17T12:00:00Z",
+            "last_error": "unavailable: gh auth failed",
+            "attempt_age_seconds": 30,
+        }
+        assert snapshot.read(path, SCOPE, now=NOW) is None  # no counts exist yet
+
+    def test_record_attempt_preserves_existing_counts(self, tmp_path):
+        path = tmp_path / "counts.json"
+        snapshot.write(path, SCOPE, {"total": 4}, now=NOW)
+        later = NOW + timedelta(hours=3)
+        snapshot.record_attempt(path, SCOPE, error="unavailable: down", now=later)
+        got = snapshot.read(path, SCOPE, now=later)
+        assert got["counts"] == {"total": 4}
+        assert got["fetched_at"] == "2026-07-17T12:00:00Z"
+        health = snapshot.refresh_health(path, SCOPE, now=later)
+        assert health["last_error"] == "unavailable: down"
+        assert health["last_attempt_at"] == "2026-07-17T15:00:00Z"
+
+    def test_write_after_record_attempt_clears_the_error(self, tmp_path):
+        path = tmp_path / "counts.json"
+        snapshot.record_attempt(path, SCOPE, error="unavailable: down", now=NOW)
+        snapshot.write(path, SCOPE, {"total": 1}, now=NOW + timedelta(minutes=5))
+        health = snapshot.refresh_health(path, SCOPE, now=NOW + timedelta(minutes=5))
+        assert health["last_error"] is None
+        assert health["last_attempt_at"] == "2026-07-17T12:05:00Z"
+
+    def test_refresh_health_is_none_before_any_attempt(self, tmp_path):
+        """Including a snapshot an earlier plugin wrote, which predates the record."""
+        path = tmp_path / "counts.json"
+        assert snapshot.refresh_health(path, SCOPE, now=NOW) is None
+        path.write_text('{"schema": 1, "scopes": {"octo/repo": {"counts": {"total": 2}, "fetched_at": "2026-07-17T12:00:00Z"}}}')
+        assert snapshot.refresh_health(path, SCOPE, now=NOW) is None
+        assert snapshot.read(path, SCOPE, now=NOW)["counts"] == {"total": 2}
+
 
 # --- refresh-counts ----------------------------------------------------------
 
@@ -175,6 +219,91 @@ class TestRefreshCounts:
         got = snapshot.read(snapshot.snapshot_path(repo), SCOPE, now=later)
         assert got["counts"]["total"] == 1
         assert got["fetched_at"] == "2026-07-17T12:00:00Z"
+
+    def test_backend_down_leaves_a_durable_attempt_record(self, fake, tmp_path):
+        """#755: the failure exit used to write nothing at all. Driven through the
+        real `refresh_counts`, so dropping its record call turns this red."""
+        repo = _make_repo(tmp_path)
+        fake.set_unreachable(True)
+        res = query.refresh_counts(fake, project_dir=repo, owner=OWNER, repo=REPO, now=NOW)
+        assert res["status"] == "error"
+        health = snapshot.refresh_health(snapshot.snapshot_path(repo), SCOPE, now=NOW)
+        assert health is not None, "a failed refresh left no record"
+        assert health["last_error"] is not None and "unavailable" in health["last_error"]
+        assert health["last_attempt_at"] == "2026-07-17T12:00:00Z"
+
+    def test_backend_recovery_clears_a_prior_failure(self, fake, tmp_path):
+        repo = _make_repo(tmp_path)
+        _file(fake)
+        fake.set_unreachable(True)
+        query.refresh_counts(fake, project_dir=repo, owner=OWNER, repo=REPO, now=NOW)
+        fake.set_unreachable(False)
+        later = NOW + timedelta(minutes=10)
+        assert query.refresh_counts(fake, project_dir=repo, owner=OWNER, repo=REPO, now=later)["status"] == "ok"
+        health = snapshot.refresh_health(snapshot.snapshot_path(repo), SCOPE, now=later)
+        assert health["last_error"] is None
+        assert health["last_attempt_at"] == "2026-07-17T12:10:00Z"
+
+    def test_a_raised_failure_is_recorded_and_still_raises(self, fake, tmp_path, monkeypatch):
+        """Both exits, as `sync._recording` does for the cache: an exception the
+        CLI boundary turns into an envelope is exactly when a record is wanted."""
+        repo = _make_repo(tmp_path)
+
+        def _boom(*_args, **_kwargs):
+            raise RuntimeError("decoder fell over")
+
+        monkeypatch.setattr(query, "counts", _boom)
+        with pytest.raises(RuntimeError):
+            query.refresh_counts(fake, project_dir=repo, owner=OWNER, repo=REPO, now=NOW)
+        health = snapshot.refresh_health(snapshot.snapshot_path(repo), SCOPE, now=NOW)
+        assert health is not None and "decoder fell over" in health["last_error"]
+
+
+class TestEveryDetachedWarmRecordsItsOutcome:
+    """#755's third acceptance: a new detached refresh cannot ship without an
+    outcome record. Each `transport.spawn_detached` caller is listed with the
+    test proving its child op leaves an attempt record on failure; a new caller
+    fails here until it is added, with its own such test."""
+
+    #: (module, spawning function) -> the test pinning that warm's failure record.
+    RECORDED = {
+        ("snapshot.py", "spawn_refresh"): (
+            "tests/test_backlog_governance.py::TestRefreshCounts::"
+            "test_backend_down_leaves_a_durable_attempt_record"
+        ),
+        ("sync.py", "spawn_sync"): (
+            "tests/test_backlog_cache.py::TestAFailingSyncLeavesARecord"
+        ),
+    }
+
+    def test_every_spawn_detached_caller_is_a_recorded_warm(self):
+        import ast
+
+        plugin = _REPO_ROOT / "plugin"
+        callers: set[tuple[str, str]] = set()
+        for path in sorted(plugin.rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for node in ast.walk(fn):
+                    if isinstance(node, ast.Call):
+                        target = node.func
+                        name = target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", None)
+                        if name == "spawn_detached":
+                            callers.add((path.name, fn.name))
+        assert callers, "the scan found no spawn_detached caller — it is not reaching the code"
+        assert callers == set(self.RECORDED), (
+            "a detached warm was added or removed; each must leave an attempt record "
+            f"on failure, pinned by a test, before it is listed here: {sorted(callers ^ set(self.RECORDED))}"
+        )
+
+    def test_each_listed_pin_exists(self):
+        for pin in self.RECORDED.values():
+            rel, _, rest = pin.partition("::")
+            text = (_REPO_ROOT / rel).read_text(encoding="utf-8")
+            for part in rest.split("::"):
+                assert re.search(rf"\b(class|def) {re.escape(part)}\b", text), pin
 
 
 # --- never-block / graceful degradation (§3.4) -------------------------------
