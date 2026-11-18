@@ -84,8 +84,11 @@ ACTIONS = (ACCEPT, FILE, FIXED)
 #: ``observations``/``observations_answered`` pair. Additive — a version-1
 #: reader that ignores unknown keys still reads a version-2 report correctly —
 #: but the number is what lets a consumer say which shape it was written for,
-#: and a bump costs nothing next to a consumer guessing.
-REPORT_SCHEMA_VERSION = 2
+#: and a bump costs nothing next to a consumer guessing. 3 added the summary's
+#: ``open_blocking``/``undispositioned_warning`` pair (additive again), and a
+#: bare ``render-dispositions`` now renders the branch's review set rather than
+#: the newest review.
+REPORT_SCHEMA_VERSION = 3
 
 #: Display states a census row can carry, in the order the summary reports
 #: them. ``resolved-*`` covers a resolution fact whose disposition this
@@ -701,7 +704,9 @@ def census(
     when the set was derived some other way makes the rendered table and the
     caller's actual subject two different things.
 
-    With no selector, the newest review fact is rendered.
+    With no selector, the newest review fact is rendered — a fallback for a
+    caller that could not derive a set; ``render-dispositions`` passes the
+    branch's review set (:func:`render_dispositions_cmd`).
     """
     review_facts = evidence.facts_of_kind(store, "review")
     if not review_facts:
@@ -896,6 +901,17 @@ def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> di
         # The gap `review-cycle.md`'s "severity does not exempt" rule asserts
         # but which nothing measured before this renderer existed.
         "undispositioned": by_state.get(STATE_OPEN, 0),
+        # The two numbers a reader resuming a branch needs first (#334), named
+        # on the gate's terms: a blocking finding is open until a RESOLUTION
+        # lifts it (an accepted disposition never does), and a warning is owed
+        # an answer until it has any.
+        "open_blocking": sum(
+            1 for r in rows
+            if r["severity"] == "blocking" and r["state"] not in RESOLVED_STATES
+        ),
+        "undispositioned_warning": sum(
+            1 for r in rows if r["severity"] == "warning" and r["state"] == STATE_OPEN
+        ),
         "owner_ruled": sum(1 for r in rows if _nonempty(r.get("owner_ruling"))),
         "conflicts": sum(1 for r in rows if r["conflict"]),
         # Reported beside the findings and never mixed into them. The pair is
@@ -1160,6 +1176,34 @@ def disposition_cmd(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
+def _branch_selection(project_dir: Path, store: dict) -> "list[str] | None":
+    """What a bare ``render-dispositions`` renders: the branch's review set
+    (``coverage.branch_review_ids``), the same set the round budget and the
+    verify roll-call compose over (#334). Rendering the newest review alone hid
+    every earlier round's undispositioned findings while the census read clean.
+
+    ``None`` — the newest review, as before — when the set is unavailable (no
+    merge base) or empty (no review anchors on this branch), with ONE stderr
+    line saying so, because a census of the newest review silently standing in
+    for the branch is the defect this replaces."""
+    from . import coverage  # noqa: PLC0415 — lazy: coverage pulls git helpers this module otherwise never needs
+
+    answer = coverage.branch_review_ids(project_dir, store.get("facts") or [])
+    if answer.get("status") == "ok" and answer["review_ids"]:
+        return answer["review_ids"]
+    why = (
+        answer.get("reason")
+        if answer.get("status") != "ok"
+        else "no review anchors on this branch"
+    )
+    print(
+        f"render-dispositions: rendering the newest review only — this branch's "
+        f"review set is unavailable ({why}). Pass --review or --scope to choose.",
+        file=sys.stderr,
+    )
+    return None
+
+
 def render_dispositions_cmd(project_dir: Path, argv: list[str]) -> int:
     """Render the census. Exit 0 rendered, 1 nothing to render / store
     unreadable, 2 usage error."""
@@ -1206,7 +1250,10 @@ def render_dispositions_cmd(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
-    report = census(store, review_id=review_id, scope=scope)
+    review_ids = None
+    if review_id is None and scope is None:
+        review_ids = _branch_selection(project_dir, store)
+    report = census(store, review_id=review_id, scope=scope, review_ids=review_ids)
     if report["status"] == "error":
         print(f"render-dispositions: {report['reason']}", file=sys.stderr)
         return 1

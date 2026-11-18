@@ -735,16 +735,17 @@ class TestBareOriginRoundTrip:
         assert _verdict(b, refs["base_tree"], refs["c2_tree"]) == verdict_a
 
     def test_an_ingested_fact_never_counts_as_a_round_recorded_in_this_worktree(self, origin_and_clone, tmp_path):
-        """O-16's reader audit: `critic_consolidate` bounds a scope's round
-        count by ``actor.worktree == str(project_dir)``. An ingested fact
+        """O-16's reader audit: the branch review set's worktree bound
+        (``coverage.branch_review_ids``, which the round budget narrows by
+        scope) is ``actor.worktree == str(project_dir)``. An ingested fact
         carries the writer's basename only, so it cannot match an absolute
         path, even in a clone whose directory has the same basename."""
-        from lib import critic_consolidate  # noqa: PLC0415
+        from lib import coverage  # noqa: PLC0415
 
         origin, a = origin_and_clone
         _reviewed_branch(a)
-        local = critic_consolidate._rounds_recorded_in_this_worktree(
-            evidence.read_facts(a)["facts"], a, "unit")
+        local = coverage._reviews_recorded_in_this_worktree(
+            evidence.read_facts(a)["facts"], a)
         assert len(local) == 2, "control: the writing clone counts its own rounds"
         _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
 
@@ -758,7 +759,7 @@ class TestBareOriginRoundTrip:
         assert evidence_notes.ingest(b)["appended"] == 3
         facts = evidence.read_facts(b)["facts"]
         assert {f["actor"]["worktree"] for f in facts} == {a.name}
-        assert critic_consolidate._rounds_recorded_in_this_worktree(facts, b, "unit") == []
+        assert coverage._reviews_recorded_in_this_worktree(facts, b) == []
 
 
 # ---------------------------------------------------------------------------

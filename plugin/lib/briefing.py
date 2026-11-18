@@ -1842,6 +1842,12 @@ def _summarize_critic_findings(
     ``facts`` is a :func:`_read_facts_once` thunk the caller already holds, so
     the handoff parses the evidence store once for its plan table and this
     section; ``None`` reads it here, at most once.
+
+    **The record is one review; the branch is a set of them (#334).** Under the
+    record's lines, :func:`_branch_findings_line` appends one line composed
+    from facts over the branch's review set — open blocking, undispositioned
+    warning, rounds — so an earlier round's open finding is visible when the
+    newest record reads clean.
     """
     try:
         from . import critic_consolidate  # noqa: PLC0415 — lazy; a failed import is reported, not raised
@@ -1850,10 +1856,9 @@ def _summarize_critic_findings(
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a briefing must render; the failure is reported below, never swallowed
         return _unreadable_findings_record(f"{type(exc).__name__}: {str(exc)[:80]}")
     project_dir = project_dir or prawduct_dir.parent
+    facts = facts or _read_facts_once(project_dir)
     try:
-        lead, data = _this_branchs_record(
-            prawduct_dir, project_dir, read.record, facts or _read_facts_once(project_dir)
-        )
+        lead, data = _this_branchs_record(prawduct_dir, project_dir, read.record, facts)
         if data is None:
             if read.state != critic_consolidate.FINDINGS_ABSENT and read.record is None:
                 return _unreadable_findings_record(read.reason)
@@ -1912,9 +1917,76 @@ def _summarize_critic_findings(
         next_action = data.get("next_action")
         if next_action:
             parts.append(f"  NEXT-ACTION: {next_action}")
+        branch_line = _branch_findings_line(project_dir, facts)
+        if branch_line:
+            parts.append(branch_line)
         return "\n".join(parts)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a briefing must render whatever the record turns out to be; the failure is reported, never swallowed
         return _unreadable_findings_record(f"{type(exc).__name__}: {str(exc)[:80]}")
+
+
+#: The tail every degraded branch-findings line ends on: a count that could not
+#: be composed must never read as a clean branch.
+_NOT_CLEAN = "this is NOT a statement that the branch is clean."
+
+
+def _branch_findings_line(project_dir: Path, facts) -> "str | None":
+    """One line composed from FACTS over this branch's review set (#334), under
+    the newest review's summary.
+
+    The record above it is one review's counts, and a fresh session reading
+    only that re-opens closed work or misses open work: an earlier round's
+    unresolved blocker is invisible in the newest round's record. The set is
+    ``coverage.branch_review_ids`` — the one the round budget, the census and
+    the verify roll-call compose over — and the counts are
+    ``dispositions.census``'s summary: open blocking (no resolution fact lifts
+    it), undispositioned warning, and the rounds counted.
+
+    ``None`` when the store holds no review or no review is this branch's — a
+    line about nothing is noise. When the store is unreadable or the set cannot
+    be derived it says so, never a clean count: the reader is definitionally
+    the builder who lost the reviewer's report. ``facts`` is the caller's
+    :func:`_read_facts_once` thunk."""
+    try:
+        from . import coverage, dispositions  # noqa: PLC0415 — lazy, as this section's other lib imports are
+
+        store = facts()
+        if store.get("status") == "error":
+            return (
+                f"Branch findings: the evidence store could not be read "
+                f"({store.get('reason')}) — {_NOT_CLEAN}"
+            )
+        if not evidence.facts_of_kind(store, "review"):
+            return None
+        answer = coverage.branch_review_ids(project_dir, store.get("facts") or [])
+        if answer["status"] != "ok":
+            return (
+                f"Branch findings: this branch's review set could not be derived "
+                f"({answer['reason']}) — {_NOT_CLEAN}"
+            )
+        if not answer["review_ids"]:
+            return None
+        report = dispositions.census(store, review_ids=answer["review_ids"])
+        if report["status"] != "ok":
+            return f"Branch findings: could not be composed ({report['reason']}) — {_NOT_CLEAN}"
+        summary = report["summary"]
+        partial = (
+            f" (incomplete: {len(store['schema_ahead'])} record(s) carry a newer "
+            "schema than this reader)"
+            if store.get("schema_ahead")
+            else ""
+        )
+        return (
+            f"Branch findings across this branch's {len(report['reviews'])} review "
+            f"round(s), from evidence facts{partial}: {summary['open_blocking']} open "
+            f"blocking, {summary['undispositioned_warning']} undispositioned warning "
+            "(`prawduct-hook render-dispositions` lists them)."
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- display only: a failed composition is reported, never read as clean
+        return (
+            f"Branch findings: could not be composed ({type(exc).__name__}: "
+            f"{str(exc)[:80]}) — {_NOT_CLEAN}"
+        )
 
 
 def _unreadable_findings_record(why: str) -> str:

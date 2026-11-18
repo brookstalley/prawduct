@@ -3155,7 +3155,11 @@ FIX_ORDER_AFTER_CUMULATIVE = (
 )
 
 
-def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
+def blocking_remedy_lines(
+    unresolved: "list[dict] | None",
+    project_dir: "Path | None" = None,
+    facts: "list[dict] | None" = None,
+) -> list[str]:
     """The whole remedy a blocking verdict prescribes, as unindented lines.
 
     Both blocking messages render this — this module's PR gate and the Stop
@@ -3172,15 +3176,25 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     verified tree is what gets committed. The order is composed from
     :data:`FIX_ORDER`, its one home, not restated here.
 
-    Three cases, because the standard remedy is *wrong* for a superseded
-    blocker: one carried by a review fact no verify-resolutions pass will
-    anchor to again (``coverage_algebra._verify_anchor_id``). A verify pass
-    resolves findings on the fact it anchors to, so it will never name that
-    round again, and the state clears only through a spanning review.
+    A superseded blocker is one carried by a review fact no verify-resolutions
+    pass will ANCHOR to again (``coverage_algebra._verify_anchor_id``). Whether
+    a verify pass can still clear it depends on whether its roll-call NAMES
+    it, and since #334 the roll-call names the unresolved blockers of every
+    review in the branch's set (``critic_consolidate.carried_blocking`` over
+    ``coverage.branch_review_ids``). So with ``project_dir`` given, a
+    superseded entry whose review is in that set is REACHABLE — the standard
+    remedy clears it, and the message says the roll-call names it. Only one
+    outside the set is STRANDED: no pass will name it again, and the state
+    clears only through a spanning review. Without ``project_dir``, or when the
+    set cannot be derived, every superseded entry reads as stranded — the
+    pre-#334 advice, which costs a round but never names a route that cannot
+    work. ``facts`` is the store the caller already read, else it is read here
+    (only when some entry is superseded).
 
-    - none superseded → the standard golden-path remedy.
-    - some superseded → the standard remedy, then the exception.
-    - **all** superseded → the spanning review LEADS. Appending the exception
+    - none stranded → the standard golden-path remedy, plus one line naming
+      the earlier-round blockers the roll-call carries, if any.
+    - some stranded → that, then the exception.
+    - **all** stranded → the spanning review LEADS. Appending the exception
       after "run verify-resolutions" would hand the operator the one route
       that cannot work as their first instruction, which is the original
       defect in its total case rather than a fix for it.
@@ -3198,7 +3212,18 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
         "has not seen leaves the fix outside what it anchored (review-cycle.md",
         "§ Verify-resolutions anchoring and demotion).",
     ]
-    n = sum(1 for e in entries if e.get("superseded"))
+    superseded = [e for e in entries if e.get("superseded")]
+    if not superseded:
+        return standard
+    reachable = _roll_call_review_ids(project_dir, facts)
+    carried = [e for e in superseded if e.get("review_id") in reachable]
+    if carried:
+        noun, verb = ("finding", "sits") if len(carried) == 1 else ("findings", "sit")
+        standard = standard + [
+            f"{len(carried)} {noun} above {verb} on an earlier review round of this",
+            "branch: run verify-resolutions; its roll-call names these.",
+        ]
+    n = len(superseded) - len(carried)
     if not n:
         return standard
 
@@ -3221,6 +3246,24 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
         "/prawduct:critic cumulative instead — a review spanning the whole",
         "interval supplies a clean path when it records nothing blocking.",
     ]
+
+
+def _roll_call_review_ids(
+    project_dir: "Path | None", facts: "list[dict] | None"
+) -> "set[str]":
+    """The review ids a ``verify-resolutions`` roll-call names blockers of —
+    this branch's review set (``coverage.branch_review_ids``) — or the empty
+    set when there is no ``project_dir`` or the set cannot be derived, which
+    :func:`blocking_remedy_lines` reads as "stranded", its pre-#334 advice."""
+    if project_dir is None:
+        return set()
+    if facts is None:
+        read = evidence.read_facts(project_dir)
+        if read.get("status") == "error":
+            return set()
+        facts = read.get("facts") or []
+    answer = coverage.branch_review_ids(project_dir, facts)
+    return set(answer["review_ids"]) if answer.get("status") == "ok" else set()
 
 
 def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
@@ -3387,9 +3430,11 @@ def check_cumulative_critic(project_dir: Path) -> int:
       findings (listed): fix them all in the working tree, then ONE
       ``/prawduct:critic verify-resolutions`` records the resolution facts —
       the same evidence then passes with no full re-review, and the verified
-      tree is what gets committed. A finding the message
-      marks *superseded* is the exception, and the message says so: it
-      sits on a round no verify pass anchors to again, so it clears only
+      tree is what gets committed. A blocker on an earlier review round of
+      this branch rides the same route — the verify pass's roll-call names
+      it (#334). A finding the message marks *superseded* is the exception,
+      and the message says so: it sits on a round outside this branch's
+      review set, which no verify pass names again, so it clears only
       through a spanning ``/prawduct:critic cumulative``. When EVERY
       blocker is superseded the message leads with that route instead
       (:func:`blocking_remedy_lines`).
@@ -3668,7 +3713,9 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
             )
         if len(unresolved) > 5:
             print(f"  (+{len(unresolved) - 5} more)", file=sys.stderr)
-        for line in blocking_remedy_lines(unresolved):
+        for line in blocking_remedy_lines(
+            unresolved, project_dir, read.get("facts") or []
+        ):
             print(line, file=sys.stderr)
         return 1
 

@@ -1050,6 +1050,10 @@ class TestSummarizeCriticFindings:
 
     def test_a_record_without_next_action_still_summarizes(self, tmp_path):
         # Records written before the field existed must not lose their summary.
+        # In a git repo, as every governed product is: without one the evidence
+        # store cannot be read, and the section rightly says so under the record
+        # rather than letting it stand as the branch's whole story (#334).
+        _init_git_repo(tmp_path)
         pr = _prawduct(tmp_path)
         (pr / ".critic-findings.json").write_text(json.dumps({
             "summary": "Legacy record.", "findings": [],
