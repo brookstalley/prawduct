@@ -601,6 +601,170 @@ def test_C16_a_commit_labelled_for_one_chunk_certifies_no_other_whose_file_it_to
 
 
 # ---------------------------------------------------------------------------
+# E — a span a verify-resolutions pass extends (#1191), and a merged delegate's
+# commits (#1199). No case-table row: each issue's Reproduction is the spec.
+# ---------------------------------------------------------------------------
+
+
+def _issue_1191(repo: Path, *, commit_first: bool = False, **chunk_kw) -> "tuple[Path, dict, dict]":
+    """#1191 steps 1-3: a chunk review of the uncommitted tree T1 with a
+    blocking finding (no chunk named), the fix in the working tree (T2) and a
+    ``verify-resolutions`` pass T1 → T2 resolving it, then T2 committed
+    verbatim as ``(Chunk 03)``. The verify pass records no ``base_commit``: the
+    writer copies the prior's ``head_commit``, which a dirty-tree review has
+    none of. ``commit_first`` dispatches the verify pass after the commit
+    instead, anchored at committed HEAD (the writer's committed-delta branch)."""
+    at = _plan_commit(repo)
+    plan = _plan(repo)
+    t1 = _stage(repo, "notes/c03.txt", "draft\n")
+    review = _review(
+        repo, "R1", base=at, dispatch=at, head_tree=t1, mode="chunk", blocking=("R1-1",),
+        **chunk_kw,
+    )
+    t2 = _stage(repo, "notes/c03.txt", "fixed\n")
+    if commit_first:
+        head = _commit(repo, "notes/c03.txt", "fixed\n", "feat(unit): three (Chunk 03)")
+        verify = _review(
+            repo, "V1", base=None, base_tree=t1, head=head, mode="verify-resolutions"
+        )
+    else:
+        verify = _review(
+            repo, "V1", base=None, base_tree=t1, dispatch=at, head_tree=t2,
+            mode="verify-resolutions",
+        )
+        _git(repo, "commit", "-qm", "feat(unit): three (Chunk 03)")
+    assert verify["body"]["base_commit"] is None
+    assert _tree(repo, "HEAD") == t2
+    return plan, review, verify
+
+
+@pytest.mark.parametrize("commit_first", [False, True])
+def test_E1_issue_1191_a_verify_pass_extending_a_dirty_chunk_review_certifies_the_commit(
+    repo, commit_first,
+):
+    plan, review, verify = _issue_1191(repo, commit_first=commit_first)
+    facts = _facts(review, verify, _resolution("S1", "R1", "R1-1"))
+    states = plan_status.chunk_states(plan, facts, repo_dir=repo)
+    assert {k: s.state for k, s in states.items()} == {"01": "open", "02": "open", "03": "done"}
+    assert states["03"].fact_id == "V1"
+
+
+def test_E2_issue_1191_after_the_merge_the_chunk_stays_done(repo):
+    plan, review, verify = _issue_1191(repo)
+    _merge_no_ff(repo)
+    facts = _facts(review, verify, _resolution("S1", "R1", "R1-1"))
+    assert _states(plan, facts, repo)["03"] == "done"
+
+
+def test_E3_the_extended_review_must_itself_certify(repo):
+    """The verify pass spans the commit only together with the review it
+    extends: the commit's change since that review's dispatch is both
+    intervals'. That review's open blocker certifies nothing, and says so."""
+    plan, review, verify = _issue_1191(repo)
+    state = plan_status.chunk_states(plan, _facts(review, verify), repo_dir=repo)["03"]
+    assert state.state == "open"
+    assert "R1" in state.reason and "R1-1 not resolved" in state.reason, state.reason
+
+
+def test_E3b_an_extended_review_of_another_scope_is_held_to_its_own_blockers(repo):
+    """The line is followed by tree, not scope, so the review extended may be
+    one this plan's census would not otherwise read: its blockers still bind."""
+    plan, review, verify = _issue_1191(repo, scope="other")
+    assert _states(plan, _facts(review, verify), repo)["03"] == "open"
+    resolved = _facts(review, verify, _resolution("S1", "R1", "R1-1"))
+    assert _states(plan, resolved, repo)["03"] == "done"
+
+
+def test_E4_the_extended_review_must_be_an_edge(repo):
+    plan, review, verify = _issue_1191(repo, reviewed_all=False)
+    facts = _facts(review, verify, _resolution("S1", "R1", "R1-1"))
+    assert _states(plan, facts, repo)["03"] == "open"
+
+
+def test_E5_a_chain_of_two_verify_passes_certifies_through_both(repo):
+    at = _plan_commit(repo)
+    plan = _plan(repo)
+    t1 = _stage(repo, "notes/c03.txt", "draft\n")
+    review = _review(repo, "R1", base=at, dispatch=at, head_tree=t1, mode="chunk", blocking=("R1-1",))
+    t2 = _stage(repo, "notes/c03.txt", "fixed\n")
+    v1 = _review(repo, "V1", base=None, base_tree=t1, dispatch=at, head_tree=t2,
+                 mode="verify-resolutions", blocking=("V1-1",))
+    t3 = _stage(repo, "notes/c03.txt", "fixed again\n")
+    v2 = _review(repo, "V2", base=None, base_tree=t2, dispatch=at, head_tree=t3,
+                 mode="verify-resolutions")
+    _git(repo, "commit", "-qm", "feat(unit): three (Chunk 03)")
+    resolved = [_resolution("S1", "R1", "R1-1"), _resolution("S2", "V1", "V1-1")]
+    states = plan_status.chunk_states(plan, _facts(review, v1, v2, *resolved), repo_dir=repo)
+    assert (states["03"].state, states["03"].fact_id) == ("done", "V2")
+    # Control: the middle pass's blocker open, the chain does not certify.
+    assert _states(plan, _facts(review, v1, v2, resolved[0]), repo)["03"] == "open"
+
+
+def _delegate_merge(repo: Path, subject: str = "feat(unit): three (Chunk 03)") -> str:
+    """#1199 steps 1-3: the feature branch with no reviewed state of its own
+    (here, fresh off the base), a delegate committing chunk 03 on its own
+    branch, and that branch merged into the feature branch with ``--no-ff``
+    under a merge subject naming the chunk. Returns the merge commit."""
+    _git(repo, "checkout", "-q", "-b", "delegate/c03")
+    _commit(repo, "src/c03.py", "x\n", subject)
+    _git(repo, "checkout", "-q", "feature/unit")
+    _git(repo, "merge", "-q", "--no-ff", "-m", "Merge delegate branch: three (Chunk 03)",
+         "delegate/c03")
+    _git(repo, "branch", "-D", "delegate/c03")
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def test_E6_issue_1199_a_merged_delegates_chunk_commit_is_carried_by_the_span(repo):
+    """The chunk review's interval falls back to the merge-base and names no
+    chunk; the delegate's ``(Chunk 03)`` commit is the merge's second parent."""
+    plan = _plan(repo)
+    head = _delegate_merge(repo)
+    base = _git(repo, "merge-base", "main", "HEAD")
+    fact = _review(repo, "R1", base=base, head=head, mode="chunk")
+    states = plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)
+    assert {k: s.state for k, s in states.items()} == {"01": "open", "02": "open", "03": "done"}
+    assert states["03"].fact_id == "R1"
+
+
+@pytest.mark.parametrize("how", ["no-ff", "ff"])
+def test_E7_issue_1199_after_the_feature_merges_the_chunk_stays_done(repo, how):
+    """Merged into the base, the delegate's commit is in the base's history,
+    but not on its first parents: it is still the branch's work, not the base's."""
+    plan = _plan(repo)
+    head = _delegate_merge(repo)
+    base = _git(repo, "merge-base", "main", "HEAD")
+    fact = _review(repo, "R1", base=base, head=head, mode="chunk")
+    if how == "no-ff":
+        _merge_no_ff(repo)
+    else:
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--ff-only", "feature/unit")
+        _git(repo, "branch", "-D", "feature/unit")
+    assert _states(plan, _facts(fact), repo)["03"] == "done"
+
+
+def test_E8_a_merged_delegates_unscoped_subject_carries_nothing(repo):
+    """The scope rule still holds on the merged side: another plan's
+    ``Chunk 03`` must not certify this plan's."""
+    plan = _plan(repo)
+    head = _delegate_merge(repo, subject="feat(other): theirs (Chunk 03)")
+    base = _git(repo, "merge-base", "main", "HEAD")
+    fact = _review(repo, "R1", base=base, head=head, mode="chunk")
+    assert _states(plan, _facts(fact), repo)["03"] == "open"
+
+
+def test_E9_a_merged_side_is_carried_only_when_the_base_can_say_it_is_not_its_own(repo):
+    """Which merges are the base's own is asked of the plan's base; a base that
+    resolves to no ref cannot answer, so a merged side carries nothing (C15
+    stays the base merge's answer when it does resolve)."""
+    plan = _plan(repo, claim=("branch: feature/unit", "base: nowhere"))
+    head = _delegate_merge(repo)
+    base = _git(repo, "merge-base", "main", "HEAD")
+    fact = _review(repo, "R1", base=base, head=head, mode="chunk")
+    assert _states(plan, _facts(fact), repo)["03"] == "open"
+
+
+# ---------------------------------------------------------------------------
 # K — mode labels do not matter
 # ---------------------------------------------------------------------------
 

@@ -38,8 +38,13 @@ them), from the plan's base, which is where their commits went
 (``chunks`` when present, else ``[chunk]`` when ``chunk`` is set, else nothing)
 or SPANS it: the fact is an edge the coverage algebra composes
 (``coverage_algebra.review_edges``) and its own interval, read along the
-branch's first parents, holds a commit whose subject carries the plan's scope
-and the chunk (:class:`_Spans`; #1082, owner ruling 2026-10-27). Only a fact
+branch's first parents and the sides of any merge that brought in the branch's
+own work rather than the base's (#1199), holds a commit whose subject carries
+the plan's scope and the chunk (:class:`_Spans`; #1082, owner ruling
+2026-10-27). A fact recording no ``base_commit`` — a ``verify-resolutions``
+pass over a dirty-tree review — spans from the review it extends, and only
+while every review on that line certifies too (:func:`_extended_reviews`,
+#1191). Only a fact
 the coverage algebra accepts as an edge may span, so chunk state never credits
 an interval the coverage gate rejects — though an edge may certify no chunk. A
 Deliverables path gives no span credit: a chunk whose commits do not name it
@@ -82,7 +87,13 @@ fact while a chunk is open, one first-parent ``git log`` of that fact's own
 interval (two for a placed dirty-tree fact: its committed part, and the commits
 descending from its dispatch commit, where its verbatim commit is looked for),
 memoized per interval; a refused spanning fact's interval is read too, so the
-chunks it would have carried say why they did not. Only an anchor the first
+chunks it would have carried say why they did not. A merge in such an interval
+adds, per merged-in tip, one ``merge-base --is-ancestor`` against the plan's
+base (resolved once per call), a first-parent ``rev-list`` bounded by the
+base's commits since the tip when the base holds it, and one log of the side
+it brought in (:class:`_Spans`). Following a ``verify-resolutions`` line back
+reads the store, never git; each review on it costs what its own anchor does.
+Only an anchor the first
 probe refuses pays more: one ``for-each-ref`` per call to place the claimed
 branches, one further probe per anchor against a remote tracking ref or the
 base, and on the base, for an anchor that is its review's own ``base_commit``,
@@ -643,17 +654,37 @@ class _Spans:
     branch's commit). A tree edited again before it was committed was not the
     tree reviewed, so that part carries nothing. The interval is the fact's,
     never the branch's, so it reads the same after the merge deletes the
-    branch. A fact whose ``base_commit`` is not a commit id, whose interval git
-    cannot list, or — dirty-tree — whose anchor's holding ref is unknown
-    carries nothing.
+    branch. A fact whose ``base_commit`` is not a commit id (and that
+    :func:`chunk_states` gives no extended base, :func:`_extended_reviews`),
+    whose interval git cannot list, or — dirty-tree — whose anchor's holding
+    ref is unknown carries nothing.
 
-    One :func:`_log_commits` per distinct interval, memoized per call.
+    A merge on those first parents brings in either the base's work or the
+    branch's own: a delegate's branch merged with ``--no-ff`` puts the
+    delegate's ``(Chunk N)`` commit on the merge's second parent (#1199). The
+    two are told apart by the merged-in tip: the base's own work is on the
+    base's FIRST-PARENT history (:func:`first_parent_answer`), where a
+    delegate's tip never is — not before the plan merges (it is not in the
+    base at all), and not after (it reached the base through a merge). So a
+    merged-in parent the base does not hold on its first parents adds that
+    side's own first-parent commits (``first..tip``, expanded the same way); a
+    base merge adds nothing, as before. The base is the plan's
+    (:func:`_resolve_base`); when it resolves to no ref, or git cannot answer,
+    the side carries nothing — naming fewer keeps the chunk open.
+
+    One :func:`_log_commits` per distinct interval, memoized per call; and,
+    only for a merge in an interval, the plan's base resolved once, one
+    ``merge-base --is-ancestor`` per merged-in tip, a bounded first-parent
+    ``rev-list`` when the base holds it, and one log of its side.
     """
 
-    def __init__(self, repo_dir: Path, plan: _Plan):
+    def __init__(self, repo_dir: Path, plan: _Plan, content: str):
         self._repo_dir = repo_dir
         self._plan = plan
+        self._content = content
         self._logs: dict[tuple[str, ...], "list[_Commit] | None"] = {}
+        self._base: "tuple[str | None] | None" = None
+        self._sides: dict[tuple[str, str], "list[_Commit]"] = {}
 
     def _log(self, *revs: str) -> "list[_Commit] | None":
         if revs not in self._logs:
@@ -661,10 +692,58 @@ class _Spans:
             self._logs[revs] = None if isinstance(commits, str) else commits
         return self._logs[revs]
 
-    def carried(self, body: dict, holder: "str | None") -> "set[str]":
+    def _plan_base(self) -> "str | None":
+        if self._base is None:
+            self._base = (_resolve_base(self._repo_dir, self._content)[0],)
+        return self._base[0]
+
+    def _side(self, first: str, tip: str) -> "list[_Commit]":
+        """The branch's own commits a merge brought in through ``tip`` (its
+        first parent ``first``), else ``[]`` — for the base's own work, or
+        when that cannot be told."""
+        key = (first, tip)
+        if key not in self._sides:
+            side: "list[_Commit]" = []
+            base = self._plan_base()
+            if base is not None and gitstate.is_object_id(tip) and gitstate.is_object_id(first):
+                rc = evidence.run_git(
+                    self._repo_dir, "merge-base", "--is-ancestor", tip, base
+                )[0]
+                # 1: the base does not hold it. 0: it does, and only a tip off
+                # the base's first parents is the branch's. Anything else is git
+                # failing, which carries nothing.
+                own = rc == 1 or (
+                    rc == 0 and first_parent_answer(self._repo_dir, tip, base) is False
+                )
+                if own:
+                    side = self._log("--first-parent", f"{first}..{tip}") or []
+            self._sides[key] = side
+        return self._sides[key]
+
+    def _with_merged(self, commits: "list[_Commit]") -> "list[_Commit]":
+        """``commits`` and, for each merge among them (and among what they
+        add), the branch's own commits its other parents brought in."""
+        out: list[_Commit] = []
+        seen: set[str] = set()
+        queue = list(commits)
+        while queue:
+            commit = queue.pop(0)
+            if commit.sha in seen:
+                continue
+            seen.add(commit.sha)
+            out.append(commit)
+            for tip in commit.parents[1:]:
+                queue.extend(self._side(commit.parents[0], tip))
+        return out
+
+    def carried(
+        self, body: dict, holder: "str | None", base: "str | None" = None
+    ) -> "set[str]":
         """The normalized ids of the chunks ``body``'s interval carries a
-        commit for. ``holder`` is the ref the fact's anchor was found on."""
-        base = body.get("base_commit")
+        commit for. ``holder`` is the ref the fact's anchor was found on;
+        ``base``, when given, stands in for an unrecorded ``base_commit``
+        (:func:`_extended_reviews`)."""
+        base = body.get("base_commit") if base is None else base
         head = body.get("head_commit")
         head_tree = body.get("head_tree")
         if not gitstate.is_object_id(base) or not gitstate.is_object_id(head_tree):
@@ -682,7 +761,42 @@ class _Spans:
             commits = [*before, *_verbatim_chain(after, dispatch, head_tree)]
         if not commits:
             return set()
+        commits = self._with_merged(commits)
         return _subject_chunks((c.subject for c in commits), self._plan.scope)
+
+
+def _extended_reviews(reviews: "list[dict]", fact: dict) -> "list[dict] | None":
+    """The reviews ``fact``'s interval extends, nearest first, when it records
+    no ``base_commit`` — else ``None`` (it extends none, or the line cannot be
+    followed to a review that records one).
+
+    A ``verify-resolutions`` pass over a dirty-tree review records no
+    ``base_commit``: the writer copies the prior's ``head_commit``, and a
+    dirty-tree review has none (#1191). Its interval starts at a tree no commit
+    holds, so its commits are counted from where that tree was built: the
+    nearest review's anchor (:func:`evidence.review_anchor`). The commit then
+    carries work both intervals reviewed, so the span is the line's — every
+    review on it must certify too (:func:`chunk_states` asks). The link is
+    ``critic_mode.review_chain``'s: a review's ``base_tree`` is the
+    ``head_tree`` of the newest review recorded before it; followed back
+    through reviews recording no ``base_commit`` to the first that does.
+    ``reviews`` is the store's review facts in store order."""
+    line: list[dict] = []
+    position = {id(f): i for i, f in enumerate(reviews)}
+    current = fact
+    while not gitstate.is_object_id((current.get("body") or {}).get("base_commit")):
+        tree = (current.get("body") or {}).get("base_tree")
+        # Strictly earlier in store order, so the walk always ends.
+        here = position.get(id(current), len(reviews))
+        earlier = [
+            f for f in reviews[:here]
+            if gitstate.is_object_id(tree) and (f.get("body") or {}).get("head_tree") == tree
+        ]
+        if not earlier:
+            return None
+        current = earlier[-1]
+        line.append(current)
+    return line or None
 
 
 # ---------------------------------------------------------------------------
@@ -770,7 +884,8 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
         # interval the coverage gate rejects (#1082).
         candidates = []
         spanning = []
-        for fact in evidence.facts_of_kind(store, "review"):
+        reviews = evidence.facts_of_kind(store, "review")
+        for fact in reviews:
             body = fact.get("body") or {}
             if body.get("scope") != plan.scope or not isinstance(fact.get("id"), str):
                 continue
@@ -784,8 +899,16 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
                 spanning.append((fact, body))
         if not any(still_open(n) for n in by_norm):
             spanning = []
+        # A spanning fact recording no `base_commit` spans from the reviews it
+        # extends, and only when each of them certifies too (#1191). Store
+        # walk only, no git; their census joins the one below.
+        extends = {
+            f["id"]: _extended_reviews(reviews, f)
+            for f, b in spanning if not gitstate.is_object_id(b.get("base_commit"))
+        }
         verdicts = _blocking_clear(store, list(dict.fromkeys(
             [f["id"] for f, _b, _n in candidates] + [f["id"] for f, _b in spanning]
+            + [str(p.get("id")) for line in extends.values() for p in line or ()]
         )))
         reachable = _Reachability(Path(repo_dir), plan, content)
 
@@ -822,13 +945,32 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             for n in targets:
                 states[by_norm[n]] = ChunkState("done", fact["id"], _date(fact.get("ts")))
 
-        spans = _Spans(Path(repo_dir), plan)
+        def line_refusal(line: "list[dict]") -> "str | None":
+            """Why a review ``line`` an extended span stands on certifies
+            nothing, else ``None``: each must be an edge and certify, by the
+            one rule (``cannot_certify``)."""
+            for prior in line:
+                pid = prior.get("id")
+                if not isinstance(pid, str) or not coverage_algebra.review_edges([prior]):
+                    return f"the review it extends, {pid}, is no edge the coverage algebra composes"
+                prior_why = cannot_certify(prior, prior.get("body") or {})
+                if prior_why is not None:
+                    return f"the review it extends, {pid}, certifies nothing: {prior_why}"
+            return None
+
+        spans = _Spans(Path(repo_dir), plan, content)
         for fact, body in spanning:
             if not any(still_open(n) for n in by_norm):
                 break
             why = cannot_certify(fact, body)
             anchor = evidence.review_anchor(body)
-            carried = spans.carried(body, None if why else reachable.holder(anchor))
+            holder = None if why else reachable.holder(anchor)
+            extended_base = None
+            line = extends.get(fact["id"])
+            if line:
+                extended_base = evidence.review_anchor(line[0].get("body"))
+                why = why or line_refusal(line)
+            carried = spans.carried(body, holder, extended_base)
             for n in sorted(carried):
                 if not still_open(n):
                     continue
