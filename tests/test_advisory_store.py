@@ -35,6 +35,7 @@ make_codebase = _adv.make_codebase
 read_store = _adv.read_store
 reconcile = _adv.reconcile
 register_probe = _adv.register_probe
+registered_versions = _adv.registered_versions
 run_all_probes = _adv.run_all_probes
 run_sync_advisories = _adv.run_sync_advisories
 write_store = _adv.write_store
@@ -365,6 +366,13 @@ class TestRegistry:
         err = capsys.readouterr().err
         assert "advisory probe bad/boom skipped" in err
         assert "probe blew up" in err
+
+    def test_registered_versions_names_every_type_a_probe_can_stamp(self, tmp_path: Path):
+        register_probe("synthetic", "main", 3, lambda s, c: [], emits=("side",))
+        register_probe("other", "solo", 1, lambda s, c: [])
+        assert registered_versions() == {
+            ("synthetic", "main"): 3, ("synthetic", "side"): 3, ("other", "solo"): 1,
+        }
 
     def test_clear_registry(self, tmp_path: Path):
         register_probe("synthetic", "c", 1, lambda s, c: [_candidate()])
