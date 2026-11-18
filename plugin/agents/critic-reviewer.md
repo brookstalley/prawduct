@@ -160,7 +160,10 @@ whole consolidation closed, so match it exactly):
       "severity": "blocking | warning",
       "recommendation": "<what to do about it>",
       "files": ["<file the finding is about>"],
-      "failed_tests": ["<a test-failure finding's failing ids, from .test-evidence.json>"]
+      "failed_tests": ["<a test-failure finding's failing ids, from .test-evidence.json>"],
+      "scope": "instance | class | none",
+      "closure": "<what makes a member, one sentence>",
+      "members": [{"id": "m1", "site": "<path or symbol>"}]
     }
   ],
   "observations": [
@@ -175,7 +178,7 @@ whole consolidation closed, so match it exactly):
 }
 ```
 
-`files` on a finding is optional (omit when not file-specific); so is `failed_tests`, on a test-failure finding only. `findings` is `[]` for a
+`files` on a finding is optional (omit when not file-specific); so is `failed_tests`, on a test-failure finding only, and so are the scope fields. `findings` is `[]` for a
 clean pass. `observations` carries what you rate below a finding at your stage — a finding minus
 its `severity` (carry no `severity` key); a `note` finding becomes one. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
 given — the consolidator checks that every reviewer reviewed the commit the manifest dispatched

@@ -424,7 +424,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
     # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): SKILL.md's exit-3 qualifier stops restating
     # which tree a pass anchored (`review-cycle.md` derives it). A READING; ceiling lowered with it.
-    "single-pass-full": 10111,
+    # +40 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED (review-protocol.md +40): the Scope
+    # bullet asks for the answer as data (`scope`, `closure`, `members`), which consolidation then
+    # grades a `fixed` resolution against. Priced against the SUM: ~40 tokens per review against a
+    # class finding closed short of its members, measured well over 3 a month across the fleet
+    # (`tools/measure-class-member-closure.py`), each one a further round.
+    "single-pass-full": 10151,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -558,7 +563,16 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -10 on 2026-11-16 (coherence-pass Critic round): critic-reviewer.md loses "the builder ran
     # the tests before requesting review" — false since the suite moved to the boundary, and cut
     # from the critic skill for that reason in Chunk 01. Ceiling lowered with it.
-    "dispatched-reviewer": 9590,
+    # +73 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED (review-protocol.md +40, critic-reviewer.md +33): the Scope
+    # bullet asks for the answer as data (`scope`, `closure`, `members`), which consolidation then
+    # grades a `fixed` resolution against. Priced against the SUM: ~40 tokens per review against a
+    # class finding closed short of its members, measured well over 3 a month across the fleet
+    # (`tools/measure-class-member-closure.py`), each one a further round.
+    # the critic-reviewer.md half: the
+    # partial schema admits `scope`, `closure` and `members`, the schema a reviewer is told to match
+    # exactly. Priced as `failed_tests` was: ~33 tokens per dispatched reviewer against a class
+    # finding closed short of its members (`tools/measure-class-member-closure.py`).
+    "dispatched-reviewer": 9663,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -656,7 +670,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
     # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): SKILL.md's exit-3 qualifier stops restating
     # which tree a pass anchored (`review-cycle.md` derives it). A READING; ceiling lowered with it.
-    "coordinator-fork": 10781,
+    # +40 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED (review-protocol.md +40): the Scope
+    # bullet asks for the answer as data (`scope`, `closure`, `members`), which consolidation then
+    # grades a `fixed` resolution against. Priced against the SUM: ~40 tokens per review against a
+    # class finding closed short of its members, measured well over 3 a month across the fleet
+    # (`tools/measure-class-member-closure.py`), each one a further round.
+    "coordinator-fork": 10821,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -719,16 +738,20 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -10 on 2026-11-16 (coherence-pass Critic round): critic-reviewer.md loses "the builder ran
     # the tests before requesting review" — false since the suite moved to the boundary, and cut
     # from the critic skill for that reason in Chunk 01. Ceiling lowered with it.
-    "dispatched-reviewer-inner": 5226,
+    # +33 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED (critic-reviewer.md +33): the
+    # partial schema admits `scope`, `closure` and `members`, the schema a reviewer is told to match
+    # exactly. Priced as `failed_tests` was: ~33 tokens per dispatched reviewer against a class
+    # finding closed short of its members (`tools/measure-class-member-closure.py`).
+    "dispatched-reviewer-inner": 5259,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 5748,
-    "single-pass-full": 10112,
-    "dispatched-reviewer": 9591,
-    "coordinator-fork": 10782,
+    "single-pass-full": 10152,
+    "dispatched-reviewer": 9664,
+    "coordinator-fork": 10822,
     "coordinator-fork-inner": 6418,
-    "dispatched-reviewer-inner": 5227,
+    "dispatched-reviewer-inner": 5260,
 }
 
 
