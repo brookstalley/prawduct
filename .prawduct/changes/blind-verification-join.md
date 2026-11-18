@@ -1,7 +1,7 @@
 ---
 schema: 1
 type: chore
-scope: native-review-paired
+scope: blind-verification-join
 date: 2026-11-18
 title: the Critic-vs-native blind verification join is committed as research tooling
 closes: [brookstalley/prawduct#1197]

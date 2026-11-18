@@ -1,7 +1,7 @@
 ---
 schema: 1
 type: chore
-scope: critic
+scope: measure-record-findings
 date: 2026-11-18
 title: tools/measure-record-findings.py measures whether findings about governance records still buy review rounds
 ---
