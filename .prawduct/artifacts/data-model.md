@@ -296,8 +296,10 @@ the verdict is reproducible across worktrees and across time, not tied to a muta
 Append-only telemetry of governance events (a consolidated review anchors a `review.critic` event
 here; on a development build, a paired native review records a `native.review` event, counts and
 range only — `plugin/docs/governance-telemetry.md`). Distinct from the evidence store: the ledger is *observability* (what happened, for
-audit/telemetry), the evidence store is *authority* (what the gate trusts). Intended to stay a
-thin event trail, not a second source of truth.
+telemetry), the evidence store is *authority* (what the gate trusts). Intended to stay a
+thin event trail, not a second source of truth. It is not an audit trail: it is per worktree, and it
+holds no finding's outcome. The `resolution` and `disposition` facts that discharge a finding live
+only in the evidence store, and `prawduct-hook render-dispositions` shows them (#606).
 
 **`dispatched_at` (optional envelope key, UTC ISO-8601).** Present on a `review.*` event whose
 dispatch was marked before the reviewer was spawned — `prawduct-hook pr-review-dispatch --begin`

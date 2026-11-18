@@ -40,6 +40,23 @@ flow until that reviewer was retired; the kind is now refused at the CLI
 ``review-stats`` (``lib.telemetry``) and ``tools/pr-review-yield.py``. (``stats``
 reads the evidence store, never this ledger.)
 
+**Reviews, not their outcomes.** The ledger is telemetry, not an audit trail:
+it is gitignored (``core.GITIGNORE_ENTRIES``) and kept per worktree, so no
+other clone, CI job or teammate ever reads it. It records that a review
+happened and what it raised, and never how a finding ended. A finding's
+outcome is a fact in the evidence store: a ``resolution`` (a verify pass, or a
+waiver consolidation recorded) or a ``disposition`` (ACCEPT, FILE, or a fix
+that bought no round). ``resolution`` facts reach other clones with the
+reviews they discharge, on ``refs/notes/prawduct`` — attached at
+consolidation, sent by ``prawduct-hook evidence sync`` (which ``/prawduct:pr``
+runs after each push), taken in at session start. ``disposition`` facts stay
+in the clone that wrote them (``evidence.TRANSPORTED_KINDS``).
+``prawduct-hook render-dispositions`` shows each finding's outcome, and
+``review-stats`` reports outcomes by joining each review event to the store
+(``telemetry._read_dispositions``). No outcome kind is mirrored here (#606):
+the ledger reaches no one the notes do not already reach, and the copy would
+add a second home for one fact.
+
 **Structural writer.** The agent never hand-authors JSONL: ``prawduct-hook
 ledger-append`` reads the just-written findings file, validates it,
 computes the envelope itself, and appends ONE line in a single
