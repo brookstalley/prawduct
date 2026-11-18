@@ -573,7 +573,16 @@ LAST_MEASURED_TOKENS = {
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
     # -2 on 2026-11-13 (testament-evidence-wiring): the recorder sentence claimed `--from-counts`
     # ingests beside a declared command, which the recorder refuses; the corrected sentence is shorter.
-    "methodology/building.md": 5406,
+    # +260 on 2026-11-18 (backlog-roi Chunk 09, #1034 + #678), DECLARED: "A Requirement Surfaced
+    # Mid-Build" gains the late-requirement record's home and one-line shape, the two added
+    # triggers, and the impact walk's sources and limit (#1034's acceptance names building.md as
+    # their home, the step a builder reads at the moment of capture); The Critic gains the
+    # test-gate/review concurrency paragraph with its two orderings and reconcile point (#678).
+    # Paid in place where another file owns the claim: the evidence-model sentence drops "mode labels
+    # don't matter" and "blocking findings block until cleared" (review-cycle.md owns both, and the
+    # Modes paragraph beside it names what resolves findings). No other restatement was found
+    # to cut; the ceiling rises.
+    "methodology/building.md": 5666,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -3988,7 +3997,8 @@ class TestBuildingMethodology:
         # RAISED 5405 -> 5416 (review-round-cost Critic round, R-8) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5360 -> 5409 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
         # LOWERED 5409 -> 5407 (testament-evidence-wiring, 2026-11-13) with the reading's cut.
-        assert tokens < 5407, f"building.md is ~{tokens} tokens, should be <5407"
+        # RAISED 5407 -> 5667 (backlog-roi Chunk 09, #1034 + #678, 2026-11-18) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5667, f"building.md is ~{tokens} tokens, should be <5667"
 
 
 # =============================================================================
