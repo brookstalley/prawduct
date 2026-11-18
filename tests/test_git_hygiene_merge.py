@@ -372,13 +372,114 @@ class TestReap:
         git(wt, "commit", "-q", "-m", "bump submodule")
         self._integrate(repo)
         [step] = gh.reap(repo, str(wt))
-        assert step.result == KEPT and "vendor/lib holds commits no remote has" in step.detail, step
+        assert step.result == KEPT and "vendor/lib holds commits none of its remote-tracking" in step.detail, step
         assert wt.exists() and has_branch(repo, "worktree-agent-1")
         assert git(wt / "vendor" / "lib", "cat-file", "-t", local_only).strip() == "commit"
         # Control: once the commit is published, the same worktree goes.
         git(wt / "vendor" / "lib", "push", "-q", "origin", "HEAD:refs/heads/published")
         git(wt / "vendor" / "lib", "fetch", "-q", "origin")
         assert [s.result for s in gh.reap(repo, str(wt))] == [REMOVED, REMOVED]
+
+    @pytest.mark.parametrize("keep_it", [
+        # Each leaves the submodule's HEAD, branches and checkout untouched, so
+        # only a proof over every ref sees what a forced removal would delete.
+        lambda sub: (
+            (sub / "lib.txt").write_text("stashed edit"),
+            git(sub, "stash", "-q"),
+        ),
+        lambda sub: (
+            git(sub, "commit", "-q", "--allow-empty", "-m", "tagged only"),
+            git(sub, "tag", "only-here"),
+            git(sub, "reset", "-q", "--hard", "HEAD~1"),
+        ),
+    ], ids=["stash", "tag"])
+    def test_a_submodule_ref_no_remote_has_keeps_the_worktree(self, repo, tmp_path, keep_it):
+        wt = self._with_submodule(repo, tmp_path)
+        self._integrate(repo)
+        keep_it(wt / "vendor" / "lib")
+        [step] = gh.reap(repo, str(wt))
+        assert step.result == KEPT and "holds commits none of its remote-tracking" in step.detail, step
+        # A fetched release tag reads the same offline, so the refusal also names
+        # the hand removal for work the owner knows is published.
+        assert f"git worktree remove --force {wt.resolve()}" in step.detail
+        assert wt.exists()
+
+    def test_an_embedded_submodule_repo_is_checked_too(self, repo, tmp_path):
+        """`git submodule add` over an existing clone keeps its `.git` in the
+        checkout, outside `modules/`; a forced removal deletes it all the same."""
+        lib = tmp_path / "lib"
+        git(tmp_path, "init", "-q", str(lib))
+        commit(lib, "lib.txt")
+        wt = self._delegate(repo, tmp_path, integrate=False)
+        git(wt, "clone", "-q", str(lib), "vendor/embedded")
+        local_only = commit(wt / "vendor" / "embedded", "local-only.txt")
+        git(wt, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "vendor/embedded")
+        git(wt, "commit", "-q", "-m", "add embedded submodule")
+        assert (wt / "vendor" / "embedded" / ".git").is_dir(), "fixture: the repo stays embedded"
+        self._integrate(repo)
+        [step] = gh.reap(repo, str(wt))
+        assert step.result == KEPT and "vendor/embedded" in step.detail, step
+        assert git(wt / "vendor" / "embedded", "cat-file", "-t", local_only).strip() == "commit"
+
+    def test_a_name_shared_by_two_submodules_hides_neither(self, repo, tmp_path):
+        """A submodule NAMED `a` lives at path `b`, absorbed under `modules/a`; an
+        embedded one sits at PATH `a`. Keyed by name, one would shadow the other
+        and the absorbed one's local commit would go unchecked."""
+        lib = tmp_path / "lib"
+        git(tmp_path, "init", "-q", str(lib))
+        commit(lib, "lib.txt")
+        wt = self._delegate(repo, tmp_path, integrate=False)
+        allow = ("-c", "protocol.file.allow=always")
+        git(wt, *allow, "submodule", "add", "-q", "--name", "a", str(lib), "b")
+        git(wt, "clone", "-q", str(lib), "a")
+        git(wt, *allow, "submodule", "add", "-q", "--name", "other", str(lib), "a")
+        commit(wt / "b", "local-only.txt")
+        git(wt, "add", "b")
+        git(wt, "commit", "-q", "-m", "two submodules")
+        assert (wt / "a" / ".git").is_dir(), "fixture: `a` stays embedded"
+        self._integrate(repo)
+        [step] = gh.reap(repo, str(wt))
+        assert step.result == KEPT and "holds commits none of its remote-tracking" in step.detail, step
+        assert wt.exists()
+
+    def test_the_hand_removal_command_quotes_its_path(self, repo, tmp_path):
+        lib = tmp_path / "lib"
+        git(tmp_path, "init", "-q", str(lib))
+        commit(lib, "lib.txt")
+        git(repo, "checkout", "-q", "-b", "feat/coordinator", "develop")
+        wt = tmp_path / "agent one"
+        git(repo, "worktree", "add", "-q", "-b", "worktree-agent-1", str(wt), "develop")
+        git(wt, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "vendor/lib")
+        git(wt, "commit", "-q", "-m", "add submodule")
+        git(wt / "vendor" / "lib", "tag", "local")
+        git(wt / "vendor" / "lib", "commit", "-q", "--allow-empty", "-m", "tagged")
+        git(wt / "vendor" / "lib", "tag", "-f", "local")
+        git(wt / "vendor" / "lib", "reset", "-q", "--hard", "HEAD~1")
+        self._integrate(repo)
+        [step] = gh.reap(repo, str(wt))
+        assert step.result == KEPT
+        assert f"git worktree remove --force '{wt.resolve()}'" in step.detail, step.detail
+
+    def test_a_deinitialised_submodule_with_local_commits_keeps_the_worktree(self, repo, tmp_path):
+        wt = self._with_submodule(repo, tmp_path)
+        commit(wt / "vendor" / "lib", "local-only.txt")
+        git(wt, "add", "vendor/lib")
+        git(wt, "commit", "-q", "-m", "bump submodule")
+        git(wt, "submodule", "deinit", "-q", "-f", "vendor/lib")
+        self._integrate(repo)
+        [step] = gh.reap(repo, str(wt))
+        assert step.result == KEPT and "vendor/lib" in step.detail, step
+
+    def test_a_worktree_without_submodules_is_never_forced(self, repo, tmp_path, monkeypatch):
+        """Git's own refusal of a dirty worktree is the second guard against an
+        edit landing after the checks; only a submodule earns giving it up."""
+        wt = self._delegate(repo, tmp_path)
+        calls = []
+        real = gh._git_write
+        monkeypatch.setattr(gh, "_git_write", lambda cwd, *a: (calls.append(a), real(cwd, *a))[1])
+        assert [s.result for s in gh.reap(repo, str(wt))] == [REMOVED, REMOVED]
+        [removal] = [c for c in calls if c[:2] == ("worktree", "remove")]
+        assert removal == ("worktree", "remove", str(wt.resolve())), removal
 
     @pytest.mark.parametrize("ignore, caught_by", [
         (None, "it has uncommitted"),  # the worktree's own status already sees it

@@ -426,7 +426,7 @@ class TestApply:
             real_plan(*a, **k), self._side_branch_commit(wt / "vendor" / "lib"))[0])
         _, outcomes = gh.apply(clone, approved, roots=[], now=later)
         [w] = [o for o in outcomes if o.kind == REMOVE_WORKTREE]
-        assert w.result == KEPT and "holds commits no remote has" in w.detail and wt.exists()
+        assert w.result == KEPT and "holds commits none of its remote-tracking" in w.detail and wt.exists()
 
 
 class TestCommand:

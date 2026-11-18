@@ -70,6 +70,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -568,21 +569,55 @@ def _module_repos(modules: Path) -> list[Path]:
     return found
 
 
+def _checked_out_submodules(worktree: Path) -> "dict[str, Path] | None":
+    """``{display path: git dir}`` for every initialised submodule, nested ones
+    included, wherever its repository lives: absorbed under the worktree's
+    ``modules`` directory, or an embedded ``.git`` directory in its checkout,
+    which a forced removal deletes just the same. ``None`` when git cannot say."""
+    out = _git(worktree, "submodule", "foreach", "--quiet", "--recursive",
+               'printf "%s\\t%s\\n" "$displaypath" "$(git rev-parse --absolute-git-dir)"')
+    if out is None:
+        return None
+    found: dict[str, Path] = {}
+    for line in out.splitlines():
+        name, _t, gitdir = line.partition("\t")
+        if not name or not gitdir:
+            return None  # a line this did not write: do not guess what it lists
+        found[name] = Path(gitdir)
+    return found
+
+
 def _submodule_hold(worktree: Path) -> tuple[str | None, bool]:
     """``(why the worktree must be kept, whether it has submodules)``.
 
     Git refuses to remove a worktree that holds submodules unless forced, and a
-    forced removal deletes the submodules' repositories with it: they live under
-    this worktree's own git directory, so a submodule commit that no remote has
-    exists nowhere else. Proving the worktree's own branch merged says nothing
-    about them. So a worktree with submodules is removed only when each one is
-    clean and every commit its HEAD and branches reach is on one of its remotes;
+    forced removal deletes the submodules' repositories with it: an absorbed one
+    lives under this worktree's own git directory, an embedded one in its
+    checkout, so anything only they hold exists nowhere else. Proving the
+    worktree's own branch merged says nothing about them. So a worktree with
+    submodules is removed only when each one is clean and nothing any of its refs
+    reaches (branches, tags, its stash, HEAD) is missing from its remotes;
     anything git cannot answer keeps the worktree."""
     gitdir = _git(worktree, "rev-parse", "--absolute-git-dir")
     if gitdir is None:
         return "could not find its git directory, so its submodules could not be checked", False
     root = Path(gitdir.strip()) / "modules"
-    repos = _module_repos(root)
+    # A deinitialised submodule keeps its repository under `modules` with no
+    # checkout, so only the walk finds it; an embedded one has no entry there,
+    # so only git's own listing does. The union is what a forced removal deletes.
+    # Keyed by the repository's resolved path, never by a name: a module name
+    # and another submodule's display path can coincide, and a name key would
+    # then let one entry hide the other from the check below.
+    repos = {repo.resolve(): repo.relative_to(root).as_posix() for repo in _module_repos(root)}
+    if not repos and not (worktree / ".gitmodules").is_file():
+        # No absorbed repository and nothing declared: no submodule to list, so
+        # the common worktree pays no `submodule foreach`.
+        return None, False
+    listed = _checked_out_submodules(worktree)
+    if listed is None:
+        return "could not list its submodules", True
+    for name, repo in listed.items():
+        repos.setdefault(repo.resolve(), name)
     if not repos:
         return None, False
     # `--ignore-submodules=none`: a repo or user `submodule.*.ignore` setting would
@@ -593,18 +628,22 @@ def _submodule_hold(worktree: Path) -> tuple[str | None, bool]:
     if status.strip():
         return "a submodule has uncommitted or untracked files; integrate or discard them first", True
     unpublished: list[str] = []
-    for repo in repos:
-        name = repo.relative_to(root).as_posix()
-        out = _git(worktree, "--git-dir", str(repo), "rev-list", "--max-count=1",
-                   "HEAD", "--branches", "--not", "--remotes")
+    for repo, name in sorted(repos.items(), key=lambda item: item[1]):
+        out = _git(worktree, "--git-dir", str(repo), "rev-list", "--max-count=1", "--all", "--not", "--remotes")
         if out is None:
             return f"could not read submodule {name}'s commits", True
         if out.strip():
             unpublished.append(name)
     if unpublished:
+        # Every ref counts, a fetched tag included, because offline a tag the
+        # remote has cannot be told from one made here; so the remedy names both
+        # readings rather than asserting the work is unpublished.
         return (
-            f"submodule {', '.join(unpublished)} holds commits no remote has, and removing the "
-            "worktree deletes them: push them from the submodule first", True,
+            f"submodule {', '.join(unpublished)} holds commits none of its remote-tracking "
+            "branches reach (on a branch, a tag or its stash), and removing the worktree deletes "
+            "them: push or drop them from the submodule, or, if they are already published "
+            f"(a release tag), remove it yourself with `git worktree remove --force {shlex.quote(str(worktree))}`",
+            True,
         )
     return None, True
 

@@ -10,9 +10,11 @@ When a repo's declared `test_command` was a script that itself calls `testament 
 advisory still said the command "runs the suite a second time, locally" and recommended replacing
 it with `testament run --junit-xml {junit_xml}`. Following that advice would silently drop whatever
 else the script runs (a lint, a native build) from test evidence. The probe and the recorder's
-`--from-counts` refusal now read a script inside the repo that a declared command names, one level
-deep, and count a `testament run` line in it. A wrapper prawduct cannot read (a make target, a
-script outside the repo, or one called by another script) still fires the advisory. Its text now says
+`--from-counts` refusal now read the in-repo shell script a declared command runs (known by a shell
+shebang or a `.sh`/`.bash` suffix, behind any prefix such as `uv run` or `timeout`), one level deep,
+and count a command in it that runs `testament run`, including through `bash -c` or `eval`. A
+comment or an echoed string does not count. A wrapper prawduct cannot read (a make target, a script
+outside the repo or in another language, or one called by another script) still fires the advisory. Its text now says
 "as far as prawduct can read", and the owner action says to check what a wrapper runs besides tests
 before replacing it.
 

@@ -119,6 +119,48 @@ class TestRunsTestament:
         _wrapper(tmp_path, body="# testament run --junit-xml=\"$1\" (disabled)\npytest\n")
         assert not tep.runs_testament(_WRAPPED, tmp_path)
 
+    @pytest.mark.parametrize("prefix", [
+        "sh", "uv run", "timeout 900", "bash -o pipefail", "env -u CI",
+    ])
+    def test_a_script_behind_any_prefix_is_read(self, tmp_path, prefix):
+        _wrapper(tmp_path)
+        assert tep.runs_testament(f"{prefix} scripts/test.sh --junit-xml={{junit_xml}}", tmp_path)
+
+    def test_a_script_known_by_its_shebang_is_read(self, tmp_path):
+        (tmp_path / "bin").mkdir()
+        (tmp_path / "bin" / "check").write_text('#!/usr/bin/env bash\ntestament run --junit-xml="$1"\n')
+        assert tep.runs_testament("bin/check {junit_xml}", tmp_path)
+
+    @pytest.mark.parametrize("line", [
+        '[ $# -ge 1 ] && testament run --junit-xml "$1"',  # `$#` is not a comment
+        'bash -c "testament run --junit-xml $1"',  # a shell handed a command string
+        'eval "testament run --junit-xml $1"',
+    ], ids=["dollar-hash", "bash-c", "eval"])
+    def test_shell_forms_that_run_testament_are_read(self, tmp_path, line):
+        _wrapper(tmp_path, body=f"#!/bin/sh\n{line}\n")
+        assert tep.runs_testament(_WRAPPED, tmp_path)
+
+    def test_a_continued_line_is_read_whole(self, tmp_path):
+        _wrapper(tmp_path, body='#!/bin/sh\ntestament \\\n  run --junit-xml="$1"\n')
+        assert tep.runs_testament(_WRAPPED, tmp_path)
+
+    @pytest.mark.parametrize("body", [
+        'echo "next: testament run --junit-xml out.xml"\npytest\n',
+        "pytest --junit-xml=\"$1\"  # TODO: switch to testament run\n",
+    ], ids=["quoted-string", "trailing-comment"])
+    def test_text_that_only_mentions_testament_does_not(self, tmp_path, body):
+        _wrapper(tmp_path, body=body)
+        assert not tep.runs_testament(_WRAPPED, tmp_path)
+
+    def test_a_file_named_as_an_argument_is_not_read(self, tmp_path):
+        """pytest runs the test file; it does not execute it as a wrapper, so a
+        test that QUOTES the wired command is not one."""
+        (tmp_path / "tests").mkdir()
+        # An unquoted docstring line, so only program position keeps it out.
+        (tmp_path / "tests" / "test_x.py").write_text(
+            'def test_it():\n    """\n    testament run --junit-xml {junit_xml}\n    """\n')
+        assert not tep.runs_testament("pytest tests/test_x.py --junit-xml={junit_xml}", tmp_path)
+
     def test_a_script_outside_the_repo_is_not_read(self, tmp_path):
         repo = tmp_path / "repo"
         repo.mkdir()

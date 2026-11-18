@@ -12,13 +12,16 @@ general: a submodule's repository lives under the worktree's own git directory, 
 deletes any submodule commit that no remote has, even though the superproject's merge still points
 at it. git-tidy now removes such a worktree with `--force` only after a further proof: each
 submodule is clean, read with `--ignore-submodules=none` so that a `submodule.*.ignore` setting
-cannot hide changes, and every commit its HEAD and branches reach is on one of its remotes. If the
-proof fails, the worktree is kept and the reason names the submodule. A worktree without submodules
+cannot hide changes, and nothing any of its refs reaches (branches, tags, its stash, HEAD) is
+missing from its remote-tracking branches. Absorbed, embedded and deinitialised submodules are all
+checked. If the proof fails, the worktree is kept, and the reason names the submodule and, for work
+already published under a tag, the command to remove the worktree by hand. A worktree without submodules
 is never forced. This departs from #1041's rule that worktrees are never forced; the departure is
 recorded in its requirements, awaiting the owner's confirmation.
 
 ## Consumer note
 `prawduct-hook git-tidy --reap <worktree>` now removes a merged, clean delegate worktree that
 contains submodules, instead of failing with git's "working trees containing submodules cannot be
-moved or removed". When a submodule holds commits none of its remotes has, it keeps the worktree
-and says to push them from the submodule first.
+moved or removed". When a submodule holds commits none of its remote-tracking branches reach, it
+keeps the worktree and says to push or drop them, or, if they are already published (a release tag),
+to remove the worktree by hand with the command it prints.

@@ -774,10 +774,16 @@ def _clear_observations(project_dir: Path, work_in_flight: bool) -> dict:
     """What a clear check could see when it fired, for the reader that tells a
     catch from a slip (``stats``). ``work_live`` also DECIDES one verdict: the
     clear-verdict check lets ``YOUR TURN`` + ``DO NOT CLEAR`` pass unrecorded only
-    on an observed True, so every failure here must read as ``None``, never True. ``work_live``: harness background work or a
-    live Critic review, either of which makes ``DO NOT CLEAR`` true (a
-    delegate whose task and purpose are not yet in the forward notes is
-    invisible here, so it can read False when the hold was right). ``notes_present``: a non-empty ``.handoff-notes.md``, so what
+    on an observed True, so every failure here must read as ``None``, never True.
+    ``work_live``: work whose result a clear would lose, which is what makes
+    ``DO NOT CLEAR`` true. A live Critic review always is: it is unrecorded until
+    consolidated. Harness background work (a delegate, a background command) is
+    only while ``.handoff-notes.md`` is empty: a clear stops no background agent,
+    so once the notes carry what it is doing, the clear loses nothing they do
+    not hold. Whether non-empty notes describe THAT work is a judgment this hook
+    cannot make, so it reads them as describing it; and a finished delegate whose
+    output was never read is invisible here, so it can read False when the hold
+    was right. ``notes_present``: a non-empty ``.handoff-notes.md``, so what
     the turn held may already have a home. ``session_changed``: the session
     authored a non-metadata change, committed or not
     (``gates.session_work_span``), so a turn in a session that changed nothing
@@ -786,15 +792,21 @@ def _clear_observations(project_dir: Path, work_in_flight: bool) -> dict:
     from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
 
     prawduct_dir = get_prawduct_dir(project_dir)
-    try:
-        work_live = work_in_flight or _critic_marker().review_active(prawduct_dir)[0]
-    except Exception:  # prawduct:allow prawduct/broad-except -- None keeps the clear-verdict check recording (it skips only on True) and must not crash the Stop
-        work_live = None
     notes = prawduct_dir / ".handoff-notes.md"
     try:
         notes_present = notes.is_file() and bool(notes.read_text().strip())
     except (OSError, UnicodeDecodeError):
         notes_present = None
+    try:
+        review_live = _critic_marker().review_active(prawduct_dir)[0]
+    except Exception:  # prawduct:allow prawduct/broad-except -- None keeps the clear-verdict check recording (it skips only on True) and must not crash the Stop
+        review_live = None
+    if review_live is True or (work_in_flight and notes_present is False):
+        work_live = True
+    elif review_live is None or (work_in_flight and notes_present is None):
+        work_live = None  # an unread marker or unread notes is "could not tell"
+    else:
+        work_live = False
     try:
         span = _gates().session_work_span(project_dir)
         # The porcelain fallback cannot see committed work, so its "nothing
@@ -3148,8 +3160,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         # `YOUR TURN` beside work a clear would kill holds the session no longer
         # than `RUNNING` would, and the ask is the reader's to answer either
         # way, so the pair stands while this hook can SEE that work. Only an
-        # observed True passes: an unreadable observation, or work this hook
-        # cannot see (an unread delegate's finished output), is still recorded.
+        # observed True passes: an unreadable observation, background work the
+        # forward notes already carry, or work this hook cannot see (an unread
+        # delegate's finished output) is still recorded.
         if (
             handed_over == standing_block.YOUR_TURN
             and handed_over_observed.get(evidence.OBSERVED_WORK_LIVE) is True

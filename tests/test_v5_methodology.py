@@ -1796,8 +1796,12 @@ LAST_MEASURED_TOKENS = {
     # +98 on 2026-11-18 (#1190, owner rulings that day): a clear stops no background agent, so
     # "kill" is defined as losing the result, and the delegate paragraph names what the forward notes
     # must carry to make an in-flight delegate clearable (what it is working on and why, where its
-    # result lands, what integration it owes) instead of claiming the delegate dies. A READING.
-    "methodology/session-hygiene.md": 3532,
+    # result lands, what integration it owes) instead of claiming the delegate dies. +4 the same
+    # day (review round): the Precedence parenthetical points at that rule instead of restating
+    # a second criterion for it. +7 more (verify round): the Stop-hook paragraph says background
+    # work passes the clear-verdict check only while the forward notes are empty, as the hook now
+    # computes it. A READING.
+    "methodology/session-hygiene.md": 3543,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -2364,8 +2368,15 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # step paragraph's last clause, which restated the three dispositions the next sentence
     # defines, and "last," in the rule's opening, which the asks sentence now qualifies. Digest
     # 9412 -> 9358 characters.
-    "framework": 3058,
-    "product": 2179,
+    # framework 3058 -> 3064, product 2179 -> 2185 on 2026-11-18 (#1190, owner rulings): a
+    # DECLARED RAISE. The closing section's persist clause now names each running delegate's
+    # task and why, replacing "delegate output", which a delegate still running does not have
+    # yet. The ruling lands the rule in the digest, the only surface every onboarded repo
+    # re-reads. The cut tried first, the live review's deadline derivation, is pinned on every
+    # carrier (`test_a_live_review_moves_the_clear_verdict_on_every_carrier`) and stayed.
+    # Digest 9475 -> 9506 characters.
+    "framework": 3064,
+    "product": 2185,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -2534,8 +2545,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # 3075 -> 3072 on 2026-11-11 (pr-reviewer-fold Chunk 03): ratcheted with the reading.
     # 3072 -> 3059, 2193 -> 2180 on 2026-11-11 (asks-last): ratcheted with the reading's cut,
     # one over each.
-    "framework": 3059,
-    "product": 2180,
+    # 3059 -> 3065, 2180 -> 2186 on 2026-11-18 (#1190): raised with the declared raise in the
+    # reading above, one over each.
+    "framework": 3065,
+    "product": 2186,
 }
 
 

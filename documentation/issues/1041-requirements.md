@@ -103,8 +103,10 @@ Checked against `develop` at `0b0ddffc`.
    worktree unforced, whatever its state, so that refusal is not a safety judgment. A forced removal
    deletes the submodules' repositories, which live under the worktree's own git directory, so
    `--force` is passed only after a further proof: each submodule is clean (read with
-   `--ignore-submodules=none`), and every commit its HEAD and branches reach is on one of its
-   remotes. Anything git cannot answer keeps the worktree. A worktree without submodules is still
+   `--ignore-submodules=none`), and nothing any of its refs reaches (branches, tags, its stash,
+   HEAD) is missing from its remote-tracking branches. That covers absorbed, embedded and
+   deinitialised submodules. Anything git cannot answer keeps the worktree, and the refusal names
+   the manual command for work the owner knows is published (a release tag). A worktree without submodules is still
    never forced. Keeping R2 strictly would leave such a worktree's removal to a hand-run `--force`,
    with none of these checks.
 3. **Remote branches.** A remote branch is a candidate only if it is on the repo's own remote (not
