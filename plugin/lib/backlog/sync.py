@@ -514,6 +514,23 @@ def _incremental_sync(
         # timestamp from. Either way there is no window to be incremental about.
         conn.close()
         return _full_rebuild(transport, project_dir=project_dir, owner=owner, repo=repo, now=now)
+    stranded = [other for other in (cache.cursor_scopes(conn) or []) if other != scope]
+    if stranded:
+        # A second watermark means an earlier plugin's rebuild of one scope
+        # discarded the other's items and left its cursor claiming them (#1195;
+        # `cache.replace_items` now drops it). Which watermark lies cannot be told
+        # from the store, and a window read over a stranded one fetches only what
+        # changed since — the rest stays missing for good. One rebuild settles it,
+        # and leaves a single watermark, so this runs once per affected store.
+        conn.close()
+        rebuilt = _full_rebuild(transport, project_dir=project_dir, owner=owner, repo=repo, now=now)
+        if rebuilt.get("status") == "ok":
+            rebuilt["warnings"] = [
+                f"rebuilt {scope}: the cache also held watermarks for {', '.join(stranded)}, "
+                "whose items an earlier rebuild had discarded, so its contents could not be trusted",
+                *rebuilt.get("warnings", []),
+            ]
+        return rebuilt
 
     try:
         validator = _revalidate(transport, owner, repo, since=since, etag=etag)

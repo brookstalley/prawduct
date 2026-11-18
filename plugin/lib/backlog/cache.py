@@ -840,6 +840,13 @@ def replace_items(
             conn.execute("DELETE FROM item_alias")
             if fts:
                 conn.execute("DELETE FROM item_fts")
+            # Every OTHER scope's watermark goes with its items. The store is
+            # clone-shared and holds one repo, so the delete above discarded any
+            # other scope's rows too; a cursor left behind would claim coverage of
+            # rows no longer here, and that scope's next incremental sync would
+            # fetch only what changed since — leaving the rest missing for good
+            # (#1195, seen on clones whose `backlog_service_repo` had moved).
+            conn.execute("DELETE FROM cursor WHERE scope != ?", (scope,))
             _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
             _write_cursor(conn, scope, cursor_since, None, fetched_at)
     except sqlite3.Error as exc:
