@@ -689,6 +689,17 @@ class TestMarkdownRendering:
         assert "chunk 01" in text
         assert "**2 findings** (2 note)" in text
 
+    def test_the_undispositioned_line_names_only_verbs_that_exist(self, tmp_path):
+        """#606's wording defect: the line said every finding takes "an ACCEPT,
+        FIX or FILE", but `disposition` has no `--fix`. A fix is verified by a
+        verify pass or recorded with `--fixed`; the line names both routes."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+        text = dispositions.render_markdown(dispositions.census(evidence.read_facts(repo)))
+        line = next(ln for ln in text.splitlines() if "undispositioned**" in ln)
+        assert "ACCEPT, FIX or FILE" not in line
+        assert "`disposition --fixed <paths>`" in line and "verify-resolutions" in line
+
     def test_owner_ruled_accept_is_labelled_distinctly(self, tmp_path):
         repo = _make_repo(tmp_path)
         _review_fact(repo, "rev-1", [("R-1", "blocking")])

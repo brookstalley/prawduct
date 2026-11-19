@@ -855,17 +855,24 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
 
     Returns ``[]`` when there is nothing to carry, which is the honest answer
     rather than a defensive one. Entries are ``{"review_id", "fid", "title",
-    "files"}`` (keys present when the finding had them), in the order the
-    composition listed them, else in finding order.
+    "files", "scope", "closure", "members"}`` (keys present when the finding had
+    them), in the order the composition listed them, else in finding order.
+    The last three (#847) are read from the recorded finding on both paths —
+    the composition lists blockers by id and title, not by what the reviewer
+    enumerated — so the roll-call can hand the verifier the member list.
     """
     keys = ("fid", "title", "files")
+    scope_keys = ("scope", "closure", "members")
     if counted is not None:
+        recorded = evidence.findings_index({"facts": facts})
         out = []
         for c in counted:
             if c.get("review_id") == this_review_id:
                 continue
             entry = {"review_id": c.get("review_id")}
             entry.update({k: c.get(k) for k in keys if k in c})
+            finding = recorded.get((c.get("review_id"), c.get("fid"))) or {}
+            entry.update({k: finding[k] for k in scope_keys if k in finding})
             out.append(entry)
         return out
     reviews = evidence.facts_of_kind({"facts": facts}, "review")
@@ -884,7 +891,7 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     out = []
     for finding in coverage_algebra.unresolved_blocking(anchor, resolved):
         entry = {"review_id": anchor.get("id")}
-        entry.update({k: finding.get(k) for k in keys if k in finding})
+        entry.update({k: finding.get(k) for k in keys + scope_keys if k in finding})
         out.append(entry)
     return out
 
@@ -1241,13 +1248,25 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
     Returns ``""`` when there is nothing to account for — a roll-call of nothing
     is noise, and a directive that fires on every dispatch trains its reader to
     skip the block it lives in.
+
+    **Per member, where the finding enumerated them (#847 D3).** A finding the
+    reviewer recorded ``members`` for is listed with its ``closure`` and each
+    member by id and site, because consolidation will append its ``fixed``
+    resolution only when that resolution's ``members`` answers every id — this
+    is the before half of that rule. A ``class`` finding with no members is
+    named unbounded: no list can close it, only a construction. An instance, or
+    a finding that gave no scope, renders as it always did.
     """
     if not carried:
         return ""
-    lines = "\n".join(
-        f"  - {c['review_id']}/{c.get('fid', '?')}"
-        + (f" — {c['title']}" if c.get("title") else "")
-        for c in carried
+    lines = "\n".join(_roll_call_line(c) for c in carried)
+    member_rule = (
+        "\nA finding listed with members is recorded `fixed` only when its"
+        " resolution's `members` answers every id: `{\"id\": \"m1\","
+        " \"disposition\": \"fixed\", \"evidence\": \"<what you read>\"}`, or"
+        " `waived` with a `rationale`. Leave one out and the resolution is not"
+        " recorded, so the finding keeps blocking."
+        if any(c.get("members") for c in carried) else ""
     )
     return (
         "PRAWDUCT: this branch's reviews — the round you are verifying and any"
@@ -1263,7 +1282,27 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
         " one of these ids is the one outcome that is always wrong: it reads as"
         " \"still broken\" to the gate and as \"handled\" to the operator, and"
         " those cannot both be true."
+        + member_rule
     )
+
+
+def _roll_call_line(carried: dict) -> str:
+    """One finding's line in :func:`account_for_prior_blockers_directive`."""
+    line = f"  - {carried['review_id']}/{carried.get('fid', '?')}"
+    if carried.get("title"):
+        line += f" — {carried['title']}"
+    members = carried.get("members") or []
+    if members:
+        if carried.get("closure"):
+            line += f"\n      class: {carried['closure']}"
+        line += "\n" + "\n".join(
+            f"      {m.get('id')} `{m.get('site')}`" for m in members if isinstance(m, dict)
+        )
+    elif carried.get("scope") == "class":
+        line += "\n      class, unbounded — closes only by a construction"
+        if carried.get("closure"):
+            line += f": {carried['closure']}"
+    return line
 
 
 #: Delivered at `verify-resolutions` DISPATCH, before
@@ -1415,7 +1454,9 @@ GOALS_1_3_MODES = frozenset({"chunk", "verify-resolutions"})
 #: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` for the identical reason, and
 #: :data:`VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`'s docstring records the
 #: precedent in general form: for the modes it serves, a rating can live
-#: nowhere but here.
+#: nowhere but here. The closing data clause (#847 D1: ``scope``, ``closure``,
+#: ``members``) took the same route: it is the only place a `chunk` or
+#: `verify-resolutions` reviewer meets those fields.
 #:
 #: **It closes an asymmetry that shipped.** Those two directives told a
 #: `verify-resolutions` reviewer to GRADE a class finding rigorously while
@@ -1437,7 +1478,10 @@ FINDING_SCOPE_DIRECTIVE = (
     " for, and expect members outside this delta. An instance closes by being"
     " fixed; an unbounded class closes only by a CONSTRUCTION — one owner every"
     " member passes through, or a check derived from the source of truth —"
-    " never by a longer list of names."
+    " never by a longer list of names. Record the answer as data too: `scope`,"
+    " a one-sentence `closure` (the property deciding membership) and, if you"
+    " can enumerate them, `members: [{id, site}]` — a `fixed` resolution must"
+    " then answer each id."
 )
 
 
@@ -4146,9 +4190,9 @@ def begin_review(
                         "committed delta since the prior review — this fact vouches "
                         "for the WORKING tree, but the cumulative/PR gate targets "
                         "committed HEAD, so it reads `uncovered` until you commit. "
-                        "Commit this tree VERBATIM and no further pass is needed: the "
-                        "commit carries the very tree this one vouched for. Only a "
-                        "selective or further-edited commit leaves a gap to close"
+                        # The post-fix rule's one home (#723), so this note and
+                        # the gates' remedies cannot word it differently.
+                        + gates.POST_FIX_COVERAGE
                     )
         delta = evidence.tree_diff(project_dir, base_tree, head_tree)
         if delta is None:
@@ -4805,6 +4849,137 @@ def _str_list(val) -> bool:
     return isinstance(val, list) and all(_nonempty_str(v) for v in val)
 
 
+#: A finding's optional ``scope`` answer (#847 D1). Absent means the reviewer
+#: gave none, which is today's behaviour; ``none`` is an answer.
+FINDING_SCOPES = ("instance", "class", "none")
+
+
+def finding_scope_fields(finding: dict) -> "tuple[dict, list[str]]":
+    """The ``scope`` / ``closure`` / ``members`` a partial finding carries,
+    normalized for the fact, and a warning for each part dropped (#847 D1).
+
+    **Tolerant, never refusing.** These fields are model-written and optional,
+    so a malformed one is dropped and said, and the consolidation goes on —
+    the same posture as ``files``. Dropping fails toward today: a finding
+    whose ``members`` were all dropped is graded as a finding without members.
+
+    A member is ``{id, site, note?}`` with a non-empty ``id`` unique within the
+    finding (a resolution answers members BY id, so a duplicate could not be
+    answered separately) and a non-empty ``site``. A non-string ``note`` is
+    dropped from its member, which is kept. ``scope`` is matched without case,
+    the natural encoding variant; any other value is dropped.
+    """
+    label = evidence.finding_title(finding, "?")
+    out: dict = {}
+    warnings: list[str] = []
+    scope = finding.get("scope")
+    if scope is not None:
+        norm = scope.strip().lower() if isinstance(scope, str) else None
+        if norm in FINDING_SCOPES:
+            out["scope"] = norm
+        else:
+            warnings.append(f"finding {label!r}: scope {scope!r} is not one of "
+                            f"{list(FINDING_SCOPES)}; dropped")
+    closure = finding.get("closure")
+    if closure is not None:
+        if _nonempty_str(closure):
+            out["closure"] = closure.strip()
+        else:
+            warnings.append(f"finding {label!r}: closure is not a non-empty string; dropped")
+    members = finding.get("members")
+    if members is None:
+        return out, warnings
+    if not isinstance(members, list):
+        warnings.append(f"finding {label!r}: members is not a list; dropped")
+        return out, warnings
+    kept: list[dict] = []
+    seen: set[str] = set()
+    for idx, m in enumerate(members):
+        mid = m.get("id") if isinstance(m, dict) else None
+        site = m.get("site") if isinstance(m, dict) else None
+        if not (_nonempty_str(mid) and _nonempty_str(site)):
+            warnings.append(f"finding {label!r}: member[{idx}] {m!r} needs a non-empty "
+                            "`id` and `site`; dropped")
+            continue
+        mid = mid.strip()
+        if mid in seen:
+            warnings.append(f"finding {label!r}: member[{idx}] repeats id {mid!r}; dropped")
+            continue
+        seen.add(mid)
+        entry = {"id": mid, "site": site.strip()}
+        note = m.get("note")
+        if _nonempty_str(note):
+            entry["note"] = note.strip()
+        elif note is not None:
+            warnings.append(f"finding {label!r}: member {mid!r} note is not a string; dropped")
+        kept.append(entry)
+    if kept:
+        out["members"] = kept
+    return out, warnings
+
+
+def resolution_member_answers(resolution: dict) -> "tuple[dict[str, dict], list[str]]":
+    """``id`` → the normalized answer a resolution gives one member, and a
+    warning for each entry dropped (#847 D2).
+
+    An answer is ``{id, disposition: fixed, evidence?}`` or ``{id, disposition:
+    waived, rationale}`` — a waived member carries its reason, as a waived
+    finding does. A malformed entry is dropped, never refused: what it would
+    have answered is then UNANSWERED, so dropping fails closed (the resolution
+    is withheld and names the id) rather than open."""
+    ref = f"{resolution.get('review_id')}/{resolution.get('fid')}"
+    answers: dict[str, dict] = {}
+    warnings: list[str] = []
+    members = resolution.get("members")
+    if members is None:
+        return answers, warnings
+    if not isinstance(members, list):
+        return answers, [f"resolution {ref}: members is not a list; dropped"]
+    for idx, m in enumerate(members):
+        mid = m.get("id") if isinstance(m, dict) else None
+        disposition = m.get("disposition") if isinstance(m, dict) else None
+        if not _nonempty_str(mid) or not isinstance(disposition, str) or (
+            disposition not in _RESOLUTION_DISPOSITIONS
+        ):
+            warnings.append(f"resolution {ref}: member[{idx}] {m!r} needs an `id` and a "
+                            f"`disposition` in {sorted(_RESOLUTION_DISPOSITIONS)}; dropped")
+            continue
+        mid = mid.strip()
+        entry = {"id": mid, "disposition": disposition}
+        if disposition == "waived":
+            if not _nonempty_str(m.get("rationale")):
+                warnings.append(f"resolution {ref}: member {mid!r} is waived with no "
+                                "`rationale`; dropped")
+                continue
+            entry["rationale"] = m["rationale"].strip()
+        elif _nonempty_str(m.get("evidence")):
+            entry["evidence"] = m["evidence"].strip()
+        answers.setdefault(mid, entry)
+    return answers, warnings
+
+
+def _warn_dropped(warnings: "list[str]") -> None:
+    """Say each dropped part on stderr, the channel consolidation's other
+    normalisations speak on; ``validate-partial`` prints the same lines to the
+    reviewer, the reader who can still rewrite the field."""
+    for line in warnings:
+        print(f"critic-consolidate: {line}", file=sys.stderr)
+
+
+def partial_scope_warnings(data: dict) -> "list[str]":
+    """Every drop :func:`finding_scope_fields` and
+    :func:`resolution_member_answers` would make on this partial — what
+    ``validate-partial`` shows the reviewer while it can still fix the file."""
+    warnings: list[str] = []
+    for f in data.get("findings") or []:
+        if isinstance(f, dict):
+            warnings += finding_scope_fields(f)[1]
+    for r in data.get("resolutions") or []:
+        if isinstance(r, dict):
+            warnings += resolution_member_answers(r)[1]
+    return warnings
+
+
 def _validate_observations(observations) -> tuple[bool, str]:
     """Validate a partial's optional ``observations`` array.
 
@@ -4865,8 +5040,8 @@ def validate_partial(data) -> tuple[bool, str]:
 
     Schema: ``{role, goals, dispatch_id, commit_reviewed, model?,
     duration_seconds?, findings:[{name, goal, severity, recommendation, files?,
-    failed_tests?}],
-    resolutions?:[{review_id, fid, disposition, rationale?}], summary}``.
+    failed_tests?, scope?, closure?, members?}],
+    resolutions?:[{review_id, fid, disposition, rationale?, members?}], summary}``.
     ``model``/``duration_seconds`` are nullable telemetry; everything else is
     load-bearing. ``severity`` must be ``blocking`` or ``warning`` so a typo
     can't silently persist as a non-blocking finding; ``note`` is tolerated and
@@ -4874,6 +5049,12 @@ def validate_partial(data) -> tuple[bool, str]:
     verify-resolutions judgment payload (D5): ``disposition`` is ``fixed`` or
     ``waived``, and ``waived`` REQUIRES a non-empty ``rationale`` (R7 — a
     waiver carries its justification).
+
+    ``scope`` / ``closure`` / ``members`` on a finding and ``members`` on a
+    resolution (#847) are NOT checked here: they are optional and model-written,
+    so a malformed one is dropped with a warning downstream
+    (:func:`finding_scope_fields`, :func:`resolution_member_answers`) and never
+    refuses the partial.
 
     ``observations`` is what a reviewer rated below a finding — validated by
     :func:`_validate_observations`, from any stage. A ``blocking`` entry is
@@ -5640,10 +5821,16 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     the title token by :func:`control_checks.derive_check` and never written
     by a reviewer (#548). Absent, never ``null``, when the title opens with
     no registered token.
+
+    ``scope``, ``closure`` and ``members`` (#847 D1) are carried as
+    :func:`finding_scope_fields` normalizes them, each absent when the
+    reviewer gave none, so an old-shape finding merges byte-identically. A
+    dropped part is said on stderr.
     """
     from . import control_checks  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
     merged: dict[tuple, dict] = {}
+    dropped: list[str] = []
     for partial in partials:
         for f in partial.get("findings", []):
             # Normalize optional attribution to non-empty string paths, so a
@@ -5671,11 +5858,15 @@ def merge_findings(partials: list[dict]) -> list[dict]:
                 entry["failed_tests"] = tests
             if partial.get("role") == RECORD_LINT_SOURCE:
                 entry["source"] = RECORD_LINT_SOURCE
+            scope_fields, warnings = finding_scope_fields(f)
+            entry.update(scope_fields)
+            dropped += warnings
             existing = merged.get(key)
             if existing is None or (
                 _SEVERITY_RANK[f["severity"]] > _SEVERITY_RANK[existing["severity"]]
             ):
                 merged[key] = entry
+    _warn_dropped(dropped)
     findings = list(merged.values())
     for idx, entry in enumerate(findings, start=1):
         entry["fid"] = f"R-{idx}"
@@ -6715,6 +6906,11 @@ def fact_to_cache_record(
         # record, which is how a control's yield reaches the ledger (#548).
         if f.get("check"):
             entry["check"] = f["check"]
+        # Additive (#847): the verify reviewer reads this record as the prior
+        # one, and a member's id is what its resolution answers.
+        for key in ("scope", "closure", "members"):
+            if f.get(key):
+                entry[key] = f[key]
         # Additive key; the schema validator checks required fields only and
         # `--json` readers tolerate unknown ones (api-contract § Direction).
         entry["fix_cost"] = finding_fix_cost(f.get("files"))
@@ -7468,9 +7664,10 @@ def check_partial(
 ) -> "tuple[bool, str]":
     """Whether ``path`` is a partial consolidation would accept for ``role``.
 
-    The one verdict on a single partial, shared by :func:`consolidate`'s read
-    loop and by ``prawduct-hook validate-partial`` (a reviewer's own check
-    before it returns), so a partial the reviewer was told is sound cannot be
+    The one verdict on a single partial — :func:`_load_partial`'s, which
+    :func:`consolidate`'s read loop and ``prawduct-hook validate-partial`` (a
+    reviewer's own check before it returns, which also needs the parsed
+    partial) both reach — so a partial the reviewer was told is sound cannot be
     refused when consolidation reads it. ``(True, "")`` or ``(False, reason)``;
     a parse failure's reason carries the decoder's line and column.
     """
@@ -7552,8 +7749,10 @@ def validate_partial_cmd(project_dir: Path, path_arg: str) -> int:
     """``prawduct-hook validate-partial <path>``: the reviewer's own check.
 
     Read-only. Finds which roster role of the pending review ``path`` is the
-    keyed partial of, then asks :func:`check_partial` — the verdict
-    consolidation will reach on the same file.
+    keyed partial of, then reaches :func:`check_partial`'s verdict — the one
+    consolidation will reach on the same file — and, on a pass, warns of each
+    optional #847 field (``scope``/``closure``/``members``) consolidation would
+    drop rather than refuse.
 
     The review is read from the partial's OWN ``.prawduct`` directory when the
     path sits in a partials directory (``<prawduct>/.critic-partials/<file>``),
@@ -7602,8 +7801,14 @@ def validate_partial_cmd(project_dir: Path, path_arg: str) -> int:
         return VALIDATE_PARTIAL_CANNOT_CHECK
     for role in manifest["roster"]:
         if partial_path(prawduct_dir, role, manifest["id"]).resolve() == resolved:
-            ok, reason = check_partial(prawduct_dir, manifest, role, target)
-            if ok:
+            # :func:`check_partial`'s verdict, read through the loader it wraps
+            # so the parsed partial is in hand for the drop warnings below.
+            data, reason = _load_partial(prawduct_dir, manifest, role, target)
+            if data is not None:
+                # Optional #847 fields consolidation will DROP, not refuse — said
+                # here, to the reader who can still rewrite them.
+                for line in partial_scope_warnings(data):
+                    print(f"validate-partial: warning: {line}", file=sys.stderr)
                 print("ok")
                 return 0
             print(f"validate-partial: {reason}", file=sys.stderr)
@@ -7649,6 +7854,91 @@ def _lead_with_moved_head(moved: "str | None", text: str) -> str:
     if not moved or moved in text:
         return text
     return f"At consolidation: {moved} {text}"
+
+
+def grade_member_coverage(
+    resolutions: "list[dict]", store: dict
+) -> "tuple[list[dict], dict, list[dict]]":
+    """Which reviewer resolutions may be appended, given the members their
+    target findings recorded (#847 D2). Returns ``(kept, answers, withheld)``:
+
+    - ``kept``: the resolutions to append, in order;
+    - ``answers``: ``(review_id, fid)`` → the ``members`` array a kept
+      resolution's fact carries, one answer per recorded id in the finding's
+      order — only where member coverage was graded;
+    - ``withheld``: ``{review_id, fid, missing}`` for each ``fixed`` resolution
+      NOT appended because its ``members`` left a recorded id unanswered.
+
+    **The rule.** A ``fixed`` resolution of a finding that recorded members is
+    appended only when its own ``members`` answers every id — ``fixed``, or
+    ``waived`` with a rationale. Otherwise it is withheld: no fact, which is
+    the state omitting the finding from ``resolutions`` already produces, so
+    the finding keeps blocking (``coverage_algebra.resolution_index`` lifts on
+    any ``fixed`` fact). Withholding rather than appending a fact marked
+    partial is what fails closed under every plugin version: an older reader
+    would lift on a ``partial`` fact, and plugin pins are per project.
+
+    Unchanged: a finding with no members, or a non-blocking one (``members`` on
+    its resolution is ignored, never persisted; the roll-call shows members only
+    for the blocking findings it names), a finding-level ``waived`` (its rationale covers
+    the finding), and an observation's resolution. A malformed answer is
+    dropped with a warning, which leaves its id unanswered — closed, not open.
+    """
+    recorded = evidence.findings_index(store)
+    kept: list[dict] = []
+    answers: dict = {}
+    withheld: list[dict] = []
+    warnings: list[str] = []
+    for r in resolutions:
+        key = (r["review_id"], r["fid"])
+        finding = recorded.get(key) or {}
+        # Graded only on a BLOCKING finding: those are the ones the verify
+        # roll-call names, with their members (`account_for_prior_blockers_
+        # directive`), and the only ones whose withheld fix "still blocks". A
+        # warning's `fixed` is appended as before.
+        members = finding.get("members") if finding.get("severity") == "blocking" else None
+        ids = [
+            m["id"] for m in members
+            if isinstance(m, dict) and _nonempty_str(m.get("id"))
+        ] if isinstance(members, list) else []
+        if r["disposition"] != "fixed" or not ids:
+            kept.append(r)
+            continue
+        given, dropped = resolution_member_answers(r)
+        warnings += dropped
+        warnings += [
+            f"resolution {key[0]}/{key[1]}: member {mid!r} is not one the finding "
+            "recorded; ignored"
+            for mid in given if mid not in ids
+        ]
+        missing = [mid for mid in ids if mid not in given]
+        if missing:
+            withheld.append({"review_id": key[0], "fid": key[1], "missing": missing})
+            continue
+        answers[key] = [given[mid] for mid in ids]
+        kept.append(r)
+    _warn_dropped(warnings)
+    return kept, answers, withheld
+
+
+def withheld_members_clause(withheld: "list[dict]") -> str:
+    """The sentence a consolidation that withheld a resolution appends to its
+    ``NEXT-ACTION`` (#847 D2): which findings, and which member ids nothing
+    answered. ``""`` when nothing was withheld. Said at consolidation only:
+    nothing on the record says a resolution was withheld — the finding simply
+    still blocks — so a record re-rendered on ingest has nothing to add here."""
+    if not withheld:
+        return ""
+    named = "; ".join(
+        f"{w['review_id']}/{w['fid']} (unanswered: {', '.join(w['missing'])})"
+        for w in withheld
+    )
+    return (
+        f" A `fixed` resolution was NOT recorded for {named}: that finding listed"
+        " members, and its resolution's `members` must answer every id — `fixed`"
+        " with the evidence read, or `waived` with a rationale — so it still"
+        " blocks. Fix or waive each unanswered member, then verify again."
+    )
 
 
 def consolidate(
@@ -7885,6 +8175,7 @@ def _consolidate(
                     file=sys.stderr,
                 )
                 return 1
+    resolutions, member_answers, withheld = grade_member_coverage(resolutions, store)
 
     dropped = 0
     if is_verify:
@@ -7975,6 +8266,8 @@ def _consolidate(
             "at_tree": manifest["head_tree"],
             "rationale": r.get("rationale"),
         }
+        if (r["review_id"], r["fid"]) in member_answers:
+            res_body["members"] = member_answers[(r["review_id"], r["fid"])]
         result = evidence.append_fact(project_dir, "resolution", res_id, res_body)
         if result["status"] != "appended":
             print(
@@ -8114,7 +8407,9 @@ def _consolidate(
         store=store, not_waived=waiver_refusals, prawduct_dir=prawduct_dir,
         rounds_clause=rounds_clause,
     )
-    record["next_action"] = _lead_with_moved_head(moved, record["next_action"])
+    record["next_action"] = _lead_with_moved_head(
+        moved, record["next_action"] + withheld_members_clause(withheld)
+    )
     findings_path = findings_cache_path(prawduct_dir)
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
@@ -8230,7 +8525,9 @@ def _consolidate(
 
     fact_body = fact.get("body") or {}
     counts = fact_body.get("counts") or {}
-    res_note = f", {appended_resolutions} resolution fact(s)" if resolutions else ""
+    res_note = f", {appended_resolutions} resolution fact(s)" if resolutions or withheld else ""
+    if withheld:
+        res_note += f" ({len(withheld)} withheld: members unanswered)"
     all_findings = fact_body.get("findings") or []
     groups = likely_duplicate_groups(all_findings)
     # A finding count is not a defect count: reviewers hold disjoint goals, so

@@ -90,6 +90,11 @@ Extend a resolution entry with an optional `members` array:
              {"id": "m2", "disposition": "waived", "rationale": "..."}]}
 ```
 
+*Superseded in one cell by #847's decided fork, which is what was built: an uncovered member
+WITHHOLDS the resolution fact rather than recording one as partial, because
+`coverage_algebra.resolution_index` lifts on any `fixed` fact and an older plugin would read a
+partial one as resolved. The table's "partial" row below therefore appends nothing.*
+
 Consolidation rule for a `fixed` resolution whose target finding has recorded members:
 
 | Members covered by the resolution | Outcome |

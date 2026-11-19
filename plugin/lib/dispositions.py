@@ -1036,7 +1036,9 @@ def render_markdown(report: dict) -> str:
     if summary["undispositioned"]:
         lines.append(
             f"**{summary['undispositioned']} undispositioned** — every finding "
-            "takes an ACCEPT, FIX or FILE regardless of severity "
+            "takes an ACCEPT or FILE (`prawduct-hook disposition`), or a FIX: "
+            "verified by `/prawduct:critic verify-resolutions`, or recorded with "
+            "`disposition --fixed <paths>` when it bought no round "
             "(`review-cycle.md`)."
         )
     if summary["conflicts"]:

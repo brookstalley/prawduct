@@ -347,7 +347,7 @@ Every review cycle must produce a record — governance without an audit trail i
 
 ### The Governance-Event Ledger
 
-The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only telemetry history: every consolidation path appends one `review.critic` event naming itself as `trigger`. `lib.ledger` is the **single writer** (`ledger-append` for reviews, in-process for `learning.*`) — it validates the record and computes the envelope; agents never hand-author JSONL. No gate reads it; `review-stats` aggregates it.
+The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is per-worktree telemetry of reviews, never their outcomes (`prawduct-hook render-dispositions` shows those): every consolidation path appends one `review.critic` event naming itself as `trigger`. `lib.ledger` is its **single writer**; agents never hand-author JSONL. No gate reads it; `review-stats` aggregates it.
 
 Its `scope` comes from the dispatch manifest, where `critic-begin` recorded it — **taken in code** from the checkout's work-unit binding (`prawduct-hook plan resolve` prints it), or `null` when the checkout is bound to no plan, or passed explicitly as an override. Do not derive scope yourself and pass it — `SKILL.md` step 4 owns why.
 

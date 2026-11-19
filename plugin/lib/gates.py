@@ -3289,8 +3289,34 @@ BLAST_RADIUS_CHECK = (
 #: The one exception to :data:`FIX_ORDER`, kept beside it: after a boundary
 #: `cumulative`, inference's rule 1b recognizes a committed fix.
 FIX_ORDER_AFTER_CUMULATIVE = (
-    "(A fix committed after a `cumulative` still infers that pass, but committing"
-    " first re-anchors it on committed HEAD.)"
+    "(A fix committed after a `cumulative` still infers that pass; which tree it"
+    " then grades: review-cycle.md § Verify-resolutions anchoring and demotion.)"
+)
+#: What closes a coverage gap after a fix — the post-fix coverage rule's one
+#: operator-facing home (#723). Both code carriers compose it: the blocking
+#: remedy (:func:`blocking_remedy_lines`, so the PR gate and the Stop hook) and
+#: the PR gate's ``uncovered`` remedy. The prose carriers (the PR and Critic
+#: skills, ``building.md``) cite the derivation instead of restating it.
+#:
+#: It is keyed on what a pass PRINTS about work it left out — ``NOT REVIEWED:``
+#: from the exit-3 refusal, ``NOT in the reviewed scope`` from
+#: ``critic_consolidate._dirty_anchor_note`` — never on a prediction of WHICH
+#: tree the pass anchored. That discriminator is derived once, in
+#: ``review-cycle.md`` § Verify-resolutions anchoring and demotion, beside the
+#: code that computes it (``critic_consolidate.begin_review``). So a correction
+#: to the operator sentence edits this string alone, and a correction to the
+#: discriminator does not reach it. Printed unwrapped: it carries backticked
+#: commands, and a wrap inside one hands the reader half a command.
+POST_FIX_COVERAGE = (
+    "A pass over uncommitted work covers the tree it graded: commit that tree"
+    " verbatim and no further pass is owed, while a selective or further-edited"
+    " commit leaves a delta no review saw, which one `/prawduct:critic"
+    " verify-resolutions` over it closes. If a pass named uncommitted files it"
+    " left out (`NOT REVIEWED:`, or `NOT in the reviewed scope`) or could not"
+    " compute them (`UNVERIFIED:`, or `could NOT be computed`), they are"
+    " unreviewed: commit them, then run verify-resolutions over the delta that"
+    " appears. Which tree a pass grades: `review-cycle.md` § Verify-resolutions"
+    " anchoring and demotion."
 )
 
 
@@ -3310,10 +3336,10 @@ def blocking_remedy_lines(
     and the loop that actually costs rounds is fix-commit-verify per finding:
     each commit extends HEAD, so each one buys a fresh round whose demoted
     observations tempt the next fix. Fixing everything in the working tree and
-    verifying once is sound — a verify pass reads the dirty tree so long as no
-    commit has moved its anchor, which is what the fix order buys — and the
-    verified tree is what gets committed. The order is composed from
-    :data:`FIX_ORDER`, its one home, not restated here.
+    verifying once is sound (``review-cycle.md`` § Verify-resolutions anchoring
+    and demotion derives why), and the verified tree is what gets committed. The
+    order is composed from :data:`FIX_ORDER` and what committing then owes from
+    :data:`POST_FIX_COVERAGE`, their one homes, not restated here.
 
     A superseded blocker is one carried by a review fact no verify-resolutions
     pass will ANCHOR to again (``coverage_algebra._verify_anchor_id``). Whether
@@ -3343,14 +3369,13 @@ def blocking_remedy_lines(
     other, and no exit code moves.
     """
     entries = [e for e in (unresolved or []) if isinstance(e, dict)]
-    # The fix-order line is never wrapped: it carries a backticked command, and
-    # a wrap inside it hands the reader half a command.
+    # The fix-order and post-fix lines are never wrapped: each carries a
+    # backticked command, and a wrap inside it hands the reader half a command.
     standard = [
         f"Fix them: {FIX_ORDER}.",
         "The pass records the resolution facts, so this same evidence then passes",
-        "with no full re-review. Commit the tree it verified verbatim: content it",
-        "has not seen leaves the fix outside what it anchored (review-cycle.md",
-        "§ Verify-resolutions anchoring and demotion).",
+        "with no full re-review.",
+        POST_FIX_COVERAGE,
     ]
     superseded = [e for e in entries if e.get("superseded")]
     if not superseded:
@@ -4031,24 +4056,13 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         if churn is not None and churn.get("status") == "churn"
         else "Run "
     )
+    # The post-fix half is POST_FIX_COVERAGE, composed rather than worded here:
+    # this carrier once restated which tree a verify pass anchored, and #722's
+    # wrong reading of that shipped here and in the PR skill at once (#723).
     print(
         lead + "/prawduct:critic cumulative — it reviews the whole span and records "
-        "the fact composition needs. If a pre-commit review was followed by a "
-        "selective commit (only part of the reviewed state committed), the "
-        "commit's tree was never reviewed — /prawduct:critic verify-resolutions "
-        "reviews that delta and closes the gap. If verify-resolutions already ran "
-        "but the working tree still holds an uncommitted fix, WHICH tree that pass "
-        "anchored decides what you owe. It anchored the WORKING tree unless you had "
-        "committed CONTENT the prior review never saw — a commit that materializes "
-        "the reviewed tree verbatim changes no content and does not move the anchor, "
-        "so \"did I commit at all\" is the wrong question to ask yourself here. "
-        "Working-tree anchor: commit that tree VERBATIM and the fact ends at the "
-        "tree this gate targets — no further pass is owed, and only a selective or "
-        "further-edited commit leaves a gap. Otherwise the pass anchored committed "
-        "HEAD and never saw those uncommitted files, so committing them now opens a "
-        "NEW delta that needs its own verify-resolutions pass; a dispatch that "
-        "refuses over such an interval (exit 3) names the files it left out. Full "
-        "derivation: `review-cycle.md` § Verify-resolutions anchoring and demotion.",
+        "the fact composition needs. When the gap follows a review of uncommitted "
+        "work, a narrower route closes it: " + POST_FIX_COVERAGE,
         file=sys.stderr,
     )
     return 1

@@ -141,7 +141,11 @@ clone that wrote it.
   by v3.8.1 and earlier only — `chunks[0]` or null, or alone on a fact from before `chunks`; new facts
   omit it, and `plan_status.fact_chunks` is the reader rule for both), `findings[]` (each with a
   stable `fid`, `goal`, `severity`, `title`, `recommendation`, and — on a test-failure finding —
-  `failed_tests`, the ids it rates, omitted when none), `counts`, and `observations[]` —
+  `failed_tests`, the ids it rates, omitted when none; optionally (#847) `scope`
+  (`instance`|`class`|`none`), `closure` (one sentence: the property that decides a class's
+  membership) and `members[]` (`{id, site, note?}`, ids unique within the finding) — each absent
+  when the reviewer gave none, and a malformed part dropped at consolidation, never refused),
+  `counts`, and `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
   `recommendation` and no severity. A `verify-resolutions` pass keeps only observations whose
   `about: {review_id, fid}` names the finding or observation whose fix they judge; it counts the rest
@@ -172,7 +176,13 @@ clone that wrote it.
   artifact, in `build-plan-review-friction.md` § Owner rulings.
 - **Resolution fact `body`** — points at the finding it resolves (`{review_id, fid}`), the
   `disposition` (`fixed` | `waived`), the `verified_by` review that attests it, the `at_tree` it was
-  verified against, and a `rationale` (required for `waived`). A resolution originates from a
+  verified against, and a `rationale` (required for `waived`). A `fixed` resolution of a finding
+  that recorded `members` also carries `members[]` — one `{id, disposition: fixed, evidence?}` or
+  `{id, disposition: waived, rationale}` per recorded id — and is appended only when it answers
+  every id; otherwise `critic-consolidate` appends NO resolution fact (the finding keeps blocking,
+  exactly as when it is left out) and its `NEXT-ACTION` names the unanswered ids (#847 D2).
+  Withheld rather than marked partial because `coverage_algebra.resolution_index` lifts on any
+  `fixed` fact, so a partial marker would open the gate under an older plugin. A resolution originates from a
   `verify-resolutions` review, or is an inherited-baseline waiver: `critic-consolidate` writes one in
   any mode for a BLOCKING finding of the review it consolidates when the newest `test-run` on the
   merge-base tree lists every id in the finding's `failed_tests`, with `disposition: waived`,
@@ -296,8 +306,10 @@ the verdict is reproducible across worktrees and across time, not tied to a muta
 Append-only telemetry of governance events (a consolidated review anchors a `review.critic` event
 here; on a development build, a paired native review records a `native.review` event, counts and
 range only — `plugin/docs/governance-telemetry.md`). Distinct from the evidence store: the ledger is *observability* (what happened, for
-audit/telemetry), the evidence store is *authority* (what the gate trusts). Intended to stay a
-thin event trail, not a second source of truth.
+telemetry), the evidence store is *authority* (what the gate trusts). Intended to stay a
+thin event trail, not a second source of truth. It is not an audit trail: it is per worktree, and it
+holds no finding's outcome. The `resolution` and `disposition` facts that discharge a finding live
+only in the evidence store, and `prawduct-hook render-dispositions` shows them (#606).
 
 **`dispatched_at` (optional envelope key, UTC ISO-8601).** Present on a `review.*` event whose
 dispatch was marked before the reviewer was spawned — `prawduct-hook pr-review-dispatch --begin`

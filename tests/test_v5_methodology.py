@@ -582,7 +582,10 @@ LAST_MEASURED_TOKENS = {
     # don't matter" and "blocking findings block until cleared" (review-cycle.md owns both, and the
     # Modes paragraph beside it names what resolves findings). No other restatement was found
     # to cut; the ceiling rises.
-    "methodology/building.md": 5666,
+    # -8 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): Resolve findings names `gates.FIX_ORDER`
+    # and cites the anchoring derivation instead of copying the order and restating what committing
+    # first does to the pass. A READING; ceiling lowered with it.
+    "methodology/building.md": 5658,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -783,7 +786,10 @@ LAST_MEASURED_TOKENS = {
     # by cutting "Review test quality and coverage through code analysis only", which SKILL.md
     # and critic-reviewer.md state in every payload that reads this file. Priced in
     # `test_reviewer_payload_budget.py`.
-    "skills/critic/review-protocol.md": 4070,
+    # +40 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED: the Scope bullet asks for
+    # the answer as data (`scope`, `closure`, `members`), which consolidation grades a `fixed`
+    # resolution against. Priced in `test_reviewer_payload_budget.py`.
+    "skills/critic/review-protocol.md": 4110,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -1149,7 +1155,9 @@ LAST_MEASURED_TOKENS = {
     # **Committed** flags, whose only job was steering the hand-applied property.
     # -10 on 2026-11-18 (backlog-roi integration, #334): the PR-gate `Superseded:` exception is
     # scoped to blockers the verify roll-call does not name. A READING; ceiling lowered with it.
-    "skills/critic/review-cycle.md": 8239,
+    # -10 on 2026-11-18 (backlog-roi-wave2, #606): the ledger paragraph says it holds reviews, never
+    # outcomes; paid by cutting its single-writer mechanics, which `lib/ledger.py`'s docstring owns.
+    "skills/critic/review-cycle.md": 8229,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1358,7 +1366,9 @@ LAST_MEASURED_TOKENS = {
     # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): step 4's exit-1 `verify-resolutions` row and the
     # demotion property stop telling the reader to apply the property by hand — `critic-begin` now
     # names the covering mode on every demotion. Ceiling lowered with it.
-    "skills/critic/SKILL.md": 3231,
+    # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): the exit-3 qualifier stops restating which
+    # tree a `cumulative`/`verify-resolutions` pass anchored. A READING; ceiling lowered with it.
+    "skills/critic/SKILL.md": 3225,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -2925,12 +2935,18 @@ class TestBuildingMethodology:
         too until a note stopped being a finding; an observation is owed no
         disposition, and the same sentence now says so.)
         """
-        # Render consistency with the runtime half: the guide carries
-        # `gates.FIX_ORDER` verbatim, the string `_BATCH_FIX_DIRECTIVE` composes.
+        # Render consistency with the runtime half, renegotiated by #723: the
+        # guide carried `gates.FIX_ORDER` verbatim, which made correcting the
+        # order a two-file edit. It now NAMES the constant the runtime prints
+        # (`_BATCH_FIX_DIRECTIVE` and the gate's blocking remedy compose it),
+        # and must not paraphrase the order beside the name — a copy here is
+        # the drift this pin exists to stop, in either form.
         import sys
         sys.path.insert(0, str(ROOT))
         from lib import gates
-        assert gates.FIX_ORDER in self.content
+        assert "`gates.FIX_ORDER`" in self.content
+        assert gates.FIX_ORDER not in self.content
+        assert "over the uncommitted fixes" not in self.content
         assert "Warnings gate nothing" in self.content
         assert "an observation is owed no disposition" in self.content
         # The exact phrasings the runtime's own comment records rejecting.
@@ -4009,7 +4025,8 @@ class TestBuildingMethodology:
         # RAISED 5360 -> 5409 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
         # LOWERED 5409 -> 5407 (testament-evidence-wiring, 2026-11-13) with the reading's cut.
         # RAISED 5407 -> 5667 (backlog-roi Chunk 09, #1034 + #678, 2026-11-18) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5667, f"building.md is ~{tokens} tokens, should be <5667"
+        # LOWERED 5667 -> 5659 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 5659, f"building.md is ~{tokens} tokens, should be <5659"
 
 
 # =============================================================================
@@ -5852,7 +5869,8 @@ class TestCriticSkill:
         # RAISED 3951 -> 3964 (review-round-cost Critic round, R-7/R-9) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4049 -> 4062 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
         # RAISED 4062 -> 4071 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 4071, f"review-protocol.md is ~{tokens} tokens, should be <4071"
+        # RAISED 4071 -> 4111 (backlog-roi-wave2 Chunk 02, #847) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 4111, f"review-protocol.md is ~{tokens} tokens, should be <4111"
 
 
 # =============================================================================
@@ -6434,7 +6452,8 @@ class TestCriticSkillRoutesByMode:
         # LOWERED 3266 -> 3254 (retire-chunk-status-shims, #1055, 2026-11-15) — see LAST_MEASURED_TOKENS.
         # RAISED 3254 -> 3262 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3262 -> 3232 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3232, f"SKILL.md is ~{tokens} tokens, should be <3232"
+        # LOWERED 3232 -> 3226 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 3226, f"SKILL.md is ~{tokens} tokens, should be <3226"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6782,7 +6801,8 @@ class TestReviewCycle:
         # LOWERED 8253 -> 8252 (coherence-pass Chunk 03, 2026-11-16) — see LAST_MEASURED_TOKENS.
         # LOWERED 8252 -> 8250 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 8250 -> 8240 (backlog-roi integration, #334, 2026-11-18) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8240, f"review-cycle.md is ~{tokens} tokens, should be <8240"
+        # LOWERED 8240 -> 8230 (backlog-roi-wave2, #606, 2026-11-18) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8230, f"review-cycle.md is ~{tokens} tokens, should be <8230"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to
