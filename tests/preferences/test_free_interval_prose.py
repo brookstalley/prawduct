@@ -280,6 +280,11 @@ def test_the_sentence_quotes_tokens_the_dispatcher_actually_prints():
     hook = (PLUGIN / "bin" / "prawduct-hook").read_text()
     assert "`NOT REVIEWED:`" in sentence and "NOT REVIEWED:" in hook
     assert "`NOT in the reviewed scope`" in sentence and "NOT in the reviewed scope" in note
+    # The case a pass could not compute at all (the paired review of #723): the
+    # exit-3 block's `UNVERIFIED:` and the dirty-anchor note's None branch.
+    unknown = cc._dirty_anchor_note("verify-resolutions", None)
+    assert "`UNVERIFIED:`" in sentence and "UNVERIFIED:" in hook
+    assert "`could NOT be computed`" in sentence and "could NOT be computed" in unknown
 
 
 def test_the_canonical_anchor_statement_still_names_a_tree_comparison():

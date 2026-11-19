@@ -11,29 +11,29 @@ partition: "four Opus-class builders in isolated worktrees, one per chunk, stack
 governed_by:
   - artifact: architecture
     dispositions:
-      - "an independent reviewer never mutates the session it reviews → inapplicable because no reviewer-side write path changes; chunk 03's refusals and chunk 02's derived field are written by consolidation, not by a reviewer"
-      - "authority fails closed; advice fails soft → conforms; chunk 05 turns a silent cache miss into `unchecked`, chunk 08's new signal is an info advisory, never a refusal (owner ruling 2026-09-19 on tax), chunk 07's drop record is advice that never changes a gate verdict"
-      - "local-first → conforms; chunk 08's PR lookup is `git_hygiene.any_pr_for` on the existing `_gh_json` egress site, reached only behind `worktrees --prs`; the session-start probe stays offline (egress_boundary updated)"
-      - "the plugin writes nothing into a governed repo except its own state → conforms; chunk 09's late-requirement records are written by the builder by hand, the lint only reads"
-      - "written in Python, never specific to Python → conforms; chunk 07 reads file timestamps and chunk 09's lint reads markdown, neither dispatches by language"
+      - "an independent reviewer never mutates the session it reviews → inapplicable because no reviewer-side write path changes; chunk 02's member fields are written by the reviewer into its own partial and graded by consolidation"
+      - "authority fails closed; advice fails soft → conforms; chunk 02 withholds a `fixed` resolution of a blocking finding whose members are unanswered (closed: the finding keeps blocking under every plugin version), and drops a malformed member with a warning (soft)"
+      - "local-first → inapplicable because no network surface changes; chunk 03 documents the existing notes transport and adds none"
+      - "the plugin writes nothing into a governed repo except its own state → inapplicable because no repo-write path changes"
+      - "written in Python, never specific to Python → inapplicable because no language dispatch changes"
       - "guides and reviews, never implements → conforms"
-      - "goals and verification bind, method is advice → conforms; builders departed from issue methods where code had moved (chunks 02, 03, 08) and recorded why in their fragments"
-      - "every fact has one home → conforms; chunk 04 makes the branch review set one owner for render, write and read; chunk 02 derives `check` in one registry; chunk 08 keeps one gh seam"
+      - "goals and verification bind, method is advice → conforms; chunk 03 chose documentation over mirroring once the evidence showed the ledger was never a shared record, and recorded why"
+      - "every fact has one home → conforms; chunk 04 gives the post-fix coverage rule one home (`gates.POST_FIX_COVERAGE`) with prose pointing at `review-cycle.md`'s derivation"
   - artifact: data-model
     dispositions:
-      - "verdicts computed from facts, no model in the write path → conforms; chunk 02 derives `check` at consolidation, never reviewer-written"
-      - "facts immutable and append-only → conforms; no fact is rewritten; chunk 02's field is additive and SCHEMA_VERSION does not move"
-      - "derived views never authoritative → conforms; chunk 04 replaces newest-fact views with fact composition"
-      - "a governance document reaches a terminal state → conforms; chunk 01 changes how chunk state is derived, not how a plan ends; the #1199 merged-side span credit is a recorded departure under D1 awaiting the owner's confirmation"
-      - "backlog issues conform to the title rules → inapplicable because no backlog write path changes (chunk 05 touches the cache and the counts snapshot only)"
-      - "a newer-schema fact is surfaced, never dropped → conforms; no fact schema changes, and the census report schema bump (2→3) adds keys"
-      - "two stores, two lifetimes → conforms; chunk 05's refresh attempt record is per-clone state beside the counts snapshot it describes"
-      - "backlog_service_repo selects the authoritative store → conforms; chunk 05's cache repair keys watermarks by scope and reads no markdown backlog"
+      - "verdicts computed from facts, no model in the write path → conforms; chunk 02's member grading reads the review fact's recorded members, and the model writes only into its partial"
+      - "facts immutable and append-only → conforms; a withheld resolution is never appended, and nothing is rewritten"
+      - "derived views never authoritative → conforms; chunk 03 states that the ledger is a per-worktree view of reviews, never their outcomes"
+      - "a governance document reaches a terminal state → conforms; chunk 01 is recorded in `dropped:`"
+      - "backlog issues conform to the title rules → inapplicable because no backlog write path changes"
+      - "a newer-schema fact is surfaced, never dropped → conforms; the review fact's new optional fields are additive and older readers ignore them"
+      - "two stores, two lifetimes → conforms; chunk 03 names which facts travel (`TRANSPORTED_KINDS`) and files the disposition question as #1207"
+      - "backlog_service_repo selects the authoritative store → inapplicable because no backlog reader changes"
   - artifact: api-contract
     dispositions:
-      - "whole-surface semver; persisted data schema-versioned → conforms; the dispositions report schema moves 2→3 with additive keys, the review fact schema is unchanged"
-      - "exit codes are the contract → conforms; chunk 03 keeps exit 1 and exit 6, adding a `fallback_mode` key only; chunk 05's cache-miss result exits 0 as a warning"
-      - "additive-first evolution → conforms; new keys, a new `--prs` flag and a new query only"
+      - "whole-surface semver; persisted data schema-versioned → conforms; `scope`/`closure`/`members` are optional additive keys, and SCHEMA_VERSION does not move"
+      - "exit codes are the contract → conforms; no exit code changes, and `validate-partial` still exits 0 when it drops a malformed member, printing a warning"
+      - "additive-first evolution → conforms; new optional fields and a new tool only"
 depends_on:
   - plugin/lib/dispositions.py
   - plugin/lib/critic_consolidate.py

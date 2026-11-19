@@ -252,6 +252,27 @@ class TestResolutionsGradeMembers:
         assert set(fact["body"]) == {"finding", "disposition", "verified_by", "at_tree", "rationale"}
         assert not _still_blocking(repo)
 
+    def test_a_warning_with_members_resolves_as_today(self, tmp_path):
+        """The paired review's R-2: the roll-call shows members only for the
+        BLOCKING findings it names, so a reviewer answering a WARNING has no
+        member list. Grading it would withhold a correct `fixed` and say the
+        finding "still blocks", which a warning never did."""
+        repo, head = _repo(tmp_path, {**CLASS_FINDING, "severity": "warning"})
+        result = _verify(repo, head, {"review_id": PRIOR_ID, "fid": "R-1", "disposition": "fixed"})
+        assert result.returncode == 0, result.stderr
+        (fact,) = _store_facts(repo, "resolution")
+        assert "members" not in fact["body"]
+        assert "was NOT recorded" not in result.stdout
+
+    def test_an_unhashable_member_disposition_is_dropped_not_raised(self):
+        """Malformed members are 'dropped, never refused': a list where a
+        disposition belongs must not raise out of a set lookup."""
+        given, dropped = cc.resolution_member_answers({
+            "review_id": "rev-a", "fid": "R-1", "disposition": "fixed",
+            "members": [{"id": "m1", "disposition": ["fixed"]}, {"id": "m2", "disposition": "fixed"}],
+        })
+        assert set(given) == {"m2"} and len(dropped) == 1
+
     def test_a_finding_level_waiver_still_waives(self, tmp_path):
         """D2 grades a `fixed` claim. A waiver carries its own rationale for the
         whole finding, as it always did."""

@@ -4869,7 +4869,7 @@ def finding_scope_fields(finding: dict) -> "tuple[dict, list[str]]":
     dropped from its member, which is kept. ``scope`` is matched without case,
     the natural encoding variant; any other value is dropped.
     """
-    label = finding.get("name") or finding.get("title") or "?"
+    label = evidence.finding_title(finding, "?")
     out: dict = {}
     warnings: list[str] = []
     scope = finding.get("scope")
@@ -4938,7 +4938,9 @@ def resolution_member_answers(resolution: dict) -> "tuple[dict[str, dict], list[
     for idx, m in enumerate(members):
         mid = m.get("id") if isinstance(m, dict) else None
         disposition = m.get("disposition") if isinstance(m, dict) else None
-        if not _nonempty_str(mid) or disposition not in _RESOLUTION_DISPOSITIONS:
+        if not _nonempty_str(mid) or not isinstance(disposition, str) or (
+            disposition not in _RESOLUTION_DISPOSITIONS
+        ):
             warnings.append(f"resolution {ref}: member[{idx}] {m!r} needs an `id` and a "
                             f"`disposition` in {sorted(_RESOLUTION_DISPOSITIONS)}; dropped")
             continue
@@ -7876,8 +7878,9 @@ def grade_member_coverage(
     partial is what fails closed under every plugin version: an older reader
     would lift on a ``partial`` fact, and plugin pins are per project.
 
-    Unchanged: a finding with no members (``members`` on its resolution is
-    ignored, never persisted), a finding-level ``waived`` (its rationale covers
+    Unchanged: a finding with no members, or a non-blocking one (``members`` on
+    its resolution is ignored, never persisted; the roll-call shows members only
+    for the blocking findings it names), a finding-level ``waived`` (its rationale covers
     the finding), and an observation's resolution. A malformed answer is
     dropped with a warning, which leaves its id unanswered — closed, not open.
     """
@@ -7888,7 +7891,12 @@ def grade_member_coverage(
     warnings: list[str] = []
     for r in resolutions:
         key = (r["review_id"], r["fid"])
-        members = (recorded.get(key) or {}).get("members")
+        finding = recorded.get(key) or {}
+        # Graded only on a BLOCKING finding: those are the ones the verify
+        # roll-call names, with their members (`account_for_prior_blockers_
+        # directive`), and the only ones whose withheld fix "still blocks". A
+        # warning's `fixed` is appended as before.
+        members = finding.get("members") if finding.get("severity") == "blocking" else None
         ids = [
             m["id"] for m in members
             if isinstance(m, dict) and _nonempty_str(m.get("id"))
