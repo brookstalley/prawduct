@@ -348,3 +348,5 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
    subject carries the plan's scope and the chunk. A base merge still carries nothing. Lands in
    `.prawduct/artifacts/data-model.md` D1 (the departure line) and `plan_status._Spans`.
 2. PR #1206 (`integration/backlog-roi-2026-11-18` → `develop`, the backlog ROI batch) is merged.
+
+**2026-11-19.** "Yes merge" — PR #1209 (`integration/backlog-roi-wave2-2026-11-18` → `develop`, backlog ROI wave 2) is merged.
