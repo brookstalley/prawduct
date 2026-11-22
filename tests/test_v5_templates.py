@@ -327,12 +327,17 @@ class TestCriticSkillPBT:
         goal1_section = skill[goal1_start:goal2_start].lower()
         assert "property-based" in goal1_section
 
-    def test_pbt_is_note_severity(self, skill: str):
-        """PBT check is NOTE severity (advisory, not blocking)."""
-        for line in skill.split("\n"):
-            if "property-based" in line.lower():
-                assert "note" in line.lower()
-                break
+    def test_pbt_is_an_observation(self, skill: str):
+        """The PBT check is advisory: an observation, never a rated finding.
+
+        It was NOTE severity until a note stopped being a finding at any stage;
+        what stays pinned is that an absent property-based test gates nothing.
+        """
+        lines = [ln.lower() for ln in skill.split("\n") if "property-based" in ln.lower()]
+        assert lines, "the protocol no longer names the property-based check at all"
+        rated = lines[0].split("\u2192")[-1]
+        assert "observation" in rated
+        assert "blocking" not in rated and "warning" not in rated
 
 
 # =============================================================================

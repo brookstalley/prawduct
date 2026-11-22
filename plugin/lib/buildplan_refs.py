@@ -247,7 +247,8 @@ def _commits_ahead_of_base(project_dir: Path, base: str) -> int:
         ["git", "rev-list", "--count", f"{base}..HEAD"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=10,
     )
     if proc.returncode != 0:
@@ -325,17 +326,20 @@ def _changed_on_branch(project_dir: Path, pathspec: Path) -> "set[Path] | None":
     try:
         mb = subprocess.run(
             ["git", "merge-base", base, "HEAD"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+            encoding="utf-8", errors="surrogateescape",
+            cwd=str(project_dir), capture_output=True, timeout=10,
         )
         if mb.returncode != 0 or not mb.stdout.strip():
             return None
         diff = subprocess.run(
             ["git", "diff", "--name-only", "--relative", mb.stdout.strip(), "--", str(pathspec)],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+            encoding="utf-8", errors="surrogateescape",
+            cwd=str(project_dir), capture_output=True, timeout=10,
         )
         untracked = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard", "--", str(pathspec)],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+            encoding="utf-8", errors="surrogateescape",
+            cwd=str(project_dir), capture_output=True, timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -809,7 +813,8 @@ def _git_ref_names(project_dir: Path) -> "frozenset[str] | None":
             ["git", "for-each-ref", "--format=%(refname)%09%(refname:short)"],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=10,
         )
         names = (
@@ -868,7 +873,8 @@ def _git_remote_slugs(project_dir: Path) -> "frozenset[str]":
             ["git", "config", "--get-regexp", r"^remote\..*\.url$"],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=10,
         )
         if proc.returncode == 0:

@@ -30,16 +30,22 @@ skipped both review gates.)
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
 from pathlib import Path
 
-from .change_log import CHANGE_LOG_REL_PATH, parse_change_log
-from .core import read_str_yaml_key
+from .change_log import CHANGE_LOG_REL_PATH
+from .core import read_str_yaml_key, suite_coupled_prefixes
 
 _BASE_BRANCH_KEY = "base_branch"
-_DEFAULT_BASE_CANDIDATES = ("origin/main", "main", "HEAD~1")
+#: The last-resort candidate: a COMMIT relative to HEAD, not a branch. It moves
+#: with every commit, so a merge-base taken against it is not "the tree before
+#: this work" — :func:`resolve_merge_base_tree` reports it as ``moving``.
+MOVING_FALLBACK_BASE = "HEAD~1"
+_DEFAULT_BASE_CANDIDATES = ("origin/main", "main", MOVING_FALLBACK_BASE)
 
 #: Branch names the historical candidate list already answers correctly — and
 #: the one roster of "the integration line" other modules read (``plan_mint``,
@@ -56,7 +62,8 @@ def _git_ref_exists(project_dir: Path, ref: str) -> bool:
         ["git", "rev-parse", "--verify", ref],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     return proc.returncode == 0
@@ -76,7 +83,8 @@ def _origin_head_ref(project_dir: Path) -> "str | None":
         ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc.returncode != 0:
@@ -637,7 +645,8 @@ def diagnose_base_advance_transfer(
     # transfer the three conditions would have granted, never grant one they
     # would not. It is the store, not the branch, that makes it necessary: every
     # worktree of the clone appends to the same file, and each surviving
-    # endpoint costs a git call below.
+    # endpoint costs a tree comparison below — one line of a single batched git
+    # call since #937, so no subprocess, but git's tree walks still grow with it.
     #
     # It is close to necessary and deliberately not exactly so. A fact on the
     # path from b' to h' spans a sub-interval, so its ``files_changed`` sits
@@ -671,14 +680,21 @@ def diagnose_base_advance_transfer(
         prior_bases = [tree for tree in prior_bases if tree not in pruned]
         prior_heads = [tree for tree in prior_heads if tree not in pruned]
     # `None` from `missing_objects` means git could not answer the batch; the
-    # per-candidate diffs below then meet any absent tree and degrade, which
+    # comparisons below then meet any absent tree and degrade, which
     # is the right reading when nothing could tell absence from failure.
 
-    # Condition 2, one pathspec-limited diff per distinct endpoint: a candidate
-    # endpoint survives only when it agrees with the required span's endpoint on
-    # EVERY file the branch changed. Each candidate list is already distinct and
-    # each is asked about ONE anchor, so there is nothing to memoize — an
-    # earlier version cached on (candidate, anchor) and could never hit.
+    # Condition 2: a candidate endpoint survives only when it agrees with the
+    # required span's endpoint on EVERY file the branch changed. The question
+    # is one pathspec-limited diff per (candidate, anchor) pair, and there is
+    # nothing to memoize within a call — each candidate list is already
+    # distinct and each is asked about ONE anchor (an earlier version cached on
+    # (candidate, anchor) and could never hit). What grew was the SUBPROCESS
+    # count, one per distinct endpoint in a store every worktree appends to
+    # (#937: ~140 diffs, ~2.9 s of a warm Stop). So every pair, heads and bases
+    # alike, goes to git in ONE `diff-tree --stdin` (`evidence.tree_diffs`):
+    # the comparison stays git's own, modes included, and a pair it cannot
+    # answer is re-asked the slow way and degrades exactly as before. Nothing
+    # is persisted, so there is no memo key to get wrong.
     # A path set large enough to overflow git's argv makes the diff fail, which
     # reads as "could not be computed" and denies, the same direction as every
     # other failure here.
@@ -688,6 +704,14 @@ def diagnose_base_advance_transfer(
     def _unresolved(*trees: str) -> None:
         unresolved.extend(t for t in trees if t not in unresolved)
 
+    asked = [
+        (candidate, anchor)
+        for candidates, anchor in ((prior_heads, head_tree), (prior_bases, base_tree))
+        for candidate in candidates
+        if candidate != anchor
+    ]
+    answers = evidence.tree_diffs(project_dir, asked, paths) if asked else {}
+
     def _survivors(candidates: list[str], anchor: str) -> list[str]:
         nonlocal degraded
         kept = []
@@ -695,9 +719,7 @@ def diagnose_base_advance_transfer(
             if candidate == anchor:
                 kept.append(candidate)
                 continue
-            differing = evidence.tree_diff(
-                project_dir, candidate, anchor, paths=paths
-            )
+            differing = answers[(candidate, anchor)]
             if differing is None:
                 degraded = degraded or "a candidate tree could not be diffed"
                 _unresolved(candidate, anchor)
@@ -946,9 +968,33 @@ def format_branch_rounds(tally: "dict | None") -> str:
     )
 
 
+def branch_rounds_clause(tally: "dict | None") -> str:
+    """The round count as a clause on ``next_action`` — the line the builder
+    reads when deciding whether to fix and buy another round, which is before
+    the coverage gate's :func:`format_branch_rounds` would reach them.
+
+    Reads the same :func:`count_branch_rounds` answer. ``""`` below two rounds,
+    because round 1 → 2 is the ordinary verify of a first review and a note on
+    every consolidation trains its reader to skip it; and ``""`` on an empty
+    span, where the count is absent by property (see
+    :func:`format_branch_rounds`). An unavailable tally says so — advice fails
+    soft, not silent. Leading space included: the caller appends it.
+    """
+    if not tally or tally.get("status") != "counted":
+        return f" Round count unavailable ({(tally or {}).get('reason', 'unknown')})."
+    n = tally.get("rounds") or 0
+    if n < 2 or not tally.get("span_commits"):
+        return ""
+    return (
+        f" This branch has recorded {n} review rounds since the merge-base"
+        f"{_format_branch_spend(tally, n)}; name what round {n + 1} will do "
+        f"differently before you spend it."
+    )
+
+
 def _format_branch_spend(tally: dict, n: int) -> str:
-    """The ``, costing … so far (…)`` clause of :func:`format_branch_rounds`,
-    or ``""`` when no attributed round recorded a duration of either kind.
+    """The ``, costing … so far (…)`` clause of :func:`format_branch_rounds`
+    and :func:`branch_rounds_clause`, or ``""`` when no attributed round recorded a duration of either kind.
 
     **Clocked time leads, and an estimate is always named as one.** A round's
     duration is either read from the dispatch clock or recollected by the
@@ -998,6 +1044,278 @@ def _format_branch_spend(tally: dict, n: int) -> str:
     )
 
 
+#: How many paths each cause names before eliding the rest with a count.
+_CAUSE_PATHS_SHOWN = 3
+
+
+def _uncommitted_paths(
+    project_dir: Path,
+) -> "tuple[list[str], list[str], list[str]] | str":
+    """``(uncommitted, untracked, index_deleted)`` — every path the working
+    tree holds against HEAD, tracked edits and untracked files alike; the
+    untracked subset on its own; and the paths the index has deleted; or the
+    failure reason as a string.
+
+    Untracked files count because both evidence readers capture them: the
+    Stop gate's target tree holds them, and a suite run records the tree it
+    met with them in it. The two subsets are kept apart because ``git stash
+    push -- <path>`` refuses both: a path git does not track without
+    ``--include-untracked``, and a path the index has deleted (``git rm``, the
+    old name of a ``git mv``) under any flag — so a remedy naming one of those
+    has to set the whole tree aside instead.
+
+    ``--no-renames``: porcelain ``diff`` honours ``diff.renames`` (on by
+    default), which would list a staged ``git mv a.py b.py`` as ``b.py`` alone,
+    and a remedy built from that list would leave the staged deletion of
+    ``a.py`` behind, so the tree would still not meet HEAD."""
+    from . import evidence  # noqa: PLC0415 -- lazy, as this module's other evidence imports are
+
+    rc, out, err = evidence.run_git(
+        project_dir, "diff", "--name-only", "--no-renames", "-z", "HEAD"
+    )
+    if rc != 0:
+        return f"uncommitted paths unreadable ({err.strip()[:80]})"
+    tracked = [p for p in out.split("\0") if p]
+    rc, out, err = evidence.run_git(
+        project_dir, "ls-files", "--others", "--exclude-standard", "-z"
+    )
+    if rc != 0:
+        return f"untracked paths unreadable ({err.strip()[:80]})"
+    untracked = [p for p in out.split("\0") if p and p not in tracked]
+    rc, out, err = evidence.run_git(
+        project_dir, "diff", "--cached", "--name-only", "--no-renames",
+        "--diff-filter=D", "-z", "HEAD",
+    )
+    if rc != 0:
+        return f"index deletions unreadable ({err.strip()[:80]})"
+    index_deleted = [p for p in out.split("\0") if p]
+    return tracked + untracked, untracked, index_deleted
+
+
+def explain_uncovered(
+    project_dir: Path,
+    facts: "list[dict] | None",
+    base_tree: str,
+    head_tree: str,
+    merge_base: str,
+    diff_fn,
+    *,
+    target: str = "head",
+    tally: "dict | None" = None,
+) -> dict:
+    """Why the branch's span is uncovered — the explanation both review gates
+    render as one ``CAUSE:`` line (:func:`format_uncovered_cause`).
+
+    An ``uncovered`` verdict is one word for several states with different
+    remedies: the base advanced since the branch's last review, the branch's
+    own committed head changed since it, an uncommitted file defeats the
+    suite match the base-advance transfer needs, or the branch was never
+    reviewed. This names which hold. It is advice about a verdict already
+    reached and never an input to one.
+
+    ``base_tree`` is the merge-base tree, ``head_tree`` is ``HEAD^{tree}`` —
+    the committed head for both gates, so committed change and uncommitted
+    change are reported apart. ``target`` is the tree the calling gate
+    composes to and decides which uncommitted paths matter: ``"working"``
+    (the Stop gate, whose span holds them) keeps the judgeable ones;
+    ``"head"`` (the PR gate, which never reads them) keeps the suite-coupled
+    ones, because those are what make a suite run in this tree fail to meet
+    HEAD.
+
+    ``tally`` is :func:`count_branch_rounds`' result when the caller already
+    holds it, so the lineage walk is paid once per gate call; it is computed
+    here otherwise. The newest attributed round is the branch's last review.
+
+    Returns::
+
+        {"status": "explained" | "no-branch-review" | "unavailable",
+         "reason": str,                    # non-empty only when unavailable
+         "last_review": fact_id | None,
+         "base_moved": bool,
+         "head_changed": [judgeable files],
+         "uncommitted": [paths], "untracked": [paths],
+         "index_deleted": [paths],      # subsets of uncommitted
+         "merge_base": str}             # absent when unavailable
+
+    **``base_moved`` asks lineage, not trees.** The review's anchor commit
+    either contains today's merge-base or it does not; when it does not, the
+    base advanced into the branch after the review. Comparing the review's
+    ``base_tree`` to the merge-base tree would call every chunk review — whose
+    base is a mid-branch tree — a base advance.
+
+    **``head_changed`` excludes what the advance brought in.** After a base
+    merge, HEAD differs from the reviewed head by the advance's own files too;
+    those are not the branch's change, so when the base moved the list is
+    narrowed to files the current branch diff holds.
+
+    Never raises: advice fails soft, and degrades to ``unavailable`` with a
+    reason rather than to silence — a missing line reads as "no cause", which
+    is the one thing it must not say.
+    """
+    try:
+        return _explain_uncovered(
+            project_dir, facts, base_tree, head_tree, merge_base, diff_fn,
+            target=target, tally=tally,
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice must never crash the gate that renders it
+        return _unexplained(f"explanation crashed: {exc!r}")
+
+
+def _unexplained(reason: str) -> dict:
+    return {
+        "status": "unavailable",
+        "reason": reason,
+        "last_review": None,
+        "base_moved": False,
+        "head_changed": [],
+        "uncommitted": [],
+        "untracked": [],
+        "index_deleted": [],
+    }
+
+
+def _explain_uncovered(
+    project_dir, facts, base_tree, head_tree, merge_base, diff_fn, *, target, tally
+) -> dict:
+    from . import coverage_algebra, evidence, gitstate  # noqa: PLC0415 -- lazy, as this module's other evidence imports are
+
+    if not isinstance(facts, list):
+        return _unexplained("the evidence store did not read")
+    if not base_tree or not head_tree:
+        return _unexplained("the span's endpoints are unresolved")
+    if tally is None:
+        tally = count_branch_rounds(project_dir, facts, merge_base)
+    if not tally or tally.get("status") != "counted":
+        return _unexplained((tally or {}).get("reason", "branch rounds uncounted"))
+
+    dirty = _uncommitted_paths(project_dir)
+    if isinstance(dirty, str):
+        return _unexplained(dirty)
+    changed, untracked, index_deleted = dirty
+    if target == "working":
+        uncommitted = coverage_algebra.judgeable_files(changed)
+    else:
+        uncommitted = coverage_algebra.suite_coupled_files(
+            changed, suite_coupled_prefixes(project_dir / ".prawduct")
+        )
+    explained = {
+        "status": "no-branch-review",
+        "reason": "",
+        "last_review": None,
+        "base_moved": False,
+        "head_changed": [],
+        "uncommitted": uncommitted,
+        "untracked": [p for p in untracked if p in uncommitted],
+        "index_deleted": [p for p in index_deleted if p in uncommitted],
+        "merge_base": merge_base,
+    }
+
+    reviews = tally.get("reviews") or []
+    if not reviews:
+        return explained
+    last_id = reviews[-1].get("id")
+    fact = next(
+        (f for f in reversed(facts) if f.get("kind") == "review" and f.get("id") == last_id),
+        None,
+    )
+    body = (fact or {}).get("body") or {}
+    anchor = evidence.review_anchor(body)
+    reviewed_head = body.get("head_tree")
+    if not gitstate.is_object_id(anchor) or not gitstate.is_object_id(reviewed_head):
+        return _unexplained(f"review {last_id} carries no readable anchor")
+    if not gitstate.is_object_id(merge_base):
+        return _unexplained("no merge-base to compare the review against")
+
+    rc, _out, err = evidence.run_git(
+        project_dir, "merge-base", "--is-ancestor", merge_base, anchor
+    )
+    if rc not in (0, 1):
+        return _unexplained(f"review {last_id}'s lineage unreadable ({err.strip()[:80]})")
+    base_moved = rc == 1
+
+    head_changed: list[str] = []
+    if reviewed_head != head_tree:
+        since = diff_fn(reviewed_head, head_tree)
+        if since is None:
+            return _unexplained(f"diff since review {last_id} unreadable")
+        head_changed = coverage_algebra.judgeable_files(since)
+        if base_moved and head_changed:
+            branch = diff_fn(base_tree, head_tree)
+            if branch is None:
+                return _unexplained("the branch's own diff is unreadable")
+            own = set(branch)
+            head_changed = [p for p in head_changed if p in own]
+
+    explained.update(
+        {
+            "status": "explained",
+            "last_review": last_id,
+            "base_moved": base_moved,
+            "head_changed": sorted(head_changed),
+        }
+    )
+    return explained
+
+
+def _shown(paths: "list[str]") -> str:
+    head = ", ".join(paths[:_CAUSE_PATHS_SHOWN])
+    if len(paths) > _CAUSE_PATHS_SHOWN:
+        head += f" (+{len(paths) - _CAUSE_PATHS_SHOWN} more)"
+    return head
+
+
+def format_uncovered_cause(explained: "dict | None", *, gate: str) -> str:
+    """The one ``CAUSE:`` line both review gates print directly after their
+    uncovered line. ``gate`` is ``"pr"`` or ``"stop"``; it changes only what
+    the uncommitted cause says, because the two gates read those paths
+    differently — the PR gate composes to HEAD and ignores them, the Stop
+    gate composes to the working tree and judges them.
+
+    Causes in a fixed order, each that holds, up to three paths each: the
+    committed head changed since the last review; the base advanced since it;
+    paths are uncommitted; no review on this branch. When none holds — the
+    newest review stands at this HEAD, the base unmoved, nothing uncommitted —
+    the line says the gap is earlier on the branch rather than saying nothing.
+    """
+    explained = explained or {}
+    status = explained.get("status")
+    if status not in ("explained", "no-branch-review"):
+        return f"CAUSE: unavailable ({explained.get('reason') or 'no explanation'})."
+    review = explained.get("last_review")
+    head_changed = explained.get("head_changed") or []
+    uncommitted = explained.get("uncommitted") or []
+    causes: list[str] = []
+    if status == "explained" and head_changed:
+        causes.append(f"committed head changed since review {review}: {_shown(head_changed)}")
+    if status == "explained" and explained.get("base_moved"):
+        moved = f"base advanced since review {review}"
+        if head_changed:
+            moved += " — the branch's own diff also changed, so the transfer cannot apply"
+        causes.append(moved)
+    if uncommitted:
+        if gate == "stop":
+            causes.append(f"uncommitted: {_shown(uncommitted)} (in this gate's span)")
+        else:
+            causes.append(
+                f"uncommitted: {_shown(uncommitted)} (not part of the PR candidate, "
+                "and the gate ignores them — but a suite run in this tree vouches "
+                "for the working tree, not HEAD)"
+            )
+    if status == "no-branch-review":
+        merge_base = explained.get("merge_base") or ""
+        causes.append(
+            f"no review on this branch since {merge_base[:12] or 'the merge-base'}"
+        )
+    if not causes:
+        return (
+            f"CAUSE: review {review} stands at this HEAD with the base unmoved and "
+            "nothing uncommitted, so the gap is earlier on the branch — an interval "
+            "before that review that no review spans, or a review whose scope missed "
+            "a file its interval changed."
+        )
+    return "CAUSE: " + "; ".join(causes) + "."
+
+
 def resolve_merge_base_tree(project_dir: Path) -> dict:
     """Resolve base branch → merge-base commit → that commit's tree SHA —
     the shared prelude of every gate/dispatch that anchors an interval at
@@ -1006,11 +1324,14 @@ def resolve_merge_base_tree(project_dir: Path) -> dict:
     ``critic_consolidate.begin_review`` each carried a divergent copy — the
     same drift class the judgeability-predicate consolidation killed.
 
-    Returns ``{"status": "ok", "base_branch", "merge_base", "tree"}`` or
-    ``{"status": "error", "step": "resolve-base" | "merge-base" |
-    "rev-parse", "reason"}``. ``reason`` carries the full detail; callers
+    Returns ``{"status": "ok", "base_branch", "merge_base", "tree",
+    "moving"}`` or ``{"status": "error", "step": "resolve-base" | "merge-base"
+    | "rev-parse", "reason"}``. ``reason`` carries the full detail; callers
     map ``step`` onto their own error posture (loud stderr with a per-step
-    remedy, silent degradation, or an error dict).
+    remedy, silent degradation, or an error dict). ``moving`` is True when the
+    base fell through to :data:`MOVING_FALLBACK_BASE`: the merge-base is then
+    HEAD's parent, which a caller asking "what did the tree look like before
+    this work" must not take as the answer (the inherited-baseline waiver).
     """
     from . import evidence  # noqa: PLC0415 -- lazy: mirrors the gates/consolidate import posture; avoids import-cycle risk at module load
 
@@ -1040,6 +1361,277 @@ def resolve_merge_base_tree(project_dir: Path) -> dict:
         "base_branch": base_branch,
         "merge_base": merge_base,
         "tree": tree,
+        "moving": base_branch == MOVING_FALLBACK_BASE,
+    }
+
+
+#: Which bound produced a branch review set (:func:`branch_review_ids`). The
+#: store is clone-wide, so the set always needs one; lineage is the primary and
+#: the worktree is what answers where an empty span leaves lineage with nothing
+#: to say. Named constants because they are written into a durable
+#: guard-refusal fact that a retirement query reads back.
+BOUND_LINEAGE = "lineage"
+BOUND_WORKTREE = "worktree"
+
+
+def branch_review_ids(
+    project_dir: Path,
+    facts: "list[dict]",
+    *,
+    scope: "str | None" = None,
+    resolved: "dict | None" = None,
+    tally: "dict | None" = None,
+) -> dict:
+    """THE answer to "which reviews are this branch's" — the set, where
+    ``critic_consolidate.select_branch_review`` answers "which ONE is its newest".
+
+    Every reader that composes over a branch's reviews rather than over one of
+    them asks this: the round budget (with its ``scope``), the disposition
+    census with no selector and the session handoff. One owner, so the census
+    and the budget refusal cannot disagree about which reviews are "this
+    branch's". Which of those reviews' blockers are still OPEN is a different
+    question with a different owner — the gate's composition
+    (:func:`open_blockers`) — because a blocker a clean spanning review routed
+    around is in this set and gates nothing.
+
+    **Lineage first.** The review facts :func:`count_branch_rounds` attributes
+    to ``merge_base..HEAD`` — including its documented lower bound (a dirty-tree
+    review taken before the branch's first commit sits AT the merge base and is
+    not counted).
+
+    **Where lineage cannot bound it, the WORKTREE does — and the worktree is
+    not bound enough on its own.** When the span holds no commits — a
+    trunk-based repo after every push, or a branch cut and not yet committed
+    to — an intersection with lineage is empty whatever was reviewed, so the
+    set is drawn from the review facts recorded from this worktree
+    (``actor.worktree == str(project_dir)``): the store sits in the clone's git
+    common dir and every worktree writes into it, and lineage was the thing
+    separating them. An ingested fact carries the writer's basename only, so it
+    never matches an absolute path here. The swap is keyed on the span rather
+    than on an empty result, so a branch that HAS commits and has simply bought
+    no review yet still answers by lineage.
+
+    But "every review this worktree ever recorded" is every scope, every
+    branch it was ever on and all of time — over a thousand facts in a
+    long-lived checkout, two dozen of them with blockers nobody owes any more
+    — so the worktree's facts are narrowed again, by the one bound that names
+    THIS body of work:
+
+    - **``scope`` given** (the round budget): the scope's facts. The budget's
+      declared unit is the scope, which may span several pushes on trunk, so
+      its rounds are counted whatever tree they stood at.
+    - **no scope** (the census, the handoff): the reviews linked to HEAD's tree
+      (``coverage_algebra.reviews_linked_from`` — the review-link rule read
+      forward). With an empty span HEAD's tree IS the merge-base tree, the
+      tree every review of the work now in flight started from; a review of
+      earlier, already-integrated work stands on a chain that never reaches it.
+
+    On the lineage bound ``scope`` narrows the same way, so the budget's
+    ``review_ids`` are exactly this function's answer under either bound.
+
+    ``resolved`` (:func:`resolve_merge_base_tree`'s answer) and ``tally``
+    (:func:`count_branch_rounds`' over the same ``facts``) are the caller's
+    when it already holds them, so one consolidation walks the lineage once.
+
+    Returns ``{"status": "ok", "review_ids", "bound"}`` with ids in store order
+    and ``bound`` one of :data:`BOUND_LINEAGE` / :data:`BOUND_WORKTREE`, or
+    ``{"status": "unavailable", "reason"}`` — no merge base, an unreadable
+    branch span, or a store that did not read. Never raises; each caller picks
+    its own degraded posture, and none of them may read "unavailable" as
+    "empty".
+    """
+    if not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "the evidence store did not read"}
+    if resolved is None:
+        resolved = resolve_merge_base_tree(project_dir)
+    if resolved.get("status") != "ok":
+        return {"status": "unavailable", "reason": resolved.get("reason", "unknown")}
+    if tally is None:
+        tally = count_branch_rounds(project_dir, facts, resolved["merge_base"])
+    if tally.get("status") != "counted":
+        return {"status": "unavailable", "reason": tally.get("reason", "unknown")}
+
+    def _in_scope(fact: dict) -> bool:
+        return scope is None or (fact.get("body") or {}).get("scope") == scope
+
+    if tally.get("span_commits"):
+        on_lineage = {r.get("id") for r in tally.get("reviews") or [] if r.get("id")}
+        return {
+            "status": "ok",
+            "review_ids": [
+                f.get("id") for f in facts
+                if f.get("kind") == "review" and f.get("id") in on_lineage and _in_scope(f)
+            ],
+            "bound": BOUND_LINEAGE,
+        }
+    here = _reviews_recorded_in_this_worktree(facts, project_dir)
+    if scope is not None:
+        bounded = [f for f in here if _in_scope(f)]
+    else:
+        from . import coverage_algebra  # noqa: PLC0415 -- lazy, as this module's other algebra imports are
+
+        bounded = coverage_algebra.reviews_linked_from(here, resolved.get("tree"))
+    return {
+        "status": "ok",
+        "review_ids": [f.get("id") for f in bounded],
+        "bound": BOUND_WORKTREE,
+    }
+
+
+def _reviews_recorded_in_this_worktree(
+    facts: "list[dict]", project_dir: Path
+) -> "list[dict]":
+    """The review facts recorded from THIS worktree (``actor.worktree ==
+    str(project_dir)``), in store order — the pool :func:`branch_review_ids`'
+    second bound narrows. ``actor.worktree`` is written by
+    ``evidence.append_fact`` on every fact the plugin has ever appended, so no
+    fact is invisible to this for want of the field; an ingested fact carries
+    the writer's basename only and never matches an absolute path."""
+    here = str(project_dir)
+    return [
+        f
+        for f in facts
+        if f.get("kind") == "review"
+        and f.get("id")
+        and (f.get("actor") or {}).get("worktree") == here
+    ]
+
+
+def open_blockers(
+    project_dir: Path,
+    facts: "list[dict]",
+    target_tree: "str | None",
+    *,
+    resolved: "dict | None" = None,
+    read: "dict | None" = None,
+) -> dict:
+    """THE answer to "which blocking findings are still open on this branch at
+    ``target_tree``" — the gate's own: the unresolved blockers
+    ``coverage_algebra.coverage_verdict`` counts composing merge-base tree →
+    ``target_tree``, read through ``coverage_algebra.blockers_counted``.
+
+    **Why not "no resolution fact".** That is half of the gate's predicate. The
+    other half is the path: a blocker recorded at a tree no composed path
+    stands on gates nothing, and a clean spanning ``cumulative`` makes exactly
+    that true of every earlier round it routed around. A surface counting
+    resolution facts alone then disagrees with the gate that just passed — it
+    names the blocker in a verify roll-call, counts it as actionable so
+    ``no-review-needed`` cannot answer, writes NOT DONE, and reports it open in
+    the handoff. Every one of those surfaces asks this instead
+    (``critic_consolidate.carried_blocking``'s callers, the disposition
+    census's ``open_blocking``, ``gates.blocking_remedy_lines``' reachability).
+
+    ``target_tree`` is the caller's: a verify pass asks at the tree it anchors
+    on (its ``base_tree``), a census at the newest review in its set
+    (:func:`branch_open_blockers`). The span starts where the gates' does
+    (:func:`resolve_merge_base_tree`; pass ``resolved`` when held). Composition
+    uses the gates' own diff and tree-key functions, memoized through
+    ``verdict_cache`` when ``read`` — the :func:`evidence.read_facts` result
+    ``facts`` came from, unfiltered — is given.
+
+    No composition is paid when no review in ``facts`` holds an unresolved
+    blocker: the gate's set is a subset of those, so the answer is ``[]``.
+
+    Returns ``{"status": "ok", "blockers": [entry, …]}`` (entries as
+    ``coverage_verdict`` lists them: ``review_id``, ``fid``, ``title``,
+    ``superseded``, …) or ``{"status": "unavailable", "reason"}`` — no merge
+    base, no target, or no path composes to it. Never raises; "unavailable" is
+    never "none open".
+    """
+    from . import coverage_algebra  # noqa: PLC0415 -- lazy, as this module's other algebra imports are
+
+    if not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "the evidence store did not read"}
+    resolution = coverage_algebra.resolution_index(facts)
+    if not any(
+        coverage_algebra.unresolved_blocking(f, resolution)
+        for f in facts
+        if f.get("kind") == "review"
+    ):
+        return {"status": "ok", "blockers": []}
+    if not isinstance(target_tree, str) or not target_tree:
+        return {"status": "unavailable", "reason": "no tree to compose to"}
+    if resolved is None:
+        resolved = resolve_merge_base_tree(project_dir)
+    if resolved.get("status") != "ok":
+        return {"status": "unavailable", "reason": resolved.get("reason", "unknown")}
+    # Lazy and one-way: gates imports this module at load, and these are the
+    # very diff/key functions (and memo) the gate composes with, so the two
+    # cannot differ on an edge.
+    from . import gates, verdict_cache  # noqa: PLC0415
+
+    diff_fn = gates._cached_diff_fn(project_dir)
+    key_fn = gates._tree_key_fn(project_dir)
+    try:
+        if read is not None and read.get("facts") is facts:
+            cache = verdict_cache.VerdictCache.for_read(project_dir, read)
+            try:
+                verdict = cache.verdict(facts, resolved["tree"], target_tree, diff_fn, key_fn)
+            finally:
+                cache.flush()
+        else:
+            verdict = coverage_algebra.coverage_verdict(
+                facts, resolved["tree"], target_tree, diff_fn, key_fn
+            )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advisory surfaces degrade on a failed composition; "unavailable" is never read as "none open"
+        return {"status": "unavailable", "reason": f"{type(exc).__name__}: {str(exc)[:80]}"}
+    counted = coverage_algebra.blockers_counted(verdict)
+    if counted is None:
+        return {
+            "status": "unavailable",
+            "reason": verdict.get("reason") or f"composition {verdict.get('status')}",
+        }
+    return {"status": "ok", "blockers": counted}
+
+
+def newest_review_tree(facts: "list[dict]", review_ids: "list[str]") -> "str | None":
+    """The ``head_tree`` of the newest of ``review_ids`` in store order — a set
+    of the branch's reviews' latest reviewed position, and the tree a verify
+    pass would anchor on (``critic_consolidate.select_branch_review`` picks the
+    branch's newest). ``None`` for an empty set."""
+    wanted = set(review_ids or ())
+    newest = None
+    for f in facts if isinstance(facts, list) else []:
+        if f.get("kind") == "review" and f.get("id") in wanted:
+            newest = f
+    return None if newest is None else (newest.get("body") or {}).get("head_tree")
+
+
+def branch_open_blockers(
+    project_dir: Path,
+    facts: "list[dict]",
+    review_ids: "list[str]",
+    *,
+    resolved: "dict | None" = None,
+    read: "dict | None" = None,
+) -> dict:
+    """Which of THESE reviews' blockers the gate still counts — for a census
+    over the branch's set: :func:`open_blockers` composed to
+    :func:`newest_review_tree`, narrowed to the set's reviews.
+
+    Composition is skipped when no review in the set holds a blocker without a
+    resolution fact: the gate's set is a subset of those, so the answer is
+    ``[]`` — which keeps a clean branch's session briefing from paying a
+    composition for blockers elsewhere in a clone-wide store. Same return shape
+    as :func:`open_blockers`."""
+    from . import coverage_algebra  # noqa: PLC0415 -- lazy, as this module's other algebra imports are
+
+    if not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "the evidence store did not read"}
+    wanted = set(review_ids or ())
+    members = [f for f in facts if f.get("kind") == "review" and f.get("id") in wanted]
+    resolution = coverage_algebra.resolution_index(facts)
+    if not any(coverage_algebra.unresolved_blocking(f, resolution) for f in members):
+        return {"status": "ok", "blockers": []}
+    answer = open_blockers(
+        project_dir, facts, newest_review_tree(facts, review_ids),
+        resolved=resolved, read=read,
+    )
+    if answer.get("status") != "ok":
+        return answer
+    return {
+        "status": "ok",
+        "blockers": [b for b in answer["blockers"] if b.get("review_id") in wanted],
     }
 
 
@@ -1064,7 +1656,8 @@ def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
         ["git", "diff", "--name-only", base],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc.returncode != 0:
@@ -1075,7 +1668,8 @@ def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
         ["git", "ls-files", "--others", "--exclude-standard"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc2.returncode == 0:
@@ -1092,9 +1686,8 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     answers this, replacing this helper's own ``.md`` + protected-path copy
     (one of the divergent doc-only sites behind CRT-5D8Q) — **and no changed
     file is live state a non-hermetic test reads** (``TEST_COUPLED_STATE``,
-    COV-4H7N). The fast path skips the Critic, the PR review AND the suite in
-    one move, so it has to clear both questions: PR #125 changed only
-    ``.prawduct/*.md`` plus ``project-state.yaml``, rode this path, and broke
+    COV-4H7N). The fast path skips the Critic AND the suite in one move, so
+    it has to clear both questions: PR #125 changed only ``.prawduct/*.md`` plus ``project-state.yaml``, rode this path, and broke
     ``test_norm_probes`` on develop with nothing to catch it. The two reasons
     are reported separately because the remedies differ — one needs a review,
     the other needs a suite run. A
@@ -1102,10 +1695,9 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     owns — PR-5K8D) is judgeable, so it still
     never rides the fast path. The status message names the specific reason
     for False (``no-base``, ``git-failed``, ``empty-diff``,
-    ``not-doc-only: <files>``) so both the CLI gate and the stop-hook Gate 3
-    can surface actionable detail without re-implementing the diff
-    inspection. Base resolution mirrors ``_coverage_resolve_base`` so the
-    helper sees the same diff surface as the cumulative-Critic flow.
+    ``not-doc-only: <files>``) so the CLI gate can surface actionable detail
+    without re-implementing the diff inspection. Base resolution mirrors
+    ``_coverage_resolve_base`` so the helper sees the same diff surface as the cumulative-Critic flow.
     """
     from . import coverage_algebra  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
@@ -1117,7 +1709,8 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
         ["git", "diff", "--name-only", f"{base}...HEAD"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc.returncode != 0:
@@ -1147,68 +1740,133 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     )
 
 
-def _entry_check_without_history(project_dir: Path) -> int:
-    """The weaker entry check available when the change-log is untracked.
+#: The remedy every legacy-log verdict names, so the PR gate and the release send
+#: an author to the same place: since #1125 a change-log entry is no change record
+#: any release reads, and following "add an entry" would only be refused there.
+_MOVE_ONTO_FRAGMENTS = (
+    "releases read only `.prawduct/changes/` (they refuse an unreleased change-log entry), so "
+    "run /prawduct:doctor (its \"Change record still on the legacy log\" check) to move this "
+    "repo onto fragments, then add "
+    "`.prawduct/changes/<scope>.md` for this work"
+)
 
-    The gate's real contract is "this branch ADDED an entry" — that is what the
-    ``+## `` scan enforces, and why ``entry-edited-not-added`` is a separate
-    failure. An untracked file has no merge-base version, so that question is
-    unanswerable here, and no substitute exists: a change-log entry carries
-    ``scope`` and ``release`` (:mod:`lib.change_log`) and nothing that records
-    which branch wrote it.
 
-    So this is a deliberate, *named* weakening rather than parity, and the
-    message says which check the caller actually got. It reads the log from
-    disk — the same way :mod:`lib.release_readiness` already reads it — and
-    passes only when at least one entry parses. Degrading the check must not
-    disarm it: a missing or entry-less log still fails, because those are the
-    states the gate exists to catch and they are visible from disk.
+def _legacy_pending_refused(content: str) -> bool:
+    """Print the release's own refusal for each unreleased entry in ``content``.
 
-    Parsing goes through :func:`lib.change_log.parse_change_log` rather than a
-    local ``## `` scan. A private classifier here would be the fifth reading of
-    this format, and the last four disagreeing is what made this gate's history.
+    Returns whether any was printed. The lines are
+    ``release_readiness.legacy_pending_refusals``' verbatim, so this gate refuses
+    exactly the entries ``check-releasability`` and the cut would, with the same
+    ``/prawduct:doctor`` remedy.
     """
-    path = project_dir / CHANGE_LOG_REL_PATH
-    # The same pair `release_readiness` reads the log with: a non-UTF-8 byte is
-    # as unreadable as a missing file, and an exception escaping here would be
-    # the one verdict Step 1c cannot route.
+    from . import release_readiness  # noqa: PLC0415 — lazy; release_readiness imports gates
+
+    refusals = release_readiness.legacy_pending_refusals(content)
+    for refusal in refusals:
+        print(refusal, file=sys.stderr)
+    return bool(refusals)
+
+
+def _read_log_on_disk(project_dir: Path) -> tuple[str | None, Exception | None]:
+    """The change-log as the release reads it: from disk, as UTF-8.
+
+    ``(content, None)``, or ``(None, exc)`` when it is missing or unreadable. The
+    same pair ``release_readiness.pending_scopes`` reads with: a non-UTF-8 byte is
+    as unreadable as a missing file, and an exception escaping a verdict would be
+    the one outcome Step 1c cannot route.
+    """
     try:
-        content = path.read_text(encoding="utf-8")
+        return (project_dir / CHANGE_LOG_REL_PATH).read_text(encoding="utf-8"), None
     except (OSError, UnicodeDecodeError) as exc:
-        print(
-            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (gitignored, or "
-            f"never added) and could not be read from disk either: {exc}. "
-            "Add the change-log before opening the PR.",
-            file=sys.stderr,
-        )
-        return 1
+        return None, exc
 
-    # Only release-pending entries vouch for anything: an entry carrying
-    # `release=` shipped long ago, and a log that holds nothing but shipped
-    # entries would otherwise pass every branch forever. Same semantics as the
-    # STOP row's "scope= and no release=" the strong check enforces.
-    entries = parse_change_log(content)
-    pending = [entry for entry in entries if entry.tags.get("release") is None]
-    if not pending:
-        print(
-            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (gitignored, or "
-            "never added), and the copy on disk holds no release-pending entry "
-            f"({len(entries)} entr(ies), all carrying release=). Add a change-log "
-            "entry for this work before opening the PR.",
-            file=sys.stderr,
-        )
-        return 1
 
-    print(
-        f"entry-present-untracked: {CHANGE_LOG_REL_PATH} is untracked here "
-        "(gitignored, or never added), so git cannot say whether THIS branch "
-        f"added an entry — only that the log on disk holds {len(pending)} "
-        "release-pending. That weaker "
-        "check passed. To restore the real one, track the log: `.prawduct/*` "
-        "plus `!.prawduct/change-log.md` (a bare `.prawduct/` cannot be "
-        "negated — git will not re-include a file under an excluded directory)."
+def _committed_log_pending_verdict(project_dir: Path) -> int | None:
+    """Exit 1 when the change-log holds an unreleased entry, else ``None``.
+
+    The release refuses such an entry whatever else the branch adds (#1125), so
+    both paths of :func:`check_change_log_entry` ask it: a fragment does not
+    launder a pending legacy entry, whether this branch added it or it was
+    already there. The log is judged as committed (``HEAD:``); a log no commit
+    holds is judged as the release reads it, from disk, so a repo that ignores
+    ``.prawduct/`` wholesale is refused here exactly as ``check-releasability``
+    refuses it, unreadable log included (``no-change-log``). The same holds for a
+    log git tracks but no commit holds yet (staged): HEAD has none, so the disk
+    copy is the one the release will read. A log absent everywhere has nothing to
+    refuse.
+    """
+    listed = subprocess.run(
+        ["git", "ls-tree", "--name-only", "HEAD", "--", CHANGE_LOG_REL_PATH],
+        cwd=str(project_dir),
+        capture_output=True,
+        encoding="utf-8",
+        errors="surrogateescape",
+        timeout=30,
     )
-    return 0
+    if listed.returncode != 0:
+        print(
+            f"git-failed: git ls-tree HEAD {CHANGE_LOG_REL_PATH} failed: {listed.stderr.strip()}."
+            " Check the change-log by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    if not listed.stdout.strip():
+        # No commit holds the log, tracked (staged) or not: the release reads it
+        # from disk, so the gate does too, or the two disagree on the same entry.
+        content, exc = _read_log_on_disk(project_dir)
+        if isinstance(exc, FileNotFoundError):
+            return None
+        if content is None:
+            print(f"no-change-log: cannot read {CHANGE_LOG_REL_PATH}: {exc}", file=sys.stderr)
+            return 1
+        return 1 if _legacy_pending_refused(content) else None
+    shown = subprocess.run(
+        ["git", "show", f"HEAD:{CHANGE_LOG_REL_PATH}"],
+        cwd=str(project_dir),
+        capture_output=True,
+        encoding="utf-8",
+        errors="surrogateescape",
+        timeout=30,
+    )
+    if shown.returncode != 0:
+        print(
+            f"git-failed: git show HEAD:{CHANGE_LOG_REL_PATH} failed: {shown.stderr.strip()}."
+            " Check the change-log by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    return 1 if _legacy_pending_refused(shown.stdout) else None
+
+
+def _entry_check_without_history(project_dir: Path) -> int:
+    """The legacy-log verdict when the change-log is untracked. It never passes.
+
+    Git cannot say whether this branch added an entry to a file it does not
+    track, so this check used to read the log from disk and pass on any entry
+    there (``entry-present-untracked``). Since releases read only fragments
+    (#1125), no entry in that log is a change record a release reads, so nothing
+    on disk can vouch for this branch: an unreleased entry is refused with the
+    release's own ``legacy-pending-entry`` line, and anything else is
+    ``no-entry``. Both name ``/prawduct:doctor``, whose move onto fragments is the
+    remedy that clears this gate (an ignored fragment directory then gets
+    :func:`_fragment_check_without_history`).
+    """
+    untracked = f"{CHANGE_LOG_REL_PATH} is untracked here (gitignored, or never added)"
+    content, exc = _read_log_on_disk(project_dir)
+    if content is None:
+        print(
+            f"no-entry: {untracked} and could not be read from disk either: {exc}. "
+            f"No change record vouches for this branch: {_MOVE_ONTO_FRAGMENTS}.",
+            file=sys.stderr,
+        )
+        return 1
+    if _legacy_pending_refused(content):
+        return 1
+    print(
+        f"no-entry: {untracked}, and no entry in it is a change record: {_MOVE_ONTO_FRAGMENTS}.",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def _fragment_check_without_history(project_dir: Path) -> int:
@@ -1223,9 +1881,12 @@ def _fragment_check_without_history(project_dir: Path) -> int:
     from . import change_fragments  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
     prefix = change_fragments.FRAGMENT_DIR_REL + "/"
+    # The lines that narrow the rule have one owner (`core.describe_ignored_by_rule`,
+    # which `update-gitignore` prints): narrowing must re-include every committed
+    # path under `.prawduct/`, not only this directory.
     unignore = (
-        "To restore the real check, track the directory: `.prawduct/*` plus "
-        f"`!{prefix}` — a bare `.prawduct/` cannot be negated."
+        "To restore the real check, narrow the rule so git tracks the directory: "
+        "`prawduct-hook update-gitignore --dry-run` prints the lines."
     )
     items = change_fragments.load_pending(project_dir)
     problems = [f"{item.path.name}: {problem}" for item in items for problem in item.problems]
@@ -1297,8 +1958,8 @@ def _fragment_entry_verdict(
         cut = _cut_record_verdict(project_dir, base, record)
         if cut is not None:
             return cut
-        # A branch that adds a legacy entry instead still goes to the legacy
-        # checks, which is the dual-shape window: either record is accepted.
+        # A branch that adds a legacy entry instead goes to the legacy checks,
+        # which refuse an unreleased entry as the release does (#1125).
         if CHANGE_LOG_REL_PATH in files:
             return None
         from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
@@ -1326,7 +1987,7 @@ def _fragment_entry_verdict(
             ["git", "show", f"HEAD:{rel}"],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             # A non-UTF-8 byte must reach the validator as a problem, not crash the probe.
             errors="surrogateescape",
             timeout=30,
@@ -1364,12 +2025,13 @@ def _fragment_entry_verdict(
 
 
 def check_change_log_entry(project_dir: Path) -> int:
-    """PR-boundary probe: a code-changing branch must add a change-log entry.
+    """PR-boundary probe: a code-changing branch must add a change record.
 
     A branch whose ``merge-base...HEAD`` diff contains **judgeable** work — as
     :func:`coverage_algebra.is_judgeable_path` defines it, the same predicate
     ``check-pr-doc-only`` and the coverage gates ask — can only be shipped by the
-    release flow if a change-log entry exists for it. Historically nothing
+    release flow if a change record exists for it: since #1125 a fragment, the
+    only record a release reads. Historically nothing
     checked this, so a branch could merge with NO entry and the gap surfaced only
     at release reconstruction (REL-6C3W — CRT-7B4M/#82, found at the v2.0.16
     release). The `/prawduct:pr` Create flow (Step 1c) runs this probe and STOPs
@@ -1387,18 +2049,26 @@ def check_change_log_entry(project_dir: Path) -> int:
       * the diff is empty, or holds no judgeable file, or
       * a judgeable diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
-        existing entry's text does not vouch for new work — and no tag line it
-        adds carries a retired key (``change_log.RETIRED_TAG_KEYS``), or
-      * the log is UNTRACKED and the copy on disk holds at least one entry
-        (``entry-present-untracked`` — the weaker check of
-        :func:`_entry_check_without_history`, which says so).
+        existing entry's text does not vouch for new work — no tag line it
+        adds carries a retired key (``change_log.RETIRED_TAG_KEYS``), and the
+        committed log holds no unreleased entry (a trunk branch whose entry
+        already carries ``release=``).
+
+    An unreleased entry in the committed log refuses as the release does
+    (#1125): ``legacy-pending-entry``, the release's own lines, naming
+    ``/prawduct:doctor``. An UNTRACKED log never passes
+    (:func:`_entry_check_without_history`).
 
     When the branch touches ``.prawduct/changes/``, the fragment checks of
     :func:`_fragment_entry_verdict` answer instead: exit 0 ``fragment-present``,
-    or exit 1 ``fragment-invalid`` / ``fragment-edited-not-added``.
+    or exit 1 ``fragment-invalid`` / ``fragment-edited-not-added``. A fragment
+    exit 0 is still refused (``legacy-pending-entry``) when the committed log
+    (the on-disk one, when git does not track it) holds an unreleased entry, as
+    the release would.
 
     Exit 1 otherwise, with a named reason on stderr (``no-entry``,
-    ``entry-edited-not-added``, ``retired-key``, ``no-base``, ``git-failed``). Un-evaluable
+    ``entry-edited-not-added``, ``retired-key``, ``legacy-pending-entry``,
+    ``no-change-log``, ``no-base``, ``git-failed``). Un-evaluable
     git state fails closed — the caller falls back to manual judgment rather
     than silently skipping the probe (same posture as ``check_pr_doc_only``).
     An untracked log is not un-evaluable and must not be read as absent: the
@@ -1413,7 +2083,8 @@ def check_change_log_entry(project_dir: Path) -> int:
         ["git", "diff", "--name-only", f"{base}...HEAD"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc.returncode != 0:
@@ -1452,8 +2123,17 @@ def check_change_log_entry(project_dir: Path) -> int:
         )
         return 0
 
-    fragment_verdict = _fragment_entry_verdict(project_dir, base, files, judgeable)
+    # The fragment verdict's stdout is held back until the committed-log check
+    # has answered: a passing fragment still meets the release's refusal of a
+    # pending legacy entry (so the gate and `check-releasability` agree), and
+    # a `fragment-present` line beside that refusal would contradict the exit.
+    held = io.StringIO()
+    with contextlib.redirect_stdout(held):
+        fragment_verdict = _fragment_entry_verdict(project_dir, base, files, judgeable)
     if fragment_verdict is not None:
+        if fragment_verdict == 0 and _committed_log_pending_verdict(project_dir) is not None:
+            return 1
+        sys.stdout.write(held.getvalue())
         return fragment_verdict
 
     if CHANGE_LOG_REL_PATH not in files:
@@ -1484,9 +2164,8 @@ def check_change_log_entry(project_dir: Path) -> int:
         sample = ", ".join(judgeable[:3])
         more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         print(
-            f"no-entry: branch changes code ({sample}{more}) but "
-            f"{CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "
-            f"this work before opening the PR.",
+            f"no-entry: branch changes code ({sample}{more}) but adds no change record — "
+            f"{_MOVE_ONTO_FRAGMENTS}, before opening the PR.",
             file=sys.stderr,
         )
         return 1
@@ -1495,7 +2174,8 @@ def check_change_log_entry(project_dir: Path) -> int:
         ["git", "diff", f"{base}...HEAD", "--", CHANGE_LOG_REL_PATH],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=30,
     )
     if proc2.returncode != 0:
@@ -1519,8 +2199,8 @@ def check_change_log_entry(project_dir: Path) -> int:
 
     # The entry is written HERE, at Step 1c, after the last Critic review, so
     # this probe is the one point that sees a retired key on the new tag line
-    # before the PR reviewer does — and refusing it here costs one edit, not a
-    # review round.
+    # before the PR opens — and refusing it here costs one edit, not a review
+    # round.
     from . import change_log  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
     retired = sorted({
@@ -1539,7 +2219,17 @@ def check_change_log_entry(project_dir: Path) -> int:
         )
         return 1
 
-    print(f"entry-present: {CHANGE_LOG_REL_PATH} adds a new entry in {base}...HEAD.")
+    # Judged as committed, as the fragment checks are: the release refuses an
+    # unreleased entry in the live log (#1125), so a branch adding one is refused
+    # here with the same lines, before it merges, rather than at the release.
+    pending = _committed_log_pending_verdict(project_dir)
+    if pending is not None:
+        return pending
+
+    print(
+        f"entry-present: {CHANGE_LOG_REL_PATH} adds a new entry in {base}...HEAD, "
+        "already tagged as released."
+    )
     return 0
 
 
@@ -1552,15 +2242,14 @@ def check_pr_doc_only(project_dir: Path) -> int:
     ``suite_coupled_files``). **The repo's declared ``suite_coupled_prefixes``
     are deliberately NOT passed here.** They answer a freshness question — re-run
     the suite — and forwarding them would make a documentation-only PR buy a full
-    cumulative Critic and PR review, a review cost nothing prices. The freshness
+    cumulative Critic, a review cost nothing prices. The freshness
     gate (``gates._test_evidence_tree_valid``) is the caller that passes them.
 
-    The `/prawduct:pr` skill uses this to skip the cumulative-Critic and
-    PR-reviewer gates, mirroring the session-end stop-hook carveout
-    (`gates.session_changes_all_non_judgeable`) at the PR boundary.
-    The stop hook's PR-review evidence gate (Gate 3) consults the same
-    helper so a doc-only PR doesn't get blocked at session end for missing
-    evidence — symmetric behavior across both gates.
+    The `/prawduct:pr` skill uses this to skip its cumulative-Critic coverage
+    gate. It is the PR boundary's counterpart of the Stop hook's carveout,
+    which skips its review gate when ``gates.session_work_span(...)["judgeable"]``
+    is false; that one asks only the judgeability question, over the session's
+    span, and does not ask about suite-coupled state.
 
     Exit 1 otherwise (any judgeable file — including governance-protected
     ``.md``: skill/methodology/template prose is behavioral logic, never
@@ -1571,7 +2260,7 @@ def check_pr_doc_only(project_dir: Path) -> int:
     is_doc_only, status = _pr_diff_is_doc_only(project_dir)
     if is_doc_only:
         print(
-            f"{status} — cumulative-Critic and PR-reviewer gates may be skipped."
+            f"{status} — the cumulative-Critic gate may be skipped."
         )
         return 0
     suffix = (
@@ -1621,7 +2310,7 @@ def _working_tree_paths(project_dir: Path) -> "tuple[list[str] | None, str | Non
     try:
         proc = subprocess.run(
             ["git", "status", "--porcelain", "-uall"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+            cwd=str(project_dir), capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=30,
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- an advisory must not crash the caller; the cause is carried out in `reason`
         return None, f"git status failed ({str(exc).strip()[:80]})"

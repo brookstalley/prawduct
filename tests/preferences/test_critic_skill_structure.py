@@ -359,13 +359,13 @@ class TestAMetaNoteIsNotAFinding:
         )
 
     @pytest.mark.parametrize("name,path", _CARRIERS, ids=[n for n, _ in _CARRIERS])
-    def test_the_rule_names_its_two_observed_shapes(self, name, path):
-        """Bookkeeping about a finding (R-23) and restating a consequence
-        (R-25). A bare "don't duplicate" catches neither: both are true,
-        independent-looking observations."""
+    def test_the_rule_names_its_observed_shape(self, name, path):
+        """Restating a consequence (R-25). A bare "don't duplicate" misses it:
+        it is a true, independent-looking observation. The other observed shape,
+        Learnings Cross-Check bookkeeping about a finding (R-23), went with the
+        cross-check itself."""
         text = path.read_text().lower()
         assert "consequence" in text, f"{name} omits the restated-consequence shape"
-        assert "learnings" in text, f"{name} omits the cross-check-bookkeeping shape"
 
     @pytest.mark.parametrize("name,path", _CARRIERS, ids=[n for n, _ in _CARRIERS])
     def test_the_recognition_test_works_from_one_partial(self, name, path):
@@ -389,18 +389,10 @@ class TestAMetaNoteIsNotAFinding:
         assert "subject is never another finding" in legend.lower()
 
 
-class TestTheLearningsReadListIsComputed:
-    """Every Critic surface names the post-cutover read list, and the command.
-
-    Learnings are ordinary `.claude/rules/` files now, so the HARNESS decides
-    which of them a session held: `core.md` always, plus each area file whose
-    `paths:` globs matched something the session read. That set is computed, not
-    written down — and a reviewer told to "read the learnings" with no way to
-    enumerate them opens `core.md` and silently misses every area rule the
-    session actually had in context. That silence is the one failure this layout
-    could introduce (discovery R5), which is why the command is pinned on each
-    surface rather than left to the reviewer's globbing.
-    """
+class TestNoCriticSurfaceSendsAReviewerToTheOldCorpus:
+    """The learnings read list left the Critic with the Learnings Cross-Check;
+    what survives is that no reviewer surface points at a path that, post
+    migration, does not exist."""
 
     _SURFACES = (
         ("review-protocol.md", REPO_ROOT / "skills" / "critic" / "review-protocol.md"),
@@ -408,36 +400,9 @@ class TestTheLearningsReadListIsComputed:
         ("critic-reviewer.md", REPO_ROOT / "agents" / "critic-reviewer.md"),
     )
 
-    @pytest.mark.parametrize("name,path", _SURFACES, ids=[n for n, _ in _SURFACES])
-    def test_the_surface_names_core_and_the_enumerating_command(self, name, path):
-        text = path.read_text()
-        assert ".claude/rules/learnings/core.md" in text, (
-            f"{name} does not name the always-loaded rules file"
-        )
-        assert "learnings-files --for-diff" in text, (
-            f"{name} does not name the command that enumerates the area files — "
-            f"a reviewer reading only this file cannot know which ones applied"
-        )
-
-    def test_the_dispatched_reviewer_is_granted_the_command_it_is_told_to_run(self):
-        """The grant, not just the instruction. A mandated probe the reviewer
-        cannot issue produces either a permission prompt in a subagent that
-        cannot answer one, or a silently-skipped check — the same gap
-        `verify-coverage` had, in the same place."""
-        tools = (REPO_ROOT / "agents" / "critic-reviewer.md").read_text()
-        assert "Bash(prawduct-hook learnings-files*)" in tools
-
     def test_no_critic_surface_still_sends_a_reviewer_to_the_old_path(self):
-        """The read list moved; a surface still pointing at `.prawduct/learnings.md`
-        sends a reviewer to a path that, post-migration, does not exist.
-
-        Scoped to the PATH, not the bare filename. A surface may legitimately
-        NAME the legacy corpus — describing a migration, or a check whose
-        subject is the old file — without sending a reviewer to read it, and
-        folding the bare filename in would fail this for a reason it is not
-        about. The property is "no reviewer is pointed at a path that does not
-        exist", so the path is what it matches.
-        """
+        """Scoped to the PATH, not the bare filename: a surface may NAME the
+        legacy corpus without sending a reviewer to read it."""
         stale = [
             name
             for name, path in self._SURFACES
@@ -445,26 +410,13 @@ class TestTheLearningsReadListIsComputed:
         ]
         assert not stale, f"these Critic surfaces still point at the old corpus: {stale}"
 
-    def test_the_budget_finding_carries_its_severity_on_both_mode_paths(self):
-        """`learnings-over-budget` is computed at dispatch for EVERY mode, so
-        both reader shapes need its severity: `final`/`cumulative` read
-        `cross-checks.md`'s record-lint table, `chunk`/`verify-resolutions` read
-        `goals-1-3.md`'s one-line mapping. A severity on one of them is a
-        BLOCKING finding half the reviews rate for themselves."""
-        cycle = (REPO_ROOT / "skills" / "critic" / "cross-checks.md").read_text()
-        row = next(
-            (ln for ln in cycle.splitlines() if ln.startswith("| `learnings-over-budget`")),
-            None,
-        )
-        assert row is not None, "cross-checks.md's record-lint table has no budget row"
-        assert "**BLOCKING**" in row
-        goals = (REPO_ROOT / "skills" / "critic" / "goals-1-3.md").read_text()
-        assert "`learnings-over-budget` → **BLOCKING**" in " ".join(goals.split())
+    def test_the_budget_finding_blocks_at_the_boundary_from_code(self):
+        """`learnings-over-budget` is computed at dispatch for every mode and
+        consolidation rates it — BLOCKING at the boundary, an observation inside
+        — from the one table, so no reviewer surface has to carry the rating."""
+        import sys
+        sys.path.insert(0, str(REPO_ROOT))
+        from lib import record_lint
 
-    def test_the_new_cross_check_goal_is_stated_once(self):
-        """R5's added goal — a new rule can be a duplicate, in the wrong area
-        file, or framework content that belongs upstream. Once: a goal stated
-        twice is two goals to keep in step, and the second copy is where the
-        drift lands."""
-        cycle = (REPO_ROOT / "skills" / "critic" / "cross-checks.md").read_text()
-        assert cycle.count("Rules added or changed this cycle") == 1
+        assert record_lint.SEVERITY["learnings-over-budget"] == "blocking"
+        assert "learnings-over-budget" not in record_lint.INNER_BLOCKING

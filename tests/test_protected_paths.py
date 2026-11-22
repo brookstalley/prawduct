@@ -32,8 +32,8 @@ class TestProtectedPaths:
 
     def test_skills_protocol_edit_is_protected(self):
         assert (
-            _violation("skills/pr/review-protocol.md")
-            == "skill-file-edited: skills/pr/review-protocol.md"
+            _violation("skills/critic/review-protocol.md")
+            == "skill-file-edited: skills/critic/review-protocol.md"
         )
 
     def test_methodology_edit_is_protected(self):

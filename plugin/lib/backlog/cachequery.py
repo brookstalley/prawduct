@@ -17,8 +17,8 @@ decided and the one place worth reading before trusting it.
 
 The functions here are the consumer query union of Cache Spec §2, and that union
 is deliberately small: open-item listing with text, grouping and counting by
-``area``, id resolution through aliases including dead items, creation-time
-filtering, text search scoped to an area, and two date predicates. Each names
+``area``, id resolution through aliases including dead items, text search
+scoped to an area, and two date predicates. Each names
 the consumers it serves, so a column no function reads is a dead field and a
 function no consumer names is an invention.
 
@@ -26,7 +26,7 @@ One function here serves a consumer Cache Spec §2 does not enumerate:
 :func:`ready_items`, whose consumer is ``query.pick``. §2 inventories the readers
 that went *dormant* at the cutover, and `pick` never did — it has always run live.
 It is named here rather than left implicit because the same rule applies to it as
-to the other fifteen: it exists because a consumer asks for it, and if that
+to the enumerated ones: it exists because a consumer asks for it, and if that
 consumer stops asking, it goes.
 """
 
@@ -46,8 +46,8 @@ from .encode import OPEN_STATUSES, parse_iso
 _NEVER_SYNCED = "the backlog cache has never been synced; run `prawduct-hook backlog sync`"
 
 #: The full item projection — every column a consumer reads, **including the
-#: body**. Used by the queries whose consumers read item text: the reconciliation
-#: walk, the changed-file intersection, search, and resolution.
+#: body**. Used by the queries whose consumers read item text: the open set,
+#: search, and resolution.
 _FULL_COLUMNS: tuple[str, ...] = (
     "id",
     "title",
@@ -217,25 +217,23 @@ def _open_placeholders() -> str:
     return ", ".join("?" for _ in OPEN_STATUSES)
 
 
-# --- consumers 1 and 6: the open set with text -------------------------------
+# --- the open set with text ---------------------------------------------------
 
 
 def open_items(project_dir: Path, *, scope: str, now: datetime) -> dict:
-    """Every open item with its id, title and body — consumers 1 and 6, and
+    """Every open item with its id, title and body — consumer 13 (the
+    ``revisit-due`` probe, which reads each block's ``revisit:``), and
     record-lint's ``retired-claim-survives`` backlog leg.
 
-    The Critic's backlog-reconciliation walk and the PR reviewer's resolved-items
-    check both need the full open set with text, which is the query that made a
-    persisted cache worth building: it is one scan of local rows rather than a
-    paginated fetch on every review. The retired-claim check reads the same set
-    rather than ``search``: full-text search matches terms, not phrases, so every
-    hit would need the exact filter anyway, and one scan answers every phrase.
+    One scan of local rows rather than a paginated fetch per read. The
+    retired-claim check reads this set rather than ``search``: full-text search
+    matches terms, not phrases, so every hit would need the exact filter anyway,
+    and one scan answers every phrase.
 
     **Open means every non-terminal status, not the literal ``open`` one.**
-    ``submitted`` and ``in-progress`` items are live — an in-progress item is
-    precisely the one a PR reviewer is looking for when asking whether this
-    branch resolves something — and filtering on ``status = 'open'`` would drop
-    them while still reporting success. The predicate comes from
+    ``submitted`` and ``in-progress`` items are live — an in-progress item
+    carrying a dated ``revisit:`` is as due as an open one — and filtering on
+    ``status = 'open'`` would drop them while still reporting success. The predicate comes from
     ``encode.OPEN_STATUSES``, which derives from the status encoding's single
     source of truth, so a new sub-state is included here the day it is added
     rather than the day someone notices it missing."""
@@ -248,41 +246,6 @@ def open_items(project_dir: Path, *, scope: str, now: datetime) -> dict:
                 f"WHERE status IN ({_open_placeholders()}) ORDER BY id",
                 OPEN_STATUSES,
             )
-        }
-
-    return _serve(project_dir, scope=scope, now=now, query=query)
-
-
-# --- consumer 2: created since ------------------------------------------------
-
-
-def items_created_since(project_dir: Path, *, scope: str, since: str, now: datetime) -> dict:
-    """Items created at or after ``since`` — consumer 2 (C-B1 missing metadata).
-
-    The date is the **provider's** ``created_at``, not a block field. Cache Spec
-    §2.1's *observable beats stored*: a creation date the provider always sets and
-    nobody can forget beats an ``added:`` field with no write path, which is the
-    trade that let the same pass delete two other stored dates.
-
-    Inclusive at the boundary, matching the provider's own ``since`` semantics
-    (Cache Spec §6, verified live) — a caller passing a ref's timestamp means
-    "everything from that point", and the two ends of this feature disagreeing
-    about whether the boundary item counts is exactly the off-by-one nobody
-    notices.
-    """
-    if parse_iso(since) is None:
-        return error("validation", f"`since` must be an ISO-8601 timestamp, got {since!r}")
-
-    def query(conn: sqlite3.Connection) -> dict:
-        return {
-            "items": _rows(
-                conn,
-                f"SELECT {_select(_BRIEF_COLUMNS)} FROM item "
-                f"WHERE {_instant('created_at')} >= {_instant('?')} "
-                "ORDER BY created_at, id",
-                (since,),
-            ),
-            "since": since,
         }
 
     return _serve(project_dir, scope=scope, now=now, query=query)
@@ -312,25 +275,19 @@ def _instant(expression: str) -> str:
     down as a digit-count problem instead of a spelling one. It is wrong whenever
     the two epochs differ in length, i.e. as soon as either side falls before
     2001-09-09 (10 digits becomes 9): ``'946684800' < '1577836800'`` is false.
-    The symptom is a confident wrong answer in either direction — an empty set for
-    a distant ``created-since`` bound, or every open item reported stale for a
-    distant ``--older-than``.
+    The symptom is a confident wrong answer — every open item reported stale for
+    a distant ``--older-than``.
     """
     return f"CAST(strftime('%s', {expression}) AS INTEGER)"
 
 
-# --- consumers 3 and 8: grouping and counting by area -------------------------
+# --- consumer 8: grouping and counting by area --------------------------------
 
 
 def by_area(project_dir: Path, *, scope: str, now: datetime, open_only: bool = True) -> dict:
-    """Items grouped by ``area``, with a count per group — consumers 3 and 8.
-
-    One query for two consumers because they want the same grouping at different
-    depths: the Critic's dedup-evidence check (3) reads each group's ``count`` and
-    the ids under it to decide whether a new item duplicates an existing one, and
-    the janitor's grouped listing (8) reads the items themselves. Serving 8 with a
-    second query over the same rows would be the second home the grouping does
-    not need.
+    """Items grouped by ``area``, with a count per group — consumer 8, the
+    janitor's grouped listing, which reads each group's ``count`` and the items
+    under it.
 
     **An item with no area is a group, not a silence.** It lands under ``(none)``
     — the spelling ``query.counts`` already uses for a missing stage — because
@@ -355,68 +312,6 @@ def by_area(project_dir: Path, *, scope: str, now: datetime, open_only: bool = T
             ],
             "open_only": open_only,
         }
-
-    return _serve(project_dir, scope=scope, now=now, query=query)
-
-
-# --- consumers 1 and 4: the changed-file intersection -------------------------
-
-
-def items_affecting(
-    project_dir: Path, *, scope: str, changed_paths, now: datetime, open_only: bool = True
-) -> dict:
-    """Items whose ``affected`` list covers any of ``changed_paths`` — consumers 1
-    and 4, and the one capability this cache adds rather than restores.
-
-    C-B3 and the reconciliation walk previously required a reviewer to read item
-    text and infer whether the diff touched it. This is that inference as a set
-    intersection, which is the whole argument for splitting ``affected`` out of
-    free-text ``refs`` (Cache Spec §2.2).
-
-    **The direction of the match is why the schema looks the way it does.** An
-    entry *contains* a changed file — ``plugin/lib`` matches
-    ``plugin/lib/sync.py`` — and phrasing that over the stored column runs
-    ``WHERE ? LIKE affected || '%'``, whose variable is on the side no index can
-    help. So each changed file is expanded into its ancestor directories
-    (``encode.path_ancestors``) and matched by **equality** against
-    ``item_affected``, which the index does serve. Write it the natural way and
-    you get a table scan *and* a ``plugin/lib`` that swallows ``plugin/libexec``.
-
-    Each returned item carries ``matched`` — the entries of its own list that the
-    change touched — because a consumer reporting "this item looks related" has to
-    be able to say which path made it think so.
-    """
-    # Materialize FIRST: `changed_paths` is walked three times (here, then
-    # `encode.affected_matches` and `list(...)` inside `query`). A generator would
-    # exhaust on this line and leave the rest reading empty — `keys` correct,
-    # every `matched` empty, `changed_paths: []`, and `status: ok`. That is a
-    # confident wrong answer, which is the exact failure this module exists to
-    # avoid; no caller passes an iterator today, and this keeps it that way.
-    changed_paths = list(changed_paths)
-    keys = sorted({key for path in changed_paths for key in encode.path_ancestors(path)})
-
-    def query(conn: sqlite3.Connection) -> dict:
-        # An empty changed set intersects nothing, and the store is still opened
-        # and aged to say so: the answer is empty because the *input* was, and a
-        # caller cannot tell that from an unreachable cache unless the envelope
-        # says which.
-        items: list[dict] = []
-        if keys:
-            placeholders = ", ".join("?" for _ in keys)
-            sql = (
-                f"SELECT {_select(_FULL_COLUMNS)} FROM item WHERE id IN "
-                f"(SELECT item_id FROM item_affected WHERE path IN ({placeholders}))"
-            )
-            params = list(keys)
-            if open_only:
-                sql += f" AND status IN ({_open_placeholders()})"
-                params.extend(OPEN_STATUSES)
-            items = _rows(conn, sql + " ORDER BY id", params)
-            for item in items:
-                item["matched"] = encode.affected_matches(
-                    encode.parse_list(item.get("affected")), changed_paths
-                )
-        return {"items": items, "changed_paths": list(changed_paths), "open_only": open_only}
 
     return _serve(project_dir, scope=scope, now=now, query=query)
 
@@ -668,13 +563,14 @@ def resolve(
     default_owner: str | None = None,
 ) -> dict:
     """Resolve any id spelling — live, aliased, or historical — to the item it
-    names. Consumers 5, 7, 14 and 15.
+    names. Consumers 7, 14 and 15, and the release-readiness blocker check.
 
-    Four consumers, one query, because they ask four questions of the same lookup:
-    *does this id resolve at all* (5, the dangling-id check), *what is its status*
-    (7, the PR reviewer's closes/status disagreement), *is it dead* (14, the
-    ``dead-why`` probe), and *is it live and how long since it moved* (15,
-    ``stalled-transition``). Splitting them would be four resolutions of one id.
+    Several consumers, one query, because they ask different questions of the
+    same lookup: *does this id resolve at all, and what is its status* (7,
+    ``check-pr-hygiene``'s closes/status disagreement, and the blocker check),
+    *is it dead* (14, the ``dead-why`` probe), and *is it live and how long since
+    it moved* (15, ``stalled-transition``). Splitting them would be several
+    resolutions of one id.
 
     **This is the defect Cache Spec §4 rule 3 names, not a convenience.** A stored
     reference — an item's ``related: [owner/repo#249, …]`` — parsed at read time
@@ -708,8 +604,9 @@ def resolve(
 
     An id claimed by two items is an ``alias_collision`` error rather than a pick:
     the §5 uniqueness invariant has broken, and choosing one would be a resolution
-    nobody could audit. **A miss is a successful answer**, not an error — it is
-    the entire finding for consumer 5 — so an unresolvable id returns ``ok`` with
+    nobody could audit. **A miss is a successful answer**, not an error — "this
+    closes an id nothing names" is a finding in its own right — so an
+    unresolvable id returns ``ok`` with
     ``resolved: false``, and only an unreachable cache is ``unavailable``.
     """
     raw = (id_raw or "").strip()
@@ -718,7 +615,7 @@ def resolve(
     # **A bare `621` or `#621` is qualified with the store's own scope.** That is
     # the spelling nearly every citation actually uses: this repo's change-log
     # writes 259 bare refs against 5 qualified ones, and `closes: #621` is the
-    # shape the PR reviewer's closes/status check reads. Left unqualified, the
+    # shape `check-pr-hygiene`'s closure check reads. Left unqualified, the
     # checks on this query would resolve almost nothing and report it as "no such
     # item" — a reader matching nothing, which is the failure the whole cache
     # exists to end.

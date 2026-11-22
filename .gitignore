@@ -4,7 +4,13 @@
 .prawduct/.critic-findings.json
 .prawduct/.governance-ledger.jsonl
 .prawduct/.handoff-notes.md
+# The PR description `/prawduct:pr` drafts and `check-pr-body` checks; removed
+# after `gh pr create`, and swept at the next session boundary if a flow stops first.
+.prawduct/.pr-body.md
+# Retired with the PR reviewer, which no longer writes here. Kept so the evidence
+# files an earlier version left in a checkout stay out of `git add -A` until deleted.
 .prawduct/.pr-reviews/
+.prawduct/.session-activity.json
 .prawduct/.session-base-tree
 .prawduct/.session-git-baseline
 .prawduct/.session-handoff.md
@@ -56,6 +62,7 @@ incoming-bugs/
 # Prawduct session files
 .prawduct/.critic-partials/
 .prawduct/.critic-partials-archive/
+.prawduct/.native-reviews/
 
 # Runbook research raw captures (large; distilled state is in CHECKPOINT.md)
 .prawduct/research/**/raw/
@@ -85,4 +92,3 @@ scratchpad/
 
 # Prawduct session files
 .prawduct/.critic-review-dispatch.json
-.prawduct/.pr-review-dispatch.json

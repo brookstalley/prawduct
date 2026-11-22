@@ -162,7 +162,7 @@ principle, which is the ratchet the norm exists to stop.
 - **Verdict:** breaking changes to the published surface.
 - **Posture:** report-only by default; a product with real consumers will want it
   blocking, and that is its call.
-- **Consumer:** the PR-review gate, where a breaking surface change is a release
+- **Consumer:** the PR gate, where a breaking surface change is a release
   decision rather than a chunk-local one.
 - **Why it matters most for the motivating case:** a one-line change that breaks an
   output format fifty callers depend on is detected here, at build time, with no tests
@@ -309,7 +309,7 @@ the product had any opportunity to do differently.
   Python-specificity norm's named violating site, and leaving it in place alongside a
   working socket would be two homes for one fact.
 - **Where these facts live.** `data-model.md` records that extending the append-only
-  evidence store to subsume `test-run` / `pr-review` evidence is *design direction, not
+  evidence store to subsume further evidence kinds is *design direction, not
   a ratified norm* — reserved kinds exist but nothing has been decided. Four new
   evidence channels land squarely on that undecided question. Settle it before the first
   socket persists anything: a persisted schema's requirements are its consumers' future

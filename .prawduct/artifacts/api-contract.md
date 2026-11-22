@@ -156,14 +156,39 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `--force` overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted
   — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
   (`methodology/planning.md` "Chunk state") — a comma list,
-  repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` stays as a one-element
-  alias for one release; omitted, the declared set is the code-derived proposal; an id the plan
+  repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` (the old one-element
+  alias) is gone and is a usage error (exit 1) naming `--chunks`; omitted, the declared set is the code-derived proposal; an id the plan
   does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a
-  usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note),
+  usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note;
+  `--session-model <id>` is the model the dispatcher runs as, from which code answers the
+  manifest's `reviewer_model` and prints it as a `reviewer model:` line — absent, the reviewer
+  ceiling is assumed and a note says so; `--tier` never moves it; on a development build's
+  `cumulative`, a `native review paired` line tells the fork to dispatch the manifest's
+  `native_review` wrapper, and a dev cumulative that does not pair says why in a note),
   `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
   and writes the optional `dispatched_at` review-fact body key when the mark is this review's —
-  the ledger append after it still consumes the mark), `critic-end`, `critic-discard` (archive-then-remove a
+  the ledger append after it still consumes the mark; when a partial fails its check it names the
+  role, the partials that passed and are kept, and the one-reviewer re-dispatch remedy, exit 1),
+  `validate-partial <path>` (read-only; the verdict consolidation will reach on one reviewer partial,
+  through the same `check_partial`, reading the review from the partial's own `.prawduct` directory
+  — exit 0 prints `ok`, exit 1 prints the parse error with its line and column or the validation
+  reason (fix the file), exit 3 means nothing can check it: no manifest owns it, or it is keyed to
+  another review (stop), exit 2 is a usage error; a reviewer runs it on its own file before
+  returning), `native-review prepare <review-id> <session checkout>` (mutating; the paired native
+  review's wrapper runs it first, from its OWN isolated worktree: detaches that worktree at the
+  reviewed head and prints the path inside it where the wrapper saves the review text, exit 0 —
+  exit 1 with the reason, kept in the sidecar as `prepare_refused`, when the tree is the session's
+  own checkout, sits on a real branch, is dirty, belongs to another repository, or the sidecar names
+  no head; exit 2 on a usage error), `native-review record <review-id> [--text-file <absolute path>]` (mutating; the
+  paired native review's wrapper runs it from the session's checkout after saving the text in its
+  own worktree: copies the text into `.prawduct/.native-reviews/` from that worktree, which the
+  sidecar names, or from `--text-file`, deletes the copy in the review worktree, and appends one
+  `native.review` ledger event from the sidecar `critic-begin` wrote and the text, exit 0 — also
+  when already recorded — exit 1 with the reason when there is no sidecar or no text, the
+  `--text-file` is not an absolute path to a file, or the id could leave
+  `.prawduct/.native-reviews/`, exit 2 on a usage error), `native-review show [<review-id>]` (read-only; prints a native review's text,
+  the newest by default, exit 0, or exit 1 with why), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list` (`status` also prints `N transported fact(s) with no note on
@@ -171,18 +196,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   before it pushes; older facts are not counted;
   every `evidence` op exits 0 ok, 1 a reported failure, 2 usage — an unknown op or a bad flag —
   and `status`, which takes no flags, keeps its 2 = schema-ahead sentinel below), `ledger-append`
-  (single-writer, mutating — consumes the dispatch mark belonging to the APPENDING KIND, `review.critic`
-  as well as `review.pr`, and writes the optional `dispatched_at` envelope key when one is present;
-  `--trigger subagent-stop|explicit|session-end-backstop` is required for `review.critic` and
-  refused for `review.pr`, and lands as the `trigger` envelope key (a required flag on a
-  shipped verb, safe because `critic-consolidate` is the only `review.critic` appender and no
-  skill or doc tells a human to append one);
-  each kind owns its own marker, so an append can never reach another kind's — `data-model.md`
-  § Direction), `pr-review-dispatch --begin` (write the PR reviewer's dispatch mark, mutating — a
-  per-clone stopwatch, never an answer; the Critic's equivalent is written by `critic-begin` itself
-  and has no separate verb), `pr-review-payload [--json] [<project dir>]`
-  (assemble the PR reviewer's context in one pass; read-only, emits no verdict, fails soft per
-  section with each degradation named), `review-stats`, `stats` (cost and yield per plugin version from the evidence store; read-only), `contribute [--json]` (preview the anonymous stats reports this clone would contribute, as their exact bytes and one digest; read-only, opens no socket) and `contribute --send [--approve sha256:<digest>]` (send them to the pinned collector, mutating the per-clone sent record; exit 2 when the product has not opted in, the digest does not match, or no collector is pinned, and 1 when a send fails), `disposition` (append a finding's ACCEPT/FILE/FIXED
+  (single-writer, mutating — consumes the dispatch mark belonging to the APPENDING KIND and writes
+  the optional `dispatched_at` envelope key when one is present; `review.critic` is the one kind it
+  appends: `--trigger subagent-stop|explicit|session-end-backstop` is required and lands as the
+  `trigger` envelope key (a required flag on a shipped verb, safe because `critic-consolidate` is
+  the only `review.critic` appender and no skill or doc tells a human to append one), and
+  `--findings` is refused; `--event review.pr` exits 1 naming the PR reviewer's retirement, and
+  `review.pr` events already on a ledger stay readable by `review-stats` — § Deprecation &
+  Compatibility; each kind owns its own marker, so an append can never reach another kind's —
+  `data-model.md` § Direction). `pr-review-dispatch` and `pr-review-payload` were removed with the
+  PR reviewer; the dispatcher answers each with a one-line refusal naming that, exit 1 (§ Deprecation
+  & Compatibility). `review-stats`, `stats` (cost and yield per plugin version from the evidence store; read-only), `contribute [--json]` (preview the anonymous stats reports this clone would contribute, as their exact bytes and one digest; read-only, opens no socket) and `contribute --send [--approve sha256:<digest>]` (send them to the pinned collector, mutating the per-clone sent record; exit 2 when the product has not opted in, the digest does not match, or no collector is pinned, and 1 when a send fails), `disposition` (append a finding's ACCEPT/FILE/FIXED
   disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused
   on any judgeable path or any BLOCKING finding; the id argument takes a finding's `fid` **or** an
   observation's `oid`, the flags meaning exactly what they mean for a finding),
@@ -197,7 +221,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `--from-counts` there exit 2, since neither records a fact. A narrowed fact is attribution only —
   the freshness fallback neither vouches nor denies by it. `test-status` prints its verdict line
   first, then one line per scratch worktree's newest narrowed run (at most 10); its exit code is
-  unchanged.
+  unchanged. A record attempt that has not landed prints `running:` (its recorder alive) or
+  `stale (interrupted):` (gone) ahead of the verdict, both exit 1 (#1178). `test-status --wait
+  [--timeout N]` (default 300s, at most 3600) blocks until the record lands or the recorder dies
+  and then answers as a bare call would; a timeout with the run still going exits **75** (see
+  Error Model). No hook calls it.
 - **Evidence transport** — `review`, `resolution`, `chunk-imported` and `chunk-retracted` facts travel between clones
   as their store lines in notes on `refs/notes/prawduct` (`data-model.md` § Evidence Store).
   `evidence ingest [--all] [--json]` (mutating) appends the note lines the store lacks, bounded to
@@ -237,11 +265,16 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   and `/prawduct:onboard` runs it.
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
-- **Stranded work** — `worktrees [--json]` (read-only): every worktree with its inferred liveness
-  (active / recent / idle / unknown / missing, and which signal decided it) and uncommitted-file
-  count, plus the local branches checked out nowhere whose tip no remote-tracking ref reaches, with
-  their commit counts. The session briefing renders the worktree half as counts that name nothing;
-  each stranded branch is a `branch-landing:stranded-branch` advisory. Exit 0 whenever a report was
+- **Stranded work** — `worktrees [--json] [--prs]` (read-only): every worktree with its inferred
+  liveness (active / recent / idle / unknown / missing, and which signal decided it) and
+  uncommitted-file count, plus the local branches checked out nowhere whose tip no remote-tracking
+  ref reaches, with their commit counts, and the pushed branches every claiming build plan calls
+  finished that have not merged into their base, a day or more since their last commit. `--prs` is
+  the one network leg: one `gh pr list --state all` per such branch, oldest first, at most 8, asking
+  whether it ever had a pull request; the rest are named unchecked. The session briefing renders the
+  worktree half as counts that name nothing; each stranded branch is a
+  `branch-landing:stranded-branch` advisory and each finished unmerged one a
+  `branch-landing:finished-branch-unlanded` advisory, both offline. Exit 0 whenever a report was
   produced — a partial one names its failed probes in it — and 2 on an unknown argument.
 - **Git hygiene** — `git-tidy [--offline] [--json] [--apply <fingerprint>]` (mutating under
   `--apply`): the dry run lists the merged branches, merged remote branches, dead worktree entries
@@ -271,10 +304,52 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
-- **Learnings layout (learnings v2)** — `learnings-files [--for-diff] [--json]` (read-only: the one
-  resolver's answer — the rules files under `.claude/rules/learnings/`, and with `--for-diff` the
-  core file plus every area file whose `paths:` intersect the diff; two `allowed-tools` grants bind
-  it and the PR reviewer protocol instructs it, so it sits in the stable tier) and `learnings-migrate [--apply] [--map <file>] [--propose-map]
+  **`check-pr-hygiene [--json]`** (read-only; owner `lib/pr_gate.py`) answers over merge-base…HEAD of
+  the checked-out branch, the base from the resolver `resolve-base` uses. Named results:
+  `credential-shape` (refuses: a line the branch ADDS matches the plugin's one credential denylist,
+  `backlog.transport.credential_shape`, and carries no `prawduct/credential-shape` waiver
+  (`docs/waivers.md`) on it or the line above; the output names file, line and the shape's class, never the
+  text; a multi-line private key is found by its `BEGIN … PRIVATE KEY` header line, and the cloud
+  token placeholder the denylist scrubs is not a credential), `closes-unresolved` (warning: an id in the branch's change-record `closes:` list, read through
+  `change_fragments.branch_change_record`, that the backlog does not resolve), `closes-still-open`
+  (warning, markdown backend only: an id the branch's own backlog at HEAD still has open),
+  `close-owed-at-merge` (information, Issues backend: the ids the PR description must carry a
+  closing line for; looked up in the local cache, never the network), `chunks-open` (information:
+  the bound plan's open chunks per `plan_status`; an unbound branch prints nothing for it) and
+  `review-tree-changed` (information: reviews on the composed coverage path consolidated over a
+  changed tree, for the PR description). A result whose subject could not be read says `unchecked`
+  with its reason and never reads as clean; a branch recording its change only in the single-file log
+  is `unchecked` for the closure results. A clean branch prints one line. Exit 0 nothing refuses, 1
+  something refuses, 3 no answer at all (no base, no merge-base) or the refusing `credential-shape`
+  result `unchecked` (§ Error Model), 2 usage. `--json` keys: `base`,
+  `merge_base`, `head`, `checked[]`, `results[]{name, severity, items[], unchecked}` (only results
+  with something to say), `error`, `exit`.
+  **`check-pr-body [<body file>] [--template <path>] [--json]`** (read-only; owner `lib/pr_gate.py`)
+  finds the repo's PR template where GitHub does — `pull_request_template` in any case, with or
+  without one extension, in the root, `docs/` or `.github/`, or each file of a
+  `PULL_REQUEST_TEMPLATE/` directory there (`template_locations` is the one home of the list). With
+  no body it prints what the description must follow: the template's required lines, or every
+  candidate when there are several, and a `CONTRIBUTING` file at those locations; exit 0. With a
+  body it checks every ATX heading and `- [ ]`/`- [x]` item of the template is in the body —
+  text compared with whitespace, case, heading level and checkbox state aside; HTML comments and
+  fenced code are not structure on either side. Exit 0 follows, or no template (naming where it
+  looked); 1 a line missing (each named) or several candidates and no `--template`; 3 the body or
+  the `--template` file cannot be read; 2 usage. `--template` is read relative to the repository
+  root, the body as given. `--json` keys: `templates[]`, `contributing[]`, `searched`, `template`,
+  `body`, `required[]`, `missing[]{kind, line}`, `verdict` (`follows` | `missing` | `ambiguous` |
+  `no-template` | `unreadable` | `listed`), `exit`. A refusal from either command is a
+  `guard-refusal` fact (`check-pr-hygiene`'s under guard `pr-hygiene`, reason the refusing result's
+  name, naming file, line and class only; `check-pr-body`'s under guard `pr-body-template`, reasons
+  `missing-template-lines` | `ambiguous-template`), and so is each `check-pr-hygiene` warning that
+  found something (guard `pr-hygiene`, reason `closes-unresolved` | `closes-still-open`, one fact per
+  result naming its ids); an `unchecked` result and an information result record nothing. Each is
+  deduplicated per subject (HEAD plus what was found) so a re-check of an unchanged branch or body
+  records one event.
+- **Learnings layout (learnings v2)** — `learnings-files [--json]` (read-only: the one resolver's
+  answer — every rules file under `.claude/rules/learnings/`, the set the budget gate sizes; the
+  session briefing and the Stop hook's learnings floor name it to the person reading them as how to
+  see what is on disk, so it sits in the stable tier; `--for-diff` was removed — § Deprecation &
+  Compatibility) and `learnings-migrate [--apply] [--map <file>] [--propose-map]
   [--json] [--local]` (mutating with `--apply`: the one-way relayout of a legacy `.prawduct/learnings.md` into
   the rules files, byte-accounted against the tree it writes; refuses on a dirty tree, an uncommitted or
   ignored corpus, or an ignored destination, because a commit is its undo — except under `--local`,
@@ -479,7 +554,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   shape this command was written to end.
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
   `verify-operator-verification` (both mutating). The check is three-way: 0 satisfied, 1 pending
-  entries, **3** the queue could not be parsed (see the third-outcome rule under § Error Model).
+  entries, **3** the queue could not be read or parsed, or `project-state.yaml` exists and could not
+  be read so the `operator_verification_required` flag is unknown (see the third-outcome rule under
+  § Error Model). An absent state file or flag is the gate off, exit 0; an unreadable one is never
+  folded into off. `verify-` and `accept-operator-verification` return an `error:` line, exit 1, for
+  an unreadable queue, never a traceback.
   `accept-operator-verification` refuses on that same unparsed queue rather than recording a bypass
   that covers no entries — an override reached by a different door must not inherit the defect the
   check just closed.
@@ -695,9 +774,12 @@ files to touch previews first. That framing is descriptive — the binding rule 
   - `worktrees --json` → **no skill consumer today**: top-level `schema_version`, `worktrees[]`
     (`path`, `branch` — null when detached — `is_current`, `ephemeral`, `state`, `last_activity`
     as `{source, at}` or null, `dirty` — null when git could not be asked), `branches[]` (`name`,
-    `last_commit`, `unique_commits` — null when the count failed), `worktrees_checked` (false when
-    git could not list worktrees: every count is then "not checked", never "none"), `has_remotes`,
-    `problems[]`. The briefing and the advisory read the report in-process, not this payload.
+    `last_commit`, `unique_commits` — null when the count failed), `unlanded[]` (`name`,
+    `last_commit`, `plans[]`, `pr_check` — `unchecked` / `none` / `found` / `failed`, where `failed`
+    is "could not ask", never "none" — and `pull_request`, `{number, state}` when found, else null),
+    `worktrees_checked` (false when git could not list worktrees: every count is then "not
+    checked", never "none"), `has_remotes`, `problems[]`. The briefing and the advisories read the
+    report in-process, not this payload.
     Named as unconsumed on purpose, like `cost-of-commit`; the key set is pinned by a test.
   - `git-tidy --json` → **no skill consumer today**: top-level `schema_version`, `fingerprint`,
     `fully_checked` (false when any part went unchecked, so an empty `actions[]` with it false means
@@ -775,6 +857,8 @@ would have said, because the argument is only convincing in the concrete.
   1 it inherits "there are pending entries, drain or override the first one", and both remedies are
   inapplicable to a file that yielded no entries, leaving the caller at the queue file — the one
   move the refusal forbids. It still BLOCKS: 3 is non-zero, so the gate fails closed.
+  The same exit covers *an unreadable `project-state.yaml`* (#777): folded into 0 it reports the gate
+  off for a repo that turned it on; folded into 1 it claims pending entries nobody counted.
 - `check-learnings-pairing` (2026-08-27), *unreadable pair* — folded into 0 it reports a clean
   pairing off a corpus it could not decode, which is this scope's own subject; folded into 1 it
   claims a duplicate heading it never saw, sending an operator to hand-edit a file that is fine.
@@ -787,6 +871,12 @@ would have said, because the argument is only convincing in the concrete.
   `no-upstream`, `upstream-ref-missing`), where a push or an integrate-then-push is the remedy in
   every case. Both codes BLOCK — the third outcome buys the caller an applicable remedy, not a
   different verdict.
+- `check-pr-hygiene` (2026-11-11), *no base or no merge-base* — folded into 0 it reports a clean
+  branch off an interval it never had; folded into 1 it claims a refusing result it never computed.
+  A single result it could not read is `unchecked` in the output, not a third exit, unless that
+  result is a refusing one: authority fails closed, so an unreadable refusing check is 3.
+- `check-pr-body` (2026-11-11), *the body or the named template cannot be read* — folded into 0 it
+  passes a description nobody compared; folded into 1 it names lines missing from a file it never read.
 
 `check-released` (2026-08-04) exits **3** for
 *unverified*: nothing failed, but a check could not run — no `gh`, no `origin/main` in a
@@ -839,7 +929,20 @@ Fail-direction is deliberate and per-purpose:
   a plugin; a demoted one would append its fact to a store nothing can parse. **5 is withdrawn,
   not free:** #167's `self-inflicted-refusal` held it on `develop` until its 2026-09-20 revert,
   and never shipped in a release, so it is left unclaimed rather than given a new meaning;
-  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
+  `critic-begin` **7** = `verify-resolutions` refused on saved test evidence that exists and is
+  stale, red or degraded (added 2026-11-15, #724) — `gates.tests_are_current`'s reason on stdout,
+  checked before anything is derived (no manifest, no marker, one `guard-refusal` fact). Distinct
+  from **1** because exit 1 on `verify-resolutions` demotes, and a wider mode reviews the same tree
+  over the same stale suite; the remedy printed is `gates.suite_remedy`'s (wait for a record attempt
+  still running, else run the suite), then the same mode. Absent evidence does not
+  refuse. `--force` dispatches anyway;
+  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
+  `test-status --wait` **75** = the wait timed out with the run still in progress (added
+  2026-11-15, #1178). sysexits' EX_TEMPFAIL, "try again later", which is the remedy. Folded into
+  **1** it reads as stale, whose remedy (run the suite) starts the second run the wait exists to
+  prevent; folded into **3** it claims the subject could not be read, and it was read: the run is
+  still going. Not **5**, which stays withdrawn. 75 is also what testament exits for a verdict worth
+  asking for again, so agents in this ecosystem already read it that way.
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command went inert and was
   then removed (#303), so those two meanings were removed rather than given new ones. Retiring a
   meaning is what the additive-first norm permits; the thing it forbids is a new meaning wearing
@@ -870,7 +973,7 @@ Fail-direction is deliberate and per-purpose:
   BLOCKING findings still need `verify-resolutions`". Folded into 1 it would read as a dispatch
   failure and invite a retry in another mode, which is the round it exists to refuse. The refusal
   auto-ACCEPTs the outstanding **non-blocking** findings, renders the census to stdout, and appends
-  one `guard-refusal` fact; `verify-resolutions` is never counted and never refused, and no BLOCKING
+  one `guard-refusal` fact; `verify-resolutions` is never counted and never refused by the budget, and no BLOCKING
   finding is ever swept — so the budget can end a review loop and can never open a gate. `--force`
   dispatches anyway. No session state is written, so a 4 needs no `critic-end`. It is checked
   BELOW the free-interval refusal, so an interval that needs no review still answers 3: "the loop
@@ -968,7 +1071,37 @@ Evolution rules we want to hold, so new versions stay rare:
   it: that departure is scoped to a caller which is a stale hook registration, and this one's
   caller is a person.
 
+  **REMOVED 2026-11-11 (#1129, owner ruling 2026-11-10: "yes fold PR reviewer in").**
+  `pr-review-dispatch` and `pr-review-payload` were deleted with the PR reviewer they served, and
+  `ledger-append --event review.pr` stopped appending — the deprecate-then-remove path's *remove*
+  step, taken by owner ruling rather than at a major boundary, as #303's was. Neither command was
+  registered by a shipped `hooks.json`; their caller was the `/prawduct:pr` skill text, so a session
+  whose skill loaded before the plugin advanced still calls them. Each is answered by name rather
+  than by the usage error: the dispatcher prints one line on stderr saying the PR reviewer was
+  retired and the session should restart, and exits 1 (one table, `_RETIRED_COMMANDS`), and
+  `ledger-append` refuses `review.pr` with the same reason. A refusal rather than the inert exit-0
+  tier, because an inert `pr-review-payload` would hand a stale reviewer an empty payload to review
+  and read as a clean result. Whether each goes outright or stays callable-and-inert was put to the
+  owner on 2026-11-11 with that cost (a stale session cannot open a PR until it restarts), and the
+  owner ruled outright: "yes to both of your recommendations" (`.prawduct/owner-rulings.md`). The
+  same ruling covers the posture of the flag and the two queries in the note below. As with #303, the clause's "defer removal to a major" makes this a release-time
+  obligation: the release carrying it should be a major, or the release notes must say why not.
+
   **REMOVED 2026-10-21 (#303, owner ruling 2026-09-28: "do").** `stamp-merged` and `regen-views` were deleted outright — the deprecate-then-remove path's *remove* step, taken by owner ruling rather than at a major boundary. Neither was ever registered by a shipped `hooks.json`, so the harness-skew retention rule below does not reach them; a copied script that still calls one now gets the usage error. The clause's "defer removal to a major" makes this a release-time obligation: the release carrying it should be a major, or the release notes must say why not. The parser's special cases for the retired `chunks=` key (comma-split, cross-line union) went in the same change.
+
+  **REMOVED 2026-11-11 (#1129, owner ruling 2026-11-10, recorded in `.prawduct/owner-rulings.md`
+  and on #1129).** `learnings-files --for-diff` and the `backlog cache-query` queries `affecting`
+  and `created-since` were deleted outright, having no shipped reader once the PR reviewer retired —
+  the same *remove* step #303 took by owner ruling rather than at a major boundary. None was registered
+  by a shipped `hooks.json`. A caller holding the flag gets the command's unknown-argument refusal
+  (exit 2, naming `--json` as the flag that remains); one holding either query gets the
+  unknown-query refusal (exit 2, naming the queries that remain). The bare `learnings-files`,
+  `--json`, and the six queries that remain are unchanged. One planned consumer named the flag: #928's
+  ruling D-7 (the Codex adapter's explicit read of area learnings). Put to the owner with that in
+  view on 2026-11-11, who ruled it stays removed ("yes to recs"); the requirement is recorded
+  beneath D-7 as the adapter's design to supply. As with #303, the clause's "defer removal to a
+  major" makes this a release-time obligation: the release carrying it should be a major, or the
+  release notes must say why not.
 
   **DEPARTURE, recorded not amended — 2026-08-11 (v3.3.3), pending owner ratification.**
   `build-index` and `user-prompt-submit` join the inert tier printing **nothing on either stream**,
@@ -993,9 +1126,11 @@ Evolution rules we want to hold, so new versions stay rare:
 
 - **Stable, allowlistable surface** (intended to be depended on, and scoped into skill
   `allowed-tools`): `evidence status|list`, `review-stats --json`, `stats --json`, `render-dispositions`,
-  `learnings-files` (bound by the Critic skill, the PR reviewer protocol and the reviewer agent),
-  `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`,
-  `check-*`, `resolve-base`, `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
+  `learnings-files` (named to a person by the session briefing and the Stop hook's learnings floor;
+  no skill or agent grant binds it),
+  `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`, `validate-partial`,
+  `check-*` — the PR flow's `check-pr-hygiene` and `check-pr-body` among them —, `resolve-base`,
+  `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
   exist *specifically* to give skills a narrow, stable command to allowlist instead of arbitrary
   `python3 -c`. **`disposition` and `render-dispositions` are in this tier for a different reason
   than the rest:** no skill allowlists them, because their caller is the **main session** — the

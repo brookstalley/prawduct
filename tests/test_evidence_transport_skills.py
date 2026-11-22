@@ -1,7 +1,7 @@
 """The doctor and onboard skills set up and explain the notes transport (#1052).
 
 Review facts travel between clones on ``refs/notes/prawduct``. ``/prawduct:pr``
-pushes them (pinned in ``test_pr_reviewer.py``); these pin the other two
+pushes them (pinned in ``test_pr_skill.py``); these pin the other two
 skills' share, read in the order an agent reads them:
 
 - ``doctor`` Health Check #25 runs ``evidence configure`` — the preview the
@@ -135,7 +135,9 @@ class TestOnboardConfiguresTheTransport:
         assert "nothing to change" in step
         assert "git -C <target> remote" not in step
         assert "from another directory" in step
-        assert "Health Check #25" in step
+        # Routed by name, not ordinal: doctor's list renumbers.
+        assert "*Notes transport configured* check" in step
+        assert "Check #" not in step
 
     def test_what_it_runs_is_granted(self):
         frontmatter = _frontmatter(ONBOARD.read_text(encoding="utf-8"))

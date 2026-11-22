@@ -14,7 +14,7 @@ Is the repository's history and branch structure clean and navigable?
 - Branches with no activity within the staleness window (default: 14 days; see Arguments)
 - Branches superseded by other work — started, then abandoned in favor of a different approach
 - Orphaned work that was started but apparently abandoned with no resolution
-- Files that should be ignored but aren't (build artifacts, editor files, secrets) — or vice versa. This is general gitignore hygiene; the prawduct gitignore *contract* (session-file entries, the retired `build-plan.md` entry) is `/prawduct:doctor` Health-Check #8 (`docs/doctor-vs-janitor.md`).
+- Files that should be ignored but aren't (build artifacts, editor files, secrets) — or vice versa. This is general gitignore hygiene; the prawduct gitignore *contract* (session-file entries, the retired `build-plan.md` entry) is `/prawduct:doctor`'s *Gitignore contract* check (`docs/doctor-vs-janitor.md`).
 
 ### Structural Clarity
 
@@ -84,7 +84,7 @@ Are external dependencies current, justified, minimal, and secure?
 
 If this product exposes an API — any programmatic surface others call (a network service, a library/SDK, an on-device/platform interface, or a CLI), not just HTTP/REST — is that contract designed to evolve without breaking its consumers?
 
-- Versioning — is there a recorded versioning scheme and granularity (`design_decisions.api_versioning_approach`), or is the surface unversioned by unexamined default? (`/prawduct:doctor` check #9 flags a missing decision; the `api-versioning` advisory nudges ambiently.)
+- Versioning — is there a recorded versioning scheme and granularity (`design_decisions.api_versioning_approach`), or is the surface unversioned by unexamined default? (`/prawduct:doctor`'s *API versioning decision* check flags a missing decision; the `api-versioning` advisory nudges ambiently.)
 - Deprecation & compatibility — is there a sunset/deprecation policy and a breaking-change signal? Are changes additive (tolerant-reader, never remove or repurpose a field) so new versions stay rare?
 - Error model — is the error envelope consistent across the surface (`design_decisions.api_error_model_approach`), or does each operation shape errors differently?
 - Protocol semantics — the correctness conventions for whatever the surface actually is. For HTTP/REST: status codes, PUT vs PATCH, conditional requests / ETags, idempotency keys. For a library/SDK: semver discipline and stable signatures. For a CLI: stable flags, exit codes, and output contracts.

@@ -16,12 +16,22 @@ Also pinned here: the two things about `verify-release.yml` that are decisions
 rather than details — it never publishes, and it never waves through an
 unverifiable result — because both are invisible in the diff of a future edit that
 removes them.
+
+And what must hold of `tests.yml` now that it holds a key to testament's pool, a key that
+runs code on the pool's machines: no workflow hands that key to a fork's code, the job
+that holds it installs nothing from a package index and runs no test, and the job that
+runs the tests references no secret. The pool runs the suite in an image of its own, so
+that image's Python is a third copy of the floor and is checked here like the matrix's.
 """
 
 from __future__ import annotations
 
+import functools
+import importlib.util
 import re
 from pathlib import Path
+
+import sys
 
 # Imported plainly, not via `importorskip`. PyYAML is a declared dev dependency,
 # so its absence is a broken environment rather than a reason to skip — and a
@@ -32,6 +42,21 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 TESTS_WORKFLOW = WORKFLOWS / "tests.yml"
 VERIFY_WORKFLOW = WORKFLOWS / "verify-release.yml"
+POOL_IMAGE = REPO_ROOT / "docker" / "testament.Dockerfile"
+POOL_KEY = "${{ secrets.TESTAMENT_KEY }}"
+POOL_STAGE = "python tools/ci-suite.py pool"
+TESTS_STAGE = "python tools/ci-suite.py tests"
+
+
+@functools.cache
+def _runner():
+    """`tools/ci-suite.py`, imported by path (its name is not a module name), so the figures and
+    names the workflow must agree with are read from their one home."""
+    spec = importlib.util.spec_from_file_location("ci_suite_conventions", REPO_ROOT / "tools" / "ci-suite.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # a dataclass resolves its module through sys.modules
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load(path: Path) -> dict:
@@ -107,8 +132,6 @@ class TestPythonFloorIsNotASecondHome:
         # Red if `requires-python` moves and the floor the hooks enforce does not.
         # A stale FLOOR passes CI silently: the suite runs on the new floor, so
         # nothing below it is ever exercised.
-        import importlib.util
-
         path = REPO_ROOT / "plugin" / "bin" / "_python_floor.py"
         spec = importlib.util.spec_from_file_location("python_floor_pin", path)
         module = importlib.util.module_from_spec(spec)
@@ -140,6 +163,139 @@ class TestPythonFloorIsNotASecondHome:
             f"CI tests Python {', '.join(below)}, below the declared floor "
             f"{'.'.join(str(p) for p in floor)}"
         )
+
+
+class TestThePoolImageRunsTheDeclaredFloor:
+    def test_the_image_python_is_the_declared_floor(self):
+        # Red if `requires-python` moves and the image does not, or the reverse. A run
+        # the pool takes executes in this image and not on the matrix's interpreter, so
+        # on that path the image is what exercises the floor: a matrix that still names
+        # it would be covering a run that no longer happens there.
+        bases = re.findall(r"^FROM\s+python:([0-9]+\.[0-9]+)", POOL_IMAGE.read_text(), re.MULTILINE)
+        assert bases == [_requires_python_floor()], (
+            f"docker/testament.Dockerfile builds on Python {bases}, and pyproject.toml "
+            f"declares requires-python >= {_requires_python_floor()}"
+        )
+
+
+class TestThePoolKeyIsHeldByAJobThatRunsNoTest:
+    """`TESTAMENT_KEY` submits code to the pool, where it runs on the owner's machines.
+
+    GitHub gives a pull request from a fork no secrets, and that is the whole reason a
+    stranger's code cannot reach the pool. Inside a run, the key is kept from the tests
+    and from everything they import by being in a different job: a step's environment is
+    readable by its child processes' children (`/proc/<ppid>/environ`), so a step, or a
+    stripped environment, is not a boundary. Each test here is one way of undoing that.
+    """
+
+    def test_no_workflow_runs_on_pull_request_target(self):
+        # Red if any workflow adds the trigger. `pull_request_target` runs with the base
+        # repository's secrets, and a job that then checks out the pull request's head
+        # has handed a fork's code the key.
+        workflows = sorted(WORKFLOWS.glob("*.y*ml"))
+        assert TESTS_WORKFLOW in workflows, "the scan must reach the workflow that holds the key"
+        for path in workflows:
+            triggers = _load(path)["on"]
+            names = [triggers] if isinstance(triggers, str) else list(triggers)
+            assert "pull_request_target" not in names, (
+                f"{path.name} triggers on pull_request_target, which gives a fork's "
+                "pull request this repository's secrets"
+            )
+
+    def test_the_key_is_named_once_by_the_pool_jobs_own_step(self):
+        # Red if the key moves to a job's or the workflow's `env`, if a second step or
+        # job names it, or if the step that holds it runs anything but the pool stage.
+        doc = _load(TESTS_WORKFLOW)
+        holders = [
+            (name, step) for name, job in doc["jobs"].items() for step in job.get("steps", [])
+            if POOL_KEY in (step.get("env") or {}).values()
+        ]
+        assert [(name, step.get("run")) for name, step in holders] == [("pool", POOL_STAGE)]
+        mentions = [s for s in _scalars(doc) if "secrets" in s]
+        assert mentions == [POOL_KEY], (
+            "tests.yml reads `secrets` somewhere other than the pool step's own env "
+            f"(every mention: {mentions})"
+        )
+
+    def test_no_workflow_reads_a_secret_except_that_step(self):
+        # The same property over the whole directory: a new workflow that reads the key,
+        # or passes every secret on with `secrets: inherit`, is a second holder.
+        found = {
+            path.name: [s for s in _scalars(_load(path)) if "secrets" in s]
+            for path in sorted(WORKFLOWS.glob("*.y*ml"))
+        }
+        assert {name: hits for name, hits in found.items() if hits} == {"tests.yml": [POOL_KEY]}
+
+    def test_the_job_that_holds_the_key_installs_nothing_and_runs_no_test(self):
+        # Red if the pool job gains a step: a `pip install`, a `pytest`, a third-party
+        # action. Whatever runs in that job runs within reach of the key, so the job is
+        # held to exactly what it needs: GitHub's own checkout and Python, and the stage.
+        steps = _load(TESTS_WORKFLOW)["jobs"]["pool"]["steps"]
+        assert [step["run"] for step in steps if "run" in step] == [POOL_STAGE]
+        actions = [str(step["uses"]).split("@")[0] for step in steps if "uses" in step]
+        assert actions == ["actions/checkout", "actions/setup-python"], actions
+        assert len(steps) == 3, "a step that neither runs nor uses is not one this test can read"
+
+    def test_the_job_that_runs_the_tests_is_given_no_secret_and_only_the_pool_jobs_word(self):
+        # The test job's one input from the pool job is where the suite ran. Anything
+        # else passed across (a second output, the job's whole context) is a channel the
+        # key could be put on by a later edit.
+        doc = _load(TESTS_WORKFLOW)
+        assert doc["jobs"]["pool"].get("outputs") == {"suite": "${{ steps.pool.outputs.suite }}"}
+        job = doc["jobs"]["pytest"]
+        stage = [step for step in job["steps"] if step.get("run") == TESTS_STAGE]
+        assert len(stage) == 1, "the pytest job must run the tests stage, once"
+        assert stage[0].get("env") == {_runner().RAN_ON: "${{ needs.pool.outputs.suite }}"}
+        crossing = [s for s in _scalars(job) if "needs." in s]
+        assert crossing == ["${{ needs.pool.outputs.suite }}"], crossing
+
+    def test_the_pool_jobs_time_limit_outlasts_what_the_runner_may_wait(self):
+        # Red if the allowance is raised and only its pin is updated. A job killed at its
+        # limit writes no `suite=` output, so the test job falls back to the whole suite with
+        # nothing saying why. The margin is for checkout, setup and the install itself.
+        runner = _runner()
+        limit = _load(TESTS_WORKFLOW)["jobs"]["pool"]["timeout-minutes"] * 60
+        margin = 120
+        assert limit >= runner.POOL_WAIT_SECONDS + runner.DOWNLOAD_SECONDS + margin, (
+            limit, runner.POOL_WAIT_SECONDS, runner.DOWNLOAD_SECONDS)
+
+    def test_the_test_job_runs_whatever_the_pool_jobs_result(self):
+        # Red if the `if` is dropped. A job that `needs` a failed job is skipped by
+        # default, so a failing pool run would skip the tests the pool leaves out, and a
+        # refused key would leave the tree with no verdict at all: a red run that says
+        # nothing about the code.
+        job = _load(TESTS_WORKFLOW)["jobs"]["pytest"]
+        assert job.get("needs") == "pool"
+        assert job.get("if") == "${{ !cancelled() }}", job.get("if")
+
+    def test_the_jobs_token_is_read_only(self):
+        # The pool job runs a CLI it downloaded. What that process can do to this
+        # repository is bounded by the token, as `verify-release.yml`'s no-publish rule is.
+        doc = _load(TESTS_WORKFLOW)
+        assert doc.get("permissions") == {"contents": "read"}, doc.get("permissions")
+        widened = [name for name, job in doc["jobs"].items() if "permissions" in job]
+        assert not widened, f"jobs override the workflow's read-only grant: {widened}"
+
+    def test_no_step_runs_pytest_but_through_the_runner(self):
+        # Red if a step runs `pytest` itself. The runner owns where the suite runs; a
+        # second invocation is a second answer to that, and the place a pytest flag would
+        # next be written.
+        runs = [
+            str(step.get("run", "")) for job in _load(TESTS_WORKFLOW)["jobs"].values()
+            for step in job.get("steps", [])
+        ]
+        assert TESTS_STAGE in runs
+        assert not [r for r in runs if "pytest" in r], runs
+
+    def test_the_pool_addresses_are_variables_not_text(self):
+        # The addresses are the pool operator's to change; a tracked file is not where
+        # they are kept.
+        env = next(
+            step["env"] for step in _load(TESTS_WORKFLOW)["jobs"]["pool"]["steps"]
+            if step.get("run") == POOL_STAGE
+        )
+        assert env["TESTAMENT_COORDINATOR"] == "${{ vars.TESTAMENT_COORDINATOR }}"
+        assert env["TESTAMENT_CONSOLE"] == "${{ vars.TESTAMENT_CONSOLE }}"
 
 
 class TestNoRestatedConfiguration:

@@ -427,7 +427,7 @@ Each feature's `lib/probes/<feature>.py` calls `register_probe(...)` at import t
 - **Deterministic**: same inputs → same `AdvisoryCandidate` list (including evidence hash).
 - **Cheap**: probes run on every sync. Read-only file scans; no expensive operations. Cache where possible.
 - **Specific**: prefer many narrow probes over one omnibus probe. Each probe maps to one `type`.
-- **Versioned**: declare `probe_version: int`. Bump when trigger logic or evidence shape changes; the framework supersedes old advisories automatically.
+- **Versioned**: declare `probe_version: int`. Bump when trigger logic or evidence shape changes; the framework supersedes old advisories automatically. A type that has never shipped needs no bump, since no released id can go stale. `tests/test_advisory_evidence_pins.py` fails when a candidate's literal evidence changes under an unchanged version.
 - **Two conditions, not one**: each probe declares both a **trigger condition** (when to fire) and a **resolution condition** (when to clear). These are distinct:
   - The **trigger condition** is "we should ask about this" — e.g., vendor SDK imports present.
   - The **resolution condition** is "the user has answered" — e.g., `uses_llm_inference: true` in `project-state.yaml`.

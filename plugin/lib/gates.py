@@ -26,40 +26,36 @@ gate per design constraint 1 + Chunk 7, and it uses the hook-resident gate
 *attribution* machinery shared with ``cmd_clear``); it calls these helpers via
 ``_gates()``. Whether those gates arm is ``plan_status.gate_arms`` (#1051).
 
-Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``,
-``plan_status`` (chunk progress, the one walker — #1051), ``work_unit`` (the
-checkout's binding),
-``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
-(the one resolver for the rules layout the cross-check nudge names),
-``standing_block`` (the closing block the Stop deferral and the clear checks read), and ``core``
-(``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
-mirror), plus the stdlib.
+Depends only on its lib siblings and the stdlib — the import block below is the
+list, so it is not copied here to drift (a copy did, naming removed imports).
 """
 
 
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 import re
-import subprocess
+import shlex
 import sys
+import time
 from pathlib import Path
+from typing import NamedTuple
 
 from . import (
-    buildplan_refs,
     coverage,
     coverage_algebra,
     evidence,
     gitstate,
-    learnings_files,
+    host,
     plan_status,
     standing_block,
     tree_key_memo,
     verdict_cache,
     work_unit,
 )
-from .core import read_bool_yaml_key, suite_coupled_prefixes
+from .core import FLAG_UNREADABLE, read_bool_flag, suite_coupled_prefixes
 
 
 _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
@@ -78,15 +74,23 @@ _EVIDENCE_COVERAGE_FIELDS: dict[str, tuple[type, ...]] = {
 }
 _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
 # Optional fields — validated when present, never required. ``changes_unjudged``
-# (gate-soundness ch.1) lists changed files the evidence producer structurally
-# cannot judge (non-Python, symbol-less, deleted); absent means empty, so
-# product-authored evidence and ``executed``-level verifiers that predate the
-# field keep their existing gate behavior.
+# (gate-soundness ch.1) lists changed files the evidence producer could not judge
+# (symbol-less Python, deleted; evidence the Python floor wrote before
+# ``changes_out_of_remit`` existed also lists non-Python here); absent means
+# empty, so product-authored evidence and ``executed``-level verifiers that
+# predate the field keep their existing gate behavior. ``changes_out_of_remit``
+# (#682) lists changed paths outside the producing verifier's remit — files it
+# never reads, out of scope by construction rather than missing evidence (the
+# Python floor's case: every non-Python file) — and ``changes_out_of_remit_reason``
+# is the record's own statement of why. The gate treats both lists identically
+# (reported, never gated).
 _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
+    "changes_out_of_remit": (list,),
+    "changes_out_of_remit_reason": (str,),
     # ``changes_unreferenced`` (#556): changed Python files declaring symbols no
-    # test mentions. With ``changes_referenced`` and ``changes_unjudged`` it
-    # partitions the changed set. Absent means empty; no gate reads it —
+    # test mentions. With ``changes_referenced``, ``changes_unjudged`` and
+    # ``changes_out_of_remit`` it partitions the changed set. Absent means empty; no gate reads it —
     # ``verify-coverage`` derives "missing" from the diff itself, so a record
     # without it gates exactly as before.
     "changes_unreferenced": (list,),
@@ -123,10 +127,15 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # stating, because the next field will not have one. That rule exists for
     # the removed content-hash and ``git_sha`` mechanisms, which DERIVED
     # staleness from the tree and so produced false positives nobody asked for.
-    # This field derives nothing: it is present only because a coordinator
-    # wrote it, so it cannot fire on its own and there is no false-stale class
-    # for it to reintroduce. The only way to a wrong stale here is to assert a
-    # degradation that did not happen.
+    # This field derives nothing from the tree. It is present only because a
+    # coordinator wrote it, or because ``test-evidence record`` wrote it ahead
+    # of a record attempt that then did not land (the write-ahead void, #679:
+    # an observation of the recorder's own run, kept with the earlier counts,
+    # or a zero-count stub where no usable record stood).
+    # Neither fires on the tree's say-so, so there is no false-stale class for
+    # it to reintroduce. The only ways to a wrong stale here are to assert a
+    # degradation that did not happen, or to begin a record attempt and abandon
+    # it, which one record that lands clears.
     "degraded": (str,),
 }
 
@@ -313,6 +322,138 @@ def _parse_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     return record, ""
 
 
+#: ``test-status``'s labels for a record attempt that has not landed (#1178):
+#: its recorder is alive, or it is gone and nothing landed. Both exit 1, like
+#: ``stale:`` — the run is not evidence yet — and ``interrupted`` keeps the
+#: ``stale`` prefix because that is what it is.
+RUNNING_LABEL = "running"
+INTERRUPTED_LABEL = "stale (interrupted)"
+
+
+#: What to do about a suite verdict, by the state of this worktree's record —
+#: :func:`suite_remedy`'s ``state``, and the closed set the stale-evidence
+#: guard records as its ``reason`` slug.
+SUITE_RUNNING = "running"
+SUITE_INTERRUPTED = "interrupted"
+SUITE_FAILING = "failing"
+SUITE_DEGRADED = "degraded"
+SUITE_NOT_CURRENT = "not-current"
+SUITE_STATES = (
+    SUITE_RUNNING, SUITE_INTERRUPTED, SUITE_FAILING, SUITE_DEGRADED, SUITE_NOT_CURRENT,
+)
+
+#: The two remedies, stated once (#1178 R-4). Lower-case imperative clauses: a
+#: caller capitalises or embeds them, never rewords them.
+RUN_AND_RECORD = (
+    "run the suite and record it (`prawduct-hook test-evidence record`, or ingest "
+    "the report of a whole-suite run with `--from-junit`)"
+)
+WAIT_FOR_RUN = (
+    "wait for it to record — `prawduct-hook test-status --wait`, which exits 75 if "
+    "its timeout passes first (then wait again) — and do not start another run"
+)
+
+
+class SuiteStep(NamedTuple):
+    """:func:`suite_remedy`'s answer: which :data:`SUITE_STATES` member the
+    record is in, and the remedy clause for it."""
+
+    state: str
+    remedy: str
+
+
+def _cap(clause: str) -> str:
+    return clause[:1].upper() + clause[1:]
+
+
+def _in_progress_parts(run: dict) -> "tuple[str, str, str] | None":
+    """``(state, finding, remedy)`` for a record carrying the recorder's
+    ``in_progress`` stamp, or ``None`` when it carries none. The one place the
+    in-flight sentence is composed: :func:`record_in_progress` hands the
+    finding to the refusal, :func:`suite_remedy` the remedy to whichever
+    surface prints it."""
+    stamp = run.get("in_progress")
+    if stamp is None:
+        return None
+    from . import record_progress  # noqa: PLC0415 — lazy: only an in-flight record needs it
+
+    previous = run.get("duration_seconds")
+    state, why = record_progress.recorder_state(stamp, previous)
+    who = record_progress.describe(stamp)
+    if state == record_progress.GONE:
+        return state, (
+            f"the record attempt ({who}) did not land, and its recorder is no longer "
+            f"running ({why}): it was refused, failed, or was killed"
+        ), RUN_AND_RECORD
+    where = f" ({why})" if why else ""
+    finding = (
+        f"a suite run is in progress ({who}; "
+        f"{record_progress.progress(stamp, previous)}){where}"
+    )
+    if state == record_progress.ELSEWHERE:
+        host = stamp.get("host") if isinstance(stamp.get("host"), str) else ""
+        return state, finding, (
+            f"{WAIT_FOR_RUN}; or, if no run is going on {host or 'that machine'}, "
+            f"{RUN_AND_RECORD} now"
+        )
+    return state, finding, (
+        f"{WAIT_FOR_RUN} (if it hangs, stop pid {stamp.get('pid')}: it then reads "
+        "as interrupted)"
+    )
+
+
+def record_in_progress(run: dict) -> "tuple[str, str] | None":
+    """``(state, finding)`` for a record carrying the recorder's ``in_progress``
+    stamp, or ``None`` when it carries none. ``state`` is
+    ``record_progress.RUNNING``, ``ELSEWHERE`` (another machine's, which cannot
+    be checked: treated as running until ``record_progress.unverified_bound``,
+    then as gone) or ``GONE``. One owner for the sentence, so the refusal every
+    gate prints and ``test-status``'s line say the same.
+
+    The finding only, never the remedy: every surface that prints this appends
+    :func:`suite_remedy`'s clause itself, so a finding that carried one too
+    printed it twice."""
+    parts = _in_progress_parts(run)
+    if parts is None:
+        return None
+    return parts[0], parts[1]
+
+
+def suite_remedy(project_dir: Path) -> SuiteStep:
+    """What to do about this worktree's suite verdict — the ONE owner (#1178 R-4).
+
+    Every caller that prints a remedy after :func:`tests_are_current`,
+    :func:`suite_vouches_for_tree` or :func:`run_refusal` takes it from here
+    rather than writing its own "run the suite": a record attempt in progress is
+    told to wait, and a reader that wrapped the verdict in its own remedy told
+    it to start a second suite on top of the first. The state is read off this
+    worktree's record in the order :func:`run_refusal` refuses it, so the two
+    cannot disagree about which condition answers.
+
+    **Those readers return the finding alone; the remedy is this function's
+    only.** Each surface prints finding + this clause once — ``test-status``
+    joins them, and the exit-7 refusal, the release gate's ``unproven-suite``
+    line and :func:`transfer_remedy` append it after the verdict. A reason that
+    also carried its own remedy printed it twice.
+    """
+    record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+    if record is None:
+        return SuiteStep(SUITE_NOT_CURRENT, RUN_AND_RECORD)
+    parts = _in_progress_parts(record)
+    if parts is not None:
+        from . import record_progress  # noqa: PLC0415 — lazy, as in _in_progress_parts
+
+        state = SUITE_INTERRUPTED if parts[0] == record_progress.GONE else SUITE_RUNNING
+        return SuiteStep(state, parts[2])
+    failed = record.get("failed")
+    if isinstance(failed, int) and not isinstance(failed, bool) and failed > 0:
+        return SuiteStep(SUITE_FAILING, f"fix the failing test(s), then {RUN_AND_RECORD}")
+    degraded = record.get("degraded")
+    if isinstance(degraded, str) and degraded.strip():
+        return SuiteStep(SUITE_DEGRADED, f"{RUN_AND_RECORD}, uncontended")
+    return SuiteStep(SUITE_NOT_CURRENT, RUN_AND_RECORD)
+
+
 def run_refusal(run: dict) -> str:
     """Why a recorded run may not vouch for anything, or ``""`` if it may.
 
@@ -320,8 +461,20 @@ def run_refusal(run: dict) -> str:
     rule for every run a freshness check can consult — the worktree's record
     and a ``test-run`` fact alike — so the store cannot come to trust a run the
     record's own reader would refuse. A count that is not an integer refuses:
-    a fact body is not schema-checked the way the record is.
+    a fact body is not schema-checked the way the record is. The FINDING only:
+    what to do about it is :func:`suite_remedy`'s, which the printing surface
+    appends.
+
+    **A record attempt in progress answers first (#1178).** The write-ahead void
+    keeps the previous run's counts, so without this a red earlier run would be
+    named as the reason and a green one would say "run the suite" — both of
+    which send a reader to start a second run on top of the first. While the
+    recorder lives the refusal says to wait; once it is gone, that the attempt
+    was interrupted. Only the worktree's own record carries the stamp.
     """
+    progress = record_in_progress(run)
+    if progress is not None:
+        return progress[1]
     failed = run.get("failed")
     if not isinstance(failed, int) or isinstance(failed, bool):
         return "the saved run carries no valid failure count"
@@ -334,8 +487,7 @@ def run_refusal(run: dict) -> str:
     if isinstance(degraded, str) and degraded.strip():
         return (
             f"the saved run reports itself degraded ({degraded.strip()}) — its "
-            "counts do not cover what they appear to. Run the suite again, "
-            "uncontended, and record that run"
+            "counts do not cover what they appear to"
         )
     return ""
 
@@ -392,7 +544,8 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
     closed. The remedy is one command: re-record the run.
 
     Returns ``(is_current, reason, clause)``. ``reason`` is a short
-    human-readable string suitable for printing back to the agent. ``clause``
+    human-readable string suitable for printing back to the agent — the finding
+    only; the remedy is :func:`suite_remedy`'s, appended by whoever prints it. ``clause``
     names which disjunct answered — ``"session"``, ``"tree"``, or ``"none"``
     when neither did — because the two are **different guarantees** and a
     caller that prints only "current" tells its reader the stronger one.
@@ -487,7 +640,7 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
 
     return False, (
         f"no session marker to date the evidence against ({evidence_ts}), and "
-        f"it does not vouch for the current tree — run the suite and record it{store_note}"
+        f"it does not vouch for the current tree{store_note}"
     ), "none"
 
 
@@ -765,7 +918,8 @@ def suite_vouches_for_tree(
     tree it is actually about. ``None`` means the working tree.
 
     Returns ``(vouches, reason)``; the reason is printed either way, because a
-    denial here is the cheapest remedy the gate has to offer.
+    denial here is the cheapest remedy the gate has to offer. The reason is the
+    finding only: :func:`transfer_remedy` writes the remedy after it.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     record, why_not = _load_test_evidence(prawduct_dir)
@@ -774,8 +928,7 @@ def suite_vouches_for_tree(
         if not isinstance(recorded_tree, str) or not recorded_tree:
             why_not = (
                 "the saved run records no evidence_tree, so nothing can say which "
-                "tree it ran against — re-run the suite (or restamp with "
-                "`test-evidence record --no-rerun`) so the transfer has a tree to check"
+                "tree it ran against"
             )
         else:
             # `None` means the working tree, which is the Stop gate's own target
@@ -888,10 +1041,10 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
 def _read_gates_waived(prawduct_dir: Path) -> dict[str, str]:
     """Load .gates-waived JSON. Returns {} if missing or invalid.
 
-    Format: {"critic": "reason", "pr": "reason", "reflection": "reason"}.
+    Format: {"critic": "reason", "reflection": "reason"}.
     Each present key signals "this gate does not apply to the current work."
     The agent writes this file when work is genuinely N/A for that gate
-    (e.g., docs-only refactor, no PR planned for this branch). The file
+    (e.g., a docs-only refactor). The file
     is auto-deleted at session start so waivers never carry across sessions.
     """
     waiver_path = prawduct_dir / ".gates-waived"
@@ -955,7 +1108,7 @@ def background_tasks_in_flight(event) -> tuple[bool, list[str]]:
 
 #: The gates a ``RUNNING`` + ``DO NOT CLEAR`` turn defers — the SESSION-END gates,
 #: keyed by their ``hooks/gates.json`` ids. Everything else a Stop can raise
-#: (learnings, PR review) is not about whether the session is
+#: (the learnings gates) is not about whether the session is
 #: ending, so it keeps blocking on such a turn.
 VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
 
@@ -974,9 +1127,9 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
     session, from the Stop-hook ``last_assistant_message`` field.
 
     The Stop hook fires at every turn end, while the reflection and Critic
-    gates are about session end. A turn whose standing block says ``RUNNING``
-    and closes on ``DO NOT CLEAR`` is the agent's own statement that it is
-    still working — a review in flight, a delegate not yet reaped — so both
+    gates are about session end. A turn whose close says ``RUNNING`` and
+    ``DO NOT CLEAR`` is the agent's own statement that it is
+    still working — a review in flight, a delegate the notes do not yet describe — so both
     gates DEFER to the next Stop. Both, by owner ruling: the label is a
     required, user-facing claim, so misusing it to dodge a gate is visible to
     the person it misleads. The deferral is stateless: the next
@@ -1000,12 +1153,13 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
     (authority fails closed):
 
       - non-dict input, field absent, non-string or blank → ``(False, None)``;
-      - the message's closing block states no single verdict where the block
-        puts it (``standing_block.clear_verdict`` returns ``None``: a label
-        quoted mid-prose, both labels, trailing text after the verdict) →
+      - the message's close states no single verdict where the close puts it
+        (``standing_block.clear_verdict`` returns ``None``: a label quoted
+        mid-prose or inside the asks block, both labels, trailing text after
+        the close other than the asks block it may end with) →
         ``(False, None)``;
       - the verdict is ``SAFE TO CLEAR`` → ``(False, None)``;
-      - the verdict is ``DO NOT CLEAR`` but the block states no single
+      - the verdict is ``DO NOT CLEAR`` but the close states no single
         disposition, or one other than ``RUNNING`` → ``(False, None)``;
       - ``RUNNING`` with ``DO NOT CLEAR`` → ``(True, "DO NOT CLEAR")``.
     """
@@ -1032,7 +1186,7 @@ def turn_contradicts_its_verdict(event) -> str | None:
     verdict is ``SAFE TO CLEAR``. This reads the message alone, so it returns
     ``YOUR TURN`` either way: the Stop hook lets that pair stand when it
     observes the work, and ``COMPLETE`` never. Only a clearly stated pair returns a label
-    (``standing_block.contradiction``); a missing field or an ambiguous block
+    (``standing_block.contradiction``); a missing field or an ambiguous close
     returns ``None``, because the caller records it as a firing.
     """
     message = _last_message(event)
@@ -1041,28 +1195,39 @@ def turn_contradicts_its_verdict(event) -> str | None:
     return standing_block.contradiction(message)
 
 
-def turn_cites_itself_as_record(event) -> str | None:
+def turn_self_citation(event) -> "tuple[str, str] | None":
     """The phrase by which a turn closing ``SAFE TO CLEAR`` gives itself as the
-    record (``standing_block.self_citation``), or ``None``.
+    record, with the citation's kind beside it
+    (``standing_block.self_citation_match``), or ``None``.
 
     ``SAFE TO CLEAR`` tells a reader who may return days later that a clear
     loses nothing. A reason that points at the turn ("the questions are in this
-    message") points at what the clear deletes. Same payload handling as
-    :func:`turn_contradicts_its_verdict`: a missing field or an unclear block
-    returns ``None``, because the caller blocks on it.
+    message") points at what the clear deletes. The kind is what the
+    ``clear-reason`` check records, since the phrase is the turn's own words.
+    Same payload handling as :func:`turn_contradicts_its_verdict`: a missing
+    field or an unclear close returns ``None``.
     """
-    match = turn_self_citation(event)
-    return match[0] if match else None
-
-
-def turn_self_citation(event) -> "tuple[str, str] | None":
-    """:func:`turn_cites_itself_as_record` with the citation's kind beside the
-    phrase (``standing_block.self_citation_match``) — the kind is what the gate
-    records, since the phrase is the turn's own words."""
     message = _last_message(event)
     if message is None:
         return None
     return standing_block.self_citation_match(message)
+
+
+def turn_positional_pointer(event) -> "tuple[str, str] | None":
+    """The phrase by which a turn's close points at its own content by
+    position, under any disposition — "the one ask above is for you" — with
+    the pointer's kind beside it (``standing_block.positional_pointer_match``),
+    or ``None``.
+
+    The reason owes the reader what the asks are, not where; with the asks
+    after the close, an "above" points the wrong way. The kind is what the
+    ``close-pointer`` check records, since the phrase is the turn's own words.
+    Same payload handling as :func:`turn_self_citation`.
+    """
+    message = _last_message(event)
+    if message is None:
+        return None
+    return standing_block.positional_pointer_match(message)
 
 
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
@@ -1084,11 +1249,15 @@ def validate_critic_findings(findings_path: Path) -> bool:
 
     Thin path wrapper over :func:`_validate_critic_findings_data` (the data
     form also validates ledger event payloads — review-proportionality
-    ch.02, one schema for both homes of the same record).
+    ch.02, one schema for both homes of the same record). The file is read
+    by the findings cache's one reader,
+    ``critic_consolidate.read_findings_record``; anything but a record fails.
     """
     try:
-        data = json.loads(findings_path.read_text())
-        return _validate_critic_findings_data(data)
+        from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module
+
+        read = critic_consolidate.read_findings_record(findings_path)
+        return read.record is not None and _validate_critic_findings_data(read.record)
     except Exception:  # prawduct:allow prawduct/broad-except -- validation must not crash gate check
         return False
 
@@ -1217,28 +1386,6 @@ def _store_precheck(read: dict) -> "tuple[str, str] | None":
     return None
 
 
-def session_changes_all_non_judgeable(
-    project_dir: Path, status_output: "str | None" = None
-) -> bool:
-    """True when the session changed files but NONE of them needs review
-    coverage — the "doc-only" carveout, now answered by THE judgeability
-    predicate (``coverage_algebra.is_judgeable_path``, CRT-5D8Q fix) instead
-    of a bare ``.endswith(".md")`` copy. A governance-protected ``.md``
-    (the set ``buildplan_refs.protected_path_violation`` owns) is
-    judgeable, so editing one no longer skips the reflection/Critic gates.
-
-    Replaces ``gitstate._session_changes_are_doc_only`` (one of the three
-    divergent doc-only sites the kernel-v3 inventory flagged); lives here
-    because ``gitstate`` sits below ``coverage_algebra`` in the import DAG.
-    ``status_output`` (STH-6Q9D): optional pre-captured porcelain snapshot.
-    """
-    changed = gitstate._get_session_changed_files(project_dir, status_output)
-    non_metadata = [f for f in changed if not gitstate._is_metadata_path(f)]
-    if not non_metadata:
-        return False
-    return not coverage_algebra.judgeable_files(non_metadata)
-
-
 def _session_untracked_paths(
     project_dir: Path, status_output: "str | None" = None
 ) -> list[str]:
@@ -1275,19 +1422,26 @@ def _session_untracked_paths(
 
 
 def session_work_span(
-    project_dir: Path, status_output: "str | None" = None
+    project_dir: Path,
+    status_output: "str | None" = None,
+    transcript_path: "str | None" = None,
 ) -> dict:
     """What this session CHANGED, committed work included.
 
-    ``{"changed": [non-metadata paths], "judgeable": bool, "source": str}``.
+    ``{"changed": [non-metadata paths], "judgeable": bool, "source": str,
+    "dropped": [{"sha", "paths", "why"}]}``.
 
     The span is the ``.session-base-tree`` marker (the ``HEAD^{tree}`` recorded
     at session start) against the WORKING TREE, so a session that commits its
     work is still holding that work — which the porcelain span, empty the
     moment you commit, is not. Paths that differ only because a pull, merge,
-    branch switch or reset brought in history the session did not write are
-    dropped (:func:`_session_authored_paths`), so the span holds what the
-    session AUTHORED, never more than the base-tree diff. ``judgeable`` is
+    branch switch or reset brought in history the session did not write, or
+    because another session in the same checkout committed while this one had
+    no tool call or ``!`` command running, in a commit touching no file this
+    session wrote, are dropped (:func:`_session_authored_paths`; the second
+    needs ``transcript_path``, the Stop payload's, and without it those commits
+    count), so the span holds what the session AUTHORED, never more than the
+    base-tree diff. ``judgeable`` is
     ``coverage_algebra.judgeable_files`` over the non-metadata paths: the one
     judgeability predicate, never a second copy of it.
 
@@ -1300,10 +1454,22 @@ def session_work_span(
     uncommitted work — it never widens it — which is the direction authority
     must fail in.
 
+    ``dropped`` is the trace of the second kind of drop: each commit left out as
+    another session's, with its paths and why, so a wrong drop can be seen
+    rather than read as "this session changed nothing". It is empty whenever no
+    commit was dropped, including on every degraded span.
+
     **Cost bound: one ``git status`` and one ``git diff`` when nothing changed,
     one ``rev-parse`` more when HEAD's tree has not moved, and a reflog read,
-    one batched ``diff-tree`` and one ``git diff`` beyond that only when it has;
-    never a temp-index capture.** This runs on every Stop, which is every turn.
+    one ``log``, one batched ``diff-tree`` and one ``git diff`` beyond that only
+    when it has; never a temp-index capture.** A ``transcript_path`` adds, when
+    HEAD's tree has moved, one listing of the transcript folder; and only when
+    another session wrote beside this one, a read of the bytes this session's
+    transcript gained since the previous Stop (the whole transcript at the
+    first, through the ``.prawduct/.session-activity.json`` cache that
+    ``host.session_tool_activity`` describes) and one batched ``diff-tree`` per
+    kind of commit made while this session was idle, plus one ``lstat`` per
+    file of those commits that no Edit-family call named. This runs on every Stop, which is every turn.
     ``evidence.capture_tree`` — which writes an index file and walks the whole
     tree — is deliberately not used: it belongs to the review data plane, whose
     callers run once per review rather than once per turn. ``status_output`` is
@@ -1326,11 +1492,12 @@ def session_work_span(
         if not gitstate._is_metadata_path(f)
     ]
 
-    def _span(changed: list[str], source: str) -> dict:
+    def _span(changed: list[str], source: str, dropped: "list[dict] | None" = None) -> dict:
         return {
             "changed": changed,
             "judgeable": bool(coverage_algebra.judgeable_files(changed)),
             "source": source,
+            "dropped": dropped or [],
         }
 
     base = _read_session_base_tree(prawduct_dir)
@@ -1346,14 +1513,18 @@ def session_work_span(
     untracked = _session_untracked_paths(project_dir, snapshot)
     changed += [p for p in untracked if p not in changed]
     changed = [f for f in changed if not gitstate._is_metadata_path(f)]
+    dropped: list[dict] = []
     authored = (
-        _session_authored_paths(project_dir, prawduct_dir, base, untracked)
+        _session_authored_paths(
+            project_dir, prawduct_dir, base, untracked,
+            transcript_path=transcript_path, dropped=dropped,
+        )
         if changed
         else None
     )
     if authored is not None:
         changed = [p for p in changed if p in authored]
-    return _span(changed, "base-tree")
+    return _span(changed, "base-tree", dropped)
 
 
 # HEAD reflog subjects, classified by whether the move carries work this
@@ -1398,8 +1569,284 @@ def _session_started_epoch(prawduct_dir: Path) -> "tuple[str, int] | None":
     return stamp, int(when.timestamp())
 
 
+#: The parsed-transcript cache under `.prawduct/` (``host.session_tool_activity``'s
+#: ``cache_path``): gitignored, per clone, keyed inside by transcript path, so a
+#: sibling session in the same checkout keeps its own entry.
+SESSION_ACTIVITY_FILE = ".session-activity.json"
+
+
+def _other_session_activity(
+    transcript_path: "str | None", started_at: int, prawduct_dir: Path
+) -> "host.ToolActivity | None":
+    """This session's own activity, when another session may have committed
+    beside it, or ``None`` when nothing can be told.
+
+    Two pieces of positive evidence are both required. Another session's
+    transcript was written in this checkout since this session started
+    (``host.other_session_wrote_since``), and this session's own transcript
+    was read in full (``host.session_tool_activity``, through the
+    :data:`SESSION_ACTIVITY_FILE` cache, so each Stop parses only what the
+    transcript gained since the last). Everything short of that keeps every
+    commit this session's.
+    """
+    if not transcript_path:
+        return None
+    if not host.other_session_wrote_since(transcript_path, started_at):
+        return None
+    return host.session_tool_activity(
+        transcript_path, cache_path=str(prawduct_dir / SESSION_ACTIVITY_FILE)
+    )
+
+
+def _checkout_paths(project_dir: Path, named: "frozenset[str]") -> "set[str]":
+    """The paths in ``named`` that are files of this checkout, relative to it
+    as git names them. Both sides are resolved, because one directory can be
+    reached by two spellings (``/tmp`` and ``/private/tmp`` on macOS). A
+    relative path is kept as it is: no tool names one, and if one did, reading
+    it as a checkout path can only keep a commit."""
+    try:
+        root = Path(project_dir).resolve()
+    except (OSError, RuntimeError):
+        return set(named)
+    paths: set[str] = set()
+    for name in named:
+        if not Path(name).is_absolute():
+            paths.add(name)
+            continue
+        try:
+            paths.add(Path(name).resolve().relative_to(root).as_posix())
+        except ValueError:  # outside this checkout
+            continue
+        except (OSError, RuntimeError):  # unresolvable: keep the literal spelling
+            paths.add(name)
+    return paths
+
+
+def _paths_per_commit(
+    project_dir: Path, shas: "list[str]", flags: "tuple[str, ...]"
+) -> "dict[str, list[str]] | None":
+    """Each commit's changed paths from one batched ``diff-tree``, or ``None``
+    when git fails or answers in a shape this reader does not follow. A commit
+    that changed nothing is listed with no paths."""
+    if not shas:
+        return {}
+    rc, out, _err = evidence.run_git(
+        project_dir, "diff-tree", "--stdin", "--name-only", "-z", *flags,
+        input="\n".join(shas) + "\n",
+    )
+    if rc != 0:
+        return None
+    wanted = set(shas)
+    per_commit: dict[str, list[str]] = {sha: [] for sha in shas}
+    current: "str | None" = None
+    for token in out.split("\0"):
+        if not token:
+            continue
+        if token in wanted:
+            current = token
+        elif current is None:
+            return None
+        else:
+            per_commit[current].append(token)
+    return per_commit
+
+
+def _written_moments(project_dir: Path, path: str) -> "tuple[float, ...]":
+    """When the checkout's file at ``path`` (as git names it) was last written:
+    its modification time, and on POSIX its inode change time too, which a
+    rename (``mv``, ``git mv``) or ``cp -p`` moves while keeping the
+    modification time. Empty when there is no such file — a deletion leaves
+    nothing to read. Windows' ``st_ctime`` is the creation time and is not
+    read."""
+    try:
+        st = os.lstat(Path(project_dir) / path)
+    except (OSError, ValueError):
+        return ()
+    return (st.st_mtime,) if os.name == "nt" else (st.st_mtime, st.st_ctime)
+
+
+def _drop_other_sessions_commits(
+    project_dir: Path,
+    activity: "host.ToolActivity",
+    commits: "list[tuple[str, int]]",
+    merges: "list[tuple[str, int]]",
+    dropped: "list[dict] | None",
+) -> "tuple[list[tuple[str, int]], list[tuple[str, int]]]":
+    """``commits`` and ``merges`` less those another session made.
+
+    A commit is dropped only when all three hold: the transcript covers the
+    moment it was made, no tool call or ``!`` command of this session was
+    running then, and this session wrote none of its files. The first two say
+    who RAN ``git commit``; the gates ask who AUTHORED the change, and a user
+    who commits the session's work from a terminal between turns runs it with
+    no call open.
+
+    This session wrote a file when its Edit-family calls named it, or when the
+    file in the checkout was last written (:func:`_written_moments`) while one
+    of its tool calls or ``!`` commands was running, BEFORE the commit was
+    made. The second reads a write made by any means — Bash (``sed -i``, a
+    heredoc, codegen), a delegate subagent working inside the call that ran
+    it, a background command — and it is the same test the commit's own moment
+    gets, applied to the moment its file was written.
+
+    The write must precede the commit because the time read is the file's
+    LAST write, and a write after a commit cannot be what the commit recorded:
+    this session checking out, stash-popping, formatting or copying over the
+    other session's committed file later would otherwise claim that session's
+    commit, which is #1071's error. Both times are this machine's clock — git
+    stamps the commit (``when``, whole seconds, truncated) and the kernel the
+    file — so the comparison takes no slack beyond that truncation. It needs
+    none in practice either: a commit dropped here was made outside every
+    call's slack, so a write inside a call is wholly before it or wholly after.
+
+    What this cannot read is a write overwritten since — by anyone, including a
+    later rewrite of the same bytes by this session — or a deleted file: those
+    commits are judged on the other two tests alone. That keeps #1071's
+    protection for a session that ran nothing while the other one wrote and
+    committed; a write at a moment both sessions were acting cannot be told
+    apart, and like a commit made then, it stays counted.
+
+    Every dropped commit is appended to ``dropped`` with its paths and why, so
+    a wrong drop can be seen. When a commit's paths cannot be listed nothing is
+    dropped.
+    """
+    edited = _checkout_paths(project_dir, activity.edited_paths)
+    # Each file's write moments that fell inside one of this session's calls,
+    # read once however many commits name the file; which of them a commit can
+    # claim depends on the commit's own time, so that test is per commit.
+    acting_writes: dict[str, tuple[float, ...]] = {}
+
+    def _written_while_acting(path: str, committed_at: int) -> bool:
+        if path not in acting_writes:
+            acting_writes[path] = tuple(
+                moment for moment in _written_moments(project_dir, path)
+                if activity.acting_at(moment) is True
+            )
+        # `committed_at` is whole seconds, truncated: a write in its second
+        # can still precede the commit.
+        return any(moment < committed_at + 1 for moment in acting_writes[path])
+
+    kept_commits = list(commits)
+    kept_merges = list(merges)
+    found: dict[str, dict] = {}
+    for moves, flags in ((kept_commits, ("-r", "--root")), (kept_merges, ("--cc",))):
+        idle = [(sha, when) for sha, when in moves if activity.acting_at(when) is False]
+        if not idle:
+            continue
+        per_commit = _paths_per_commit(
+            project_dir, list(dict.fromkeys(sha for sha, _when in idle)), flags
+        )
+        if per_commit is None:
+            continue
+        for sha, when in idle:
+            paths = per_commit.get(sha, [])
+            if edited.intersection(paths) or any(_written_while_acting(p, when) for p in paths):
+                continue
+            moves.remove((sha, when))
+            found.setdefault(sha, {
+                "sha": sha,
+                "paths": paths,
+                "why": (
+                    f"made at {datetime.fromtimestamp(when, timezone.utc):%Y-%m-%dT%H:%M:%SZ}"
+                    " while another session was writing in this checkout, with no tool"
+                    " call or ! command of this session running, and touching no file"
+                    " this session wrote before it"
+                ),
+            })
+    # A sha this session's reflog and its log both list is dropped only when
+    # every listing of it was.
+    still_counted = {sha for sha, _when in kept_commits + kept_merges}
+    if dropped is not None:
+        dropped.extend(d for sha, d in found.items() if sha not in still_counted)
+    return kept_commits, kept_merges
+
+
+#: The Stop check id a commit left out of the span as another session's is
+#: recorded under (``evidence.append_stop_observation``), and the one reason it
+#: records: made while this session ran nothing, touching no file it wrote
+#: before it.
+DROPPED_COMMIT_CHECK = "other-session-commit"
+DROPPED_COMMIT_REASON = "idle-and-unwritten"
+
+
+def record_dropped_commits(
+    project_dir: Path, dropped: "list[dict]", *, session: "str | None"
+) -> "list[str]":
+    """Record each commit :func:`session_work_span` left out as another
+    session's (its ``dropped``) as a stop observation, so a wrong drop is a
+    query (``prawduct-hook stats``, ``evidence list --kind guard-refusal``)
+    rather than a stderr line at exit 0 that nobody reads.
+
+    One fact per commit per session: the same commit is left out at every Stop
+    while it stays in the span, so the record is deduped on ``session`` and the
+    sha. ``session`` is the Stop payload's ``transcript_path``, the one
+    identity that is this session's alone. The ``.session-start`` stamp is not:
+    every session in a checkout writes the same marker, and only a session
+    sharing its checkout drops a commit, so a key built on it let a second
+    session's drop of the same commit dedupe away. No drop is made
+    without a transcript, so ``session`` is always there in practice; when it
+    is not, nothing is recorded and a note says so — an unkeyed record would
+    count the commit again at every Stop, and a shared key would undercount.
+
+    The store is read once for every commit's dedupe probe (the appender's
+    ``known_facts``), not once per commit: this runs at every Stop while a
+    dropped commit stays in the span. The record carries the sha and how many
+    files the commit touched, never their names. Returns one line per record
+    that did not land, for the caller to show; a record is advice, so nothing
+    raises.
+    """
+    if not dropped:
+        return []
+    if not (isinstance(session, str) and session.strip()):
+        return [
+            f"NOTE: the {DROPPED_COMMIT_CHECK} observation for {str(d.get('sha'))[:12]} was not "
+            "recorded (no session identity to record it once under) — `prawduct-hook stats` "
+            "will undercount it"
+            for d in dropped
+        ]
+    try:
+        read = evidence.read_facts(project_dir)
+        # An error read carries no facts; `[]` would be a valid known set, so
+        # the dedupe probe would answer "absent" and re-append at every Stop.
+        known = read.get("facts") if read.get("status") != "error" else None
+    except Exception:  # prawduct:allow prawduct/broad-except -- an observation is advice; each append below probes the store itself instead
+        known = None
+    notes: list[str] = []
+    for d in dropped:
+        sha = d.get("sha")
+        try:
+            result = evidence.append_stop_observation(
+                project_dir,
+                DROPPED_COMMIT_CHECK,
+                reason=DROPPED_COMMIT_REASON,
+                observed={"commit": sha, "files": len(d.get("paths") or [])},
+                dedupe_key=f"{session}\0{sha}",
+                known_facts=known,
+            )
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- an observation is advice; an escape would end the Stop with a crash
+            result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
+        if result.get("status") not in ("appended", "duplicate"):
+            notes.append(
+                f"NOTE: the {DROPPED_COMMIT_CHECK} observation for {str(sha)[:12]} was not "
+                f"recorded ({result.get('reason', 'unknown')}) — `prawduct-hook stats` "
+                "will undercount it"
+            )
+        elif result.get("refused_fields"):
+            notes.append(
+                f"NOTE: the {DROPPED_COMMIT_CHECK} observation for {str(sha)[:12]} was "
+                f"recorded without its {', '.join(sorted(result['refused_fields']))}"
+            )
+    return notes
+
+
 def _session_authored_paths(
-    project_dir: Path, prawduct_dir: Path, base: str, untracked: "list[str]"
+    project_dir: Path,
+    prawduct_dir: Path,
+    base: str,
+    untracked: "list[str]",
+    why: "list[str] | None" = None,
+    transcript_path: "str | None" = None,
+    dropped: "list[dict] | None" = None,
 ) -> "set[str] | None":
     """The paths this session wrote, or ``None`` when that cannot be told —
     the caller then keeps the whole base-tree span.
@@ -1414,58 +1861,103 @@ def _session_authored_paths(
     concluded by hand resolved; and whatever the working tree holds against
     HEAD now.
 
+    A second session working in the same checkout moves the same HEAD, so its
+    commits look like this session's in both the reflog and the log. Given
+    ``transcript_path`` (the Stop payload's), a commit or merge is dropped
+    when another session was writing beside this one, this session had no tool
+    call or ``!`` command running when it was made, and it touches no file this
+    session wrote — named in an Edit-family call, or last written while one of
+    its calls or ``!`` commands ran and before the commit was made
+    (:func:`_drop_other_sessions_commits`).
+    Without that evidence every commit above still counts. Each dropped commit
+    is appended to ``dropped``, when a list is passed, as ``{sha, paths, why}``
+    — only when this returns a set, since a ``None`` drops nothing.
+
     The walk is bounded by ``.session-start`` and must reach an entry older than
     it, or the reflog does not cover the session and cannot vouch for it. Every
     failure, and any subject the classifier does not recognise, returns
     ``None``: authorship narrows the span only on a reflog it fully read, so a
     gate loses a false fire and never a real one.
 
+    ``why``, when a list is passed, receives one line saying why authorship
+    could not be told, so a caller that declines on ``None`` can say why it
+    did. Nothing is appended when HEAD's tree has not moved since session start:
+    that is not a failure, only a session no sync touched. Callers that pass no
+    list get exactly the ``None`` they always did.
+
     Cost: one ``rev-parse`` when HEAD's tree has not moved since session start
     — the common case, which returns at once — else a reflog read, one ``log``,
     a batched ``diff-tree`` per kind of commit the session made, and one
-    ``diff``.
+    ``diff``. A ``transcript_path`` adds one listing of the transcript folder;
+    when another session wrote beside this one, a read of the bytes this
+    session's transcript gained since the previous read (the whole transcript
+    the first time; see ``host.session_tool_activity``), and one batched
+    ``diff-tree`` per kind of commit made while this session was idle, plus
+    one ``lstat`` per file of those commits that no Edit-family call named.
     """
+    def _cannot_tell(reason: str) -> None:
+        if why is not None:
+            why.append(reason)
+        return None
+
     rc, head_tree, _err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
-    if rc != 0 or head_tree == base:
+    if rc != 0:
+        return _cannot_tell("HEAD's tree could not be read")
+    if head_tree == base:
         return None
     started = _session_started_epoch(prawduct_dir)
     if started is None:
-        return None
+        return _cannot_tell("no readable .session-start stamp to bound the reflog walk")
     stamp, started_at = started
     rc, out, _err = evidence.run_git(
         project_dir, "reflog", "show", "--date=unix", "--format=%H%x00%gd%x00%gs", "HEAD"
     )
     if rc != 0:
-        return None
-    commits: list[str] = []
-    merges: list[str] = []
+        return _cannot_tell("the HEAD reflog could not be read")
+    # (sha, epoch) pairs: when HEAD moved, for a reflog entry; when it was
+    # committed, for a commit HEAD reaches.
+    commits: list[tuple[str, int]] = []
+    merges: list[tuple[str, int]] = []
     reached_start = False
     for line in out.splitlines():
         sha, selector, subject = (line.split("\0") + ["", ""])[:3]
         moved_at = re.search(r"@\{(\d+)\}$", selector)
         if not moved_at:
-            return None
+            return _cannot_tell("a HEAD reflog entry carries no timestamp")
         if int(moved_at.group(1)) < started_at:
             reached_start = True
             break
         kind = _classify_reflog_subject(subject)
         if kind is None:
-            return None
+            shown = subject if len(subject) <= 60 else subject[:57] + "..."
+            return _cannot_tell(
+                f"a HEAD reflog subject this reader does not recognise ({shown!r})"
+            )
         if kind == "authored":
-            commits.append(sha)
+            commits.append((sha, int(moved_at.group(1))))
         elif kind == "merge-commit":
-            merges.append(sha)
+            merges.append((sha, int(moved_at.group(1))))
     if not reached_start:
-        return None
+        return _cannot_tell("the HEAD reflog does not reach back to the session start")
     authored: set[str] = set(untracked)
     rc, out, _err = evidence.run_git(
-        project_dir, "log", "--no-merges", f"--since={stamp}", "--format=", "--name-only",
-        "-z", "HEAD",
+        project_dir, "log", "--no-merges", f"--since={stamp}", "--format=%H %ct", "HEAD",
     )
     if rc != 0:
-        return None
-    authored.update(p for p in out.split("\0") if p)
-    for shas, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
+        return _cannot_tell("the session's commits could not be listed")
+    for line in out.splitlines():
+        sha, _, committed_at = line.partition(" ")
+        if not (gitstate.is_object_id(sha) and committed_at.isdigit()):
+            return _cannot_tell("the session's commits could not be listed")
+        commits.append((sha, int(committed_at)))
+    found_dropped: list[dict] = []
+    activity = _other_session_activity(transcript_path, started_at, prawduct_dir)
+    if activity is not None:
+        commits, merges = _drop_other_sessions_commits(
+            project_dir, activity, commits, merges, found_dropped
+        )
+    for moves, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
+        shas = list(dict.fromkeys(sha for sha, _when in moves))
         if not shas:
             continue
         rc, out, _err = evidence.run_git(
@@ -1473,12 +1965,14 @@ def _session_authored_paths(
             *flags, input="\n".join(shas) + "\n",
         )
         if rc != 0:
-            return None
+            return _cannot_tell("the session's commits could not be diffed")
         authored.update(p for p in out.split("\0") if p)
     rc, out, _err = evidence.run_git(project_dir, "diff", "--name-only", "-z", "HEAD")
     if rc != 0:
-        return None
+        return _cannot_tell("the working tree could not be diffed against HEAD")
     authored.update(p for p in out.split("\0") if p)
+    if dropped is not None:
+        dropped.extend(found_dropped)
     return authored
 
 
@@ -1525,13 +2019,15 @@ def _cached_diff_fn(project_dir: Path):
     """A ``coverage_algebra.DiffFn`` that memoizes ``evidence.tree_diff`` per
     gate invocation.
 
-    Free-edge *connectivity* no longer comes from here — every production call
-    site pairs this with :func:`_tree_key_fn`, so the BFS groups trees by key
-    and this function is reached only by ``_attribute_free_steps``, filling in
-    the file list for the free steps on a path already found. What the memo
-    still buys is the repetition across passes: a gate may run the clean-edges
-    search, then the all-edges search, then the merge-base fallback, and the
-    same interval can be attributed in more than one of them. Cache scope is
+    Free-edge *connectivity* does not come from here — every call site that
+    searches the evidence graph pairs this with :func:`_tree_key_fn`, so the
+    search groups trees by key; the uncovered-cause explanation takes this
+    alone because it only lists the files of named intervals and searches
+    nothing. What reaches this function is every caller that needs a pair's
+    actual file list within one gate call, and the memo is what keeps a pair asked by more
+    than one of them — or by more than one pass (clean edges, all edges, the
+    merge-base fallback) — to one ``git diff``. Removing it makes those callers
+    pay their diffs again on every uncovered gate. Cache scope is
     one verdict call, so staleness cannot leak across gates (same one-capture
     discipline as STH-6Q9D)."""
     cache: dict[tuple[str, str], "list[str] | None"] = {}
@@ -1812,7 +2308,8 @@ def covered_frontier(
     ``absent`` gets one ``FRONTIER_ABSENT_*`` code naming which:
 
     - the nearest composing tree carries an unresolved blocker — those clear
-      through ``verify-resolutions``, the only mode that records resolutions;
+      through ``verify-resolutions``, the only mode that records resolutions
+      for an earlier review's findings;
     - the nearest composing tree is covered by free edges alone, i.e. nothing
       on the branch has been reviewed yet. Extending there from a dirty tree would
       turn the first inner-stage review into a review of everything the branch
@@ -1889,6 +2386,165 @@ def covered_frontier(
     return None
 
 
+#: Why a ``cumulative`` dispatch reviews the whole bundle rather than the delta
+#: since the last boundary review — :func:`boundary_frontier`'s decline codes.
+#: Short and stable because the review fact records them (``span_reason``), so
+#: how often each fires is a query over the store.
+SPAN_FULL_NO_BOUNDARY_REVIEW = "no-boundary-review"
+SPAN_FULL_BASE_MOVED = "base-moved"
+SPAN_FULL_HEAD_REVIEWED = "head-reviewed"
+SPAN_FULL_PATH_NOT_CLEAN = "path-not-clean"
+SPAN_FULL_UNREADABLE = "unreadable"
+#: Not a decline: the dispatcher asked for the whole bundle
+#: (`/prawduct:critic cumulative full`, :data:`critic_mode.FULL_SPAN_RATIONALE`).
+SPAN_FULL_OVERRIDE = "override"
+
+
+def boundary_frontier(project_dir: Path, *, read: "dict | None" = None) -> dict:
+    """The boundary review a repeat ``cumulative`` can be bounded from.
+
+    A ``cumulative`` re-reviewing a long branch re-rates every file an earlier
+    boundary review already rated at full rigor. When that review still stands
+    for the bundle — same base, on this lineage, a clean path to it — the
+    interval from its tree to HEAD is the only unrated work, and a fact over
+    it composes with the earlier one to the same PR-gate verdict the whole
+    span would reach.
+
+    The frontier is the newest ``review`` fact, in append order, that is:
+
+    1. at the ``boundary`` stage (read from its mode when it predates the field);
+    2. against the current merge-base — its bundle base, the tree of the
+       ``base_reviewed`` commit it records, else its ``base_tree``; a bounded
+       fact's ``base_tree`` is its own frontier, so that alone would refuse
+       every second repeat;
+    3. on this lineage: its ``head_commit`` is one of this branch's commits
+       since the merge-base. The store is shared by every worktree of the
+       clone, so a sibling branch's review stands beside this branch's;
+    4. not already at HEAD's tree — then the bundle is boundary-reviewed and a
+       dispatch is today's full span;
+    5. reached from the merge-base tree with no unresolved blocker
+       (``coverage_verdict`` is ``covered``).
+
+    A fact failing 1-3 is skipped: it belongs to another stage, branch or
+    base, and an older fact may still stand. Condition 3 is asked before 2, so
+    only this branch's own review can report the base as moved. The newest candidate past them
+    is then decided by 4 and 5 and never passed over. Falling back to an older
+    frontier would bound the interval around the newer review's blocker, and
+    only a review spanning the whole bundle may clear one it supersedes
+    (:func:`coverage_algebra._verify_anchor_id`).
+
+    Returns ``{"status": "bounded", "fact_id", "head_tree", "head_commit"}`` or
+    ``{"status": "full", "code", "reason"}``: ``code`` is one of the
+    ``SPAN_FULL_*`` constants, and ``reason`` the sentence the dispatch prints.
+    Anything unreadable is ``full`` with :data:`SPAN_FULL_UNREADABLE` — the
+    whole span is today's behaviour, so not finding a frontier never costs
+    coverage.
+    """
+    from . import critic_consolidate  # noqa: PLC0415 — lazy: critic_consolidate imports this module
+
+    def _full(code: str, reason: str) -> dict:
+        return {"status": "full", "code": code, "reason": reason}
+
+    if read is None:
+        read = evidence.read_facts(project_dir)
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        return _full(SPAN_FULL_UNREADABLE, f"the evidence store could not be read ({precheck[1]})")
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return _full(SPAN_FULL_UNREADABLE, f"the merge-base could not be resolved ({resolved['reason']})")
+    rc, head_tree, err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
+    if rc != 0 or not head_tree:
+        return _full(SPAN_FULL_UNREADABLE, f"HEAD's tree could not be read ({err or 'no tree'})")
+
+    # This branch's own commits since the base, read once. A frontier's head
+    # descends from the merge-base it was reviewed against, so lineage is
+    # membership here — one git call, where an ancestry test per boundary fact
+    # in a clone-wide store cost seconds per dispatch.
+    rc, out, err = evidence.run_git(project_dir, "rev-list", f"{resolved['merge_base']}..HEAD")
+    if rc != 0:
+        return _full(SPAN_FULL_UNREADABLE, f"the branch history could not be read ({err or 'git rev-list failed'})")
+    lineage = {line.strip() for line in out.splitlines() if line.strip()}
+
+    trees: dict[str, "str | None"] = {}
+
+    def _tree_of(commit: str) -> "str | None":
+        if commit not in trees:
+            rc, tree, _err = evidence.run_git(project_dir, "rev-parse", f"{commit}^{{tree}}")
+            trees[commit] = tree if rc == 0 and tree else None
+        return trees[commit]
+
+    facts = read.get("facts", [])
+    base_moved = False
+    base_unreadable = False
+    for fact in reversed(facts):
+        if fact.get("kind") != "review":
+            continue
+        body = fact.get("body") or {}
+        try:
+            stage = critic_consolidate.stage_of_manifest(body)
+        except ValueError:
+            continue
+        if stage != critic_consolidate.STAGE_BOUNDARY:
+            continue
+        # Lineage before base: another branch's review says nothing about this
+        # one, so only a review on this branch may report the base as moved.
+        fact_head = body.get("head_commit")
+        if fact_head not in lineage:
+            continue
+        base_reviewed = body.get("base_reviewed")
+        bundle_base = (
+            _tree_of(base_reviewed)
+            if isinstance(base_reviewed, str) and base_reviewed
+            else body.get("base_tree")
+        )
+        if bundle_base is None and isinstance(base_reviewed, str) and base_reviewed:
+            # A base commit git cannot resolve (gc'd, or a shallow clone) says
+            # nothing about whether the base moved.
+            base_unreadable = True
+            continue
+        if bundle_base != resolved["tree"]:
+            base_moved = True
+            continue
+        fid = fact.get("id")
+        frontier_tree = body.get("head_tree")
+        if frontier_tree == head_tree:
+            return _full(
+                SPAN_FULL_HEAD_REVIEWED,
+                f"the last boundary review ({fid}) already reviewed HEAD's tree",
+            )
+        verdict = coverage_algebra.coverage_verdict(
+            facts, resolved["tree"], frontier_tree,
+            _cached_diff_fn(project_dir), _tree_key_fn(project_dir),
+        )
+        if verdict["status"] != "covered":
+            return _full(
+                SPAN_FULL_PATH_NOT_CLEAN,
+                f"the path from the merge-base to the last boundary review ({fid}) is "
+                f"{verdict['status']}, and only a review spanning the whole bundle can "
+                "route around a blocker on it",
+            )
+        return {
+            "status": "bounded", "fact_id": fid,
+            "head_tree": frontier_tree, "head_commit": fact_head,
+        }
+    if base_unreadable and not base_moved:
+        return _full(
+            SPAN_FULL_UNREADABLE,
+            "the base this branch's last boundary review recorded could not be resolved",
+        )
+    if base_moved:
+        return _full(
+            SPAN_FULL_BASE_MOVED,
+            "the base has moved since this branch's last boundary review, so the "
+            "delta since it would carry the base's own changes",
+        )
+    return _full(
+        SPAN_FULL_NO_BOUNDARY_REVIEW,
+        "this branch has no boundary review against its current base yet",
+    )
+
+
 def session_review_verdict(project_dir: Path, *, record_grants: bool = False) -> dict:
     """The Stop-hook Critic gate's question, answered by composition (Q2):
     does composed review coverage span this session's base tree → the current
@@ -1932,6 +2588,12 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
       session end, sending the builder to run exactly the cumulative round
       the transfer exists to remove. Conditions and their shape:
       :func:`_merge_base_verdict`.
+    - Both arms leave the session span uncovered, but the only interval no
+      review spans holds judgeable files this session did not author (a sync
+      brought them in) → covered, or blocked when a tree on that path still
+      carries a blocker, with an ``imported`` key naming the excused files.
+      Never when authorship cannot be read; never at the PR gate, which still
+      composes over the whole merge-base span. :func:`_imported_history_verdict`.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     read = evidence.read_facts(project_dir)
@@ -1980,6 +2642,14 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
         ):
             verdict = mb_verdict
             base, base_source = mb_verdict["base"], "merge-base-fallback"
+    # The third arm: history this session did not write. Asked only of the
+    # session span (the marker's), only once both arms above left it uncovered,
+    # and only on an authorship read that fully completed — so it can turn an
+    # uncovered span covered or blocked, never the reverse.
+    if verdict["status"] == "uncovered" and base_source == "marker":
+        verdict = _imported_history_verdict(
+            project_dir, prawduct_dir, facts, base, target, diff_fn, key_fn, verdict
+        )
     # The near-miss and could-not-run notes are computed against the merge-base
     # span but carried onto whichever verdict is RETURNED, because that is the
     # one the Stop hook renders (as the `reason` in its block message) and this
@@ -1990,6 +2660,146 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
         verdict["reason"] = f"{verdict.get('reason', 'no path')} — {transfer_note}"
     verdict.update({"base": base, "target": target, "base_source": base_source})
     return verdict
+
+
+def _imported_history_verdict(
+    project_dir: Path,
+    prawduct_dir: Path,
+    facts: list[dict],
+    base: str,
+    target: str,
+    diff_fn,
+    key_fn,
+    verdict: dict,
+) -> dict:
+    """The session gate's relax-only third arm: an uncovered session span
+    passes when the only interval no review spans holds judgeable files this
+    session did not author — history a pull, merge or branch switch brought in.
+
+    The session span (base tree → working tree) is the right span for the
+    session's OWN work, and the wrong one for what a sync imported: that was
+    written, and reviewed or not, on another branch, so demanding a review of
+    it here sends the builder to review work that is not theirs. The PR gate
+    still composes over the whole merge-base span, so nothing excused here
+    leaves a branch unreviewed at merge.
+
+    Authorship is :func:`_session_authored_paths` — the read the firing span
+    already trusts — with every untracked file counted as authored, since a
+    sync brings in none. When it returns ``None`` (unrecognised or unreadable
+    reflog, no session start, HEAD's tree unmoved) ``verdict``'s status is
+    returned untouched: the arm narrows only on a read it fully completed. A
+    path both authored and imported is authored, so it stays required. A
+    blocking finding on any tree the excused path stands on still blocks.
+
+    Returns ``verdict`` unchanged in status, or a ``covered``/``blocked``
+    verdict carrying ``imported`` (the excused files). An unchanged verdict's
+    ``reason`` names the unreviewed files this session did author, and says why
+    the arm declined whenever it declined for a reason other than "this session
+    wrote the gap" — an unreadable authorship read, an unlistable untracked set,
+    no interval that could be diffed, or the pair-search cap — so a builder
+    who synced and is still blocked can see that the excuse was tried and why it
+    did not apply. Silent only when HEAD's tree never moved, where no sync
+    brought anything in to excuse."""
+    rc, out, _err = evidence.run_git(
+        project_dir, "ls-files", "--others", "--exclude-standard", "-z"
+    )
+    if rc != 0:
+        return _excuse_declined(verdict, "untracked files could not be listed")
+    untracked = [p for p in out.split("\0") if p]
+    why: list[str] = []
+    authored = _session_authored_paths(project_dir, prawduct_dir, base, untracked, why)
+    if authored is None:
+        return _excuse_declined(verdict, *why[:1])
+    gapped = coverage_algebra.excused_gap_verdict(
+        facts, base, target, diff_fn, key_fn,
+        lambda files: not any(f in authored for f in files),
+    )
+    gap = gapped.get("gap") or {}
+    if gapped["status"] == "covered":
+        return {"status": "covered", "path": gapped["path"], "imported": gap["files"]}
+    if gapped["status"] == "blocked":
+        return {
+            "status": "blocked",
+            "path": gapped["path"],
+            "unresolved": gapped["unresolved"],
+            "imported": gap["files"],
+        }
+    own = [f for f in gap.get("files", []) if f in authored]
+    if own:
+        shown = ", ".join(own[:3]) + (f" (+{len(own) - 3} more)" if len(own) > 3 else "")
+        verdict = dict(verdict)
+        verdict["reason"] = (
+            f"{verdict.get('reason', 'no path')} — unreviewed files this session "
+            f"wrote: {shown}"
+        )
+    if gapped.get("capped"):
+        return _excuse_declined(
+            verdict,
+            f"the interval search stopped at its cap of "
+            f"{coverage_algebra.EXCUSED_GAP_MAX_PAIRS} pairs",
+        )
+    if not gapped.get("gap"):
+        return _excuse_declined(verdict, "no interval between reviewed trees could be diffed")
+    return verdict
+
+
+def _excuse_declined(verdict: dict, *reason: str) -> dict:
+    """``verdict`` with its ``reason`` saying why the imported-history arm did
+    not apply — the status untouched, so the explanation can never move a
+    verdict. No reason given (a stubbed authorship read) leaves it as it was."""
+    if not reason:
+        return verdict
+    verdict = dict(verdict)
+    verdict["reason"] = (
+        f"{verdict.get('reason', 'no path')} — imported-history excuse not "
+        f"applied: {reason[0]}"
+    )
+    return verdict
+
+
+def session_uncovered_cause(project_dir: Path) -> str:
+    """The Stop gate's ``CAUSE:`` line for an ``uncovered`` session verdict —
+    the explanation the PR gate prints, asked of the same branch (merge-base →
+    HEAD, from the branch's own review rounds) and rendered for a gate whose
+    span is the working tree, so uncommitted judgeable paths are named as in
+    it.
+
+    Computed only when the Stop gate is about to print an uncovered block, not
+    inside :func:`session_review_verdict`: the session-start briefing reads that
+    verdict too, and would pay a lineage walk for an explanation it never
+    prints. Never raises, and never returns nothing — a failure anywhere is the
+    ``CAUSE: unavailable (<reason>)`` line."""
+    try:
+        read = evidence.read_facts(project_dir)
+        precheck = _store_precheck(read)
+        if precheck is not None:
+            return coverage.format_uncovered_cause(
+                {"status": "unavailable", "reason": precheck[1]}, gate="stop"
+            )
+        resolved = coverage.resolve_merge_base_tree(project_dir)
+        if resolved["status"] != "ok":
+            return coverage.format_uncovered_cause(
+                {"status": "unavailable", "reason": resolved.get("reason", "no merge-base")},
+                gate="stop",
+            )
+        rc, head_tree, err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
+        if rc != 0 or not head_tree:
+            return coverage.format_uncovered_cause(
+                {"status": "unavailable", "reason": f"HEAD^{{tree}} unresolvable ({err})"},
+                gate="stop",
+            )
+        explained = coverage.explain_uncovered(
+            project_dir,
+            read.get("facts", []),
+            resolved["tree"],
+            head_tree,
+            resolved["merge_base"],
+            _cached_diff_fn(project_dir),
+            target="working",
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice must never crash the gate that renders it
+        explained = {"status": "unavailable", "reason": f"explanation crashed: {exc!r}"}
+    return coverage.format_uncovered_cause(explained, gate="stop")
 
 
 def _merge_base_verdict(
@@ -2005,9 +2815,10 @@ def _merge_base_verdict(
     unwedging fallback (see :func:`session_review_verdict`). ``None`` when
     the merge base cannot be resolved (the primary verdict then stands).
 
-    ``key_fn`` is required, not defaulted: a ``None`` key sends ``_find_path``
-    down the pairwise free-edge branch, which :func:`_tree_key_fn` measures on
-    this repo's store at ~5.6k ``git diff`` subprocesses. It used to default,
+    ``key_fn`` is required, not defaulted: a ``None`` key makes the evidence
+    graph (``coverage_algebra._EvidenceGraph.steps_from``, which every coverage
+    search walks) probe free edges pairwise, which :func:`_tree_key_fn`
+    measures on this repo's store at ~5.6k ``git diff`` subprocesses. It used to default,
     unreachably — the sole caller passes it — and an unreachable default for a
     silent slow path is a hang waiting for its first caller.
 
@@ -2072,7 +2883,9 @@ def _merge_base_verdict(
         return verdict
     tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
     if not tests_ok:
-        verdict["transfer_note"] = transfer_remedy(transfer, tests_reason)
+        verdict["transfer_note"] = transfer_remedy(
+            transfer, tests_reason, suite_step=suite_remedy(project_dir)
+        )
         return verdict
     # Recording is OPT-IN, and the reason is the second caller. This verdict is
     # read by the Stop gate (authority, session end) and by the session-start
@@ -2121,8 +2934,8 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     is finished — every chunk ``done`` or ``dropped`` by
     ``plan_status.is_finished``, never by a ticked box (#1051) — but the most
     recent Critic review was not a ``final`` or ``cumulative`` one, so the
-    end-of-cycle goals (Coherence, Design, Learnings Cross-Check, Backlog
-    Reconciliation, Framework-Specific Checks) have not run. The mode is
+    end-of-cycle goals (Coherence, Design, the Records Pass, Framework-Specific
+    Checks) have not run. The mode is
     telemetry read from the latest ``review`` FACT in the evidence store
     (kernel-v3 chunk 04: no gate — even an advisory one — reads the
     ``.critic-findings.json`` cache); it steers a workflow nudge, never
@@ -2185,135 +2998,9 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
         return False, (
             f"All {total} chunks done or dropped; last Critic review was "
             f"'{mode}'. Run /prawduct:critic final for end-of-cycle "
-            "synthesis (Coherence, Design, Learnings Cross-Check, Backlog "
-            "Reconciliation) before pushing. "
-            + learnings_cross_check_note(project_dir)
+            "synthesis (Coherence, Design, the Records Pass) before pushing."
         )
     return True, ""
-
-
-def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
-    """THE change set the learnings read list is computed from: ``(files, reason)``.
-
-    One definition, because two were worse than either. The gate nudge asked
-    ``_get_session_changed_files`` (uncommitted work only) while the reviewer's
-    ``learnings-files --for-diff`` asked the base BRANCH — so a builder who
-    commits the chunk before Stop fires, which is the ordinary cadence, got a
-    nudge naming ``core.md`` alone while the verb named the area files the
-    harness had actually loaded. The one line whose purpose is to make a silent
-    disagreement noticeable was the disagreement.
-
-    The definition is the **session's** base tree → the working tree, union
-    untracked: everything this session touched whether or not it has been
-    committed yet. That is the span both readers mean — the gate is judging this
-    session, and the reviewer is reading the rules this session had loaded.
-
-    ``reason`` is empty on success and names the failure otherwise. It is a
-    return value rather than an exception or a silent ``[]`` because "nothing
-    changed" and "could not tell" are opposite facts and both callers have to
-    say which one they got (`R4`: a degraded advisory path names its
-    consequence).
-    """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    base = _read_session_base_tree(prawduct_dir)
-    if not base:
-        # No session marker (a resume in a fresh checkout, a repo that never ran
-        # SessionStart): HEAD's tree is the honest fallback and is what the
-        # session gate itself degrades to.
-        base = "HEAD"
-    try:
-        return coverage._coverage_changed_files(project_dir, base), ""
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
-        # SubprocessError covers TimeoutExpired: coverage's git calls carry a
-        # 30s bound, and a slow diff must read as "could not tell", not a traceback.
-        return [], f"{type(exc).__name__}: {exc}"
-
-
-def learnings_review_change_set(project_dir: Path) -> "tuple[list[str], str]":
-    """The change set a REVIEWER's read list is computed from: ``(files, reason)``.
-
-    **Why this is not :func:`learnings_change_set`, whose docstring argues for
-    one definition.** That argument is intact and still binding: the Stop nudge
-    and the reviewer must never give different answers to *the same* question.
-    They are not asking the same question. The gate judges **this session**; a
-    dispatched reviewer judges **the review interval**, and for a ``cumulative``
-    of already-committed work those two spans are not merely different, the
-    session one is EMPTY — the session began after the commits, so its base tree
-    IS ``HEAD^{tree}`` and a clean working tree diffs to nothing.
-
-    Measured 2026-09-20 on this repo: the cumulative reviewing a five-commit
-    branch was handed ``core.md`` alone, at exit 0, indistinguishable from "no
-    area file applies", while the interval touched the areas owned by
-    ``reviews.md``, ``hook-surface.md``, ``tests.md`` and ``authoring.md``. The
-    Learnings Cross-Check is a ``final``/``cumulative``-only pass with no other
-    owner, so it read one file on exactly the reviews it exists for. The
-    reviewer caught it only by reading the four area files by hand.
-
-    So the interval comes from the **dispatch manifest** — the one artifact that
-    already records what this review spans, written by code at ``critic-begin``.
-    Nothing new is declared or maintained: no flag, no field, no second copy of
-    the span. When no manifest is on disk there is no review to scope to, and
-    this falls back to the session span, which is the right answer for every
-    caller that is not a dispatched reviewer.
-    """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    manifest_path = prawduct_dir / ".critic-partials" / "manifest.json"
-    try:
-        manifest = json.loads(manifest_path.read_text())
-    except (OSError, ValueError):
-        # No live dispatch (or an unreadable one): not a reviewer context, so
-        # the session span is the honest answer rather than a failure.
-        return learnings_change_set(project_dir)
-
-    base = (manifest or {}).get("base_tree")
-    head = (manifest or {}).get("head_tree")
-    if not base or not head:
-        return learnings_change_set(project_dir)
-
-    changed = evidence.tree_diff(project_dir, base, head)
-    if changed is None:
-        # `tree_diff` returns None rather than guessing. Fail LOUD for the same
-        # reason the CLI does: a silent narrowing hides area files the review
-        # interval really touches, and looks exactly like an answer.
-        return [], f"could not diff the review interval {base[:12]}..{head[:12]}"
-    return changed, ""
-
-
-def learnings_cross_check_note(project_dir: Path) -> str:
-    """What the Learnings Cross-Check will read, over :func:`learnings_change_set`.
-
-    Named from the resolver, never from a path this module knows: the harness
-    loads ``core.md`` plus every area file whose ``paths:`` globs match a file
-    the session touched, and the cross-check is only honest if it reads that
-    same set. Saying the set out loud in the nudge is what makes a *silent*
-    disagreement — an area file in context that no reviewer opened — into
-    something a reader can notice.
-
-    The empty answer is stated rather than omitted, because "no rules file
-    matches this diff" and "the cross-check ran and found nothing" look
-    identical in a report that says neither — and so is the *undetermined*
-    answer, which is a third thing again.
-    """
-    changed, reason = learnings_change_set(project_dir)
-    try:
-        layout = learnings_files.resolve(project_dir)
-        files = learnings_files.files_for_paths(layout, changed)
-    except (OSError, ValueError) as exc:
-        reason = reason or f"{type(exc).__name__}: {exc}"
-        files = []
-    if reason:
-        return (
-            "The Learnings Cross-Check's read list could not be computed "
-            f"({reason}) — run `prawduct-hook learnings-files --for-diff` before "
-            "the scan rather than assuming core.md is the whole of it."
-        )
-    if not files:
-        return (
-            "The Learnings Cross-Check has nothing to read: no rules file under "
-            f"{learnings_files.RULES_DIR_REL}/ applies to this session's changes."
-        )
-    named = ", ".join(_repo_relative(project_dir, p) for p in files)
-    return f"The Learnings Cross-Check reads: {named}."
 
 
 def _repo_relative(project_dir: Path, path: Path) -> str:
@@ -2323,14 +3010,23 @@ def _repo_relative(project_dir: Path, path: Path) -> str:
         return path.as_posix()
 
 
-def test_status(project_dir: Path) -> int:
+def _in_progress_now(project_dir: Path) -> "tuple[str, str] | None":
+    """:func:`record_in_progress` for this worktree's saved record, or None."""
+    record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+    return record_in_progress(record) if record is not None else None
+
+
+def test_status(
+    project_dir: Path, *, wait: bool = False, timeout: "float | None" = None
+) -> int:
     """Print whether saved test evidence is fresh enough to trust.
 
-    Used by builders, the Critic, and the PR reviewer to decide whether to
-    re-run the test suite.
+    Used by builders and the Critic to decide whether to re-run the test suite.
 
     stdout: the verdict line first — :data:`CURRENT_TREE_LABEL`,
-    :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason —
+    :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason, and
+    a refusal by :func:`suite_remedy`'s clause (this is the one surface that
+    joins the two: the readers return the finding alone) —
     then one ``flaky:`` line per test the saved run passed only on retry
     (:func:`flaky_lines`), which inform and never change the exit code.
     The parenthetical names which of :func:`tests_are_current`'s two disjuncts
@@ -2339,16 +3035,59 @@ def test_status(project_dir: Path) -> int:
     re-run" — this is disclosure, not a new gate, and the exit codes are
     unchanged.
 
+    **A record attempt that has not landed has its own two lines (#1178)**,
+    ahead of the freshness verdict: :data:`RUNNING_LABEL` while its recorder is
+    alive (with elapsed time against the last run's duration, as an estimate),
+    and :data:`INTERRUPTED_LABEL` once it is gone. Both exit 1.
+
+    ``wait`` blocks while a run is in progress — until its record lands, its
+    recorder dies, or ``timeout`` seconds pass — then prints the verdict. Never
+    called from a hook: a hook must not block on a suite.
+
     Exit codes:
       0  - tests are current; safe to skip re-running
-      1  - tests are stale or no evidence
+      1  - tests are stale or no evidence, or a run is in progress
+      75 - ``wait`` timed out with the run still in progress
+           (``record_progress.WAIT_TIMEOUT_EXIT``)
     """
+    from . import record_progress  # noqa: PLC0415 — lazy, as in record_in_progress
+
+    limit = record_progress.WAIT_DEFAULT_SECONDS if timeout is None else timeout
+    timed_out = False
+    if wait:
+        deadline = time.monotonic() + limit
+        while True:
+            # Each poll asks the process table afresh: the probe is memoised
+            # per verdict, and a wait spans many.
+            record_progress.forget()
+            progress = _in_progress_now(project_dir)
+            if progress is None or progress[0] == record_progress.GONE:
+                break
+            if time.monotonic() >= deadline:
+                timed_out = True
+                break
+            time.sleep(record_progress.WAIT_POLL_SECONDS)
+        record_progress.forget()
+    progress = _in_progress_now(project_dir)
+    if progress is not None:
+        state, finding = progress
+        label = INTERRUPTED_LABEL if state == record_progress.GONE else RUNNING_LABEL
+        print(f"{label}: {finding}. {_cap(suite_remedy(project_dir).remedy)}")
+        if timed_out:
+            # Ends: a recorder this machine can check ends when its process
+            # does, and one it cannot reads as interrupted past its bound.
+            print(
+                f"timed out after waiting {limit:g}s with the run still in progress — "
+                "wait again (a longer --timeout if need be); do not start another run"
+            )
+            return record_progress.WAIT_TIMEOUT_EXIT
+        return 1
     is_current, reason, clause = tests_are_current(project_dir)
     if is_current:
         label = CURRENT_TREE_LABEL if clause == "tree" else CURRENT_SESSION_LABEL
         print(f"{label}: {reason}")
     else:
-        print(f"stale: {reason}")
+        print(f"stale: {reason}. {_cap(suite_remedy(project_dir).remedy)}")
     # After the verdict, never instead of it: the saved run's flakes. Printed
     # whatever the verdict, since a stale green that passed only on retry is
     # still worth a backlog item, and never changing the exit code.
@@ -2420,8 +3159,21 @@ def _transfer_missing_input(transfer: dict) -> str:
     )
 
 
-def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
+def transfer_remedy(
+    transfer: dict,
+    tests_reason: "str | None",
+    uncommitted: "list[str] | None" = None,
+    *,
+    untracked: "list[str] | None" = None,
+    index_deleted: "list[str] | None" = None,
+    suite_step: "SuiteStep | None" = None,
+) -> str:
     """The remedy prose for a base-advance transfer that did not grant.
+
+    ``suite_step`` is :func:`suite_remedy`'s answer for this worktree (#1178).
+    When a suite run is already under way, its remedy — wait, from the one
+    owner — replaces "run the suite", which would start a second run on top of
+    the first; then the reader re-runs the gate.
 
     Both gates that attempt the transfer render this — the PR gate's `uncovered`
     block and the Stop gate's ``transfer_note`` — so the wording has one home
@@ -2440,6 +3192,20 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
       evidence the gap is genuine work, and saying so is the whole point: an
       unavailable check reading as a finding is the fail-open shape inverted.
 
+    ``uncommitted`` (the PR gate's only) names suite-coupled paths the working
+    tree holds against HEAD. With any of them present, "run the suite and
+    record" cannot reach the state: the run records the working tree, which
+    those paths make differ from HEAD on exactly what the suite match reads, so
+    the remedy repeated in this tree denies again. The route that reaches it is
+    to set them aside, run and record against a tree that IS HEAD, re-run the
+    gate, and restore them — safe because the PR gate's verdict never read those
+    paths. ``untracked`` is the subset git does not track, which ``git stash
+    push -- <path>`` refuses without ``--include-untracked``; ``index_deleted``
+    is the subset the index has deleted (a ``git rm``, a ``git mv``'s old name),
+    which it refuses under any flag — so with one present the route sets the
+    whole working tree aside, which also reaches HEAD. The Stop gate
+    passes neither: its target is the working tree, so a run there does meet it.
+
     Returned as one paragraph without a severity prefix or indentation — each
     caller owns how it announces the line.
     """
@@ -2449,13 +3215,49 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
             "that is not a finding that this gap is genuine work, only that the "
             "cheap check was unavailable" + _transfer_missing_input(transfer)
         )
-    return (
+    lead = (
         f"the branch's own diff is byte-identical to the span review "
         f"{transfer['prior_fact_id']} already covered ({len(transfer['files'])} "
         "judgeable file(s)), and the base advance touched none of them — the ONLY "
         "condition denying the transfer is that no saved suite run has met this "
-        f"tree ({tests_reason}). Run the suite and `prawduct-hook test-evidence "
-        "record`, then re-run: the coverage transfers and no review is needed. The "
+        f"tree ({tests_reason})."
+    )
+    if suite_step is not None and suite_step.state == SUITE_RUNNING:
+        return (
+            f"{lead} A suite run is already under way: {suite_step.remedy}. Then "
+            "re-run this gate: if the run met this tree, the coverage transfers and "
+            "no review is needed."
+        )
+    # A red or degraded saved run owes more than a re-run — fix the failures,
+    # or run uncontended — and the verdict reason above is the finding only,
+    # so the owner's clause is the one place that says so, on every route.
+    owed = suite_step is not None and suite_step.state in (SUITE_FAILING, SUITE_DEGRADED)
+    if uncommitted:
+        flag = "--include-untracked" if untracked else ""
+        paths = " ".join(shlex.quote(p) for p in uncommitted)
+        if index_deleted:
+            # `git stash push -- <path>` refuses a path the index deleted, so
+            # no pathspec names this set: the whole working tree goes aside.
+            deleted = " ".join(shlex.quote(p) for p in index_deleted)
+            aside = (
+                f"Set the whole working tree aside (`git stash push{' ' + flag if flag else ''}` "
+                f"— a path list cannot name {deleted}, which the index has "
+                "deleted and `git stash push -- <path>` refuses)"
+            )
+        else:
+            aside = f"Set them aside (`git stash push {flag + ' ' if flag else ''}-- {paths}`)"
+        return (
+            f"{lead} {len(uncommitted)} suite-coupled path(s) are uncommitted, so a "
+            "suite run in this working tree records the working tree, not HEAD, and "
+            f"cannot meet it. {aside}, "
+            + (suite_step.remedy if owed else "run the suite, `prawduct-hook test-evidence record`")
+            + ", re-run the gate, then `git stash pop`: the coverage transfers "
+            "and no review is needed. Re-running on the same committed HEAD is safe "
+            "because this gate's verdict never read those paths."
+        )
+    run = _cap(suite_step.remedy) if owed else "Run the suite and `prawduct-hook test-evidence record`"
+    return (
+        f"{lead} {run}, then re-run: the coverage transfers and no review is needed. The "
         "suite is what vouches for the reviewed diff meeting the advanced base — a "
         "run from earlier in this session does not, which is why timing is not what "
         "is checked here."
@@ -2487,12 +3289,42 @@ BLAST_RADIUS_CHECK = (
 #: The one exception to :data:`FIX_ORDER`, kept beside it: after a boundary
 #: `cumulative`, inference's rule 1b recognizes a committed fix.
 FIX_ORDER_AFTER_CUMULATIVE = (
-    "(A fix committed after a `cumulative` still infers that pass, but committing"
-    " first re-anchors it on committed HEAD.)"
+    "(A fix committed after a `cumulative` still infers that pass; which tree it"
+    " then grades: review-cycle.md § Verify-resolutions anchoring and demotion.)"
+)
+#: What closes a coverage gap after a fix — the post-fix coverage rule's one
+#: operator-facing home (#723). Both code carriers compose it: the blocking
+#: remedy (:func:`blocking_remedy_lines`, so the PR gate and the Stop hook) and
+#: the PR gate's ``uncovered`` remedy. The prose carriers (the PR and Critic
+#: skills, ``building.md``) cite the derivation instead of restating it.
+#:
+#: It is keyed on what a pass PRINTS about work it left out — ``NOT REVIEWED:``
+#: from the exit-3 refusal, ``NOT in the reviewed scope`` from
+#: ``critic_consolidate._dirty_anchor_note`` — never on a prediction of WHICH
+#: tree the pass anchored. That discriminator is derived once, in
+#: ``review-cycle.md`` § Verify-resolutions anchoring and demotion, beside the
+#: code that computes it (``critic_consolidate.begin_review``). So a correction
+#: to the operator sentence edits this string alone, and a correction to the
+#: discriminator does not reach it. Printed unwrapped: it carries backticked
+#: commands, and a wrap inside one hands the reader half a command.
+POST_FIX_COVERAGE = (
+    "A pass over uncommitted work covers the tree it graded: commit that tree"
+    " verbatim and no further pass is owed, while a selective or further-edited"
+    " commit leaves a delta no review saw, which one `/prawduct:critic"
+    " verify-resolutions` over it closes. If a pass named uncommitted files it"
+    " left out (`NOT REVIEWED:`, or `NOT in the reviewed scope`) or could not"
+    " compute them (`UNVERIFIED:`, or `could NOT be computed`), they are"
+    " unreviewed: commit them, then run verify-resolutions over the delta that"
+    " appears. Which tree a pass grades: `review-cycle.md` § Verify-resolutions"
+    " anchoring and demotion."
 )
 
 
-def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
+def blocking_remedy_lines(
+    unresolved: "list[dict] | None",
+    project_dir: "Path | None" = None,
+    facts: "list[dict] | None" = None,
+) -> list[str]:
     """The whole remedy a blocking verdict prescribes, as unindented lines.
 
     Both blocking messages render this — this module's PR gate and the Stop
@@ -2504,20 +3336,31 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     and the loop that actually costs rounds is fix-commit-verify per finding:
     each commit extends HEAD, so each one buys a fresh round whose demoted
     observations tempt the next fix. Fixing everything in the working tree and
-    verifying once is sound — a verify pass reads the dirty tree so long as no
-    commit has moved its anchor, which is what the fix order buys — and the
-    verified tree is what gets committed. The order is composed from
-    :data:`FIX_ORDER`, its one home, not restated here.
+    verifying once is sound (``review-cycle.md`` § Verify-resolutions anchoring
+    and demotion derives why), and the verified tree is what gets committed. The
+    order is composed from :data:`FIX_ORDER` and what committing then owes from
+    :data:`POST_FIX_COVERAGE`, their one homes, not restated here.
 
-    Three cases, because the standard remedy is *wrong* for a superseded
-    blocker: one carried by a review fact no verify-resolutions pass will
-    anchor to again (``coverage_algebra._verify_anchor_id``). A verify pass
-    resolves findings on the fact it anchors to, so it will never name that
-    round again, and the state clears only through a spanning review.
+    A superseded blocker is one carried by a review fact no verify-resolutions
+    pass will ANCHOR to again (``coverage_algebra._verify_anchor_id``). Whether
+    a verify pass can still clear it depends on whether its roll-call NAMES
+    it, and since #334 the roll-call names every blocker the gate's own
+    composition counts at the pass's anchor tree
+    (``critic_consolidate.carried_blocking`` over ``coverage.open_blockers``).
+    So with ``project_dir`` given, a superseded entry that composition counts
+    is REACHABLE (:func:`_roll_call_review_ids`) — the standard remedy clears
+    it, and the message says the roll-call names it. Only one it does not
+    count is STRANDED: no pass will name it again, and the state clears only
+    through a spanning review. Without ``project_dir``, or when the answer
+    cannot be derived, every superseded entry reads as stranded — the
+    pre-#334 advice, which costs a round but never names a route that cannot
+    work. ``facts`` is the store the caller already read, else it is read here
+    (only when some entry is superseded).
 
-    - none superseded → the standard golden-path remedy.
-    - some superseded → the standard remedy, then the exception.
-    - **all** superseded → the spanning review LEADS. Appending the exception
+    - none stranded → the standard golden-path remedy, plus one line naming
+      the earlier-round blockers the roll-call carries, if any.
+    - some stranded → that, then the exception.
+    - **all** stranded → the spanning review LEADS. Appending the exception
       after "run verify-resolutions" would hand the operator the one route
       that cannot work as their first instruction, which is the original
       defect in its total case rather than a fix for it.
@@ -2526,16 +3369,26 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     other, and no exit code moves.
     """
     entries = [e for e in (unresolved or []) if isinstance(e, dict)]
-    # The fix-order line is never wrapped: it carries a backticked command, and
-    # a wrap inside it hands the reader half a command.
+    # The fix-order and post-fix lines are never wrapped: each carries a
+    # backticked command, and a wrap inside it hands the reader half a command.
     standard = [
         f"Fix them: {FIX_ORDER}.",
         "The pass records the resolution facts, so this same evidence then passes",
-        "with no full re-review. Commit the tree it verified verbatim: content it",
-        "has not seen leaves the fix outside what it anchored (review-cycle.md",
-        "§ Verify-resolutions anchoring and demotion).",
+        "with no full re-review.",
+        POST_FIX_COVERAGE,
     ]
-    n = sum(1 for e in entries if e.get("superseded"))
+    superseded = [e for e in entries if e.get("superseded")]
+    if not superseded:
+        return standard
+    reachable = _roll_call_review_ids(project_dir, facts)
+    carried = [e for e in superseded if e.get("review_id") in reachable]
+    if carried:
+        noun, verb = ("finding", "sits") if len(carried) == 1 else ("findings", "sit")
+        standard = standard + [
+            f"{len(carried)} {noun} above {verb} on an earlier review round of this",
+            "branch: run verify-resolutions; its roll-call names these.",
+        ]
+    n = len(superseded) - len(carried)
     if not n:
         return standard
 
@@ -2558,6 +3411,41 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
         "/prawduct:critic cumulative instead — a review spanning the whole",
         "interval supplies a clean path when it records nothing blocking.",
     ]
+
+
+def _roll_call_review_ids(
+    project_dir: "Path | None", facts: "list[dict] | None"
+) -> "set[str]":
+    """The review ids a ``verify-resolutions`` roll-call names blockers of, or
+    the empty set when there is no ``project_dir`` or the answer cannot be
+    derived — which :func:`blocking_remedy_lines` reads as "stranded", its
+    pre-#334 advice.
+
+    The roll-call names every blocker the gate's composition counts at the tree
+    the pass anchors on (``critic_consolidate.carried_blocking`` over
+    ``coverage.open_blockers``), and the pass anchors on the branch's newest
+    review — so this asks the same owner the same question, at
+    ``coverage.newest_review_tree`` of the branch's review set
+    (``coverage.branch_review_ids``). Not the set's membership: a set member
+    whose blocker that composition no longer counts is named by no roll-call,
+    and one the composition counts from outside the set (a review standing at
+    the merge base) is."""
+    if project_dir is None:
+        return set()
+    if facts is None:
+        read = evidence.read_facts(project_dir)
+        if read.get("status") == "error":
+            return set()
+        facts = read.get("facts") or []
+    branch = coverage.branch_review_ids(project_dir, facts)
+    if branch.get("status") != "ok":
+        return set()
+    answer = coverage.open_blockers(
+        project_dir, facts, coverage.newest_review_tree(facts, branch["review_ids"])
+    )
+    if answer.get("status") != "ok":
+        return set()
+    return {b.get("review_id") for b in answer["blockers"]}
 
 
 def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
@@ -2637,7 +3525,7 @@ def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
             f"{branch} ({upstream} {upstream_sha}, {branch} {local}). The merge would take "
             "commits that no gate here has validated. Pull, re-run the gates over the "
             "tree that results, and push that — never force-push, which rewrites the "
-            "tree the PR review's `commit_reviewed` check pinned and voids the evidence.",
+            "commits the review coverage was recorded against and reopens the gap.",
             file=sys.stderr,
         )
         return 1
@@ -2648,8 +3536,8 @@ def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
             f"({state['ahead']} local, {state['behind']} remote; {branch} {local}, "
             f"{upstream} {upstream_sha}). Integrate the remote side, re-run the gates "
             "over the merged tree, and push that — never force-push, which rewrites "
-            "the tree the PR review's `commit_reviewed` check pinned and voids the "
-            "evidence.",
+            "the commits the review coverage was recorded against and reopens the "
+            "gap.",
             file=sys.stderr,
         )
         return 1
@@ -2724,10 +3612,13 @@ def check_cumulative_critic(project_dir: Path) -> int:
       findings (listed): fix them all in the working tree, then ONE
       ``/prawduct:critic verify-resolutions`` records the resolution facts —
       the same evidence then passes with no full re-review, and the verified
-      tree is what gets committed. A finding the message
-      marks *superseded* is the exception, and the message says so: it
-      sits on a round no verify pass anchors to again, so it clears only
-      through a spanning ``/prawduct:critic cumulative``. When EVERY
+      tree is what gets committed. A blocker on an earlier review round of
+      this branch rides the same route — the verify pass's roll-call names
+      it (#334). A finding the message marks *superseded* is the exception,
+      and the message says so: the verify roll-call does not name it (its
+      round is outside this branch's review set, or the gate's composition at
+      the anchor does not count it), so it clears only through a spanning
+      ``/prawduct:critic cumulative``. When EVERY
       blocker is superseded the message leads with that route instead
       (:func:`blocking_remedy_lines`).
     - ``uncovered`` — no evidence path composes: run ``/prawduct:critic
@@ -2877,6 +3768,7 @@ def _branch_coverage(
         "base_tree": base_tree,
         "head_tree": head_tree,
         "_verdict_fn": verdict_fn,
+        "_diff_fn": diff_fn,
     }
     verdict = verdict_fn(read.get("facts", []), base_tree, head_tree)
 
@@ -3004,7 +3896,9 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
             )
         if len(unresolved) > 5:
             print(f"  (+{len(unresolved) - 5} more)", file=sys.stderr)
-        for line in blocking_remedy_lines(unresolved):
+        for line in blocking_remedy_lines(
+            unresolved, project_dir, read.get("facts") or []
+        ):
             print(line, file=sys.stderr)
         return 1
 
@@ -3043,20 +3937,43 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     # question "is another round the right move" is answered differently on
     # round one than on round five, and the reader decides that before choosing
     # among the routes.
-    print(
-        coverage.format_branch_rounds(
-            coverage.count_branch_rounds(
-                project_dir, read.get("facts", []), resolved.get("merge_base", "")
-            )
-        ),
-        file=sys.stderr,
+    tally = coverage.count_branch_rounds(
+        project_dir, read.get("facts", []), resolved.get("merge_base", "")
     )
+    # WHY the span is uncovered, directly under the line saying THAT it is: the
+    # base advanced, the branch's committed head changed since its last review,
+    # an uncommitted file defeats the suite match, or no review exists. Each has
+    # a different remedy, and without this line the reader picks one blind. The
+    # tally is passed in so the lineage walk is paid once for both lines.
+    explained = coverage.explain_uncovered(
+        project_dir,
+        read.get("facts", []),
+        base_tree,
+        head_tree,
+        resolved.get("merge_base", ""),
+        answer["_diff_fn"],
+        target="head",
+        tally=tally,
+    )
+    print(coverage.format_uncovered_cause(explained, gate="pr"), file=sys.stderr)
+    print(coverage.format_branch_rounds(tally), file=sys.stderr)
     # Surfaced FIRST among the remedies for the reason the two NOTEs below are
     # surfaced before the generic route: the reader acts on the first one they
     # meet, and this is the cheapest of all of them — a suite run against a
     # review round.
     if transfer_stale is not None:
-        print(f"NOTE: {transfer_remedy(transfer, transfer_stale)}", file=sys.stderr)
+        print(
+            "NOTE: "
+            + transfer_remedy(
+                transfer,
+                transfer_stale,
+                explained.get("uncommitted"),
+                untracked=explained.get("untracked"),
+                index_deleted=explained.get("index_deleted"),
+                suite_step=suite_remedy(project_dir),
+            ),
+            file=sys.stderr,
+        )
     elif coverage.classify_transfer(transfer) == "unavailable":
         print(f"NOTE: {transfer_remedy(transfer, None)}", file=sys.stderr)
     # COV-7K4N: a stale remote base (origin/<b> behind an ancestor-of-HEAD local
@@ -3121,7 +4038,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
             f"finding(s) gated nothing. ONE `/prawduct:critic verify-resolutions` "
             f"closes it; fix nothing further first, or you will re-open it. For "
             f"anything still undecided, `prawduct-hook disposition "
-            f"{churn['fact_id']} <fid|oid> --accept \"<reason>\"` records a won't-fix, "
+            f"{churn['fact_id']} <fid> --accept \"<reason>\"` records a won't-fix, "
             f"moves no tree, and needs no review. Before you make the NEXT commit, "
             f"`prawduct-hook cost-of-commit` says whether it re-opens this gate — "
             f"the answer that used to be learnable only after committing.",
@@ -3139,27 +4056,31 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         if churn is not None and churn.get("status") == "churn"
         else "Run "
     )
+    # The post-fix half is POST_FIX_COVERAGE, composed rather than worded here:
+    # this carrier once restated which tree a verify pass anchored, and #722's
+    # wrong reading of that shipped here and in the PR skill at once (#723).
     print(
         lead + "/prawduct:critic cumulative — it reviews the whole span and records "
-        "the fact composition needs. If a pre-commit review was followed by a "
-        "selective commit (only part of the reviewed state committed), the "
-        "commit's tree was never reviewed — /prawduct:critic verify-resolutions "
-        "reviews that delta and closes the gap. If verify-resolutions already ran "
-        "but the working tree still holds an uncommitted fix, WHICH tree that pass "
-        "anchored decides what you owe. It anchored the WORKING tree unless you had "
-        "committed CONTENT the prior review never saw — a commit that materializes "
-        "the reviewed tree verbatim changes no content and does not move the anchor, "
-        "so \"did I commit at all\" is the wrong question to ask yourself here. "
-        "Working-tree anchor: commit that tree VERBATIM and the fact ends at the "
-        "tree this gate targets — no further pass is owed, and only a selective or "
-        "further-edited commit leaves a gap. Otherwise the pass anchored committed "
-        "HEAD and never saw those uncommitted files, so committing them now opens a "
-        "NEW delta that needs its own verify-resolutions pass; a dispatch that "
-        "refuses over such an interval (exit 3) names the files it left out. Full "
-        "derivation: `review-cycle.md` § Verify-resolutions anchoring and demotion.",
+        "the fact composition needs. When the gap follows a review of uncommitted "
+        "work, a narrower route closes it: " + POST_FIX_COVERAGE,
         file=sys.stderr,
     )
     return 1
+
+
+def _void_without_coverage(evidence: object) -> bool:
+    """True for a record that is the recorder's void and carries no run's
+    coverage fields: a stub (``void_counts_from`` null — no run ever landed) or
+    a void over a record that had no ``verifier``. A void over a run that did
+    carry coverage keeps those fields and is judged on them, as
+    :func:`verify_coverage` documents for ``degraded`` records. Read off the
+    record's own fields, so no proxy decides the branch."""
+    if not isinstance(evidence, dict):
+        return False
+    void = evidence.get("void")
+    if not (isinstance(void, str) and void.strip()):
+        return False
+    return evidence.get("void_counts_from") is None or "verifier" not in evidence
 
 
 def verify_coverage(project_dir: Path) -> int:
@@ -3175,10 +4096,13 @@ def verify_coverage(project_dir: Path) -> int:
           missing/invalid, schema lacks F4a fields, git base unresolved).
 
     Gate-soundness ch.1: the gate only blocks on files its evidence producer
-    can vouch for. Files listed in ``changes_unjudged`` (non-Python, symbol-less,
-    deleted — see ``bin/test-reference-verify``) and files absent from the
-    working tree (deleted on the branch) are reported informationally on
-    stdout, never as ``missing-coverage``. Before this split, the whole-branch
+    can vouch for. Files listed in ``changes_out_of_remit`` (outside the producing
+    verifier's remit — for the symbol-grep floor, every non-Python file) or
+    ``changes_unjudged`` (files it read and could not judge — for the floor,
+    symbol-less Python and deleted files; see ``bin/test-reference-verify``)
+    and files absent from the working tree (deleted on the branch) are reported
+    informationally on stdout, never as ``missing-coverage``, each bucket under
+    its own note so out-of-scope is not read as unjudged (#682). Before this split, the whole-branch
     comparison guaranteed false blockers on docs/config changes, which trained
     products to neutralize the gate (scriob 4ca5bd3) — an unsatisfiable gate
     is worse than no gate.
@@ -3200,7 +4124,14 @@ def verify_coverage(project_dir: Path) -> int:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     state_path = prawduct_dir / "project-state.yaml"
 
-    if not read_bool_yaml_key(state_path, "coverage_required"):
+    flag = read_bool_flag(state_path, "coverage_required")
+    if flag["status"] == FLAG_UNREADABLE:
+        # A state file that exists and cannot be read leaves the opt-in unknown,
+        # which is not "false": refuse rather than skip a gate the repo may have
+        # turned on. Same form as this function's other refusals (exit 1).
+        print(f"error: {flag['reason']}", file=sys.stderr)
+        return 1
+    if not flag["value"]:
         print("skipped: coverage_required is false (default in v1.4)")
         return 0
 
@@ -3217,6 +4148,19 @@ def verify_coverage(project_dir: Path) -> int:
         evidence = json.loads(evidence_path.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         print(f"error: cannot read evidence: {exc}", file=sys.stderr)
+        return 1
+
+    if _void_without_coverage(evidence):
+        # The standing record is a recorder's write-ahead void that carries no
+        # run's coverage (#1181): the answer to "what next" is the suite
+        # verdict's, which `suite_remedy` owns — wait for a run in progress,
+        # run again after an interrupted one — not "emit F4a fields".
+        step = suite_remedy(project_dir)
+        print(
+            "error: coverage_required=true but the saved record is a record "
+            f"attempt's void, not a run ({step.state}): {step.remedy}.",
+            file=sys.stderr,
+        )
         return 1
 
     if "verifier" not in evidence:
@@ -3237,6 +4181,8 @@ def verify_coverage(project_dir: Path) -> int:
     coverage_level = evidence["coverage_level"]
     referenced = set(evidence.get("changes_referenced", []))
     unjudged = set(evidence.get("changes_unjudged", []))
+    out_of_remit = set(evidence.get("changes_out_of_remit", []))
+    reason = evidence.get("changes_out_of_remit_reason")
 
     base, base_reason = coverage._coverage_resolve_base(project_dir)
     if base is None:
@@ -3249,33 +4195,54 @@ def verify_coverage(project_dir: Path) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    # A file the evidence declares unjudgeable, or one no longer on disk
-    # (deleted on the branch — nothing to test), is outside the gate's
-    # jurisdiction: reported, never blocked on.
+    # A file the evidence declares out of remit or unjudgeable, or one no longer
+    # on disk (deleted on the branch — nothing to test), is outside the gate's
+    # jurisdiction: reported, never blocked on. Out-of-remit paths are split off
+    # first so each bucket is reported under its own note; both still leave
+    # `missing`.
+    out_of_remit_changed = [f for f in changed if f in out_of_remit]
     skipped = [
         f for f in changed
-        if f in unjudged or not (project_dir / f).is_file()
+        if f not in out_of_remit
+        and (f in unjudged or not (project_dir / f).is_file())
     ]
     # Nothing can execute a prose file, so demanding an executing test for one
     # buys a token reference-test and nothing else (COV-8R2K). Reported like
     # `skipped` rather than gated, and asked of
     # `coverage_algebra.is_executable_path` — the one predicate — so this stays
     # a reading of the CRT-5D8Q boundary rather than a second file-type table
-    # beside it. `skipped` keeps precedence: a file the verifier disclaimed is
-    # out of jurisdiction whatever its suffix.
+    # beside it. `skipped` and `out_of_remit_changed` keep precedence: a file the
+    # verifier disclaimed is out of jurisdiction whatever its suffix.
     nonexecutable = [
         f for f in changed
-        if f not in skipped and not coverage_algebra.is_executable_path(f)
+        if f not in skipped
+        and f not in out_of_remit_changed
+        and not coverage_algebra.is_executable_path(f)
     ]
     missing = [
         f for f in changed
-        if f not in referenced and f not in skipped and f not in nonexecutable
+        if f not in referenced
+        and f not in skipped
+        and f not in out_of_remit_changed
+        and f not in nonexecutable
     ]
+    if out_of_remit_changed:
+        # The record says why its verifier did not read these; a record that
+        # does not gets the verifier-neutral fact, never one verifier's reason.
+        why = reason if isinstance(reason, str) and reason else (
+            "the verifier that wrote this record does not read them, and the "
+            "record gives no reason"
+        )
+        print(
+            f"note: {len(out_of_remit_changed)} changed file(s) out of the "
+            f"verifier's remit (changes_out_of_remit) — {why}; reported, "
+            f"not gated (level: {coverage_level})."
+        )
     if skipped:
         print(
-            f"note: {len(skipped)} changed file(s) outside the verifier's "
-            f"judgment (changes_unjudged / deleted) — reported, not gated "
-            f"(level: {coverage_level})."
+            f"note: {len(skipped)} changed file(s) the verifier could not "
+            f"judge (changes_unjudged / deleted: symbol-less or gone) — "
+            f"reported, not gated (level: {coverage_level})."
         )
     if nonexecutable:
         preview = ", ".join(nonexecutable[:3]) + (
@@ -3287,7 +4254,7 @@ def verify_coverage(project_dir: Path) -> int:
         )
     if not missing:
         print(
-            f"ok: {len(changed) - len(skipped) - len(nonexecutable)} judged "
+            f"ok: {len(changed) - len(skipped) - len(out_of_remit_changed) - len(nonexecutable)} judged "
             f"changed file(s) covered (level: {coverage_level})"
         )
         return 0

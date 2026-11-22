@@ -51,7 +51,9 @@ roster role has reported a schema-valid partial at the manifest's dispatch
 commit. Anything else is a no-op naming the missing roles (still in flight)
 or a hard error (malformed / inconsistent / off-protocol). Success appends
 the review fact (skipped when the id already exists — the CRT-4B7X race dies
-here), appends any resolution facts, regenerates ``.critic-findings.json``
+here), appends any resolution facts — a verify pass's, and the
+inherited-baseline waivers consolidation writes itself in every mode
+(:func:`_waive_inherited_failures`) — regenerates ``.critic-findings.json``
 as a derived cache carrying its source ``fact_id`` (D7), anchors the ledger,
 clears the critic-active marker, and removes the partials so every repeat
 call is a clean no-op.
@@ -66,6 +68,7 @@ staleness" defect class this plan deletes.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -74,17 +77,25 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NamedTuple
 
-from . import coverage_algebra, critic_marker, evidence, evidence_notes, gates, gitstate, ledger
+from . import coverage, coverage_algebra, critic_marker, dispositions, evidence, evidence_notes, gates, gitstate, ledger, model_tier
 from .core import GITIGNORE_ENTRIES, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
 MANIFEST_NAME = "manifest.json"
 
-# Severity vocabulary + ranking (highest wins on dedup). The stop-hook and PR
-# gate key on "blocking"; restricting the partial vocabulary here means a typo'd
-# severity fails partial validation rather than silently downgrading a blocker.
+# Severity ranking (highest wins on dedup). The stop-hook and PR gate key on
+# "blocking". `note` stays ranked because facts recorded before it was retired
+# carry it and are read forever.
 _SEVERITY_RANK = {"blocking": 3, "warning": 2, "note": 1}
+
+# The severities a partial may rate a FINDING. Restricting the vocabulary means
+# a typo'd severity fails partial validation rather than silently downgrading a
+# blocker. `note` is not among them at any stage: what a reviewer would have
+# rated NOTE goes in `observations`, which needs no disposition — of the notes
+# answered over 60 days, 87% were accepted unfixed (#1128).
+_FINDING_SEVERITIES = ("blocking", "warning")
 
 # Caller-side short token → persisted verbose string (the two-form rule;
 # values match gates._CRITIC_MODE_VALUES — pinned by test).
@@ -101,7 +112,8 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 #: ``begin_review`` chooses the interval by mode — ``chunk``/``final`` review
 #: to the working tree from HEAD (or from the covered frontier behind it),
 #: ``verify-resolutions`` the delta since the prior fact,
-#: ``cumulative`` merge-base → HEAD — so the stage is a function of the mode
+#: ``cumulative`` the committed bundle to HEAD, or the part of it since the last
+#: boundary review — so the stage is a function of the mode
 #: token. This mapping is that function's one home: the dispatch writes the
 #: result onto the manifest as ``stage``, and every reader downstream (the
 #: reviewer prompt, the fact, the findings cache, the ledger event,
@@ -109,6 +121,12 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 STAGE_INNER = "inner"
 STAGE_BOUNDARY = "boundary"
 STAGE_VALUES = frozenset({STAGE_INNER, STAGE_BOUNDARY})
+
+#: A ``cumulative``'s span: the delta since the last boundary review, or the
+#: whole bundle (``begin_review``; ``gates.boundary_frontier`` decides).
+SPAN_BOUNDED = "bounded"
+SPAN_FULL = "full"
+SPAN_VALUES = frozenset({SPAN_BOUNDED, SPAN_FULL})
 STAGE_OF_MODE = {
     "chunk": STAGE_INNER,
     "final": STAGE_INNER,
@@ -782,60 +800,121 @@ def cost_lead(
 
 
 def carried_blocking(facts: list[dict], base_tree: "str | None",
-                     this_review_id: "str | None") -> list[dict]:
-    """Blocking findings from the review this verify pass anchors to that the
-    pass did NOT resolve.
+                     this_review_id: "str | None",
+                     counted: "list[dict] | None" = None,
+                     *, anchor_id: "str | None" = None) -> list[dict]:
+    """Blocking findings this verify pass inherits and has NOT resolved: every
+    blocker the gate still counts at the tree the pass anchors on, given
+    ``counted``; the anchor's own unresolved blockers when it is not.
 
     **The failure this exists for.** A verify pass can discharge one finding by
     reference to another — "R-12 is implicitly closed by R-1's fix, same class"
     — and write a resolution fact for R-1 only. Its own counts are then 0
     blocking, so it reports the review is over, and the operator relays that.
     The gate disagrees: R-12 has no resolution fact and still blocks. Worse, by
-    then R-12 sits on a superseded round that no later verify pass will name
-    again, so the only remaining route is a full ``cumulative`` — a whole review
+    then R-12 sat on a superseded round that no later verify pass named again,
+    so the only remaining route was a full ``cumulative`` — a whole review
     round spent on bookkeeping for a defect that was fixed and confirmed fixed
-    two rounds earlier. Reported as #711, where it cost exactly that.
+    two rounds earlier. Reported as #711, where it cost exactly that; #334 is
+    why a later pass now names it (``counted``, below).
 
     **Why this reads facts and not the reviewer's prose.** The tempting fix is
     to parse "implicitly closed by" out of the summary and mint R-12's fact from
     it. Two reasons not to. The phrasings are an open set, so a parser that
     misses one fails silently in the same direction as the bug. And
     ``data-model.md`` forbids the result outright: a resolution fact requires a
-    ``verify-resolutions`` origin and a pre-existing target finding — minting
-    one from narration would record a judgment nobody made. So nothing is
+    ``verify-resolutions`` origin (or an ``inherited-baseline`` one, backed by a
+    base-tree test run naming every failing id) and a pre-existing target
+    finding — minting one from narration would record a judgment nobody made. So nothing is
     invented here; the pass simply stops being able to claim it finished while a
     blocker it inherited is still outstanding.
 
-    **The anchor is structural, not a guess.** A verify pass reviews the delta
-    from the prior review, so its ``base_tree`` IS that review's ``head_tree``.
-    Matching on that link identifies the anchor without reading
-    ``.critic-findings.json``, which is a derived view no gate may read (D7),
-    and without trusting "most recent fact" — the store is shared by every
-    worktree of the clone, so a sibling's newer review would otherwise be picked
-    up as this branch's anchor.
+    **What it owes is the gate's question, not a second one (#334).**
+    ``counted`` is :func:`gate_counted_blockers`' answer at ``base_tree`` —
+    ``coverage.open_blockers``, the unresolved blockers the gate's own
+    composition counts on the path from the merge base to the anchor's tree.
+    That names an earlier round's blocker the anchor alone would strand (the
+    gate still counts it, so the pass owes it a verdict), and it does NOT name
+    one a clean spanning review routed around (the gate has stopped counting
+    it, so naming it would manufacture a round the gate does not need and a
+    NOT DONE the gate contradicts). "Has no resolution fact" is half of the
+    gate's predicate; asking it alone is the drift this replaces. The pass's
+    own review is never carried: its blockers are its counts.
 
-    Returns ``[]`` when there is no anchor to check against, which is the honest
-    answer rather than a defensive one: with no prior review linked to this
-    tree there is no inherited blocker to carry, so there is nothing to report.
+    **Without ``counted`` it is the anchor alone** — the posture before #334,
+    for a caller whose composition was unavailable (no merge base, no path to
+    the anchor). The anchor is ``anchor_id`` when the caller already chose it
+    (the dispatch picks its prior from the findings cache's pointer, which can
+    name a different review at the same tree than the link would), else the
+    review the link rule names (``coverage_algebra.prior_review``): structural,
+    without reading ``.critic-findings.json`` (D7), and never "most recent
+    fact" — the store is shared by every worktree of the clone, so a sibling's
+    newer review would otherwise be picked up as this branch's anchor. Only
+    BLOCKING is carried: warnings stay reachable through ``disposition``
+    against their own review id.
+
+    Returns ``[]`` when there is nothing to carry, which is the honest answer
+    rather than a defensive one. Entries are ``{"review_id", "fid", "title",
+    "files", "scope", "closure", "members"}`` (keys present when the finding had
+    them), in the order the composition listed them, else in finding order.
+    The last three (#847) are read from the recorded finding on both paths —
+    the composition lists blockers by id and title, not by what the reviewer
+    enumerated — so the roll-call can hand the verifier the member list.
     """
-    if not base_tree:
-        return []
-    anchor = None
-    for fact in evidence.facts_of_kind({"facts": facts}, "review"):
-        if fact.get("id") == this_review_id:
-            continue
-        if (fact.get("body") or {}).get("head_tree") == base_tree:
-            anchor = fact
-    if anchor is None:
+    keys = ("fid", "title", "files")
+    scope_keys = ("scope", "closure", "members")
+    if counted is not None:
+        recorded = evidence.findings_index({"facts": facts})
+        out = []
+        for c in counted:
+            if c.get("review_id") == this_review_id:
+                continue
+            entry = {"review_id": c.get("review_id")}
+            entry.update({k: c.get(k) for k in keys if k in c})
+            finding = recorded.get((c.get("review_id"), c.get("fid"))) or {}
+            entry.update({k: finding[k] for k in scope_keys if k in finding})
+            out.append(entry)
+        return out
+    reviews = evidence.facts_of_kind({"facts": facts}, "review")
+    if anchor_id is not None:
+        anchor = next((f for f in reviews if f.get("id") == anchor_id), None)
+    else:
+        # The pass as the link rule sees it: its id places it in store order
+        # (strictly-before excludes it and anything recorded after it), and
+        # its base is the caller's — at dispatch it is not in the store yet.
+        anchor = coverage_algebra.prior_review(
+            reviews, {"id": this_review_id, "body": {"base_tree": base_tree}}
+        )
+    if anchor is None or anchor.get("id") == this_review_id:
         return []
     resolved = coverage_algebra.resolution_index(facts)
     out = []
     for finding in coverage_algebra.unresolved_blocking(anchor, resolved):
         entry = {"review_id": anchor.get("id")}
-        entry.update({k: finding.get(k) for k in ("fid", "title", "files")
-                      if k in finding})
+        entry.update({k: finding.get(k) for k in keys + scope_keys if k in finding})
         out.append(entry)
     return out
+
+
+def gate_counted_blockers(
+    project_dir: Path,
+    facts: list[dict],
+    base_tree: "str | None",
+    *,
+    resolved: "dict | None" = None,
+    read: "dict | None" = None,
+) -> "list[dict] | None":
+    """The ``counted`` :func:`carried_blocking` takes: ``coverage.open_blockers``
+    at the verify pass's ``base_tree``, or ``None`` when that composition is
+    unavailable — which :func:`carried_blocking` reads as "the anchor alone",
+    never as "none owed". One adapter, so the dispatch roll-call, the
+    actionable count, the consolidation ``NOT DONE`` line and the derived cache
+    record ask the gate identically. ``resolved`` and ``read`` pass through
+    (:func:`coverage.open_blockers`)."""
+    answer = coverage.open_blockers(
+        project_dir, facts, base_tree, resolved=resolved, read=read
+    )
+    return answer["blockers"] if answer.get("status") == "ok" else None
 
 
 def uncertified_clause(mode: str, open_chunks: "list[str]") -> str:
@@ -871,15 +950,34 @@ def next_action_line(
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
     uncertified: "tuple[str, list[str]] | None" = None,
+    waived: "list[str] | None" = None,
+    rounds_clause: str = "",
 ) -> str:
     """:func:`_next_action_core`'s sentence, ending on :func:`uncertified_clause`
     when ``uncertified`` (the review's mode and the plan's open chunks) says a
     whole-plan review certified nothing. Every arm carries it: a fix round does
-    not change which chunks this review left open."""
+    not change which chunks this review left open.
+
+    ``waived`` names this review's BLOCKING findings consolidate waived as
+    inherited from the base tree. They still count in ``blocking`` on the
+    fact, so they are taken out here and named first: told to fix them, the
+    builder would buy the very round the waiver exists to save. Its one caller
+    is :func:`fact_to_cache_record`, which derives the list from the store
+    (:func:`dispositions.inherited_waivers`); the relayed ``NEXT-ACTION:`` line
+    is that record's own ``next_action``, so no caller computes it twice."""
+    if waived:
+        blocking = max(blocking - len(waived), 0)
     line = _next_action_core(
         fact_id, blocking, warning, note, price_sentence, carried, span,
-        observations, cost, rides_next_review,
+        observations, cost, rides_next_review, rounds_clause,
     )
+    if waived:
+        line = (
+            f"{len(waived)} BLOCKING finding(s) ({', '.join(waived)}) failed on"
+            " the merge-base tree too and are waived as inherited (`origin:"
+            " inherited-baseline` resolution facts); no fix or verify round is"
+            " owed for them. " + line
+        )
     if uncertified:
         line += " " + uncertified_clause(*uncertified)
     return line
@@ -896,6 +994,7 @@ def _next_action_core(
     observations: int = 0,
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
+    rounds_clause: str = "",
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -908,9 +1007,10 @@ def _next_action_core(
     ad-hoc lane) never does. ``skills/critic/review-cycle.md`` states it more
     fully and is read by nobody in the builder role. :data:`_BATCH_FIX_DIRECTIVE`
     is the runtime carrier and *cannot reach the builder on the single-pass
-    path*: ``verify-resolutions`` and ``chunk`` are always single-pass, so the
-    reviewing fork runs ``critic-consolidate`` itself and the directive prints
-    into the reviewer's context, not the builder's. The docstring above
+    path*: ``verify-resolutions`` and ``chunk`` are always single-pass, so
+    ``critic-consolidate`` runs in the reviewer's context — the fork's own call,
+    or the SubagentStop hook's for a review the fork handed to a dispatched
+    reviewer — and the directive prints there, never into the builder's. The docstring above
     :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` already records that reasoning for
     its own sake; this is the same gap answered where it can be closed.
 
@@ -934,7 +1034,14 @@ def _next_action_core(
     anyway. For the same reason the blocking arm now also names the accept
     route: it already orders the builder to decide the WARNING/NOTE findings in
     the same pass, and the command for the cheapest of those decisions lived
-    only in the arm the builder does not reach when something is blocking."""
+    only in the arm the builder does not reach when something is blocking.
+
+    ``rounds_clause`` is :func:`coverage.branch_rounds_clause`'s output (#815),
+    passed in like ``price_sentence`` and for the same reason. It rides the
+    arms that offer a fix (the blocking arm and the fix tail), after the
+    price: it is the branch's count of rounds already bought, read where the
+    next one is decided. Not on a clean close, where nothing is to be fixed,
+    nor under ``rides_next_review``, where a fix buys no round."""
     ref = fact_id or "<review-id>"
     price = f" {price_sentence}" if price_sentence else ""
     # Leads the two zero-blocking arms that still carry a fix decision, and
@@ -947,7 +1054,7 @@ def _next_action_core(
     # that will not be bought — so one lead replaces all four (see
     # `_RIDES_NEXT_REVIEW_LEAD`). The blocking arm below never reads either:
     # blockers clear only through `verify-resolutions`, whatever is owed later.
-    fix_tail = _IF_YOU_FIX_SOME + _RIDE_ALONG_ROUTE + price
+    fix_tail = _IF_YOU_FIX_SOME + _RIDE_ALONG_ROUTE + price + rounds_clause
     if rides_next_review:
         from . import critic_mode  # noqa: PLC0415 — lazy; critic_mode imports this module lazily too
 
@@ -970,10 +1077,10 @@ def _next_action_core(
         )
         # Ordered ABOVE the plain blocking arm on purpose. That arm tells the
         # builder to fix this round's findings, and a builder who fixes only
-        # those, re-verifies, and anchors the next pass on THIS review loses the
-        # inherited id: this review's findings do not include it. It is then
-        # orphaned onto a superseded round and clearable only by a spanning
-        # `cumulative`, which is #711 arriving one hop later by a different door.
+        # those and re-verifies never looks at the inherited id: this review's
+        # findings do not include it. The next pass's roll-call still names it
+        # while the gate counts it (#334), but only this line says, NOW, that
+        # the review is not over — #711 was a builder relaying "done" here.
         own = (
             f"{blocking} BLOCKING finding(s) of its own and "
             if blocking
@@ -981,7 +1088,7 @@ def _next_action_core(
         )
         return (
             f"NOT DONE. This review has {own}{len(carried)} BLOCKING finding(s)"
-            f" from the review it verifies that are still unresolved: {named}."
+            f" from this branch's earlier review rounds that are still unresolved: {named}."
             " A verify pass records a resolution only for a finding it names in"
             " `resolutions`. One discharged in prose alone (\"implicitly closed"
             " by\", \"same class as\", \"recorded via\") got no fact, and the"
@@ -995,39 +1102,31 @@ def _next_action_core(
             " its own entry in `resolutions` (a fix verified by the same edit is"
             " still its own entry). Leave one out only if it is still broken, and"
             " then say so rather than reporting the review complete."
-            " Act now: once a newer review supersedes that round, no verify pass"
-            " will name these again and only a spanning `/prawduct:critic"
-            " cumulative` can clear them."
         )
 
     if blocking:
         return (
             f"{blocking} BLOCKING finding(s) gate this work. Fix them, and decide"
-            " every warning and note in the same pass (fix, or accept with"
-            f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"`,'
+            " every other finding in the same pass (fix, or accept with"
+            f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"`,'
             " which needs no review and moves no tree): " + gates.FIX_ORDER + "."
             + gates.BLAST_RADIUS_CHECK
             + _RIDE_ALONG_ROUTE
             + price
+            + rounds_clause
         )
     if not (warning or note):
-        # An inner-stage pass (`verify-resolutions` first; every inner mode
-        # since rigor became stage-keyed) demotes what falls outside the inner
-        # BLOCKING set to an observation, so "0 findings, N observations" is
-        # its MODAL close, not an edge — and this arm is the text it prints. Saying
-        # "nothing to disposition" there contradicts the reviewer's own
-        # `### Observations` report in the same message, and leaves the
-        # accept-on-the-record route unused on the path that produces most of
-        # the items it was built for.
+        # "0 findings, N observations" is the modal close of an inner-stage
+        # pass, which rates only the inner BLOCKING set as findings. The
+        # observations are named so the reviewer's own `### Observations`
+        # report and this line agree, and nothing asks for an answer to them:
+        # an observation needs no disposition (#1128).
         if observations:
             return (
                 lead
                 + f"0 blocking, 0 findings — the review is over. Its"
-                f" {observations} observation(s) gate nothing; answer each on the"
-                " record instead of fixing it with"
-                f' `prawduct-hook disposition {ref} <oid> --accept "<reason>"`'
-                " (the ids are under `observations` in `.critic-findings.json`),"
-                " which needs no review and moves no tree."
+                f" {observations} observation(s) gate nothing and need no answer"
+                " (they are under `observations` in `.critic-findings.json`)."
                 + coverage_clause
                 # This is the one clean close that still carries actionable
                 # items, so it is the close where a builder is most likely to
@@ -1042,15 +1141,18 @@ def _next_action_core(
             + coverage_clause
         )
     obs = (
-        f", nor do its {observations} observation(s) (answer them by `O-n` id)"
+        f", nor do its {observations} observation(s), which need no answer"
         if observations
         else ""
     )
+    # A `note` count is nonzero only on a fact recorded before `note` stopped
+    # being a finding severity; such a fact still renders.
+    notes = f" and {note} note(s)" if note else ""
     return (
         lead
-        + f"0 blocking — the review is over. Its {warning} warning(s) and {note}"
-        f" note(s) gate nothing{obs}. Decide each: accept by default with"
-        f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"` (no'
+        + f"0 blocking — the review is over. Its {warning} warning(s){notes}"
+        f" gate nothing{obs}. Decide each finding: accept by default with"
+        f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"` (no'
         " review, no tree move), or fix."
         + coverage_clause
         + fix_tail
@@ -1060,19 +1162,19 @@ def _next_action_core(
 #: Delivered at `verify-resolutions` DISPATCH — before the reviewer judges each
 #: prior finding, not after it has.
 #:
-#: Public because its print site is ``cmd_critic_begin`` in ``bin/prawduct-hook``;
-#: it lives here so the directives the review data plane emits are read and
-#: edited together.
+#: Public because :func:`dispatch_directives` renders it for ``cmd_critic_begin``
+#: in ``bin/prawduct-hook`` and for the manifest; it lives here so the
+#: directives the review data plane emits are read and edited together.
 #:
 #: **Why dispatch and not consolidation.** The obvious slot is beside
 #: :data:`_BATCH_FIX_DIRECTIVE` in :func:`consolidate`, on a "this review
 #: recorded resolutions" trigger. That slot is downstream of the claim on every
-#: path that can carry one. ``verify-resolutions`` is always single-pass
-#: (:func:`_derive_roster` returns :data:`SINGLE_PASS_ROSTER` for it
-#: unconditionally), so the reviewing fork writes its ``resolutions`` into the
-#: partial and THEN runs consolidate itself — the directive would reach
-#: an agent that has already made the claim and is one step from exiting. Nor
-#: does it carry to the builder: the Critic skill is ``context: fork``, and the
+#: path that can carry one: the reviewer writes its ``resolutions`` into the
+#: partial and only THEN does consolidation run — the reviewing fork's own call,
+#: or the SubagentStop hook's when the fork handed the review to a dispatched
+#: reviewer — so the directive would reach an agent that has already made the
+#: claim and is one step from exiting, or nobody. Nor does it carry to the
+#: builder: the Critic skill is ``context: fork``, and the
 #: fork's report-back instruction (``skills/critic/goals-1-3.md``) enumerates
 #: findings and a summary, not the consolidator's stdout. Dispatch is the same
 #: reader in the same review, one step earlier, and upstream of the claim.
@@ -1120,8 +1222,9 @@ RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
 
 def account_for_prior_blockers_directive(carried: list[dict]) -> str:
     """The roll-call a verify dispatch hands its reviewer: every blocking
-    finding of the round being verified, by id, each of which must come back
-    with a verdict.
+    finding the gate still counts at the tree being verified — the round being
+    verified and any earlier round of the branch (:func:`carried_blocking`,
+    #334) — by id, each of which must come back with a verdict.
 
     **Why the consolidation check is not enough on its own.** That check acts
     AFTER the reviewer has written ``resolutions`` — it can refuse to let the
@@ -1145,17 +1248,31 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
     Returns ``""`` when there is nothing to account for — a roll-call of nothing
     is noise, and a directive that fires on every dispatch trains its reader to
     skip the block it lives in.
+
+    **Per member, where the finding enumerated them (#847 D3).** A finding the
+    reviewer recorded ``members`` for is listed with its ``closure`` and each
+    member by id and site, because consolidation will append its ``fixed``
+    resolution only when that resolution's ``members`` answers every id — this
+    is the before half of that rule. A ``class`` finding with no members is
+    named unbounded: no list can close it, only a construction. An instance, or
+    a finding that gave no scope, renders as it always did.
     """
     if not carried:
         return ""
-    lines = "\n".join(
-        f"  - {c['review_id']}/{c.get('fid', '?')}"
-        + (f" — {c['title']}" if c.get("title") else "")
-        for c in carried
+    lines = "\n".join(_roll_call_line(c) for c in carried)
+    member_rule = (
+        "\nA finding listed with members is recorded `fixed` only when its"
+        " resolution's `members` answers every id: `{\"id\": \"m1\","
+        " \"disposition\": \"fixed\", \"evidence\": \"<what you read>\"}`, or"
+        " `waived` with a `rationale`. Leave one out and the resolution is not"
+        " recorded, so the finding keeps blocking."
+        if any(c.get("members") for c in carried) else ""
     )
     return (
-        "PRAWDUCT: the round you are verifying left these BLOCKING finding(s)"
-        " unresolved. Every one of them must come back with a verdict:\n"
+        "PRAWDUCT: this branch's reviews — the round you are verifying and any"
+        " earlier round — left these BLOCKING finding(s) unresolved. The ids name"
+        " their own review, so an earlier round's finding is resolved against"
+        " that review. Every one of them must come back with a verdict:\n"
         f"{lines}\n"
         "For each: put it in `resolutions` if it is fixed — INCLUDING one fixed"
         " by another finding's edit, which is still its own entry, because a"
@@ -1165,7 +1282,27 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
         " one of these ids is the one outcome that is always wrong: it reads as"
         " \"still broken\" to the gate and as \"handled\" to the operator, and"
         " those cannot both be true."
+        + member_rule
     )
+
+
+def _roll_call_line(carried: dict) -> str:
+    """One finding's line in :func:`account_for_prior_blockers_directive`."""
+    line = f"  - {carried['review_id']}/{carried.get('fid', '?')}"
+    if carried.get("title"):
+        line += f" — {carried['title']}"
+    members = carried.get("members") or []
+    if members:
+        if carried.get("closure"):
+            line += f"\n      class: {carried['closure']}"
+        line += "\n" + "\n".join(
+            f"      {m.get('id')} `{m.get('site')}`" for m in members if isinstance(m, dict)
+        )
+    elif carried.get("scope") == "class":
+        line += "\n      class, unbounded — closes only by a construction"
+        if carried.get("closure"):
+            line += f": {carried['closure']}"
+    return line
 
 
 #: Delivered at `verify-resolutions` DISPATCH, before
@@ -1218,9 +1355,8 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
 #:
 #: **There are now TWO destinations and the text must keep naming both.** The
 #: partial's ``observations`` array is where the RECORD goes: it gives each one
-#: an id ``disposition`` can join on, so declining an observation stops costing
-#: the reasoning, and it makes the demotion rate a query over the store rather
-#: than a number the reviewer asserts about its own output. The report heading
+#: an id a later verify pass can name, and it makes the demotion rate a query
+#: over the store rather than a number the reviewer asserts about its own output. The report heading
 #: is where the BUILDER meets them, in the same reading where it decides what
 #: to do — and the cost-bound this whole rule rests on is that the builder
 #: reads them. The two lose different things when dropped, which is why the
@@ -1239,7 +1375,7 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " **The test is membership in that set, never the severity a table"
     " prints** — a `→ BLOCKING` outside it (a learnings budget row, an"
     " undocumented decision that departs from no norm) is an observation here,"
-    " and so is everything a table rates lower, record-lint entries included."
+    " and so is everything a table rates lower."
     " Observations go in your report under an"
     " `### Observations` heading, in prose, and NOT into `findings` — and only"
     " one that judges a NAMED fix: incomplete, or right in one place and missed"
@@ -1318,7 +1454,9 @@ GOALS_1_3_MODES = frozenset({"chunk", "verify-resolutions"})
 #: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` for the identical reason, and
 #: :data:`VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`'s docstring records the
 #: precedent in general form: for the modes it serves, a rating can live
-#: nowhere but here.
+#: nowhere but here. The closing data clause (#847 D1: ``scope``, ``closure``,
+#: ``members``) took the same route: it is the only place a `chunk` or
+#: `verify-resolutions` reviewer meets those fields.
 #:
 #: **It closes an asymmetry that shipped.** Those two directives told a
 #: `verify-resolutions` reviewer to GRADE a class finding rigorously while
@@ -1340,9 +1478,74 @@ FINDING_SCOPE_DIRECTIVE = (
     " for, and expect members outside this delta. An instance closes by being"
     " fixed; an unbounded class closes only by a CONSTRUCTION — one owner every"
     " member passes through, or a check derived from the source of truth —"
-    " never by a longer list of names. A mandated cross-check carrying no"
-    " defect to bound answers `none`."
+    " never by a longer list of names. Record the answer as data too: `scope`,"
+    " a one-sentence `closure` (the property deciding membership) and, if you"
+    " can enumerate them, `members: [{id, site}]` — a `fixed` resolution must"
+    " then answer each id."
 )
+
+
+def dispatch_directives(
+    manifest: dict,
+    facts: list[dict],
+    counted: "list[dict] | None" = None,
+    *,
+    anchor_id: "str | None" = None,
+) -> list[str]:
+    """The directives a reviewer of this dispatch reads before assessing, in
+    their order. The one renderer: ``critic-begin`` prints this list last in its
+    output (the reviewing fork's copy), and :func:`begin_review` writes the same
+    list into the manifest as ``dispatch_directives`` when it sets a
+    ``reviewer_model``, because a reviewer the fork hands the review to never
+    sees the fork's tool output.
+
+    Keyed off the manifest's own mode rather than a raw ``--mode`` argument:
+    ``begin_review`` canonicalizes the token, and a ``verify-resolutions``
+    dispatch that got demoted never renders these at all.
+
+    ORDER IS DELIBERATE, and a future edit must not flip it: the reviewer rates
+    the delta BEFORE it judges the prior findings, so the severity narrowing
+    comes first; then the rule for how a finding is WRITTEN; then the roll-call
+    of ids that must be accounted for; and the resolution warning stays LAST,
+    adjacent to the claim it governs — the only one of the four that can weaken
+    a gate, and therefore the one the reader must still be holding. The
+    roll-call sets the AGENDA (which ids must come back with a verdict) and the
+    claim directive the STANDARD each verdict meets; a roll-call read last would
+    push toward naming every id on it, which is the over-claiming the standard
+    exists to prevent. The order is pinned: ``TestResolutionDirectiveDelivery``
+    for the claim directive's last place, ``TestCarriedBlockersReachTheirReaders``
+    for the roll-call ahead of it, and ``test_finding_scope_rule`` for the scope
+    rule's slot between the narrowing and the claim.
+
+    :data:`FINDING_SCOPE_DIRECTIVE` is owed to whichever modes read
+    ``goals-1-3.md``, which has no room for it, and ``verify-resolutions`` is in
+    both sets — so it renders outside the verify-only branch while keeping its
+    place in the order. ``final`` and ``cumulative`` are owed none.
+
+    ``counted`` is :func:`gate_counted_blockers`' answer at the manifest's
+    ``base_tree``: the roll-call names every blocker the gate still counts
+    there, an earlier round's included (:func:`carried_blocking`). ``None`` is
+    the anchor alone — ``anchor_id`` when the dispatch chose it.
+    """
+    verbose_mode = manifest["mode"]
+    is_verify = verbose_mode == MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
+    directives: list[str] = []
+    if is_verify:
+        directives.append(VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
+    if verbose_mode in {MODE_TOKEN_TO_VERBOSE[token] for token in GOALS_1_3_MODES}:
+        directives.append(FINDING_SCOPE_DIRECTIVE)
+    if is_verify:
+        roll_call = account_for_prior_blockers_directive(
+            carried_blocking(
+                facts, manifest.get("base_tree"), manifest.get("id"), counted,
+                anchor_id=anchor_id,
+            )
+        )
+        if roll_call:
+            directives.append(roll_call)
+        directives.append(RESOLUTION_IS_A_CLAIM_DIRECTIVE)
+    return directives
+
 
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
@@ -1414,10 +1617,20 @@ def _scope_widened(delta_count: int, prior_count: int) -> bool:
     return delta_count > 2 * prior_count + 5
 
 
-def _widened_fallback_mode(
+def covering_fallback_mode(
     project_dir: Path, committed_head_tree: str, committed_differs: bool
 ) -> tuple[str, str]:
-    """Which full-review mode actually COVERS the delta that just widened.
+    """Which full-review mode actually COVERS the work a demoted
+    ``verify-resolutions`` leaves — the one recommender for both of its doors.
+
+    **Two doors (#662).** Exit 2 (the delta widened) passes the
+    ``committed_differs`` it computed. The exit-1 anchor refusals (no prior
+    review on this lineage, a fact with no ``head_tree``, a prior tree that
+    cannot be diffed) have no prior tree to compute it from, and pass ``True``:
+    assuming committed work moved lets :func:`working_tree_interval_base`
+    decide from the store's review facts — independent of the anchor that just
+    failed — and is never narrower than the truth. Two of those triggers (a
+    branch switch, rewritten history) are by construction the committed case.
 
     "Run a full review" meant `final`, unconditionally — and `final`'s interval
     was then HEAD-tree → working-tree, the *uncommitted* diff. So a delta that widened
@@ -1460,16 +1673,24 @@ def _widened_fallback_mode(
         start = working_tree_interval_base(
             project_dir, head_commit.strip(), committed_head_tree
         )
+        if start["origin"] == BASE_AT_HEAD_COVERED:
+            # Without this arm a covered HEAD fell through to `cumulative` — a
+            # whole-branch review of commits a review already covers.
+            return "final", (
+                "the committed work is already covered — the last reviewed "
+                "state is HEAD's own tree — so only the uncommitted work remains, "
+                "which is exactly `final`'s HEAD-tree → working-tree interval"
+            )
         if start["origin"] == BASE_AT_FRONTIER:
             return "final", (
-                "the delta includes committed work, and `final`'s interval starts at "
+                "committed work may be unreviewed, and `final`'s interval starts at "
                 f"the last reviewed state ({start['commit'][:12]}), so it covers "
                 "those commits and the uncommitted work — a narrower span than "
-                "`cumulative`'s merge-base…HEAD"
+                "a full `cumulative`'s merge-base…HEAD"
             )
         if start["origin"] == BASE_AT_MERGE_BASE:
             return "final", (
-                "the delta includes committed work, and with no reviewed state "
+                "committed work may be unreviewed, and with no reviewed state "
                 "behind HEAD and nothing judgeable uncommitted, `final`'s interval "
                 f"starts at the merge-base ({start['commit'][:12]}), so it covers "
                 "the committed work at inner-stage rigor"
@@ -1485,7 +1706,7 @@ def _widened_fallback_mode(
     # committed remainder. The coverage gate is where that remainder surfaces.
     if resolved["status"] != "ok":
         return "final", (
-            "the delta includes committed work, but no merge-base resolves "
+            "committed work may be unreviewed, but no merge-base resolves "
             f"({resolved['reason']}), so `cumulative` cannot dispatch — `final` "
             "sees only the uncommitted part"
         )
@@ -1495,16 +1716,107 @@ def _widened_fallback_mode(
         # reverts sits far ahead of the merge-base with an identical tree, takes
         # this path correctly, and would be told something false about itself.
         return "final", (
-            "the delta includes committed work, but HEAD's tree matches the "
+            "committed work may be unreviewed, but HEAD's tree matches the "
             "merge-base's, so `cumulative`'s interval is empty — `final` sees "
             "only the uncommitted part"
         )
     return "cumulative", (
-        "the delta includes committed work that `final` cannot reach — no "
+        "committed work may be unreviewed, and `final` cannot reach it — no "
         "reviewed state without an open blocker sits behind it for its interval "
-        "to start from; `cumulative` spans merge-base…HEAD — the work this "
-        "branch owes, and the PR gate's own span"
+        "to start from; `cumulative` spans merge-base…HEAD, or the delta since "
+        "the last clean boundary review — either way the work this branch owes, "
+        "composing to the PR gate's own span"
     )
+
+
+def _anchor_unusable(
+    project_dir: Path, committed_head_tree: str, notes: "list[str]", reason: str
+) -> dict:
+    """``begin_review``'s exit-1 ``verify-resolutions`` refusal: the prior
+    anchor is missing or unusable, so the pass demotes — to the mode
+    :func:`covering_fallback_mode` names, never to one the reader derives.
+    ``committed_differs=True`` because with no usable prior tree "did committed
+    work move" cannot be computed (the recommender's docstring says why that is
+    the safe assumption). The CLI keeps exit 1 for this kind."""
+    fallback, why = covering_fallback_mode(project_dir, committed_head_tree, True)
+    return {
+        "status": "error",
+        "kind": "anchor-unusable",
+        "fallback_mode": fallback,
+        "notes": list(notes),
+        "reason": f"{reason} — Re-dispatch as `{fallback}`: {why}.",
+    }
+
+
+#: The derived findings cache, in ``.prawduct/``: the single slot naming the
+#: review this worktree last consolidated or derived (D7 — a VIEW no gate
+#: reads). Spelled here once; every module reads it through
+#: :func:`read_findings_cache`, and a guard
+#: (``tests/test_findings_cache_reader.py``) keeps the path from being built
+#: anywhere else.
+FINDINGS_CACHE_NAME = ".critic-findings.json"
+
+#: :class:`FindingsCacheRead` states. Only ``FINDINGS_OK`` carries a record.
+FINDINGS_OK = "ok"
+FINDINGS_ABSENT = "absent"
+FINDINGS_UNREADABLE = "unreadable"
+FINDINGS_UNDECODABLE = "undecodable"
+FINDINGS_INVALID_JSON = "invalid-json"
+FINDINGS_NOT_A_RECORD = "not-a-record"
+
+
+class FindingsCacheRead(NamedTuple):
+    """What reading the findings cache found. ``record`` is the parsed object
+    when ``state`` is ``FINDINGS_OK``, else ``None``; ``reason`` is ``""`` then,
+    and otherwise a short phrase fit for a message — never an absolute path,
+    which the raw exception text carried into a reviewer's dispatch note."""
+
+    state: str
+    record: "dict | None"
+    reason: str
+
+
+def findings_cache_path(prawduct_dir: Path) -> Path:
+    """Where the findings cache lives — for its writers; readers use
+    :func:`read_findings_cache`."""
+    return prawduct_dir / FINDINGS_CACHE_NAME
+
+
+def read_findings_record(path: Path) -> FindingsCacheRead:
+    """THE reader of a findings record at ``path`` — the cache, or a candidate
+    validated before it replaces the cache. Never raises.
+
+    UTF-8 always, and each way of not having a record is its own state rather
+    than one ``(OSError, ValueError)`` bucket each caller re-spells: a missing
+    file (``FINDINGS_ABSENT``, the ordinary state of a fresh worktree), any
+    other OS error, bytes that are not UTF-8, text that is not JSON, and JSON
+    that is not an object. The per-site reads this replaces regressed the
+    UTF-8 fix three times."""
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except FileNotFoundError:
+        return FindingsCacheRead(FINDINGS_ABSENT, None, "no findings cache in this worktree")
+    except UnicodeDecodeError:
+        return FindingsCacheRead(FINDINGS_UNDECODABLE, None, "the findings cache is not valid UTF-8")
+    except OSError as exc:
+        why = exc.strerror or type(exc).__name__
+        return FindingsCacheRead(FINDINGS_UNREADABLE, None, f"the findings cache could not be read ({why})")
+    try:
+        record = json.loads(text)
+    except ValueError as exc:
+        where = f": {exc.msg}, line {exc.lineno}" if isinstance(exc, json.JSONDecodeError) else ""
+        return FindingsCacheRead(FINDINGS_INVALID_JSON, None, f"the findings cache is not valid JSON{where}")
+    if not isinstance(record, dict):
+        return FindingsCacheRead(
+            FINDINGS_NOT_A_RECORD, None,
+            f"the findings cache is not a findings record (a JSON {type(record).__name__}, not an object)",
+        )
+    return FindingsCacheRead(FINDINGS_OK, record, "")
+
+
+def read_findings_cache(prawduct_dir: Path) -> FindingsCacheRead:
+    """:func:`read_findings_record` of this worktree's findings cache."""
+    return read_findings_record(findings_cache_path(prawduct_dir))
 
 
 def partials_dir(prawduct_dir: Path) -> Path:
@@ -2059,17 +2371,11 @@ def _mark_cache_superseded(prawduct_dir: Path, review_id: str) -> bool:
     Fail-soft in every direction — the view is advisory, and a dispatch must
     never be blocked by it. Returns whether the marker was written.
     """
-    cache = prawduct_dir / ".critic-findings.json"
-    try:
-        # ValueError covers JSONDecodeError AND the UnicodeDecodeError a
-        # byte-truncated cache raises from read_text() — same pair
-        # `critic_findings_note` reads this file behind.
-        record = json.loads(cache.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        # No cache yet (first review in this repo), or one nothing can parse.
-        # Either way there is no record to make honest and nothing to lose.
-        return False
-    if not isinstance(record, dict):
+    cache = findings_cache_path(prawduct_dir)
+    record = read_findings_cache(prawduct_dir).record
+    if record is None:
+        # No cache yet (first review in this worktree), or one nothing can
+        # parse. Either way there is no record to make honest and nothing to lose.
         return False
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     prior_id = record.get("fact_id") or "an earlier review"
@@ -2124,7 +2430,8 @@ CHUNK_TYPE_DEFAULT_LABEL = "code (default)"
 
 def signals_line(manifest: dict) -> str:
     """The one-line signals summary a coordinator hands each reviewer —
-    ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``.
+    ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``, then
+    ``· Span: bounded from <review id>`` or ``· Span: full`` on a cumulative.
 
     Rendered FROM the manifest, by code, so no coordinator composes it: the
     freeform ``Signals: [summary]`` it replaces was the one substitution in the
@@ -2137,11 +2444,20 @@ def signals_line(manifest: dict) -> str:
     stage = manifest.get("stage")
     judgeable = manifest.get("judgeable_files")
     chunk_type = manifest.get("chunk_type") or CHUNK_TYPE_DEFAULT_LABEL
-    return (
+    line = (
         f"Stage: {stage if stage in STAGE_VALUES else 'unknown'} · "
         f"Judgeable files: {judgeable if isinstance(judgeable, int) else '?'} · "
         f"Type: {chunk_type}"
     )
+    # A cumulative names its span, so the reviewer knows whether its subject is
+    # the whole bundle or the delta since a boundary review that already rated
+    # the rest. Other modes carry no span and the line is unchanged.
+    span = manifest.get("span")
+    if span == SPAN_BOUNDED:
+        line += f" · Span: bounded from {manifest.get('bounded_from')}"
+    elif span == SPAN_FULL:
+        line += " · Span: full"
+    return line
 
 
 def _dispatch_chunk_type(prawduct_dir: Path, lint: dict) -> "str | None":
@@ -2238,12 +2554,15 @@ def _store_unusable(store: dict) -> "str | None":
 def _prior_review_fact(
     project_dir: Path, prawduct_dir: Path, store: dict
 ) -> tuple[dict | None, str]:
-    """The review fact a verify-resolutions pass anchors to, located via the
-    derived cache's ``fact_id`` pointer (D7 — this is what the pointer is
-    for). Returns ``(fact, "")`` or ``(None, reason)`` — the caller fails
-    loud, and the skill's exit table routes the refusal: a missing or
-    unreachable anchor demotes, an unusable store (:func:`_store_unusable`)
-    stops.
+    """The review fact a verify-resolutions pass anchors to: the derived cache's
+    ``fact_id`` pointer (D7 — this is what the pointer is for) when it names
+    this branch's review, else this branch's newest review as
+    :func:`derive_branch_cache` selects it. Returns ``(fact, note)`` or
+    ``(None, reason)``. On success ``note`` is ``""`` unless the anchor was
+    re-derived, when it says from which review to which, for the dispatch's
+    notes. On failure the caller fails loud, and the skill's exit table routes
+    the refusal: a missing or unreachable anchor demotes, an unusable store
+    (:func:`_store_unusable`) stops.
 
     ``store`` is the caller's :func:`evidence.read_facts` result, REQUIRED
     rather than defaulted: the dispatch's prior-dispositions block reads the
@@ -2254,46 +2573,179 @@ def _prior_review_fact(
     branch switch, and a sibling branch's anchor still *resolves* in the shared
     object store — so without this the pass would anchor to a tree off this
     lineage and diff across the divergence, producing phantom findings over work
-    this branch never touched. Fails closed: not-an-ancestor and any git failure
-    both refuse, because an anchor we cannot place is one we cannot trust.
+    this branch never touched. Not-an-ancestor and any git failure both reject
+    the pointer, because an anchor we cannot place is one we cannot trust.
+
+    **A rejected pointer is a stale view, not a missing review (#1150).** The
+    slot names whichever review this worktree last consolidated or ingested, on
+    any branch; the store holds every branch's. So a pointer that is not this
+    branch's — off its lineage, a sibling's review at the merge base the two
+    share (#1116), or none at all (no readable cache, as in a fresh worktree;
+    no ``fact_id``; a fact the store lacks) — defers to
+    :func:`select_branch_review`, the one owner of
+    "which review is this branch's", and :func:`derive_branch_cache` re-points
+    the slot to its answer (the verify reviewer reads its prior findings from
+    it). Only when that finds nothing does the pass refuse, with the pointer's
+    own reason first.
+
+    The choosing is :func:`verify_anchor`, which writes nothing, so mode
+    inference can ask the same question; this function adds the one write the
+    dispatch owes when the answer moved.
     """
-    cache = prawduct_dir / ".critic-findings.json"
-    try:
-        data = json.loads(cache.read_text())
-    except (OSError, ValueError) as exc:
-        # `ValueError` for the same reason the manifest reads take it, though
-        # not for the same reachability: a findings cache is written by this
-        # module as UTF-8, so `UnicodeDecodeError` does not arise here by
-        # construction. The narrow tuple is kept out anyway — it is the SHAPE
-        # that re-seeded this class three times, and a reader who copies this
-        # line does not inherit the reachability argument with it.
-        return None, f"no readable prior findings cache ({exc})"
-    fact_id = data.get("fact_id") if isinstance(data, dict) else None
-    if not isinstance(fact_id, str) or not fact_id.strip():
+    answer = verify_anchor(project_dir, prawduct_dir, store)
+    fact = answer["fact"]
+    if fact is None or not answer["rederived"]:
+        return fact, answer["reason"]
+    review = fact.get("id")
+    derived = derive_branch_cache(
+        prawduct_dir, store.get("facts", []), answer["branch_commits"], read=store
+    )
+    if derived.get("status") not in ("derived", "current") or derived.get("review") != review:
         return None, (
-            "prior findings cache carries no fact_id — it predates the "
-            "evidence store (a fresh review re-establishes coverage)"
+            f"{answer['reason']}; this branch's review {review!r} could not be written "
+            f"to the findings cache the verify reviewer reads "
+            f"({derived.get('reason') or derived.get('status')})"
+        )
+    return fact, (
+        f"verify anchored on review {review}, the newest on this branch, "
+        f"not on the findings cache's pointer: {answer['reason']}. "
+        f".prawduct/.critic-findings.json now names {review}, so the prior "
+        "findings you verify are this branch's"
+    )
+
+
+def verify_anchor(project_dir: Path, prawduct_dir: Path, store: dict) -> dict:
+    """The review a ``verify-resolutions`` pass would anchor to, answered
+    WITHOUT writing anything — the one question the dispatch
+    (:func:`_prior_review_fact`), mode inference
+    (``critic_mode._verify_prior_record``) and the session briefing ask.
+
+    Returns ``{"fact", "reason", "rederived", "branch_commits", "foreign",
+    "foreign_branch"}``.
+    ``fact`` is the review, or ``None`` with ``reason`` saying why there is none
+    (the dispatch's refusal text). ``rederived`` is True when the cache's
+    pointer was not this branch's review and ``fact`` is this branch's newest
+    instead; then ``reason`` says why the pointer was passed over, and
+    ``branch_commits`` is the range the choice was made over, so the writer
+    re-points the slot over the same one. The choice is
+    :func:`select_branch_review`'s, the selection :func:`derive_branch_cache`
+    renders.
+
+    **Every pointer that is not this branch's defers to the owner** — off this
+    lineage, a sibling's at the merge base, and equally one that is MISSING:
+    no cache, an unreadable or undecodable one, no ``fact_id`` in it, or a
+    fact the store does not hold — each said in words by
+    :func:`read_findings_cache`, never as a raw exception carrying a path.
+    The cache is per-worktree and the store
+    clone-shared, so a fresh worktree of a reviewed branch has no cache while
+    the store holds the branch's review; a missing pointer is a stale view,
+    not a missing review. A cache written before the evidence store (no
+    ``fact_id``) is no exception: the owner reads the store, not the cache.
+
+    ``foreign`` is the cached review, and ``foreign_branch`` the branch it was
+    recorded on, when the answer is DEFINITIVE that this branch has none and
+    the cache holds ANOTHER branch's: the pointer resolved to a review off this
+    lineage, the owner found no review on it, and the review was recorded on a
+    branch other than the one checked out. Else both are ``None``. Off-lineage
+    alone is not enough: an amended commit or a rebase of THIS branch leaves
+    its own review's anchor off the rewritten lineage, and that review is
+    still the one whose findings the builder owes — so a review recorded on
+    this branch, or on no branch (a detached HEAD, a fact older than
+    ``actor.branch``), or a check from a detached HEAD, stays an unconfirmed
+    pointer for the reader to show hedged. A reader showing the cache uses
+    ``foreign_branch`` to say whose review the cache holds rather than "could
+    not confirm"."""
+    def none(reason: str, foreign: "dict | None" = None,
+             foreign_branch: "str | None" = None) -> dict:
+        return {"fact": None, "reason": reason, "rederived": False,
+                "branch_commits": None, "foreign": foreign, "foreign_branch": foreign_branch}
+
+    def as_cached(fact: dict) -> dict:
+        return {"fact": fact, "reason": "", "rederived": False,
+                "branch_commits": None, "foreign": None, "foreign_branch": None}
+
+    fact_id = cached = None
+    read = read_findings_cache(prawduct_dir)
+    if read.record is None:
+        # Absent (a fresh worktree), unreadable, undecodable, not JSON, not a
+        # record: each as missing a pointer as the others, said in words.
+        passed_over = read.reason
+    else:
+        fact_id = read.record.get("fact_id")
+        passed_over = (
+            "prior findings cache carries no fact_id — it predates the evidence store"
         )
     unusable = _store_unusable(store)
     if unusable is not None:
-        return None, unusable
-    for fact in evidence.facts_of_kind(store, "review"):
-        if fact.get("id") != fact_id:
-            continue
-        body = fact.get("body") or {}
-        anchor = evidence.review_anchor(body)
-        if anchor:
-            from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
+        return none(unusable)
+    if isinstance(fact_id, str) and fact_id.strip():
+        cached = next(
+            (f for f in evidence.facts_of_kind(store, "review") if f.get("id") == fact_id),
+            None,
+        )
+        if cached is None:
+            passed_over = f"prior review fact {fact_id!r} not found in the evidence store"
+        else:
+            not_ours = _not_this_branchs(project_dir, cached)
+            if not_ours is None:
+                return as_cached(cached)
+            passed_over = not_ours
+    branch_range = evidence_notes._branch_commits(project_dir)
+    if branch_range.get("status") != "ok":
+        return none(
+            f"{passed_over}; this branch's own review could not be looked up "
+            f"({branch_range.get('reason')})"
+        )
+    branch = gitstate.current_branch(project_dir)
+    chosen = select_branch_review(store.get("facts", []), branch_range["ordered"], branch)
+    if chosen is None:
+        recorded = _recorded_branch(cached) if cached is not None else None
+        another = recorded is not None and branch is not None and recorded != branch
+        return none(f"{passed_over}; no review of this branch's could replace it "
+                    "(no review anchors on this branch)",
+                    foreign=cached if another else None,
+                    foreign_branch=recorded if another else None)
+    if cached is not None and chosen.get("id") == fact_id:
+        # The merge-base preference is a preference: a sibling's review with
+        # none of this branch's beside it is still the answer.
+        return as_cached(cached)
+    return {"fact": chosen, "reason": passed_over, "rederived": True,
+            "branch_commits": branch_range["ordered"], "foreign": None,
+            "foreign_branch": None}
 
-            if not critic_mode._commit_is_ancestor(project_dir, anchor):
-                return None, (
-                    f"prior review fact {fact_id!r} anchors at {anchor[:12]}, "
-                    "which is not an ancestor of HEAD — it belongs to another "
-                    "lineage (a branch switch, or rewritten history), so the "
-                    "delta from it would span the divergence"
-                )
-        return fact, ""
-    return None, f"prior review fact {fact_id!r} not found in the evidence store"
+
+def _not_this_branchs(project_dir: Path, fact: dict) -> "str | None":
+    """Why the cached review fact cannot stand as this branch's verify anchor
+    without asking :func:`derive_branch_cache`, or ``None`` when it can. Two
+    ways: its anchor is off this lineage, or it was recorded on another branch
+    and sits at the merge base this branch shares with that one — the one
+    commit where :func:`select_branch_review` prefers a review recorded here.
+    The branch-name comparison runs first, so the common case (a review of this
+    branch) lists no commit range."""
+    fact_id = fact.get("id")
+    anchor = evidence.review_anchor(fact.get("body") or {})
+    if not anchor:
+        return None
+    from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
+
+    if not critic_mode._commit_is_ancestor(project_dir, anchor):
+        return (
+            f"prior review fact {fact_id!r} anchors at {anchor[:12]}, "
+            "which is not an ancestor of HEAD — it belongs to another "
+            "lineage (a branch switch, or rewritten history), so the "
+            "delta from it would span the divergence"
+        )
+    recorded = _recorded_branch(fact)
+    branch = gitstate.current_branch(project_dir)
+    if recorded is None or branch is None or recorded == branch:
+        return None
+    branch_range = evidence_notes._branch_commits(project_dir)
+    if branch_range.get("status") != "ok" or branch_range["ordered"][-1] != anchor:
+        return None
+    return (
+        f"prior review fact {fact_id!r} was recorded on {recorded!r} and anchors "
+        f"at {anchor[:12]}, the merge base {branch!r} shares with it"
+    )
 
 
 #: How many excluded/free paths a message names before it summarises the rest.
@@ -2366,47 +2818,10 @@ def _dirty_anchor_note(mode_label: str, excluded: "list[str] | None") -> str:
     )
 
 
-#: Which bound produced a round-budget count. The store is clone-wide, so the
-#: count always needs one; lineage is the primary and the worktree is what
-#: answers where an empty span leaves lineage with nothing to say. Named
-#: constants because they are written into a durable guard-refusal fact that a
-#: retirement query reads back.
-BOUND_LINEAGE = "lineage"
-BOUND_WORKTREE = "worktree"
-
-
-def _rounds_recorded_in_this_worktree(
-    facts: "list[dict]", project_dir: Path, scope: str
-) -> "list[dict]":
-    """This scope's review facts recorded from THIS worktree, shaped like
-    ``coverage.count_branch_rounds``'s ``reviews`` so one tail can count either.
-
-    The bound is ``actor.worktree`` and not "no bound at all" because the
-    evidence store sits in the clone's git common dir and every worktree of the
-    clone writes into it. Lineage was the only thing separating them; where the
-    span is empty it separates nothing, so something else has to, and dropping
-    the bound would charge a scope for rounds a sibling worktree bought on the
-    same plan. Overcounting a stopping rule is worse than undercounting it —
-    ``count_branch_rounds`` says why, and it is the reason this is a second
-    bound rather than a removed one.
-
-    ``actor.worktree`` is written by ``evidence.append_fact`` on every fact the
-    plugin has ever appended, so no fact is invisible to this for want of the
-    field. A path that does not match is simply not counted, which sells a round
-    — the direction this control fails in by design.
-    """
-    here = str(project_dir)
-    counted = []
-    for fact in facts:
-        if fact.get("kind") != "review":
-            continue
-        body = fact.get("body") or {}
-        if body.get("scope") != scope:
-            continue
-        if (fact.get("actor") or {}).get("worktree") != here:
-            continue
-        counted.append({"id": fact.get("id"), "mode": body.get("mode")})
-    return counted
+#: Which bound produced a round-budget count — re-exported from their one home,
+#: ``coverage.branch_review_ids``, which derives the set the budget narrows.
+BOUND_LINEAGE = coverage.BOUND_LINEAGE
+BOUND_WORKTREE = coverage.BOUND_WORKTREE
 
 
 def _round_budget_verdict(
@@ -2428,16 +2843,19 @@ def _round_budget_verdict(
     absent. Every review fact already records its scope, so the store answers
     the declared question directly and no new counter is added.
 
-    Lineage still bounds it: the count is the intersection of *this scope's*
-    facts with the rounds ``coverage.count_branch_rounds`` attributes to this
-    branch. Scope alone would sweep in a sibling worktree's rounds on the same
-    plan, and the store is shared by every worktree of the clone.
+    The branch still bounds it: the count is *this scope's* members of the
+    branch's review set, ``coverage.branch_review_ids(scope=...)`` — on a
+    branch with commits, the rounds ``coverage.count_branch_rounds`` attributes
+    to its lineage. Scope alone would sweep in a sibling worktree's rounds on
+    the same plan, and the store is shared by every worktree of the clone.
+    Taking the set from its one owner is what keeps this refusal and the
+    disposition census agreeing about which reviews are this branch's.
 
     **Where lineage cannot bound it, the WORKTREE does.** An intersection with
     an empty set is empty, so on the trunk shape above the count was always 0
     and the ceiling never fired — the control was declared, documented and
-    inert. When the span holds no commits, this counts the scope's facts
-    recorded from this worktree instead (:func:`_rounds_recorded_in_this_worktree`).
+    inert. When the span holds no commits, the owner draws the set from the
+    review facts recorded from this worktree, narrowed by this scope.
     That is a second bound, not a dropped one: the store is clone-wide, and the
     thing lineage was separating is worktrees. The swap is keyed on the span
     rather than on a zero count, so a branch that HAS commits and has simply not
@@ -2470,33 +2888,24 @@ def _round_budget_verdict(
             "budget bounds one body of work rather than one branch",
         }
 
-    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
-
-    resolved = coverage.resolve_merge_base_tree(project_dir)
-    if resolved["status"] != "ok":
-        return {"status": "unavailable", "reason": resolved["reason"]}
     store = evidence.read_facts(project_dir)
     if store["status"] == "error":
         return {"status": "unavailable", "reason": store["reason"]}
     facts = store.get("facts") or []
-    tally = coverage.count_branch_rounds(project_dir, facts, resolved["merge_base"])
-    if tally.get("status") != "counted":
-        return {"status": "unavailable", "reason": tally.get("reason", "unknown")}
+    branch = coverage.branch_review_ids(project_dir, facts, scope=scope)
+    if branch["status"] != "ok":
+        return {"status": "unavailable", "reason": branch["reason"]}
 
-    if tally.get("span_commits"):
-        bound = BOUND_LINEAGE
-        scope_of = {
-            f.get("id"): (f.get("body") or {}).get("scope")
-            for f in facts
-            if f.get("kind") == "review"
-        }
-        in_scope = [
-            r for r in tally.get("reviews") or [] if scope_of.get(r.get("id")) == scope
-        ]
-    else:
-        bound = BOUND_WORKTREE
-        in_scope = _rounds_recorded_in_this_worktree(facts, project_dir, scope)
-    spent = sum(1 for r in in_scope if mode_token_of(r.get("mode")) in FULL_ROUND_MODES)
+    body_of = {
+        f.get("id"): (f.get("body") or {})
+        for f in facts
+        if f.get("kind") == "review"
+    }
+    in_scope = branch["review_ids"]
+    spent = sum(
+        1 for rid in in_scope
+        if mode_token_of(body_of[rid].get("mode")) in FULL_ROUND_MODES
+    )
     return {
         "status": "exhausted" if spent >= budget else "within",
         "spent": spent,
@@ -2506,11 +2915,11 @@ def _round_budget_verdict(
         # query — "did it ever refuse a round that turned out to be needed?" —
         # could not separate a fallback firing from a lineage one, which is the
         # question a retirement decision turns on.
-        "bound": bound,
+        "bound": branch["bound"],
         # Every round in scope, not just the full ones: the findings a verify
         # pass raised are as open as any other, and exhaustion has to answer all
         # of them or the census it renders is not a census.
-        "review_ids": [r["id"] for r in in_scope if r.get("id")],
+        "review_ids": in_scope,
     }
 
 
@@ -2663,7 +3072,18 @@ def _record_no_review_needed(project_dir: Path, guard: str, body: dict) -> bool:
     lands, and a firing that vanishes leaves that question looking answered at
     zero. Sink ruling and its four reasons: `evidence.append_guard_refusal`.
     """
-    recorded = evidence.append_guard_refusal(project_dir, guard, body)
+    return _record_guard_refusal(project_dir, guard, body)
+
+
+def _record_guard_refusal(
+    project_dir: Path, guard: str, body: dict, *, reason: "str | None" = None
+) -> bool:
+    """Record one ``critic-begin`` refusal; True when the guard-refusal fact
+    landed. SOFT but never silent, for every refusal in the class: the refusal
+    is correct whether or not the record lands, and a lost one makes the
+    guard's yield query read low. ``reason`` is the sink's slug
+    (``evidence.append_guard_refusal``)."""
+    recorded = evidence.append_guard_refusal(project_dir, guard, body, reason=reason)
     if recorded.get("status") == "appended":
         return True
     print(
@@ -2674,6 +3094,41 @@ def _record_no_review_needed(project_dir: Path, guard: str, body: dict) -> bool:
         file=sys.stderr,
     )
     return False
+
+
+def _stale_test_evidence(project_dir: Path) -> "str | None":
+    """Why the saved test evidence cannot vouch for this tree — the
+    :func:`gates.tests_are_current` reason, verbatim — or ``None`` when it is
+    current or when there is NO evidence at all.
+
+    Absent is not stale here. A product with no suite has no
+    ``.test-evidence.json`` and records no ``test-run`` fact, and refusing
+    there would put ``verify-resolutions`` — the only command that clears a
+    BLOCKING finding — permanently behind ``--force``. "Evidence exists" is
+    this worktree's record on disk (a red or degraded one included: those are
+    what this refuses) or a whole-suite ``test-run`` fact anywhere in the
+    clone's store, which the verdict also consults. A narrowed scratch run is
+    not counted: the verdict neither vouches nor denies on one."""
+    record = gitstate.get_prawduct_dir(project_dir) / ".test-evidence.json"
+    if not record.exists():
+        runs = evidence.facts_of_kind(evidence.read_facts(project_dir), "test-run")
+        if not any(
+            isinstance(f.get("body"), dict) and f["body"].get("narrowed") is not True
+            for f in runs
+        ):
+            return None
+    current, reason, _clause = gates.tests_are_current(project_dir)
+    return None if current else reason
+
+
+#: The closed set ``critic-dispatch-stale-evidence`` records as its ``reason``
+#: slug — ``gates.suite_remedy``'s states, so the slug and the remedy printed
+#: beside it are one reading of the record: a record attempt still running or
+#: interrupted, a saved run that is red or reports itself degraded, or —
+#: everything else the verdict refuses — one (or the clone's store) that does
+#: not vouch for this tree. Before #1178 R-4 this module classified the record
+#: itself, and filed an in-flight run's void as ``degraded`` or ``failing``.
+STALE_EVIDENCE_REASONS = gates.SUITE_STATES
 
 
 def working_tree_interval_base(
@@ -2949,21 +3404,267 @@ def _proposed_chunks(
     return proposal.chunks, proposal.notes
 
 
+# --- The paired native review (#1130) ------------------------------------------
+#
+# On a development build, every boundary review — and a sample of the inner
+# `chunk` and `verify-resolutions` reviews — also runs the host's native
+# `/code-review` over the same interval, so the two can be compared before any
+# Critic goal is ceded to it. The Critic itself is unchanged: the native review
+# is a second instrument its dispatch starts beside the reviewers, it rates and
+# blocks nothing, and consolidation never waits for it. What the host does, as
+# measured rather than documented, is in
+# `.prawduct/research/native-review-paired/host-facts-2026-11-12.md` of the
+# prawduct repo.
+
+#: The ``project-state.yaml`` key a repo opts out with (``false``).
+NATIVE_REVIEW_PAIRING_KEY = "native_review_pairing"
+#: The host skill and the level it runs at (owner ruling 2026-11-12). Always
+#: passed explicitly: the host remembers the last level typed, so an omitted one
+#: would run whatever the last person chose.
+NATIVE_REVIEW_SKILL = "code-review"
+NATIVE_REVIEW_LEVEL = "high"
+#: Never passed: a flag that writes (to the tree under review or to the PR), or
+#: a level the host reserves for an explicit request — ``max``, and ``ultra``,
+#: the cloud review. The validator refuses a manifest carrying one.
+NATIVE_REVIEW_FORBIDDEN = ("--fix", "--comment", "--post", "max", "ultra")
+#: The inner reviews that pair, one in this many of them. Inner reviews are
+#: where most of the Critic's correctness reviewing happens, and pairing every
+#: one would roughly triple the experiment's spend; one in six collects an
+#: inner sample about the size of #1130's sixty boundary pairs within its four
+#: weeks at the measured rate. Inner pairs do not count toward #1130's stop.
+NATIVE_REVIEW_INNER_MODES = ("chunk", "verify-resolutions")
+NATIVE_REVIEW_INNER_SAMPLE = 6
+
+
+def native_review_sampled(review_id: "str | None") -> bool:
+    """Whether an inner review falls in the sample — decided by its id, so the
+    same review always gets the same answer and no clock or random state picks
+    what is measured."""
+    if not isinstance(review_id, str) or not review_id:
+        return False
+    digest = hashlib.sha256(review_id.encode("utf-8", "surrogateescape")).hexdigest()
+    return int(digest, 16) % NATIVE_REVIEW_INNER_SAMPLE == 0
+
+
+def native_review_pairing(
+    prawduct_dir: Path, mode_token: str, *, version: "str | None" = None,
+    review_id: "str | None" = None,
+) -> "tuple[bool, str]":
+    """Whether this dispatch pairs a native review, and why not when it does
+    not. Pairs every ``cumulative`` review, and a ``chunk`` or
+    ``verify-resolutions`` review whose id falls in the sample, on a development
+    build (``version``, default the running plugin's), in a repo that has not
+    set ``native_review_pairing: false``.
+
+    Only an explicit ``false`` opts out: pairing is the development build's
+    default, so a misspelt value keeps the measurement running rather than
+    ending it silently.
+    """
+    from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    if mode_token in NATIVE_REVIEW_INNER_MODES:
+        if not native_review_sampled(review_id):
+            return False, f"not in the one-in-{NATIVE_REVIEW_INNER_SAMPLE} sample of {mode_token} reviews"
+    elif mode_token != "cumulative":
+        return False, (
+            "only a cumulative review and a sample of chunk and verify-resolutions "
+            f"reviews pair, and this is {mode_token}"
+        )
+    if not core.is_dev_version(core.PRAWDUCT_VERSION if version is None else version):
+        return False, "a released build never pairs"
+    state, raw = core.read_scalar_yaml_key(
+        Path(prawduct_dir) / "project-state.yaml", NATIVE_REVIEW_PAIRING_KEY
+    )
+    if state == core.YAML_SCALAR_VALUE and (raw or "").strip().lower() == "false":
+        return False, f"project-state.yaml sets {NATIVE_REVIEW_PAIRING_KEY}: false"
+    return True, "paired"
+
+
+def native_review_prompt(review_id: str, worktree: str, args: str) -> str:
+    """The wrapper subagent's whole instruction, rendered once so no skill file
+    composes it. The wrapper exists because the native review runs on its
+    caller's model and may come back in the background: it holds the model
+    fixed and stays alive until the text lands.
+
+    It runs in a worktree of its own (#1177): the native review is forked in
+    its caller's directory and checks out the commit it reads, which in the
+    session's checkout detached the session's HEAD. ``prepare`` runs first and
+    refuses there; the record runs in the session's checkout, where its sidecar
+    is (``lib/native_review.py``). The text is written in the wrapper's OWN
+    tree, at the path ``prepare`` prints, because the harness refuses an
+    isolated agent's Write to the session's files; ``record`` copies it across.
+    The session-side path is deliberately not named here, so it cannot be
+    written to."""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    return (
+        f"Native review for Critic review `{review_id}`. Project (absolute): `{worktree}`. "
+        "You run in a git worktree of your own; the session's checkout "
+        f"`{worktree}` is not yours, so never run git checkout, switch, reset, stash, rebase or "
+        "bisect in it. First, from your own worktree, run "
+        f"`{native_review.prepare_command(review_id, worktree)}`: it refuses in the session's "
+        "checkout and otherwise detaches your worktree at the reviewed head. If it exits non-zero, "
+        "stop, do not invoke the review, and report its output. "
+        f"Invoke the Skill tool with skill `{NATIVE_REVIEW_SKILL}` and args `{args}` — exactly "
+        "those, adding and changing nothing. If the result says it is running in the "
+        "background, stay alive until its completion notification arrives (start a "
+        "background `sleep 900`, and stop it once the notification lands). Then write the "
+        "review's complete text, everything after `Result:`, verbatim, with the Write tool to "
+        f"the path `prepare` printed, `.prawduct/.native-reviews/{review_id}.md` under your own "
+        "worktree's root and never in the session's checkout (the harness refuses that Write "
+        "from your worktree), and run "
+        f"`{native_review_record_command(review_id, worktree)}`: it copies the text into the "
+        "session's checkout and records it. Edit nothing else and fix nothing. Report one "
+        "line: that command's output."
+    )
+
+
+def native_review_record_command(review_id: str, worktree: "str | None" = None) -> str:
+    """The record command, naming the binary that ran this dispatch. The one on
+    PATH may be another build (a framework checkout runs its own), and the record
+    must be written by the code that wrote the sidecar it reads. Given the
+    session's ``worktree`` it runs there (``native_review.record_command``)."""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    return native_review.record_command(review_id, worktree)
+
+
+
+#: Who the range's unreachable commits say made them. Passed explicitly, so
+#: naming a range never depends on the repo's or the user's git identity.
+_NATIVE_RANGE_IDENTITY = {
+    "GIT_AUTHOR_NAME": "prawduct", "GIT_AUTHOR_EMAIL": "prawduct@invalid",
+    "GIT_COMMITTER_NAME": "prawduct", "GIT_COMMITTER_EMAIL": "prawduct@invalid",
+}
+
+
+def native_review_range(
+    project_dir: Path, base_commit: "str | None", base_tree: "str | None",
+    head_commit: "str | None", head_tree: "str | None", review_id: str,
+) -> dict:
+    """The commit range the native review reads for this interval:
+    ``{"status": "ok", "base", "head", "synthetic"}`` or
+    ``{"status": "error", "reason"}``.
+
+    The native review takes a commit range, and an inner review usually reads a
+    working tree no commit holds. Then both ends are named by unreachable
+    commits — the base tree's (or the real base commit), and the head tree's
+    parented on it — so ``git diff base...head`` is exactly the interval the
+    Critic reads. They are objects only: no ref, index or file moves, and
+    ``git gc`` collects them; nothing reads them after the run."""
+    if base_commit and head_commit:
+        return {"status": "ok", "base": base_commit, "head": head_commit, "synthetic": False}
+    if not head_tree or not (base_commit or base_tree):
+        return {"status": "error", "reason": "the interval has no base or head to name as a range"}
+    env = {**os.environ, **_NATIVE_RANGE_IDENTITY}
+    message = f"prawduct: the tree Critic review {review_id} read"
+
+    def commit(tree: str, parent: "str | None") -> "tuple[str | None, str]":
+        args = ["commit-tree", "--no-gpg-sign", "-m", message]
+        if parent:
+            args += ["-p", parent]
+        rc, out, err = evidence.run_git(project_dir, *args, f"{tree}^{{tree}}", env=env)
+        return (out, "") if rc == 0 and out else (None, err or "git commit-tree printed nothing")
+
+    base = base_commit
+    if not base:
+        base, err = commit(base_tree, None)
+        if base is None:
+            return {"status": "error", "reason": f"the base tree could not be named: {err}"}
+    head, err = commit(head_tree, base)
+    if head is None:
+        return {"status": "error", "reason": f"the head tree could not be named: {err}"}
+    return {"status": "ok", "base": base, "head": head, "synthetic": True}
+
+
+def native_review_block(
+    review_id: str, worktree: str, base_commit: str,
+    head_commit: str, reviewer_model: "str | None", *, mode: str = "cumulative",
+    synthetic_range: bool = False,
+) -> dict:
+    """The manifest's ``native_review`` block: everything the coordinator
+    dispatches, derived here. ``model`` is the reviewers' model (null means
+    the wrapper inherits the session's, as they do), because a comparison
+    between instruments on different models measures the models. ``mode`` and
+    ``synthetic_range`` ride to the sidecar, so the record says what the run
+    was paired with. Where the text lands is not in it: ``record`` derives the
+    session-side path (``native_review.text_path``) and the prompt names only
+    the wrapper's own."""
+    args = f"{NATIVE_REVIEW_LEVEL} {base_commit}...{head_commit}"
+    return {
+        "skill": NATIVE_REVIEW_SKILL,
+        "level": NATIVE_REVIEW_LEVEL,
+        "mode": mode,
+        "synthetic_range": synthetic_range,
+        "args": args,
+        "model": reviewer_model,
+        "prompt": native_review_prompt(review_id, worktree, args),
+        "dispatched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def native_review_line(manifest: dict) -> "str | None":
+    """The dispatch line ``critic-begin`` prints when the manifest pairs a native
+    review, or ``None``. The fork acts on it in the same message as the reviewers;
+    nothing about the pairing is the fork's to decide."""
+    native = manifest.get("native_review")
+    if not native:
+        return None
+    model = (
+        f"model `{native['model']}`" if native.get("model")
+        else "no `model` (it inherits yours, as the reviewers do)"
+    )
+    return (
+        "native review paired (#1130) — in the same message as the reviewers (or, "
+        "single-pass, before you start reviewing), dispatch ONE general-purpose Agent, "
+        'in the background, with `isolation: "worktree"` (it must never run in this '
+        f"checkout), with {model} and the manifest's `native_review.prompt` "
+        "verbatim. Do not wait for it, read its result or mention it in your review: "
+        "consolidation never waits for it, and it records itself."
+    )
+
+
+def _validate_native_review(block) -> "tuple[bool, str]":
+    if not isinstance(block, dict):
+        return False, "'native_review' must be an object or absent"
+    for key in ("skill", "level", "args", "prompt", "dispatched_at"):
+        if not _nonempty_str(block.get(key)):
+            return False, f"'native_review.{key}' must be a non-empty string"
+    if block.get("model") is not None and not _nonempty_str(block.get("model")):
+        return False, "'native_review.model' must be a non-empty string or null"
+    if block.get("mode", "cumulative") not in ("cumulative", *NATIVE_REVIEW_INNER_MODES):
+        return False, "'native_review.mode' must be a mode that pairs"
+    if not isinstance(block.get("synthetic_range", False), bool):
+        return False, "'native_review.synthetic_range' must be a boolean"
+    tokens = block["args"].split()
+    if tokens[0] != block["level"]:
+        return False, "'native_review.args' must open with its level, explicitly"
+    forbidden = sorted(set(tokens) & set(NATIVE_REVIEW_FORBIDDEN))
+    if forbidden:
+        return False, f"'native_review.args' carries a forbidden argument: {', '.join(forbidden)}"
+    return True, ""
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
     chosen_by: str | None = None,
-    chunk: str | None = None,
     scope: str | None = None,
     tier: str | None = None,
     force: bool = False,
     chunks: "list[str] | None" = None,
+    session_model: str | None = None,
 ) -> dict:
     """Derive and write the dispatch manifest for one review. All code.
 
+    **Which model the reviewer runs on.** ``session_model`` is the model the
+    dispatcher says it runs as; the manifest's ``reviewer_model`` is
+    :func:`model_tier.reviewer_model_for` of it — ``None`` (no override; the
+    reviewer inherits the session's model) or the ceiling alias. Without one the
+    cap applies and a note says so. ``tier`` never moves it.
+
     **Which chunks the review names (ST8, #1051).** ``chunks`` is the declared
-    set; ``chunk`` is its one-element alias for one release (``chunks is None``
-    and ``chunk`` given → ``[chunk]``). The code-derived proposal,
+    set. The code-derived proposal,
     ``chunks_proposed``, is :func:`plan_status.chunk_proposal` over this
     dispatch interval's ``files_changed`` (``chunk`` mode: the open chunks whose
     Deliverables it touches; ``final``/``cumulative``: those and the open
@@ -2976,9 +3677,8 @@ def begin_review(
     error path) before the tree is captured; a declared set that leaves the
     proposal is recorded as declared, with a ``WARNING:`` note, so the edit is
     on the record and never silent. Both lists ride the manifest in plan order
-    (ids as the plan prints them), and ``chunk`` there is ``chunks[0]`` or
-    ``None``. No plan to grade (an unbound checkout): ``chunks == []``,
-    ``chunks_proposed == []``, ``chunk`` ``None``, and a declared set is noted
+    (ids as the plan prints them). No plan to grade (an unbound checkout):
+    ``chunks == []``, ``chunks_proposed == []``, and a declared set is noted
     as dropped.
 
     Returns ``{"status": "ok", "id", "roster", "path", "notes": [...],
@@ -2998,17 +3698,32 @@ def begin_review(
     :func:`_round_budget_verdict` for what bounds the count when lineage cannot. The
     outstanding non-blocking findings are auto-accepted and a census is rendered
     with the refusal; BLOCKING is untouched and still blocks, and
-    ``verify-resolutions`` is never refused, so the loop can end but the gate
-    can never be opened by ending it.
-    ``force=True`` dispatches anyway. A refusal also carries ``anchor`` (the tree
+    ``verify-resolutions`` is never refused by the round budget, so the loop
+    can end but the gate can never be opened by ending it.
+    ``force=True`` dispatches anyway.
+
+    ``{"status": "precondition-failed", "reason"}`` — the CLI exits 7 — when
+    ``mode_token == "verify-resolutions"`` and saved test evidence exists but
+    is not current (:func:`_stale_test_evidence`; ``reason`` is
+    ``gates.tests_are_current``'s, verbatim). Checked right after the in-flight
+    guard, so nothing is derived, written or marked; one ``guard-refusal``
+    fact is appended. Distinct from ``no-review-needed``: there is something
+    to review, which a reviewer would only report the suite stale on. The
+    refusal carries ``remedy`` (``gates.suite_remedy``'s: wait for a run in
+    progress, else run the suite), then the same mode again; ``force=True`` dispatches
+    anyway. Absent evidence does not refuse. A refusal also carries ``anchor`` (the tree
     it graded, in words) and ``excluded_wip`` (judgeable uncommitted files that
     tree does not contain) — without them "no judgeable file" is true of the
     interval and silent about the repo, which reads as "nothing to do" when it
     means "your work is not in the interval I chose".
 
-    A ``scope-widened`` result also carries ``fallback_mode`` — the full-review
-    mode that covers the widened delta, named in ``reason`` so the re-dispatch
-    does not have to guess it.
+    Every ``verify-resolutions`` demotion carries ``fallback_mode`` — the
+    full-review mode that covers the work (:func:`covering_fallback_mode`),
+    named in ``reason`` so the re-dispatch does not have to guess it: a
+    ``scope-widened`` result (exit 2), and an ``anchor-unusable`` one (exit 1)
+    when the prior anchor is missing, records no ``head_tree``, or cannot be
+    diffed. ``store-unusable`` (exit 6) names no mode, because no review
+    repairs a store.
 
     Per-mode interval (design D8, chunk-03 refinements):
 
@@ -3018,8 +3733,14 @@ def begin_review(
       clean (:func:`working_tree_interval_base` owns the choice; an extended
       base is recorded as ``base_extended_from``); head = the captured working
       tree (D3 temp-index capture; non-mutating).
-    - ``cumulative`` — base = merge-base(resolve-base, HEAD), head = ``HEAD``
-      (the committed bundle; a dirty working tree is noted, not reviewed).
+    - ``cumulative`` — head = ``HEAD`` (the committed bundle; a dirty working
+      tree is noted, not reviewed). base = the last boundary review's tree when
+      :func:`gates.boundary_frontier` finds one (``span: bounded``), else
+      merge-base(resolve-base, HEAD) (``span: full``, with ``span_reason``). A
+      bounded review rates the delta and reads the rest of the bundle as
+      oracle; record-lint and the chunk proposal grade the whole bundle either
+      way. ``--chosen-by`` equal to ``critic_mode.FULL_SPAN_RATIONALE`` (the
+      ``full`` token) asks for the whole bundle.
     - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;
       head is **intent-aware**, because this mode serves two gate targets that
       diverge once the tree is dirty. When content was committed that the prior
@@ -3087,6 +3808,31 @@ def begin_review(
             "reason": active_dispatch_refusal(prawduct_dir, age_s, active),
         }
 
+    # STALE-EVIDENCE PRECONDITION (#724) — verify-resolutions only, and BEFORE
+    # anything is derived: no scope, no tree capture, no anchor read, no
+    # manifest, no marker. That mode rates new findings from the inner BLOCKING
+    # set only, so a stale or red suite the reviewer would report (SKILL.md step
+    # 5) costs a whole round to learn what `test-status` knows for free. The
+    # verdict is `gates.tests_are_current`, the one `test-status` prints — no
+    # second notion of stale is written here. `chunk`/`final`/`cumulative`
+    # review code whose value does not hang on the suite, and are untouched.
+    if mode_token == "verify-resolutions" and not force:
+        stale = _stale_test_evidence(project_dir)
+        if stale is not None:
+            # What to do about it, and the slug, come from one owner
+            # (`gates.suite_remedy`): a run in progress is told to wait, never
+            # to start a second suite on top of the first (#1178 R-4).
+            step = gates.suite_remedy(project_dir)
+            # `reason` is the sink's slug from a closed set (what `stats`
+            # groups on); the verdict's prose rides as `verdict`, never there.
+            _record_guard_refusal(
+                project_dir, "critic-dispatch-stale-evidence",
+                {"mode": mode_token, "verdict": stale,
+                 "branch": gitstate.current_branch(project_dir)},
+                reason=step.state,
+            )
+            return {"status": "precondition-failed", "reason": stale, "remedy": step.remedy}
+
     # Which unit this review is OF: the dispatch's explicit override, else the
     # checkout's work-unit binding — computed in code (`work_unit.resolve`), the
     # one answer every gate and record shares, rather than read off a pointer by
@@ -3132,8 +3878,6 @@ def begin_review(
     # anything is captured, so a typo'd id costs no tree capture. `None` means
     # "nothing declared" — the proposal, computed once the interval is known,
     # stands in for it below.
-    if chunks is None and chunk is not None and str(chunk).strip():
-        chunks = [chunk]
     declared_chunks, chunk_refusal = _declared_chunks(project_dir, graded_plan, chunks)
     if chunk_refusal is not None:
         return chunk_refusal
@@ -3142,6 +3886,8 @@ def begin_review(
             f"no build plan resolves for this review, so the declared chunk(s) {', '.join(map(str, chunks))} "
             "name nothing and the review records `chunks: []`"
         )
+    # The first chunk named, for the readers keyed on one: record-lint, the
+    # review budget, and the `guard-refusal` bodies below.
     chunk = declared_chunks[0] if declared_chunks else None
 
     capture = evidence.capture_tree(project_dir)
@@ -3187,13 +3933,34 @@ def begin_review(
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
     # Findings a THIS-mode review could still resolve. Only verify-resolutions
-    # records resolution facts, so it is the only mode that can carry a nonzero
+    # records resolution facts for an EARLIER review's findings (a review's own
+    # inherited-baseline waivers are written when it consolidates), so it is
+    # the only mode that can carry a nonzero
     # value; for every other mode there is nothing outstanding that running it
     # would clear. Read by the free-interval refusal below, where it is the
     # conjunct that keeps the gate from deadlocking.
     pending_actionable = 0
+    # The blockers the gate still counts at a `verify-resolutions` dispatch's
+    # anchor tree, composed once (#334): they count as actionable below, and the
+    # roll-call the reviewer reads names them. `None` for every other mode, and
+    # when the composition is unavailable — the anchor alone, as before, with
+    # `verify_prior_id` naming that anchor so both readers mean one review.
+    counted_blockers: "list[dict] | None" = None
+    verify_prior_id: "str | None" = None
 
     base_extended_from: "str | None" = None
+    # A `cumulative`'s span (bounded-cumulative design): `bounded` reviews the
+    # delta since the last boundary review (`gates.boundary_frontier`), `full`
+    # the whole bundle. `span_reason` is the decline code when full. The bundle
+    # interval is kept beside the review's own, because the machine relays —
+    # record-lint and the chunk proposal — grade the bundle whatever the span,
+    # and the bundle's other files ride to the reviewer as oracle. Every other
+    # mode leaves these unset and its manifest carries no span.
+    span: "str | None" = None
+    bounded_from: "str | None" = None
+    span_reason: "str | None" = None
+    bundle_base_commit: "str | None" = None
+    bundle_base_tree: "str | None" = None
     # Where a `chunk`/`final` interval started, read at the empty-interval check
     # below: an empty interval whose start is HEAD_COVERED is "the last review
     # already covers HEAD", which is not the same answer as "committed work sits
@@ -3269,24 +4036,67 @@ def begin_review(
         if not capture["clean"]:
             excluded_wip = _judgeable_wip(project_dir, capture)
             dirty_note = _dirty_anchor_note("cumulative", excluded_wip)
+        # Bounded by default, so a repeat cumulative stops re-rating what an
+        # earlier boundary review already rated. The fact over frontier → HEAD
+        # composes with the frontier's own, so the PR gate's verdict is the one
+        # the whole span would reach. `base_reviewed` stays the merge-base: it
+        # is the bundle this review stands for, and what the next repeat's
+        # frontier search compares.
+        from . import critic_mode  # noqa: PLC0415 — lazy; critic_mode imports this module lazily too
+
+        bundle_base_commit, bundle_base_tree = base_commit, base_tree
+        span = SPAN_FULL
+        if (chosen_by or "").strip() == critic_mode.FULL_SPAN_RATIONALE:
+            span_reason = gates.SPAN_FULL_OVERRIDE
+            notes.append(
+                "this cumulative reviews the whole bundle (merge-base → HEAD) because "
+                "the dispatch asked for `full` — the override"
+            )
+        else:
+            frontier = gates.boundary_frontier(project_dir, read=read_store())
+            if frontier["status"] == "bounded":
+                span, bounded_from = SPAN_BOUNDED, frontier["fact_id"]
+                base_commit, base_tree = frontier["head_commit"], frontier["head_tree"]
+                notes.append(
+                    f"this cumulative is bounded: it rates what changed since boundary "
+                    f"review {bounded_from} at {base_commit[:12]}, and reads the rest of "
+                    "the bundle as oracle. Record-lint and the chunk proposal still grade "
+                    "the whole bundle. `/prawduct:critic cumulative full` reviews the "
+                    "whole bundle instead"
+                )
+            else:
+                span_reason = frontier["code"]
+                notes.append(
+                    f"this cumulative reviews the whole bundle (merge-base → HEAD): "
+                    f"{frontier['reason']}"
+                )
     else:  # verify-resolutions
         prior, reason = _prior_review_fact(project_dir, prawduct_dir, read_store())
+        if prior is not None and reason:
+            # A re-derived anchor (#1150): said, so a builder whose cache named
+            # another branch's review knows which findings this pass verifies.
+            notes.append(reason)
         if prior is None:
-            refusal = {"status": "error", "reason": f"no prior review to verify: {reason}"}
             if _store_unusable(read_store()) is not None:
-                # The CLI maps this kind to its own exit, because the skill's
-                # exit-1 row demotes and re-dispatches — a round that cannot
-                # repair a store or update a plugin.
-                refusal["kind"] = "store-unusable"
-            return refusal
+                # Its own kind and exit (6), and no mode: a re-dispatched round
+                # cannot repair a store or update a plugin.
+                return {
+                    "status": "error",
+                    "kind": "store-unusable",
+                    "reason": f"no prior review to verify: {reason}",
+                }
+            return _anchor_unusable(
+                project_dir, capture["head_tree"], notes,
+                f"no prior review to verify: {reason}",
+            )
         prior_body = prior.get("body") or {}
         verify_anchor = prior
         base_tree = prior_body.get("head_tree")
         if not isinstance(base_tree, str) or not base_tree:
-            return {
-                "status": "error",
-                "reason": f"prior review fact {prior.get('id')!r} records no head_tree",
-            }
+            return _anchor_unusable(
+                project_dir, capture["head_tree"], notes,
+                f"prior review fact {prior.get('id')!r} records no head_tree",
+            )
         base_commit = prior_body.get("head_commit")
 
         # Intent-aware head anchor (CRT-7H2W). verify-resolutions serves two gate
@@ -3380,19 +4190,17 @@ def begin_review(
                         "committed delta since the prior review — this fact vouches "
                         "for the WORKING tree, but the cumulative/PR gate targets "
                         "committed HEAD, so it reads `uncovered` until you commit. "
-                        "Commit this tree VERBATIM and no further pass is needed: the "
-                        "commit carries the very tree this one vouched for. Only a "
-                        "selective or further-edited commit leaves a gap to close"
+                        # The post-fix rule's one home (#723), so this note and
+                        # the gates' remedies cannot word it differently.
+                        + gates.POST_FIX_COVERAGE
                     )
         delta = evidence.tree_diff(project_dir, base_tree, head_tree)
         if delta is None:
-            return {
-                "status": "error",
-                "reason": (
-                    f"cannot diff prior reviewed tree {base_tree[:12]} against "
-                    "the current tree (rewritten history?) — anchor unreliable"
-                ),
-            }
+            return _anchor_unusable(
+                project_dir, capture["head_tree"], notes,
+                f"cannot diff prior reviewed tree {base_tree[:12]} against "
+                "the current tree (rewritten history?) — anchor unreliable",
+            )
         prior_files = [
             f for f in (prior_body.get("files_reviewed") or []) if isinstance(f, str)
         ]
@@ -3423,7 +4231,7 @@ def begin_review(
         delta_priced = _ca.judgeable_files(delta)
         prior_priced = _ca.judgeable_files(prior_files)
         if _scope_widened(len(delta_priced), len(prior_priced)):
-            fallback, why = _widened_fallback_mode(
+            fallback, why = covering_fallback_mode(
                 project_dir, capture["head_tree"], committed_differs
             )
             return {
@@ -3444,6 +4252,26 @@ def begin_review(
         actionable = (prior_counts.get("blocking") or 0) + (
             prior_counts.get("warning") or 0
         )
+        # An EARLIER round's blocker the gate still counts is as actionable as
+        # the anchor's: this pass's roll-call names it (#334), and the gate's
+        # remedy routes it here. Not counting it would refuse, as "nothing to
+        # verify", the one pass that can clear it. One the gate no longer counts
+        # (a clean spanning review routed around it) is NOT actionable: counting
+        # it would manufacture the round `no-review-needed` exists to spare.
+        # The prior's own findings are already in `prior_counts`, so they are
+        # excluded by the prior THIS dispatch chose, not by a re-derived anchor.
+        store_facts = read_store().get("facts") or []
+        verify_prior_id = prior.get("id")
+        counted_blockers = gate_counted_blockers(
+            project_dir, store_facts, base_tree, read=read_store()
+        )
+        actionable += sum(
+            1
+            for c in carried_blocking(
+                store_facts, base_tree, None, counted_blockers, anchor_id=verify_prior_id
+            )
+            if c.get("review_id") != verify_prior_id
+        )
         pending_actionable = actionable
         if not delta and not actionable:
             # Name the tree that was compared. Under the tree-inequality anchor
@@ -3458,7 +4286,7 @@ def begin_review(
             # free-interval refusal below: nothing here needs a review. It sat
             # above that path and fell out as a bare error, so it surfaced as
             # exit 1 — and `SKILL.md`'s exit table routes a 1 on
-            # `verify-resolutions` to "re-dispatch per the demotion property",
+            # `verify-resolutions` to a demotion,
             # which here means spending a full `cumulative` on a bundle the gate
             # already reports satisfied. That is a review round manufactured by
             # the framework's own routing.
@@ -3478,7 +4306,8 @@ def begin_review(
                 "status": "no-review-needed",
                 "reason": (
                     "nothing to verify: the prior review has no blocking/warning "
-                    f"findings, and {head_anchor} ({head_tree[:12]}) is the same "
+                    "findings, no earlier review of this branch carries an "
+                    f"unresolved blocker, and {head_anchor} ({head_tree[:12]}) is the same "
                     f"tree it reviewed ({base_tree[:12]})"
                 ),
                 "free_files": [],
@@ -3716,6 +4545,24 @@ def begin_review(
     for f in prior_oracle:
         if f not in files_oracle and f not in files_reviewed:
             files_oracle.append(f)
+    # A bounded cumulative's reviewer reads the rest of the bundle without
+    # rating it: the earlier boundary review rated those files. They ride as
+    # `files_context`, NOT `files_oracle`, because the Records Pass rates the
+    # oracle at the boundary stage; handed over as oracle, the bundle's records
+    # would be re-rated and its code put through a records-only pass, which is
+    # the whole-bundle review this span exists to stop buying.
+    bundle_files: "list[str] | None" = None
+    files_context: list[str] = []
+    if span == SPAN_BOUNDED:
+        bundle_files = evidence.tree_diff(project_dir, bundle_base_tree, head_tree)
+        if bundle_files is None:
+            return {
+                "status": "error",
+                "reason": f"cannot diff the bundle {bundle_base_tree[:12]}..{head_tree[:12]}",
+            }
+        files_context = [
+            f for f in bundle_files if f not in files_reviewed and f not in files_oracle
+        ]
 
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()
@@ -3725,9 +4572,15 @@ def begin_review(
     # proposal is recorded as declared, and said: `chunks_proposed` sits beside
     # it on the fact, so the edit is visible on the record. Resolved BEFORE
     # record-lint, so the deliverables it grades are the chunks the fact names.
+    # The machine relays grade the bundle whatever the span (the owner's
+    # 2026-11-11 ruling on Decision 2), so a bounded review proposes, and
+    # record-lint grades, exactly what a full one would.
+    relay_files = bundle_files if bundle_files is not None else files_changed
+    relay_base_commit = bundle_base_commit if span == SPAN_BOUNDED else base_commit
+    relay_base_tree = bundle_base_tree if span == SPAN_BOUNDED else base_tree
     chunks_proposed, proposal_notes = _proposed_chunks(
-        project_dir, graded_plan, read_store, files_changed, mode_token, verify_anchor,
-        base_commit, head_tree,
+        project_dir, graded_plan, read_store, relay_files, mode_token, verify_anchor,
+        relay_base_commit, head_tree,
     )
     notes.extend(proposal_notes)
     if declared_chunks is None:
@@ -3742,16 +4595,16 @@ def begin_review(
                 "recorded as declared, with the proposal beside them on the fact"
             )
 
-    # Machine-verified record checks, computed HERE so the reviewers are told
-    # the answers rather than re-deriving them (record-class findings were 57%
-    # of one day's review output on 2026-07-29, and none of them needed
-    # judgment). Advisory: the result rides the manifest for the builder, and
-    # nothing downstream gates on it. A lint that cannot run reports itself
+    # Machine-verified record checks, computed HERE so no reviewer re-derives
+    # them (record-class findings were 57% of one day's review output on
+    # 2026-07-29, and none of them needed judgment). The result rides the
+    # manifest, and consolidation rates it into the review
+    # (`record_lint_partial`); it never refuses this dispatch. A lint that cannot run reports itself
     # ``unchecked`` rather than empty — see ``record_lint``. It grades every
     # chunk the fact will name (`chunk_ids`), not only the first.
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
     lint = record_lint.lint_records_safe(
-        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope,
+        project_dir, prawduct_dir, relay_files, relay_base_tree, head_tree, chunk, scope,
         chunk_ids=list(declared_chunks),
     )
 
@@ -3759,8 +4612,8 @@ def begin_review(
     # decline to re-litigate them. Dispositions have been facts for a while;
     # nothing put them where a REVIEWER could see one, so a cumulative
     # dispatched after an `--accept` handed its reviewers a diff and no memory.
-    # Advisory like `record_lint` beside it: it rides the manifest, and nothing
-    # downstream gates on it.
+    # Advisory: it rides the manifest as reviewer input, and nothing downstream
+    # gates on it.
     from . import dispositions  # noqa: PLC0415 — lazy; keeps the import graph flat
 
     try:
@@ -3799,7 +4652,14 @@ def begin_review(
         # it can only do so because the set is named here rather than silently
         # subtracted.
         "files_oracle": files_oracle,
+        # Telemetry only: the reviewer's model follows the session's model and
+        # nothing else, so the risk tier never feeds `reviewer_model` below.
         "tier": tier,
+        # The model every reviewer this review dispatches runs on, or null for
+        # no override (the reviewer inherits the session's model). Dispatch
+        # guidance derived by code from the dispatcher's own model; no gate or
+        # verdict reads it.
+        "reviewer_model": model_tier.reviewer_model_for(session_model),
         "scope": scope,
         "scope_chosen_by": scope_chosen_by,
         "scope_unresolved_cause": scope_unresolved_cause,
@@ -3808,11 +4668,9 @@ def begin_review(
         # yield of the extension, countable from the store.
         "base_extended_from": base_extended_from,
         # The chunks this review names (declared, plan order) and the set the
-        # code proposed for its interval; `chunk` is the first, for readers
-        # older than `chunks` (one release).
+        # code proposed for its interval.
         "chunks": list(declared_chunks),
         "chunks_proposed": list(chunks_proposed),
-        "chunk": chunk,
         "base_reviewed": base_reviewed,
         # Make the resolved target VISIBLE so a wrong-tree review is obvious
         # instead of silent (PDT-WT9K). ``branch`` is None on a detached HEAD.
@@ -3835,6 +4693,11 @@ def begin_review(
         # notice a review that changed the product it was judging.
         "dispatch_tree": capture["tree"],
     }
+    if span is not None:
+        manifest["span"] = span
+        manifest["bounded_from"] = bounded_from
+        manifest["span_reason"] = span_reason
+        manifest["files_context"] = files_context
     # The review STAGE, derived once here from the mode (which chose the
     # interval above) and read everywhere else — the reviewer prompt's signals
     # line, the review fact, the findings cache, the ledger event and
@@ -3848,6 +4711,40 @@ def begin_review(
     # Rendered from the three fields above, so the coordinator copies a line
     # rather than composing one.
     manifest["signals"] = signals_line(manifest)
+    # The paired native review (#1130), decided here once so the dispatch fires
+    # on code's answer and not on a skill remembering to. A development build's
+    # boundary review that does not pair says why, since a silent skip reads as a
+    # native review that never landed; a released build says nothing new.
+    paired, pairing_reason = native_review_pairing(prawduct_dir, mode_token, review_id=review_id)
+    if paired:
+        named = native_review_range(
+            project_dir, base_commit, manifest.get("base_tree"), head_commit,
+            manifest.get("head_tree"), review_id,
+        )
+        if named["status"] == "ok":
+            manifest["native_review"] = native_review_block(
+                review_id, manifest["worktree"], named["base"], named["head"],
+                manifest["reviewer_model"], mode=mode_token, synthetic_range=named["synthetic"],
+            )
+        else:
+            notes.append(f"native review not paired: {named['reason']}")
+    else:
+        from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+        if mode_token == "cumulative" and core.is_dev_build():
+            notes.append(f"native review not paired: {pairing_reason}")
+    # Rendered once: the CLI prints this list to the fork, and a reviewer the
+    # fork hands the review to reads the same list here, since it never sees
+    # the fork's tool output. Absent when no reviewer model is set, because then
+    # the fork reviews inline and its copy is the printed one.
+    directives = dispatch_directives(
+        manifest, read_store().get("facts") or [], counted_blockers,
+        anchor_id=verify_prior_id,
+    )
+    if manifest["reviewer_model"] is not None:
+        manifest["dispatch_directives"] = directives
+    if not _nonempty_str(session_model):
+        notes.append(model_tier.session_model_missing_note("critic-begin"))
     ok, reason = validate_manifest(manifest)
     if not ok:
         # A manifest this function derived failing its own validator is a bug
@@ -3877,6 +4774,20 @@ def begin_review(
     superseded = _mark_cache_superseded(prawduct_dir, review_id)
     pdir.mkdir(parents=True, exist_ok=True)
     atomic_write_text(manifest_path(prawduct_dir), json.dumps(manifest, indent=2))
+    if "native_review" in manifest:
+        # The native run's own record, beside its text: the manifest is deleted
+        # when the Critic consolidates, which may be before the native run ends.
+        # Advice fails soft — an unwritable sidecar costs the experiment one
+        # record, never the Critic its review.
+        from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+        try:
+            native_review.write_dispatch(prawduct_dir, manifest, session_model)
+        except OSError as exc:
+            notes.append(
+                f"native review paired but its dispatch record was not written "
+                f"({exc.__class__.__name__}: {exc}); `native-review record` will refuse it"
+            )
 
     # Start this review's stopwatch — LAST, so the mark attests an interval a
     # reviewer actually spends. Every refusal above returns before here, and a
@@ -3914,6 +4825,7 @@ def begin_review(
         "archived_leftovers": str(archived) if archived else None,
         "superseded_findings": superseded,
         "manifest": manifest,
+        "directives": directives,
     }
 
 
@@ -3937,16 +4849,148 @@ def _str_list(val) -> bool:
     return isinstance(val, list) and all(_nonempty_str(v) for v in val)
 
 
+#: A finding's optional ``scope`` answer (#847 D1). Absent means the reviewer
+#: gave none, which is today's behaviour; ``none`` is an answer.
+FINDING_SCOPES = ("instance", "class", "none")
+
+
+def finding_scope_fields(finding: dict) -> "tuple[dict, list[str]]":
+    """The ``scope`` / ``closure`` / ``members`` a partial finding carries,
+    normalized for the fact, and a warning for each part dropped (#847 D1).
+
+    **Tolerant, never refusing.** These fields are model-written and optional,
+    so a malformed one is dropped and said, and the consolidation goes on —
+    the same posture as ``files``. Dropping fails toward today: a finding
+    whose ``members`` were all dropped is graded as a finding without members.
+
+    A member is ``{id, site, note?}`` with a non-empty ``id`` unique within the
+    finding (a resolution answers members BY id, so a duplicate could not be
+    answered separately) and a non-empty ``site``. A non-string ``note`` is
+    dropped from its member, which is kept. ``scope`` is matched without case,
+    the natural encoding variant; any other value is dropped.
+    """
+    label = evidence.finding_title(finding, "?")
+    out: dict = {}
+    warnings: list[str] = []
+    scope = finding.get("scope")
+    if scope is not None:
+        norm = scope.strip().lower() if isinstance(scope, str) else None
+        if norm in FINDING_SCOPES:
+            out["scope"] = norm
+        else:
+            warnings.append(f"finding {label!r}: scope {scope!r} is not one of "
+                            f"{list(FINDING_SCOPES)}; dropped")
+    closure = finding.get("closure")
+    if closure is not None:
+        if _nonempty_str(closure):
+            out["closure"] = closure.strip()
+        else:
+            warnings.append(f"finding {label!r}: closure is not a non-empty string; dropped")
+    members = finding.get("members")
+    if members is None:
+        return out, warnings
+    if not isinstance(members, list):
+        warnings.append(f"finding {label!r}: members is not a list; dropped")
+        return out, warnings
+    kept: list[dict] = []
+    seen: set[str] = set()
+    for idx, m in enumerate(members):
+        mid = m.get("id") if isinstance(m, dict) else None
+        site = m.get("site") if isinstance(m, dict) else None
+        if not (_nonempty_str(mid) and _nonempty_str(site)):
+            warnings.append(f"finding {label!r}: member[{idx}] {m!r} needs a non-empty "
+                            "`id` and `site`; dropped")
+            continue
+        mid = mid.strip()
+        if mid in seen:
+            warnings.append(f"finding {label!r}: member[{idx}] repeats id {mid!r}; dropped")
+            continue
+        seen.add(mid)
+        entry = {"id": mid, "site": site.strip()}
+        note = m.get("note")
+        if _nonempty_str(note):
+            entry["note"] = note.strip()
+        elif note is not None:
+            warnings.append(f"finding {label!r}: member {mid!r} note is not a string; dropped")
+        kept.append(entry)
+    if kept:
+        out["members"] = kept
+    return out, warnings
+
+
+def resolution_member_answers(resolution: dict) -> "tuple[dict[str, dict], list[str]]":
+    """``id`` → the normalized answer a resolution gives one member, and a
+    warning for each entry dropped (#847 D2).
+
+    An answer is ``{id, disposition: fixed, evidence?}`` or ``{id, disposition:
+    waived, rationale}`` — a waived member carries its reason, as a waived
+    finding does. A malformed entry is dropped, never refused: what it would
+    have answered is then UNANSWERED, so dropping fails closed (the resolution
+    is withheld and names the id) rather than open."""
+    ref = f"{resolution.get('review_id')}/{resolution.get('fid')}"
+    answers: dict[str, dict] = {}
+    warnings: list[str] = []
+    members = resolution.get("members")
+    if members is None:
+        return answers, warnings
+    if not isinstance(members, list):
+        return answers, [f"resolution {ref}: members is not a list; dropped"]
+    for idx, m in enumerate(members):
+        mid = m.get("id") if isinstance(m, dict) else None
+        disposition = m.get("disposition") if isinstance(m, dict) else None
+        if not _nonempty_str(mid) or not isinstance(disposition, str) or (
+            disposition not in _RESOLUTION_DISPOSITIONS
+        ):
+            warnings.append(f"resolution {ref}: member[{idx}] {m!r} needs an `id` and a "
+                            f"`disposition` in {sorted(_RESOLUTION_DISPOSITIONS)}; dropped")
+            continue
+        mid = mid.strip()
+        entry = {"id": mid, "disposition": disposition}
+        if disposition == "waived":
+            if not _nonempty_str(m.get("rationale")):
+                warnings.append(f"resolution {ref}: member {mid!r} is waived with no "
+                                "`rationale`; dropped")
+                continue
+            entry["rationale"] = m["rationale"].strip()
+        elif _nonempty_str(m.get("evidence")):
+            entry["evidence"] = m["evidence"].strip()
+        answers.setdefault(mid, entry)
+    return answers, warnings
+
+
+def _warn_dropped(warnings: "list[str]") -> None:
+    """Say each dropped part on stderr, the channel consolidation's other
+    normalisations speak on; ``validate-partial`` prints the same lines to the
+    reviewer, the reader who can still rewrite the field."""
+    for line in warnings:
+        print(f"critic-consolidate: {line}", file=sys.stderr)
+
+
+def partial_scope_warnings(data: dict) -> "list[str]":
+    """Every drop :func:`finding_scope_fields` and
+    :func:`resolution_member_answers` would make on this partial — what
+    ``validate-partial`` shows the reviewer while it can still fix the file."""
+    warnings: list[str] = []
+    for f in data.get("findings") or []:
+        if isinstance(f, dict):
+            warnings += finding_scope_fields(f)[1]
+    for r in data.get("resolutions") or []:
+        if isinstance(r, dict):
+            warnings += resolution_member_answers(r)[1]
+    return warnings
+
+
 def _validate_observations(observations) -> tuple[bool, str]:
     """Validate a partial's optional ``observations`` array.
 
-    An observation is what an inner-stage pass demoted (``verify-resolutions``
-    first; every inner-stage mode once rigor became stage-keyed): the reviewer
-    would have rated it below BLOCKING, or outside the inner BLOCKING set, so it
-    is not a finding and no gate ever reads it. It is recorded anyway, for two reasons the prose destination
-    could not serve — the builder can ANSWER one (``prawduct-hook disposition``
-    joins on its id), and the demotion's own yield becomes a query over the
-    store instead of a count the reviewer asserts about itself.
+    An observation is what a reviewer rated below a finding: at the inner stage
+    anything outside the inner BLOCKING set, and at every stage what it would
+    once have rated NOTE. It is not a finding, no gate reads it, and it needs no
+    disposition. It is recorded anyway, for what the prose destination could not
+    serve — an id a later verify pass can name (``prawduct-hook disposition``
+    still joins on it, for a builder who chooses to answer one), and the
+    demotion's own yield becomes a query over the store instead of a count the
+    reviewer asserts about itself.
 
     **Shape mirrors a finding minus its severity**, deliberately: the reviewer
     writes both arrays in one sitting, and a second vocabulary for the same
@@ -3959,10 +5003,11 @@ def _validate_observations(observations) -> tuple[bool, str]:
     a contradiction in the record — the directive that produces observations
     says anything BLOCKING stays a finding — and the fail-closed answer to a
     record that contradicts itself is to refuse the whole consolidation rather
-    than to pick a half to believe. A lesser ``severity`` is tolerated and NOT
-    carried: every observation is below-blocking by construction, so persisting
-    a rating would only invite the census to re-sort on it, which is the
-    gradient the demotion exists to flatten.
+    than to pick a half to believe. A lesser ``severity`` is tolerated here: at
+    the boundary a ``warning`` one is promoted into ``findings`` before the
+    merge (``promote_rated_observations``), and any other is NOT carried —
+    persisting a rating on an observation would only invite the census to
+    re-sort on it.
     """
     if observations is None:
         return True, ""
@@ -3994,20 +5039,29 @@ def validate_partial(data) -> tuple[bool, str]:
     """Validate a single reviewer partial.
 
     Schema: ``{role, goals, dispatch_id, commit_reviewed, model?,
-    duration_seconds?, findings:[{name, goal, severity, recommendation, files?}],
-    resolutions?:[{review_id, fid, disposition, rationale?}], summary}``.
+    duration_seconds?, findings:[{name, goal, severity, recommendation, files?,
+    failed_tests?, scope?, closure?, members?}],
+    resolutions?:[{review_id, fid, disposition, rationale?, members?}], summary}``.
     ``model``/``duration_seconds`` are nullable telemetry; everything else is
-    load-bearing. ``severity`` must be one of the known vocabulary so a typo
-    can't silently persist as a non-blocking finding. ``resolutions`` is the
+    load-bearing. ``severity`` must be ``blocking`` or ``warning`` so a typo
+    can't silently persist as a non-blocking finding; ``note`` is tolerated and
+    recorded as an observation (``demote_note_findings``). ``resolutions`` is the
     verify-resolutions judgment payload (D5): ``disposition`` is ``fixed`` or
     ``waived``, and ``waived`` REQUIRES a non-empty ``rationale`` (R7 — a
     waiver carries its justification).
 
-    ``observations`` is what an inner-stage pass DEMOTED — validated by
-    :func:`_validate_observations`, and refused outright by :func:`consolidate`
-    on a boundary-stage dispatch. Demotion is a stage rule; an array outside
-    ``findings`` that the boundary could write would be a severity-laundering
-    path.
+    ``scope`` / ``closure`` / ``members`` on a finding and ``members`` on a
+    resolution (#847) are NOT checked here: they are optional and model-written,
+    so a malformed one is dropped with a warning downstream
+    (:func:`finding_scope_fields`, :func:`resolution_member_answers`) and never
+    refuses the partial.
+
+    ``observations`` is what a reviewer rated below a finding — validated by
+    :func:`_validate_observations`, from any stage. A ``blocking`` entry is
+    refused there; at the boundary an entry rated ``warning`` is promoted into
+    ``findings`` by :func:`consolidate`. An entry that carries no rating is
+    taken as an observation — a WARNING its reviewer left unrated is not
+    detectable here.
 
     ``dispatch_id`` is the id of the review that dispatched this reviewer, and
     it is deliberately NOT named ``review_id``: ``resolutions[].review_id`` in
@@ -4048,10 +5102,14 @@ def validate_partial(data) -> tuple[bool, str]:
         for field in ("name", "goal", "severity", "recommendation"):
             if not _nonempty_str(f.get(field)):
                 return False, f"finding[{idx}] missing/empty '{field}'"
-        if f["severity"] not in _SEVERITY_RANK:
+        # `note` is not a finding severity, and it is not refused either: a
+        # reviewer on an older protocol still writes one, and refusing the
+        # partial would cost a whole review round to move an item that gates
+        # nothing. `demote_note_findings` records it as an observation.
+        if f["severity"] not in _FINDING_SEVERITIES and f["severity"] != "note":
             return False, (
                 f"finding[{idx}] severity {f['severity']!r} not in "
-                f"{sorted(_SEVERITY_RANK)}"
+                f"{list(_FINDING_SEVERITIES)}"
             )
         # ``files`` is optional attribution, normalized away downstream: a
         # blank/non-string element is dropped in ``merge_findings`` and an
@@ -4062,6 +5120,18 @@ def validate_partial(data) -> tuple[bool, str]:
         # META-finding otherwise bricked every review).
         if "files" in f and not isinstance(f["files"], list):
             return False, f"finding[{idx}] 'files' must be a list"
+        # The test ids a test-failure finding rates, which consolidate matches
+        # against the base tree's run to waive an inherited failure. Unlike
+        # ``files`` a bad element is refused, not dropped: a dropped id would
+        # shrink the set the waiver must cover, so the waiver could fire on
+        # less than the reviewer named. Absent, null and ``[]`` all mean "names
+        # no test".
+        tests = f.get("failed_tests")
+        if tests is not None and not _str_list(tests):
+            return False, (
+                f"finding[{idx}] 'failed_tests' must be a list of non-empty "
+                "strings (the failing ids from .test-evidence.json)"
+            )
     ok, why = _validate_observations(data.get("observations"))
     if not ok:
         return False, why
@@ -4105,10 +5175,12 @@ def validate_manifest(data) -> tuple[bool, str]:
     non-empty ``files_reviewed``, ``files_changed`` (a list, possibly empty —
     a same-tree verify-resolutions pass legitimately changes nothing).
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
-    has no commit), ``chunks``/``chunks_proposed`` (lists of ids; ``chunk``
-    must then be ``chunks[0]`` or null),
-    ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
-    ``base_reviewed``, ``worktree``/``branch`` (visibility fields; ``branch`` is
+    has no commit), ``chunks``/``chunks_proposed`` (lists of ids),
+    ``tier``/``scope``/``scope_chosen_by``/``chunk`` (a pre-``chunks``
+    manifest's bare id)/``model``/
+    ``base_reviewed``, ``reviewer_model`` (the model a reviewer is dispatched
+    on; null for no override), ``dispatch_directives`` (a list, possibly empty,
+    written only beside a reviewer model), ``worktree``/``branch`` (visibility fields; ``branch`` is
     None on a detached HEAD — PDT-WT9K). Optional and typed: ``stage``
     (``inner``/``boundary`` — the severity rule keys on it), ``judgeable_files``,
     ``chunk_type`` and ``signals`` (the code-rendered reviewer line), absent
@@ -4181,24 +5253,24 @@ def validate_manifest(data) -> tuple[bool, str]:
     # the fact and a reader that walks it must not meet a non-string.
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
+    # Read by a bounded cumulative's reviewer, never rated on its own merits. Typed for the
+    # same reason as the oracle: a reviewer walks it.
+    if data.get("files_context") is not None and not _str_list(data.get("files_context")):
+        return False, "'files_context' must be a list of non-empty strings or null"
     # The chunks the review names and the code's proposal (ST8). Optional, as a
     # manifest restored from before the fields still consolidates (its fact then
-    # carries `chunk` alone, which `plan_status.fact_chunks` reads); typed when
-    # present, because `chunks` reaches the fact `plan_status.chunk_states`
-    # certifies from, and `chunk` must be its first element there.
+    # carries the bare `chunk` it was written with, which
+    # `plan_status.fact_chunks` reads); typed when present, because `chunks`
+    # reaches the fact `plan_status.chunk_states` certifies from. The manifest
+    # no longer writes `chunk`, and beside `chunks` nothing reads one, so it is
+    # not cross-checked — only typed, below, for the pre-`chunks` manifest.
     for key in ("chunks", "chunks_proposed"):
         if data.get(key) is not None and not _str_list(data.get(key)):
             return False, f"'{key}' must be a list of non-empty strings or null"
-    if isinstance(data.get("chunks"), list) and data.get("chunk") != (
-        data["chunks"][0] if data["chunks"] else None
-    ):
-        return False, (
-            f"'chunk' ({data.get('chunk')!r}) must be the first of 'chunks' "
-            f"({data['chunks']!r}), or null when 'chunks' is empty"
-        )
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
-                "chunk_type", "signals", "dispatch_tree"):
+                "chunk_type", "signals", "dispatch_tree", "reviewer_model",
+                "bounded_from", "span_reason"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
@@ -4206,6 +5278,27 @@ def validate_manifest(data) -> tuple[bool, str]:
     # before the field existed still consolidates — and typed because the value
     # reaches the fact and the severity rule keys on it: a misspelt stage must
     # fail here, not read as "neither stage" downstream.
+    # The reviewer's directives, rendered at dispatch when a reviewer model is
+    # set. Typed because a handed-off reviewer reads each entry as an
+    # instruction; an empty list is a mode owed none.
+    if data.get("dispatch_directives") is not None and not _str_list(data.get("dispatch_directives")):
+        return False, "'dispatch_directives' must be a list of non-empty strings or null"
+    # The paired native review's block, when a development build's boundary
+    # review wrote one. Validated because the coordinator hands its arguments to
+    # the host verbatim: a manifest carrying a writing flag or a reserved level
+    # must fail here, not run.
+    if "native_review" in data:
+        ok, reason = _validate_native_review(data["native_review"])
+        if not ok:
+            return False, reason
+    # A cumulative's span. Optional, as a manifest from before the field still
+    # consolidates; typed, because `bounded` without its frontier is a fact
+    # nobody could trace back to the review it extends.
+    span = data.get("span")
+    if span is not None and span not in SPAN_VALUES:
+        return False, f"'span' must be one of {sorted(SPAN_VALUES)} or null, got {span!r}"
+    if span == SPAN_BOUNDED and not _nonempty_str(data.get("bounded_from")):
+        return False, "'bounded_from' must name the frontier review when 'span' is bounded"
     stage = data.get("stage")
     if stage is not None and stage not in STAGE_VALUES:
         return False, f"'stage' must be one of {sorted(STAGE_VALUES)} or null, got {stage!r}"
@@ -4715,15 +5808,29 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     with sequential ``fid``s assigned in merge order (deterministic: roster
     order × each partial's findings order).
 
-    Each partial finding ``{name, goal, severity, recommendation, files?}``
-    maps to ``{fid, goal, severity, title, recommendation, files?}`` — the
+    Each partial finding ``{name, goal, severity, recommendation, files?,
+    failed_tests?}`` maps to ``{fid, goal, severity, title, recommendation,
+    files?, failed_tests?}`` — the
     reviewer's ``name`` becomes the fact ``title`` (the field the coverage
     algebra surfaces for unresolved blockers; the derived cache renders it
     as the record ``summary``). The ``fid`` is what resolution facts join on
     (D5) — a blocking finding without one could never be resolved, so the
     writer always assigns them.
+
+    ``check`` is the control the finding is a firing of, derived here from
+    the title token by :func:`control_checks.derive_check` and never written
+    by a reviewer (#548). Absent, never ``null``, when the title opens with
+    no registered token.
+
+    ``scope``, ``closure`` and ``members`` (#847 D1) are carried as
+    :func:`finding_scope_fields` normalizes them, each absent when the
+    reviewer gave none, so an old-shape finding merges byte-identically. A
+    dropped part is said on stderr.
     """
+    from . import control_checks  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
     merged: dict[tuple, dict] = {}
+    dropped: list[str] = []
     for partial in partials:
         for f in partial.get("findings", []):
             # Normalize optional attribution to non-empty string paths, so a
@@ -4742,15 +5849,255 @@ def merge_findings(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            check = control_checks.derive_check(f["name"])
+            if check is not None:
+                entry["check"] = check
+            tests = [t.strip() for t in (f.get("failed_tests") or [])]
+            if tests:
+                # What `_waive_inherited_failures` matches against the base run.
+                entry["failed_tests"] = tests
+            if partial.get("role") == RECORD_LINT_SOURCE:
+                entry["source"] = RECORD_LINT_SOURCE
+            scope_fields, warnings = finding_scope_fields(f)
+            entry.update(scope_fields)
+            dropped += warnings
             existing = merged.get(key)
             if existing is None or (
                 _SEVERITY_RANK[f["severity"]] > _SEVERITY_RANK[existing["severity"]]
             ):
                 merged[key] = entry
+    _warn_dropped(dropped)
     findings = list(merged.values())
     for idx, entry in enumerate(findings, start=1):
         entry["fid"] = f"R-{idx}"
     return findings
+
+
+#: The goal a record-lint result is filed under — the one that owns record
+#: checks (`review-protocol.md` Goal 2).
+RECORD_LINT_GOAL = "Nothing Is Missing"
+
+#: The pseudo-role the record-lint partial carries, and the ``source`` its
+#: findings and observations are stamped with in the fact. No roster names this
+#: role, so no reviewer partial can carry it: only consolidation can mint an
+#: entry a later review treats as a prior record-lint result.
+RECORD_LINT_SOURCE = "record-lint"
+
+
+_TRAILING_LINE_RE = re.compile(r":\d+$")
+
+
+def _lint_identity(entry: dict) -> "tuple[str, str]":
+    """A record-lint result's identity: its check and FILE, and its
+    recommendation (every detail, in record-lint's order). A materially changed
+    result changes the second half, so it is a new result.
+
+    The line the title shows is not part of it. Plans and change fragments are
+    edited throughout a build, so an answered result whose line merely moved
+    would otherwise come back as new every time something above it changed.
+    Two results of one check with identical details at different lines of one
+    file therefore share an answer, which is the reading an owner who accepted
+    one of them meant."""
+    return (
+        _TRAILING_LINE_RE.sub("", evidence.finding_title(entry)),
+        entry.get("recommendation") or "",
+    )
+
+
+def answered_lint_results(store: "dict | None", scope: "str | None") -> dict:
+    """``identity`` → a sentence naming the answer already given to an identical
+    record-lint result, split by what that answer may suppress::
+
+        {"warning": {identity: sentence}, "blocking": {identity: sentence}}
+
+    **A WARNING is answered by the newest disposition being an accept or a
+    file** — the answers ``prior_dispositions`` hands a reviewer so it declines
+    to re-raise. A ``fixed`` disposition answers nothing here: the lint still
+    reporting the identical result is the evidence it was not fixed.
+
+    **A BLOCKING result is answered only by a ``waived`` resolution fact**, the
+    one record ``coverage_algebra.resolution_index`` accepts as clearing a
+    blocker that was not fixed. A disposition never clears a blocker at the
+    gate, owner ruling or not, so letting one suppress the re-raise would be a
+    second, weaker way to clear one.
+
+    Scoped like ``prior_dispositions``: with a scope, only reviews recorded
+    under the same scope count.
+    """
+    from . import dispositions  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    answered: dict = {"warning": {}, "blocking": {}}
+    if not isinstance(store, dict) or store.get("status") == "error":
+        return answered
+    review_scope = {
+        f.get("id"): (f.get("body") or {}).get("scope")
+        for f in evidence.facts_of_kind(store, "review")
+    }
+    latest = dispositions.disposition_index(store)
+    resolutions = dispositions.resolution_detail_index(store)
+    for key, finding in evidence.findings_index(store).items():
+        if finding.get("source") != RECORD_LINT_SOURCE:
+            continue
+        if scope is not None and review_scope.get(key[0]) != scope:
+            continue
+        identity = _lint_identity(finding)
+        ref = f"{key[0]}/{key[1]}"
+        if resolutions.get(key) in (
+            dispositions.STATE_WAIVED, dispositions.STATE_WAIVED_INHERITED
+        ):
+            answered["blocking"].setdefault(
+                identity, f"already waived by a resolution of {ref}"
+            )
+        fact = latest.get(key)
+        body = (fact or {}).get("body") or {}
+        action = body.get("action")
+        if action == dispositions.ACCEPT:
+            answered["warning"].setdefault(
+                identity, f"already accepted as {ref}: {body.get('reason') or ''}".rstrip(": ")
+            )
+        elif action == dispositions.FILE:
+            answered["warning"].setdefault(
+                identity, f"already filed as {ref} ({body.get('backlog_id')})"
+            )
+    return answered
+
+
+def record_lint_partial(manifest: dict, store: "dict | None" = None) -> dict:
+    """The dispatch's ``record_lint`` results as a partial-shaped
+    ``{findings, observations}``, rated for this review's stage.
+
+    **This is where a blocking record result gets its force.** No gate reads
+    ``record_lint``: gates read the fact's ``findings``
+    (``coverage_algebra.unresolved_blocking``). A reviewer used to relay each
+    result into its partial, so the force arrived only through that relay; it
+    arrives from here now, at the severity ``record_lint.SEVERITY`` assigns,
+    and nothing depends on a reviewer restating a result the machine computed.
+
+    **One entry per (check, place, severity), carrying every detail.** Several
+    results of one check at one place (missing deliverables on one line, the
+    problems of one fragment, two chunks whose check could not run) would share
+    a title, and the merge keys on the title: all but one detail was lost and
+    the builder met one item per round. Details stay in record-lint's order,
+    so the entry is the same on every run.
+
+    Stage, as the protocol rates everything else: at the boundary every row
+    stands; at the inner stage only ``record_lint.INNER_BLOCKING`` stays a
+    finding and the rest are observations; and a ``verify-resolutions`` pass,
+    whose observations must judge a named fix, carries only the findings.
+
+    **A result already answered is not re-raised** (``answered_lint_results``,
+    over ``store``): it is carried as an observation naming the answer, which a
+    ``verify-resolutions`` pass drops like any observation judging no fix.
+    """
+    from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    mode_token = mode_token_of(manifest.get("mode"))
+    try:
+        stage = stage_of_manifest(manifest)
+    except ValueError:
+        stage = STAGE_BOUNDARY  # an unknown mode rates at full severity: fail closed
+    groups: dict = {}
+    for item in record_lint.graded(manifest.get("record_lint")):
+        severity = item["severity"]
+        if stage == STAGE_INNER and not (
+            severity == "blocking" and item["check"] in record_lint.INNER_BLOCKING
+        ):
+            severity = None
+        group = groups.setdefault(
+            (item["check"], item["where"], severity), {"details": [], "files": []}
+        )
+        detail = item["detail"] or "(no detail)"
+        if detail not in group["details"]:
+            group["details"].append(detail)
+        if item["path"] and item["path"] not in group["files"]:
+            group["files"].append(item["path"])
+    answered = answered_lint_results(store, manifest.get("scope"))
+    findings: list[dict] = []
+    observations: list[dict] = []
+    for (check, where, severity), group in groups.items():
+        details = group["details"]
+        entry = {
+            "name": f"record-lint {check}: {where}",
+            "goal": RECORD_LINT_GOAL,
+            "recommendation": (
+                details[0] if len(details) == 1
+                else "; ".join(f"({n}) {d}" for n, d in enumerate(details, start=1))
+            ),
+            "source": RECORD_LINT_SOURCE,
+        }
+        if group["files"]:
+            entry["files"] = list(group["files"])
+        prior = None
+        if severity is not None:
+            prior = answered["blocking" if severity == "blocking" else "warning"].get(
+                _lint_identity(entry)
+            )
+        if severity is not None and prior is None:
+            findings.append({**entry, "severity": severity})
+        elif mode_token != "verify-resolutions":
+            if prior is not None:
+                entry = {**entry, "recommendation": f"{entry['recommendation']} — {prior}"}
+            observations.append(entry)
+    return {"role": RECORD_LINT_SOURCE, "findings": findings, "observations": observations}
+
+
+def demote_note_findings(partials: list[dict]) -> "tuple[list[dict], int]":
+    """``partials`` with every finding rated ``note`` moved into its partial's
+    ``observations`` (the same entry minus ``severity``), and how many moved.
+
+    At every stage. A note is not a finding, so it is recorded where it gates
+    nothing and is owed no disposition; a `verify-resolutions` pass then keeps
+    it only if it judges a named fix, like any other observation there.
+    """
+    out: list[dict] = []
+    moved = 0
+    for partial in partials:
+        keep, drop = [], []
+        for f in partial.get("findings") or []:
+            if isinstance(f, dict) and f.get("severity") == "note":
+                drop.append({k: v for k, v in f.items() if k != "severity"})
+            else:
+                keep.append(f)
+        if drop:
+            moved += len(drop)
+            partial = {
+                **partial,
+                "findings": keep,
+                "observations": list(partial.get("observations") or []) + drop,
+            }
+        out.append(partial)
+    return out, moved
+
+
+def promote_rated_observations(partials: list[dict]) -> "tuple[list[dict], int]":
+    """``partials`` with every observation rated ``warning`` moved into its
+    partial's ``findings`` at that severity, and how many moved.
+
+    For a BOUNDARY dispatch only, where a WARNING is a finding. The validator
+    tolerates a lesser ``severity`` on an observation and the merge drops it, so
+    without this a rated WARNING parked in ``observations`` closed the review
+    0/0 with its rating gone. Promoting fails toward the stricter reading and
+    costs no round, where refusing the partial would cost one.
+    """
+    out: list[dict] = []
+    moved = 0
+    for partial in partials:
+        keep, lift = [], []
+        for o in partial.get("observations") or []:
+            sev = o.get("severity")
+            if isinstance(sev, str) and sev.strip().lower() == "warning":
+                lift.append({**o, "severity": "warning"})
+            else:
+                keep.append(o)
+        if lift:
+            moved += len(lift)
+            partial = {
+                **partial,
+                "findings": list(partial.get("findings") or []) + lift,
+                "observations": keep,
+            }
+        out.append(partial)
+    return out, moved
 
 
 def observation_about(observation: dict) -> "tuple[str, str] | None":
@@ -4806,8 +6153,12 @@ def merge_observations(partials: list[dict]) -> list[dict]:
     stay unambiguous.
 
     Severity is dropped rather than carried; :func:`_validate_observations`
-    owns that decision and states why.
+    owns that decision and states why. ``check`` is derived as it is there:
+    a control whose firings land mostly as observations (``read-cost:``)
+    would otherwise read as one that rarely fires.
     """
+    from . import control_checks  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
     merged: dict[tuple, dict] = {}
     for partial in partials:
         for o in partial.get("observations") or []:
@@ -4824,6 +6175,11 @@ def merge_observations(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            check = control_checks.derive_check(o["name"])
+            if check is not None:
+                entry["check"] = check
+            if partial.get("role") == RECORD_LINT_SOURCE:
+                entry["source"] = RECORD_LINT_SOURCE
             about = observation_about(o)
             if about is not None:
                 entry["about"] = {"review_id": about[0], "fid": about[1]}
@@ -5031,10 +6387,12 @@ def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
 
 
 def _fact_chunk_fields(manifest: dict) -> dict:
-    """``chunks``, ``chunks_proposed`` and ``chunk`` for a review fact body.
+    """``chunks`` and ``chunks_proposed`` for a review fact body.
 
-    ``chunk`` is ``chunks[0]`` or ``None``. A manifest written before ``chunks``
-    existed gives ``{"chunk": <its chunk>}`` alone: inventing ``chunks`` from it
+    The singular ``chunk`` (``chunks[0]``) is no longer written; facts already
+    in a store keep theirs and :func:`plan_status.fact_chunks` still reads it.
+    A manifest written before ``chunks`` existed gives ``{"chunk": <its chunk>}``
+    alone: inventing ``chunks`` from it
     would claim a declaration nobody made, and
     :func:`plan_status.fact_chunks` reads the bare ``chunk`` the same way.
     """
@@ -5044,12 +6402,15 @@ def _fact_chunk_fields(manifest: dict) -> dict:
     return {
         "chunks": list(chunks),
         "chunks_proposed": list(manifest.get("chunks_proposed") or []),
-        "chunk": chunks[0] if chunks else None,
     }
 
 
 def build_fact_body(
-    manifest: dict, partials: list[dict], *, dispatched_at: "str | None" = None
+    manifest: dict,
+    partials: list[dict],
+    *,
+    dispatched_at: "str | None" = None,
+    store: "dict | None" = None,
 ) -> dict:
     """Assemble the review fact body (design D4) from the manifest interval
     and the merged partials. The derived cache is rendered FROM this body
@@ -5061,7 +6422,12 @@ def build_fact_body(
     measured", and a null would be a value naming the absence, which every
     reader would then have to special-case to keep it out of a real interval.
     """
-    findings = merge_findings(partials)
+    # The record-lint results join last, so reviewer findings keep their fids
+    # and a result a reviewer also raised under the same name merges into one.
+    # `store` is the evidence read before this fact is appended, so a record-lint
+    # result already answered on the record is not re-raised.
+    rated = partials + [record_lint_partial(manifest, store)]
+    findings = merge_findings(rated)
     blocking, warning, note = _severity_counts(findings)
     # Parallel reviewers → wall-clock is the slowest, not the sum. None when no
     # reviewer reported a duration.
@@ -5101,10 +6467,9 @@ def build_fact_body(
         # below: data ABOUT the review, not a finding IN it. It never reaches
         # ``counts``, so it cannot move a verdict, and no gate reads it —
         # ``coverage_algebra`` walks ``findings`` alone. What it buys is an id a
-        # builder can ACCEPT against, so declining an observation stops costing
-        # the reasoning, and a demotion rate that is a query over the store
-        # rather than a number the reviewer asserts about its own output.
-        "observations": merge_observations(partials),
+        # later verify pass can name, and a demotion rate that is a query over
+        # the store rather than a number the reviewer asserts about its own output.
+        "observations": merge_observations(rated),
         "duration_seconds": max(durations) if durations else None,
         "scope": manifest.get("scope"),
         # How the scope was decided, carried so attribution is auditable rather
@@ -5132,10 +6497,16 @@ def build_fact_body(
         # into the fact so it is queryable rather than printed and forgotten
         # (`nonfunctional-requirements.md` § Direction — a control born after
         # 2026-07-29 emits its yield at birth, or it can only ever be defended
-        # on principle instead of retired on evidence). This is data ABOUT the
-        # review, not a finding IN it: it never reaches `counts`, so it cannot
-        # move a verdict, and no gate reads it.
+        # on principle instead of retired on evidence). No gate reads this copy:
+        # its results reach `findings` above, through `record_lint_partial`.
         "record_lint": manifest.get("record_lint"),
+        # A cumulative's span, the review it was bounded from, and why it ran
+        # full when it did — so review-stats can split the two and the decline
+        # codes are countable. Absent on every other mode, and on a fact from
+        # before the fields, which a reader takes as full.
+        "span": manifest.get("span"),
+        "bounded_from": manifest.get("bounded_from"),
+        "span_reason": manifest.get("span_reason"),
     }
     # The dispatch clock, on the one record every worktree of the clone can
     # read. `duration_seconds` above is the reviewers' own estimate; this is
@@ -5280,7 +6651,134 @@ def _uncertified_open_chunks(
     return (mode, open_ids) if open_ids else None
 
 
-def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "list[str]") -> dict:
+def _recorded_branch(fact: dict) -> "str | None":
+    """The branch a fact's writer had checked out (``actor.branch``), or
+    ``None`` when it recorded none — a detached HEAD, a pre-3.8 fact, or a
+    malformed field, all of which ``evidence.append_fact`` and its readers
+    treat as one absent state."""
+    actor = fact.get("actor")
+    branch = actor.get("branch") if isinstance(actor, dict) else None
+    return branch if isinstance(branch, str) and branch else None
+
+
+def _this_readers_facts(facts: list[dict]) -> list[dict]:
+    """Records of this reader's schema only: a newer plugin's record is not
+    this module's to select or render."""
+    return [f for f in facts if isinstance(f, dict) and f.get("schema") == evidence.SCHEMA_VERSION]
+
+
+def select_branch_review(
+    facts: list[dict], branch_commits: "list[str]", branch: "str | None"
+) -> "dict | None":
+    """THE answer to "which review is this branch's": the newest review fact on
+    this branch, or ``None`` when none anchors on it. Pure — it reads its
+    arguments and writes nothing — so the cache writer
+    (:func:`derive_branch_cache`), the verify dispatch and mode inference
+    (both through :func:`verify_anchor`) select identically.
+    ``branch_commits`` is newest first with the merge base LAST
+    (:func:`evidence_notes._branch_commits`'s ``ordered``); ``branch`` is the
+    checked-out branch's name, ``None`` on a detached HEAD.
+
+    Ranked by how far along the branch the anchor sits, then — **at the merge
+    base only** — by whether the review was recorded on ``branch``, then by
+    ``ts`` and store order. The merge base is the one commit in the range that
+    every sibling cut from the same base shares, and a fresh branch's first
+    dirty-tree review anchors there, so commit range alone cannot tell this
+    branch's review from a sibling's that arrived by ingest (#1116). Further
+    along, a commit belongs to this branch and depth decides, whatever branch
+    name a review carries. A preference, not a filter: with no review of its
+    own at the merge base — a renamed branch, a review recorded before
+    ``actor.branch`` existed — the sibling's still answers, as it always did."""
+    facts = _this_readers_facts(facts)
+    depth = {commit: i for i, commit in enumerate(branch_commits)}
+    merge_base = branch_commits[-1] if branch_commits else None
+    on_branch = [
+        (i, f) for i, f in enumerate(evidence.facts_of_kind({"facts": facts}, "review"))
+        if evidence.review_anchor(f.get("body")) in depth
+    ]
+    if not on_branch:
+        return None
+
+    def rank(item: "tuple[int, dict]") -> tuple:
+        index, fact = item
+        anchor = evidence.review_anchor(fact.get("body"))
+        ours = bool(branch) and anchor == merge_base and _recorded_branch(fact) == branch
+        return (-depth[anchor], ours, str(fact.get("ts") or ""), index)
+
+    return max(on_branch, key=rank)[1]
+
+
+def settled_branch_review(project_dir: Path, facts: list[dict]) -> "dict | None":
+    """:func:`select_branch_review`'s answer for the checked-out branch when it
+    SETTLES the question, else ``None``. Read-only, over the same branch range
+    the cache writer and the verify dispatch choose over.
+
+    For a caller that relaxes something on the answer — the interval-extension
+    deferral and the boundary ``cumulative`` check
+    (``critic_mode._newest_branch_review``) — where any doubt must read as "no
+    review", so the relaxation does not happen. ``None`` when the branch range
+    cannot be listed (no merge base resolves, git fails), when no review
+    anchors on the range, and when the owner's answer is its merge-base
+    FALLBACK: a review at the merge base that was not recorded on this branch
+    (a sibling's arriving by ingest, a renamed branch, a fact older than
+    ``actor.branch``, a detached HEAD). The owner keeps that review as the
+    verify anchor because nothing better exists; it does not show this
+    lineage was reviewed. Past the merge base a commit is this branch's, so
+    depth settles it whatever branch name the review carries — which is how a
+    merged delegate branch's review and a nameless fact count."""
+    branch_range = evidence_notes._branch_commits(project_dir)
+    if branch_range.get("status") != "ok":
+        return None
+    ordered = branch_range["ordered"]
+    branch = gitstate.current_branch(project_dir)
+    fact = select_branch_review(facts, ordered, branch)
+    if fact is None:
+        return None
+    at_merge_base = evidence.review_anchor(fact.get("body")) == ordered[-1]
+    if at_merge_base and not (branch and _recorded_branch(fact) == branch):
+        return None
+    return fact
+
+
+def branch_review_record(
+    prawduct_dir: Path, fact: dict, facts: list[dict], *, read: "dict | None" = None
+) -> dict:
+    """The findings record for ``fact``, built without writing it: the one
+    renderer :func:`derive_branch_cache` writes into the cache and the session
+    briefing shows when the single-slot cache still names another review. A
+    verify pass carries the blockers the gate still counts at its anchor's
+    tree, as consolidation carries them (:func:`gate_counted_blockers`).
+
+    ``read`` is the :func:`evidence.read_facts` result ``facts`` came from.
+    Given it (and ``facts`` is its list), the composition goes through the
+    gate's verdict memo over the same facts the gate composes; without it, it
+    is paid cold, which on a large store is a minute and more. SessionStart
+    and mode inference reach this, so every caller holding a read passes it."""
+    usable = _this_readers_facts(facts)
+    body = fact.get("body") or {}
+    if read is not None and read.get("facts") is facts:
+        gate_facts, gate_read = facts, read
+    else:
+        gate_facts, gate_read = usable, None
+    carried = (
+        carried_blocking(
+            usable, body.get("base_tree"), fact.get("id"),
+            gate_counted_blockers(
+                prawduct_dir.parent, gate_facts, body.get("base_tree"), read=gate_read
+            ),
+        )
+        if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
+        else []
+    )
+    return fact_to_cache_record(
+        fact, carried=carried, store={"facts": usable}, prawduct_dir=prawduct_dir
+    )
+
+
+def derive_branch_cache(
+    prawduct_dir: Path, facts: list[dict], branch_commits: "list[str]",
+    *, read: "dict | None" = None,
+) -> dict:
     """Point ``.critic-findings.json`` at the newest review fact anchored on
     this branch, rendering it as consolidation would.
 
@@ -5307,47 +6805,50 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
     order can say that alone — ``ts`` is to the second, and ingest appends in
     the order it reads notes, not the order reviews ran — so they only break
     ties between reviews on one commit. Only records of this reader's schema
-    are considered; a newer plugin's record is not this function's to render."""
+    are considered; a newer plugin's record is not this function's to render.
+
+    **The one answer to "which review is this branch's".** The selection is
+    :func:`select_branch_review`, which :func:`verify_anchor` also asks for the
+    verify dispatch and mode inference, so ingest, dispatch and inference
+    cannot pick three different reviews. This function is the only one of them
+    that writes; the dispatch calls it to re-point the slot when it re-anchors."""
     if critic_marker.review_active(prawduct_dir)[0]:
         return {"status": "skipped", "review": None, "reason": "a review is in flight"}
-    usable = [f for f in facts if isinstance(f, dict) and f.get("schema") == evidence.SCHEMA_VERSION]
-    depth = {commit: i for i, commit in enumerate(branch_commits)}
-    on_branch = [
-        (i, f) for i, f in enumerate(evidence.facts_of_kind({"facts": usable}, "review"))
-        if evidence.review_anchor(f.get("body")) in depth
-    ]
-    if not on_branch:
-        return {"status": "none", "review": None, "reason": "no review anchors on this branch"}
-    fact = max(
-        on_branch,
-        key=lambda item: (-depth[evidence.review_anchor(item[1].get("body"))],
-                          str(item[1].get("ts") or ""), item[0]),
-    )[1]
-    review = str(fact.get("id"))
-    findings_path = prawduct_dir / ".critic-findings.json"
-    try:
-        held = json.loads(findings_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        held = None
-    if isinstance(held, dict) and held.get("fact_id") == review:
-        return {"status": "current", "review": review, "reason": None}
-    body = fact.get("body") or {}
-    carried = (
-        carried_blocking(usable, body.get("base_tree"), fact.get("id"))
-        if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
-        else []
+    usable = _this_readers_facts(facts)
+    fact = select_branch_review(
+        usable, branch_commits, gitstate.current_branch(prawduct_dir.parent)
     )
+    if fact is None:
+        return {"status": "none", "review": None, "reason": "no review anchors on this branch"}
+    review = str(fact.get("id"))
+    findings_path = findings_cache_path(prawduct_dir)
+    held = read_findings_cache(prawduct_dir).record
+    if held is not None and held.get("fact_id") == review:
+        return {"status": "current", "review": review, "reason": None}
     # Validated before it replaces anything: a record no reader trusts is worse
     # than the one it would displace, since they would anchor on it.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     candidate = prawduct_dir / ".critic-findings.json.derived"
-    atomic_write_text(candidate, json.dumps(fact_to_cache_record(fact, carried=carried), indent=2))
+    atomic_write_text(candidate, json.dumps(
+        branch_review_record(
+            prawduct_dir, fact, facts if read is not None and read.get("facts") is facts else usable,
+            read=read,
+        ), indent=2
+    ))
     if not gates.validate_critic_findings(candidate):
         candidate.unlink(missing_ok=True)
         return {"status": "invalid", "review": review,
                 "reason": "the rendered record failed the findings schema"}
     os.replace(candidate, findings_path)
     return {"status": "derived", "review": review, "reason": None}
+
+
+def _native_clause(prawduct_dir: "Path | None", review_id) -> str:
+    if prawduct_dir is None:
+        return ""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    return native_review.next_action_clause(prawduct_dir, review_id)
 
 
 def fact_to_cache_record(
@@ -5358,12 +6859,25 @@ def fact_to_cache_record(
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
     uncertified: "tuple[str, list[str]] | None" = None,
+    *,
+    store: dict,
+    not_waived: "dict[str, str] | None" = None,
+    prawduct_dir: "Path | None" = None,
+    rounds_clause: str = "",
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
     and briefings read it for content; no gate reads it). Carries the source
     ``fact_id`` so staleness is detectable and the verify-resolutions
     dispatch can locate its anchor fact.
+
+    ``store`` (required: a :func:`evidence.read_facts` answer, or ``{"facts":
+    [...]}``) is where the review's inherited-baseline waivers are READ from
+    (:func:`dispositions.inherited_waivers`), never handed in. Consolidation
+    and the ingest path (:func:`derive_branch_cache`) both render through here,
+    so a clone that ingested the review shows the same waivers the reviewing
+    clone wrote: each waived entry is marked ``waived: inherited-baseline``,
+    and the summary and ``next_action`` stop counting it as open.
 
     ``price_sentence`` rides through to :func:`next_action_line`. It is a
     parameter rather than a ledger read here because this function is a pure
@@ -5372,8 +6886,11 @@ def fact_to_cache_record(
     same way and for the same reason — and it must ride, because this record and
     the relayed ``NEXT-ACTION:`` line are two carriers of one sentence, and a
     builder who met them saying different things about the branch would have no
-    way to tell which was computed."""
+    way to tell which was computed. ``rounds_clause`` rides the same way: only
+    consolidation computes it, so a record re-rendered on ingest says nothing
+    about this branch's round count rather than something stale."""
     body = fact.get("body") or {}
+    waived = dispositions.inherited_waivers(store, fact)
     findings = []
     for f in body.get("findings", []):
         entry = {
@@ -5385,15 +6902,33 @@ def fact_to_cache_record(
         }
         if f.get("files"):
             entry["files"] = list(f["files"])
+        # Additive, like `fix_cost`: the review.critic ledger row copies this
+        # record, which is how a control's yield reaches the ledger (#548).
+        if f.get("check"):
+            entry["check"] = f["check"]
+        # Additive (#847): the verify reviewer reads this record as the prior
+        # one, and a member's id is what its resolution answers.
+        for key in ("scope", "closure", "members"):
+            if f.get(key):
+                entry[key] = f[key]
         # Additive key; the schema validator checks required fields only and
         # `--json` readers tolerate unknown ones (api-contract § Direction).
         entry["fix_cost"] = finding_fix_cost(f.get("files"))
+        if f.get("fid") in waived:
+            # So a verify reviewer reading this as the prior record can tell a
+            # waived blocker from an open one. Additive, like `fix_cost`.
+            entry["waived"] = INHERITED_BASELINE_ORIGIN
+        elif f.get("fid") in (not_waived or {}):
+            # Why a finding that named failing tests was not waived as
+            # inherited. Only the consolidating clone knows it (the reason is
+            # computed from its store and git, never persisted), so an
+            # ingesting clone's render simply lacks the key. Additive.
+            entry["not_waived"] = not_waived[f["fid"]]
         findings.append(entry)
     # The builder's only surface for these. Observation ids are assigned HERE,
-    # at consolidation — the reviewer wrote prose and never saw an `O-n` — so a
-    # cache without them leaves the builder told it may ACCEPT an observation
-    # and unable to name one. Additive, and severity-free by construction:
-    # there is nothing to rate.
+    # at consolidation — the reviewer wrote prose and never saw an `O-n` — so
+    # this is where a builder or a later verify pass meets the id. Additive, and
+    # severity-free by construction: there is nothing to rate.
     observations = []
     for o in body.get("observations", []):
         entry = {
@@ -5404,12 +6939,14 @@ def fact_to_cache_record(
         }
         if o.get("files"):
             entry["files"] = list(o["files"])
+        if o.get("check"):
+            entry["check"] = o["check"]
         observations.append(entry)
     counts = body.get("counts") or {}
     blocking = counts.get("blocking", 0)
     warning = counts.get("warning", 0)
     note = counts.get("note", 0)
-    if blocking:
+    if blocking - len(waived) > 0:
         verdict = "Blocking findings must be resolved before proceeding."
     else:
         verdict = "Changes ready to proceed."
@@ -5423,6 +6960,11 @@ def fact_to_cache_record(
         # Rides the cache because the ledger's `review.critic` event copies this
         # record verbatim — `review-stats --json` groups on it (`by_stage`).
         "stage": body.get("stage"),
+        # Beside `stage`, for the same reader: the ledger's copy of this record
+        # is what `review-stats`'s `by_span` groups on, and counts full spans by.
+        "span": body.get("span"),
+        "bounded_from": body.get("bounded_from"),
+        "span_reason": body.get("span_reason"),
         "model": models[0] if models else None,
         "commit_reviewed": body.get("dispatch_commit"),
         "base_reviewed": body.get("base_reviewed"),
@@ -5437,11 +6979,16 @@ def fact_to_cache_record(
         # The builder's copy of the loop-termination rule, computed from the
         # counts just read. See `next_action_line` for why the findings file is
         # the carrier that had a reader and no message.
+        # A paired native review's list (#1130) is named in this one sentence,
+        # which reaches the builder however the review ran, so they work from
+        # both. Here rather than at one caller, so every path that renders this
+        # record from the fact says it; it needs only the review's sidecar.
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
             cost=cost, rides_next_review=rides_next_review, uncertified=uncertified,
-        ),
+            waived=waived, rounds_clause=rounds_clause,
+        ) + _native_clause(prawduct_dir, fact.get("id")),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
         # path. Additive key: `--json` readers tolerate unknown fields.
@@ -5491,7 +7038,8 @@ def dispatch_age_minutes(review_id: str, *, now: datetime | None = None) -> floa
 
 def _incomplete_noop_message(missing: list[str], present: int, total: int,
                              review_id: str,
-                             prawduct_dir: Path | None = None) -> str:
+                             prawduct_dir: Path | None = None,
+                             handed_off: bool = False) -> str:
     """The incomplete no-op with a liveness verdict, not just a partial count.
     Zero partials shortly after dispatch is the NORMAL background-reviewer
     state — say so explicitly, or the caller infers reviewer death from
@@ -5506,13 +7054,20 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
     past-grace advice fires only when EVERY missing role is past the grace
     window on its own effective age (marker age when present, dispatch age
     otherwise): one dead reviewer among live ones converges — the live roles
-    report and leave ``missing``, and the dead one's age keeps growing."""
+    report and leave ``missing``, and the dead one's age keeps growing.
+
+    ``handed_off`` is a single-pass review the fork dispatched to one reviewer
+    (the manifest set ``reviewer_model``): that reviewer writes a started marker
+    and runs in the background like a roster reviewer, and the SubagentStop
+    trigger consolidates it, so it takes the background story, not the
+    fork-consolidates-itself one."""
     age = dispatch_age_minutes(review_id)
     counts = f"{present}/{total} partials present"
     if age is not None:
         counts += f"; dispatched {age:.1f} min ago"
     started: dict[str, float | None] = {}
-    if prawduct_dir is not None and total > 1:
+    dispatched = total > 1 or handed_off
+    if prawduct_dir is not None and dispatched:
         started = {
             role: started_age_minutes(prawduct_dir, role, review_id)
             for role in missing
@@ -5540,10 +7095,10 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
             " — the reviewers may have died. Abandon this review with"
             " `prawduct-hook critic-end`, then re-dispatch."
         )
-    elif total == 1:
-        # Single-pass roster: the reviewer IS the dispatching fork and
-        # consolidates itself — a SubagentStop trigger will never land it, so
-        # the coordinator-roster story would be false here.
+    elif not dispatched:
+        # Single-pass roster reviewed inline: the reviewer IS the dispatching
+        # fork and consolidates itself — a SubagentStop trigger will never land
+        # it, so the background story would be false here.
         line += (
             " The single-pass reviewer (the dispatching fork itself) writes its"
             " partial and consolidates when it finishes — reviews typically take"
@@ -5654,19 +7209,15 @@ def _already_consolidated_note(prawduct_dir: Path) -> str:
     Diagnostics stay advisory (``architecture.md``: advice fails soft — which
     says do not block, not do not report).
     """
-    cache = prawduct_dir / ".critic-findings.json"
-    if not cache.exists():
+    name = FINDINGS_CACHE_NAME
+    read = read_findings_cache(prawduct_dir)
+    if read.state == FINDINGS_ABSENT:
         return ""
-    try:
-        # ValueError covers JSONDecodeError AND the UnicodeDecodeError a
-        # byte-truncated cache raises from read_text() — the case the "must not
-        # crash an informational no-op" contract promises and a narrower
-        # (OSError, JSONDecodeError) missed.
-        record = json.loads(cache.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return f" (`.prawduct/{cache.name}` exists but is unreadable: {exc} — not a clean-review signal.)"
-    if not isinstance(record, dict) or not isinstance(record.get("findings"), list):
-        return f" (`.prawduct/{cache.name}` is not a findings record — not a clean-review signal.)"
+    record = read.record
+    if read.state not in (FINDINGS_OK, FINDINGS_NOT_A_RECORD):
+        return f" (`.prawduct/{name}` exists but is unreadable: {read.reason} — not a clean-review signal.)"
+    if record is None or not isinstance(record.get("findings"), list):
+        return f" (`.prawduct/{name}` is not a findings record — not a clean-review signal.)"
     findings = record["findings"]
     if not findings:
         return ""
@@ -5679,7 +7230,7 @@ def _already_consolidated_note(prawduct_dir: Path) -> str:
     age_note = f", dispatched {age:.0f} min ago" if age is not None else ""
     return (
         f" The newest recorded review ({fact_id}{age_note}) holds {len(findings)}"
-        f" finding(s) — read `.prawduct/{cache.name}`; if they are already"
+        f" finding(s) — read `.prawduct/{name}`; if they are already"
         " dispositioned, this is history, not work." + _BATCH_FIX_DIRECTIVE
     )
 
@@ -5803,11 +7354,660 @@ def _tree_changed_line(body: dict) -> str:
     return f"\nTree changed during the review (builder-attested): {describe_tree_change(changed)}"
 
 
+#: The ``origin`` of a resolution fact consolidate writes for a BLOCKING
+#: test-failure finding the base tree already failed — the one resolution not
+#: written by a ``verify-resolutions`` pass. Its home, and its one reader, is
+#: ``dispositions`` (:func:`dispositions.resolution_detail_index`).
+INHERITED_BASELINE_ORIGIN = dispositions.INHERITED_BASELINE_ORIGIN
+
+
+def _inherited_baseline(project_dir: Path, manifest: dict, store: dict) -> dict:
+    """The tree before the reviewed work, and what its suite run and the
+    reviewed tree's own run say — or why neither can be trusted.
+
+    Returns ``{"reason": str}`` when no waiver may fire, else ``{"run",
+    "base_tree", "inherited", "new"}``: the base-tree run's id, the ids it
+    failed among the reviewed tree's failures and the findings' named ids, and
+    the reviewed tree's failures the base did NOT have (the ones this branch
+    caused).
+
+    The base is ``coverage.resolve_merge_base_tree``'s — the one prelude every
+    gate anchors its span with — and it is refused unless it is genuinely
+    BEFORE the reviewed work. A merge-base is "the tree before this work" only
+    when the work is not in it, so three answers are refused: the moving
+    ``HEAD~1`` fallback (the base is then this branch's own previous commit); a
+    merge-base that is not an ancestor of (or equal to) the review interval's
+    own base commit (work committed straight onto the base branch, where the
+    merge-base is HEAD, the base tree holds the reviewed commits, and the
+    builder's own red record reads as the base's run); and a base tree equal to
+    the reviewed tree. Uncommitted work on a branch cut from its base is the
+    ordinary case and passes: the merge-base is HEAD, but the interval starts
+    there too, so nothing the review judged is in the base tree.
+
+    The reviewed tree's own newest suite run must list EVERY failure (the
+    100-id cap fails closed), because the caller also checks that each failure
+    this branch caused is still answered by an unwaived finding: a reviewer
+    that named only the inherited subset of a mixed red suite must not have the
+    whole suite waived.
+    """
+    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
+
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return {"reason": f"no merge-base to compare against ({resolved['reason']})"}
+    if resolved.get("moving"):
+        return {"reason": (
+            f"the base resolved to the moving {coverage.MOVING_FALLBACK_BASE} "
+            "fallback (no origin/main, main or base_branch:), so the \"base\" is "
+            "this branch's own previous commit — set base_branch: in "
+            ".prawduct/project-state.yaml"
+        )}
+    merge_base = resolved["merge_base"]
+    interval_base = manifest.get("base_commit")
+    if not isinstance(interval_base, str) or not interval_base:
+        return {"reason": (
+            "the review's interval names no base commit, so nothing shows the "
+            "merge-base is before the reviewed work"
+        )}
+    rc, _, _ = evidence.run_git(
+        project_dir, "merge-base", "--is-ancestor", merge_base, interval_base
+    )
+    if rc != 0:
+        rc_head, head, _ = evidence.run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+        where = (
+            "the merge-base is HEAD itself"
+            if rc_head == 0 and head.strip() == merge_base
+            else "the merge-base"
+        )
+        return {"reason": (
+            f"{where} ({merge_base[:12]}), and this review's interval starts "
+            f"before it at {interval_base[:12]}: commits the review judged sit on "
+            f"the base branch {resolved['base_branch']}, so the base tree holds "
+            "the work"
+        )}
+    base_tree = resolved["tree"]
+    if base_tree == manifest["head_tree"]:
+        return {"reason": (
+            f"the merge-base tree {base_tree[:12]} is the reviewed tree, so a "
+            "run on it is a run of this work"
+        )}
+    head_run, why = evidence.newest_suite_run(store, manifest["head_tree"])
+    if head_run is None:
+        return {"reason": f"the reviewed tree's own run cannot vouch: {why}"}
+    head_failed, complete = evidence.run_failed_tests(head_run)
+    if not complete:
+        return {"reason": (
+            f"the reviewed tree's run {head_run['id']} failed "
+            f"{(head_run.get('body') or {}).get('failed')} test(s) but lists "
+            f"{len(head_failed)} id(s) (the 100-id cap) — the unlisted ones may "
+            "be new"
+        )}
+    review = next(
+        (r for r in evidence.facts_of_kind(store, "review") if r.get("id") == manifest["id"]),
+        {},
+    )
+    named = {
+        t for f in coverage_algebra.blocking_findings(review)
+        for t in (f.get("failed_tests") or []) if isinstance(t, str)
+    }
+    run_id, inherited, why = evidence.inherited_failures(
+        store, base_tree, head_failed | named
+    )
+    if run_id is None:
+        # Recording the base run now does not reach back: a waiver is written
+        # only at the consolidation of the review whose finding it waives.
+        return {"reason": (
+            f"no base-tree run to match: {why}. A base run recorded after this "
+            "review serves only later reviews' findings; this one clears through "
+            "verify-resolutions"
+        )}
+    return {
+        "run": run_id,
+        "base_tree": base_tree,
+        "inherited": inherited,
+        "new": head_failed - inherited,
+    }
+
+
+def _waive_inherited_failures(
+    project_dir: Path, manifest: dict, review_id: str, review_anchor: "str | None",
+    refusals: "dict[str, str] | None" = None,
+) -> "list[str] | None":
+    """Waive each BLOCKING finding of ``review_id`` whose failing tests the base
+    tree already failed. Returns the waived fids, or ``None`` when an append
+    failed (the caller fails closed and a retry heals it).
+
+    A finding qualifies only when it is BLOCKING, names a non-empty
+    ``failed_tests``, EVERY id it names failed in :func:`_inherited_baseline`'s
+    base-tree run too, and every failure of the reviewed tree's own run that
+    the base did NOT have is named by a BLOCKING finding of this review that
+    stays unwaived. The finding stays BLOCKING on the review fact; what is
+    written is a ``waived`` resolution fact citing that run (``base_run``), so
+    the record shows both the rating and why it no longer gates. Its id is
+    ``{review_id}:{review_id}:{fid}`` — the resolution-id shape with the review
+    as its own verifier — so a re-run finds it held and appends nothing.
+
+    A finding that named tests and was NOT waived gets one line saying why. It
+    goes into ``refusals`` (fid → reason), which the caller renders onto that
+    finding's ``.critic-findings.json`` entry as ``not_waived`` — the surface a
+    builder reads after any roster, where stderr is lost once consolidation
+    runs inside SubagentStop — and is mirrored on stderr for the log.
+
+    Runs in every mode, after the review fact is appended, because the review
+    is what the waiver resolves: no separate round is owed for a failure the
+    branch did not cause.
+    """
+    store = evidence.read_facts(project_dir)
+    fact = next(
+        (f for f in evidence.facts_of_kind(store, "review") if f.get("id") == review_id),
+        None,
+    )
+    if fact is None:
+        return []
+    candidates = [
+        f for f in coverage_algebra.blocking_findings(fact)
+        if isinstance(f.get("fid"), str)
+        and isinstance(f.get("failed_tests"), list)
+        and f["failed_tests"]
+    ]
+    if not candidates:
+        return []
+    held = {
+        f.get("id"): f for f in evidence.facts_of_kind(store, "resolution")
+    }
+    waived: list[str] = []
+    pending: list[dict] = []
+    for finding in candidates:
+        res_id = f"{review_id}:{review_id}:{finding['fid']}"
+        if res_id in held:
+            _attach_note(project_dir, held[res_id], review_anchor)
+            waived.append(finding["fid"])
+        else:
+            pending.append(finding)
+    if not pending:
+        return waived
+
+    def refuse(fid: str, reason: str) -> None:
+        if refusals is not None:
+            refusals[fid] = reason
+        print(
+            f"critic-consolidate: {fid} names failing tests but was not waived "
+            f"as inherited — {reason}.",
+            file=sys.stderr,
+        )
+
+    base = _inherited_baseline(project_dir, manifest, store)
+    if "reason" in base:
+        for finding in pending:
+            refuse(finding["fid"], base["reason"])
+        return waived
+    base_run, inherited = base["run"], base["inherited"]
+    eligible: list[tuple[dict, list[str]]] = []
+    unwaived_names: set[str] = set()
+    for finding in pending:
+        ids = [t for t in finding["failed_tests"] if isinstance(t, str)]
+        missing = [t for t in ids if t not in inherited]
+        if ids and not missing:
+            eligible.append((finding, ids))
+            continue
+        unwaived_names.update(ids)
+        refuse(finding["fid"], (
+            f"{', '.join(missing) or 'its ids'} did not fail in the newest suite "
+            f"run on the merge-base tree {base['base_tree'][:12]} (test-run "
+            f"{base_run}; a newer green run supersedes a red one, and an id past "
+            "its 100-id cap is never matched)"
+        ))
+    unanswered = sorted(base["new"] - unwaived_names)
+    if unanswered:
+        for finding, _ in eligible:
+            refuse(finding["fid"], (
+                f"the reviewed tree's run also fails {', '.join(unanswered)}, "
+                "which the base did not, and no unwaived BLOCKING finding names "
+                "them — a waiver would let them ride"
+            ))
+        return waived
+    for finding, ids in eligible:
+        fid = finding["fid"]
+        named = ", ".join(ids)
+        body = {
+            "finding": {"review_id": review_id, "fid": fid},
+            "disposition": "waived",
+            "verified_by": review_id,
+            "at_tree": manifest["head_tree"],
+            "origin": INHERITED_BASELINE_ORIGIN,
+            "base_run": base_run,
+            "rationale": (
+                f"Inherited failure: {named} also failed on the merge-base tree "
+                f"(test-run {base_run}). The finding stays BLOCKING on the "
+                "record; this branch did not cause it, so no fix round is owed."
+            ),
+        }
+        result = evidence.append_fact(
+            project_dir, "resolution", f"{review_id}:{review_id}:{fid}", body
+        )
+        if result["status"] != "appended":
+            print(
+                f"critic-consolidate: could not append the inherited-baseline "
+                f"waiver for {fid} — {result['reason']}",
+                file=sys.stderr,
+            )
+            return None
+        _attach_note(project_dir, result.get("envelope"), review_anchor)
+        print(
+            f"critic-consolidate: waived {fid} as an inherited failure — {named} "
+            f"also failed on the merge-base tree (test-run {base_run}); it stays "
+            "BLOCKING on the record and needs no fix or verify-resolutions round.",
+            file=sys.stderr,
+        )
+        waived.append(fid)
+    return waived
+
+
+def _load_partial(
+    prawduct_dir: Path, manifest: dict, role: str, path: Path
+) -> "tuple[dict | None, str]":
+    """Read one reviewer partial and judge it: ``(data, "")`` when it is sound,
+    ``(None, reason)`` when it is not. The body of :func:`check_partial`, kept
+    separate only because consolidation needs the parsed record and a second
+    read of the file would be a second verdict on bytes that may have changed.
+
+    Every check consolidation makes on ONE partial lives here and nowhere else
+    — parse, schema (:func:`validate_partial`), the keyed location, the role,
+    the dispatching review's id and the commit it reviewed — so the verb a
+    reviewer runs on its own file and the consolidation that later reads it
+    cannot disagree. ``reason`` names the role and is a clause, not a sentence
+    about what to do next: that is the caller's.
+    """
+    try:
+        if path.resolve() != partial_path(prawduct_dir, role, manifest["id"]).resolve():
+            return None, (
+                f"partial {role!r} at {path} is not where this review keeps it "
+                f"({partial_path(prawduct_dir, role, manifest['id'])})"
+            )
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:  # ValueError: see the findings-cache read
+        return None, f"partial {role!r} unreadable ({exc})"
+    valid, preason = validate_partial(data)
+    if not valid:
+        return None, f"partial {role!r} invalid — {preason}"
+    if data["role"] != role:
+        return None, (
+            f"partial for {role!r} declares role {data['role']!r} — roster mismatch"
+        )
+    # Belt-and-braces against the commit binding being the ONLY one. The
+    # keyed filename already stops a straggler from another review landing
+    # here; this catches the case the name cannot — a reviewer handed the
+    # wrong id in its dispatch prompt, writing to the right file with the
+    # wrong review's identity. Stripped before comparing, because
+    # surrounding whitespace normalizes identically and must not abort a
+    # whole consolidation (the `files: []` lesson, same module): hard-fail
+    # is for genuine ambiguity, which a different id is and a padded one
+    # is not.
+    review_id = manifest["id"]
+    if data["dispatch_id"].strip() != review_id.strip():
+        return None, (
+            f"reviewer {role!r} was dispatched by {data['dispatch_id'].strip()} "
+            f"but this manifest is {review_id} — the partial belongs to a "
+            "different review"
+        )
+    if data["commit_reviewed"] != manifest["commit_reviewed"]:
+        return None, (
+            f"reviewer {role!r} reviewed {data['commit_reviewed'][:12]} but "
+            f"dispatch was at {manifest['commit_reviewed'][:12]} — inconsistent, "
+            "re-review"
+        )
+    return data, ""
+
+
+def check_partial(
+    prawduct_dir: Path, manifest: dict, role: str, path: Path
+) -> "tuple[bool, str]":
+    """Whether ``path`` is a partial consolidation would accept for ``role``.
+
+    The one verdict on a single partial — :func:`_load_partial`'s, which
+    :func:`consolidate`'s read loop and ``prawduct-hook validate-partial`` (a
+    reviewer's own check before it returns, which also needs the parsed
+    partial) both reach — so a partial the reviewer was told is sound cannot be
+    refused when consolidation reads it. ``(True, "")`` or ``(False, reason)``;
+    a parse failure's reason carries the decoder's line and column.
+    """
+    data, reason = _load_partial(prawduct_dir, manifest, role, path)
+    return data is not None, reason
+
+
+def _partial_failure_message(
+    prawduct_dir: Path, manifest: dict, role: str, reason: str
+) -> str:
+    """Why consolidation refused, and the route that costs one reviewer.
+
+    A bad partial leaves the others untouched on disk; the message says so and
+    which ones, because nothing else tells the builder that a re-run of the
+    whole round is not the only recovery. Every line is derived from the disk:
+    the other roles are judged by :func:`check_partial`, so a role still in
+    flight, a role that passed and a second failing one each read as what they
+    are rather than as "the others passed".
+    """
+    roster = manifest["roster"]
+    review_id = manifest["id"]
+    passed: list[str] = []
+    pending: list[str] = []
+    failing: list[tuple[str, str]] = [(role, reason)]
+    for other in roster:
+        if other == role:
+            continue
+        opath = partial_path(prawduct_dir, other, review_id)
+        if not opath.is_file():
+            pending.append(other)
+            continue
+        ok, why = check_partial(prawduct_dir, manifest, other, opath)
+        if ok:
+            passed.append(other)
+        else:
+            failing.append((other, why))
+    lines = [
+        f"critic-consolidate: {reason} — fail-closed, not persisting a partial "
+        "review as complete."
+    ]
+    for other, why in failing[1:]:
+        lines.append(f"  Also failing: {why}.")
+    if passed:
+        lines.append(
+            f"  The other {len(passed)} partial(s) passed and are kept on disk "
+            f"({', '.join(passed)})."
+        )
+    if pending:
+        lines.append(f"  Not yet written: {', '.join(pending)}.")
+    names = [name for name, _ in failing]
+    paths = ", ".join(str(partial_path(prawduct_dir, name, review_id)) for name in names)
+    if roster == ["reviewer"] and not manifest.get("reviewer_model"):
+        # The fork reviewed inline, so there is no reviewer to send back.
+        lines.append(
+            f"  Remedy: rewrite {paths} and re-run `prawduct-hook critic-consolidate`. "
+            "Do not run `critic-begin` or `critic-discard` — they archive the "
+            "partials that are sound."
+        )
+    else:
+        who = " and ".join(f"`{name}`" for name in names)
+        lines.append(
+            f"  Remedy: re-dispatch the {who} `critic-reviewer` alone — the same "
+            f"manifest and the same dispatch prompt — to rewrite {paths}; its "
+            "SubagentStop re-runs consolidation. Do not run `critic-begin` or "
+            "`critic-discard` — they archive the partials that are sound."
+        )
+    return "\n".join(lines)
+
+
+#: `validate-partial`'s exit when the partial cannot be checked at all — no
+#: readable or valid manifest owns it, or it is keyed to another review. Its
+#: own code because the remedy differs from exit 1's: a reviewer cannot fix
+#: its file into a review that consolidated already or is not its own, so it
+#: stops. The same "could not answer" code the hook's other probes use.
+VALIDATE_PARTIAL_CANNOT_CHECK = 3
+
+
+def validate_partial_cmd(project_dir: Path, path_arg: str) -> int:
+    """``prawduct-hook validate-partial <path>``: the reviewer's own check.
+
+    Read-only. Finds which roster role of the pending review ``path`` is the
+    keyed partial of, then reaches :func:`check_partial`'s verdict — the one
+    consolidation will reach on the same file — and, on a pass, warns of each
+    optional #847 field (``scope``/``closure``/``members``) consolidation would
+    drop rather than refuse.
+
+    The review is read from the partial's OWN ``.prawduct`` directory when the
+    path sits in a partials directory (``<prawduct>/.critic-partials/<file>``),
+    and from the caller's project only otherwise: a subagent's process can
+    resolve a different checkout than the one that dispatched it, and the file
+    is the one thing that names its review. A relative path is resolved against
+    the project directory.
+
+    Exits: 0 prints ``ok``; 1 means this file fails the check (a parse error
+    with its line and column, or the validation reason) — fix it and re-run;
+    :data:`VALIDATE_PARTIAL_CANNOT_CHECK` means there is nothing to check it
+    against (no readable or valid manifest owns it, or it is keyed to another
+    review) — the review consolidated already or is not the caller's, so the
+    caller stops rather than rewriting the file.
+    """
+    target = Path(path_arg)
+    if not target.is_absolute():
+        target = project_dir / target
+    try:
+        resolved = target.resolve()
+    except OSError as exc:
+        print(f"validate-partial: cannot resolve {path_arg!r} ({exc})", file=sys.stderr)
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    if resolved.parent.name == PARTIALS_DIRNAME:
+        prawduct_dir = resolved.parent.parent
+    else:
+        prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    mpath = manifest_path(prawduct_dir)
+    try:
+        manifest = json.loads(mpath.read_text())
+    except (OSError, ValueError) as exc:
+        print(
+            f"validate-partial: no readable review manifest at {mpath} ({exc}) — "
+            "there is no pending review to check this partial against (it may "
+            "have consolidated already). Nothing to fix in the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    ok, reason = validate_manifest(manifest)
+    if not ok:
+        print(
+            f"validate-partial: invalid manifest — {reason}. Nothing to fix in "
+            "the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    for role in manifest["roster"]:
+        if partial_path(prawduct_dir, role, manifest["id"]).resolve() == resolved:
+            # :func:`check_partial`'s verdict, read through the loader it wraps
+            # so the parsed partial is in hand for the drop warnings below.
+            data, reason = _load_partial(prawduct_dir, manifest, role, target)
+            if data is not None:
+                # Optional #847 fields consolidation will DROP, not refuse — said
+                # here, to the reader who can still rewrite them.
+                for line in partial_scope_warnings(data):
+                    print(f"validate-partial: warning: {line}", file=sys.stderr)
+                print("ok")
+                return 0
+            print(f"validate-partial: {reason}", file=sys.stderr)
+            return 1
+    # `<role>.<review id>.json` is the keyed shape (:func:`partial_path`); a
+    # file keyed to ANOTHER review id is a straggler or a replaced review's,
+    # which no edit makes this review's. Any other wrong name is fixable.
+    stem = resolved.name[: -len(".json")] if resolved.name.endswith(".json") else ""
+    keyed_id = stem.split(".", 1)[1] if "." in stem else None
+    if keyed_id is not None and keyed_id != manifest["id"]:
+        print(
+            f"validate-partial: {path_arg!r} is not keyed to the pending review "
+            f"{manifest['id']} — it belongs to another review, which this one "
+            "replaced or never was. Nothing to fix in the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    print(
+        f"validate-partial: {path_arg!r} is not a partial of review {manifest['id']} — "
+        "write it at the path your manifest's `rendezvous` names for your role.",
+        file=sys.stderr,
+    )
+    return 1
+
+def _manifest_branch(prawduct_dir: Path) -> "str | None":
+    """The ``branch`` the pending dispatch manifest recorded, or ``None`` when
+    there is no manifest, it cannot be read, or it names none (a detached
+    dispatch). Lenient on purpose: :func:`_consolidate` reads the manifest
+    strictly and reports each of those itself."""
+    try:
+        data = json.loads(manifest_path(prawduct_dir).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    branch = data.get("branch") if isinstance(data, dict) else None
+    return branch if isinstance(branch, str) and branch else None
+
+
+def _lead_with_moved_head(moved: "str | None", text: str) -> str:
+    """``text`` led by the moved-HEAD sentence, unless there is none or ``text``
+    already carries it (a paired review's native clause may), so it is said
+    once. Marked as seen at consolidation: the briefing shows a record as
+    written, after the builder may have recovered."""
+    if not moved or moved in text:
+        return text
+    return f"At consolidation: {moved} {text}"
+
+
+def grade_member_coverage(
+    resolutions: "list[dict]", store: dict
+) -> "tuple[list[dict], dict, list[dict]]":
+    """Which reviewer resolutions may be appended, given the members their
+    target findings recorded (#847 D2). Returns ``(kept, answers, withheld)``:
+
+    - ``kept``: the resolutions to append, in order;
+    - ``answers``: ``(review_id, fid)`` → the ``members`` array a kept
+      resolution's fact carries, one answer per recorded id in the finding's
+      order — only where member coverage was graded;
+    - ``withheld``: ``{review_id, fid, missing}`` for each ``fixed`` resolution
+      NOT appended because its ``members`` left a recorded id unanswered.
+
+    **The rule.** A ``fixed`` resolution of a finding that recorded members is
+    appended only when its own ``members`` answers every id — ``fixed``, or
+    ``waived`` with a rationale. Otherwise it is withheld: no fact, which is
+    the state omitting the finding from ``resolutions`` already produces, so
+    the finding keeps blocking (``coverage_algebra.resolution_index`` lifts on
+    any ``fixed`` fact). Withholding rather than appending a fact marked
+    partial is what fails closed under every plugin version: an older reader
+    would lift on a ``partial`` fact, and plugin pins are per project.
+
+    Unchanged: a finding with no members, or a non-blocking one (``members`` on
+    its resolution is ignored, never persisted; the roll-call shows members only
+    for the blocking findings it names), a finding-level ``waived`` (its rationale covers
+    the finding), and an observation's resolution. A malformed answer is
+    dropped with a warning, which leaves its id unanswered — closed, not open.
+    """
+    recorded = evidence.findings_index(store)
+    kept: list[dict] = []
+    answers: dict = {}
+    withheld: list[dict] = []
+    warnings: list[str] = []
+    for r in resolutions:
+        key = (r["review_id"], r["fid"])
+        finding = recorded.get(key) or {}
+        # Graded only on a BLOCKING finding: those are the ones the verify
+        # roll-call names, with their members (`account_for_prior_blockers_
+        # directive`), and the only ones whose withheld fix "still blocks". A
+        # warning's `fixed` is appended as before.
+        members = finding.get("members") if finding.get("severity") == "blocking" else None
+        ids = [
+            m["id"] for m in members
+            if isinstance(m, dict) and _nonempty_str(m.get("id"))
+        ] if isinstance(members, list) else []
+        if r["disposition"] != "fixed" or not ids:
+            kept.append(r)
+            continue
+        given, dropped = resolution_member_answers(r)
+        warnings += dropped
+        warnings += [
+            f"resolution {key[0]}/{key[1]}: member {mid!r} is not one the finding "
+            "recorded; ignored"
+            for mid in given if mid not in ids
+        ]
+        missing = [mid for mid in ids if mid not in given]
+        if missing:
+            withheld.append({"review_id": key[0], "fid": key[1], "missing": missing})
+            continue
+        answers[key] = [given[mid] for mid in ids]
+        kept.append(r)
+    _warn_dropped(warnings)
+    return kept, answers, withheld
+
+
+def withheld_members_clause(withheld: "list[dict]") -> str:
+    """The sentence a consolidation that withheld a resolution appends to its
+    ``NEXT-ACTION`` (#847 D2): which findings, and which member ids nothing
+    answered. ``""`` when nothing was withheld. Said at consolidation only:
+    nothing on the record says a resolution was withheld — the finding simply
+    still blocks — so a record re-rendered on ingest has nothing to add here."""
+    if not withheld:
+        return ""
+    named = "; ".join(
+        f"{w['review_id']}/{w['fid']} (unanswered: {', '.join(w['missing'])})"
+        for w in withheld
+    )
+    return (
+        f" A `fixed` resolution was NOT recorded for {named}: that finding listed"
+        " members, and its resolution's `members` must answer every id — `fixed`"
+        " with the evidence read, or `waived` with a rationale — so it still"
+        " blocks. Fix or waive each unanswered member, then verify again."
+    )
+
+
 def consolidate(
     project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None" = None
 ) -> int:
+    """Consolidate the pending review (:func:`_consolidate`), reporting a HEAD
+    that left the review's branch (#1177) on EVERY exit.
+
+    The one owner of that report, because every path that consolidates — the
+    explicit command, the SubagentStop hook, the Stop backstop — comes through
+    here, and the manifest the branch is read from is deleted on success. HEAD
+    is compared with the manifest's ``branch`` ONCE, at entry, and the answer
+    rides whatever is emitted:
+
+    - an exit that writes a carrier says it there: the record's
+      ``next_action`` (the line a hook path's builder reads and a reviewing
+      fork relays) and the in-flight no-op's stdout;
+    - every other exit — a refusal (a tree changed since dispatch, a bad
+      partial, a failed append, an invalid cache) or an exception — writes no
+      carrier, so it is said on stderr AHEAD of whatever the refusal says
+      there. A reviewer's ``git checkout <base>`` both detaches HEAD and
+      changes the tree, and the tree refusal's remedy alone would send the
+      builder to ``--tree-changed-by-builder`` without knowing HEAD is
+      detached. stderr is the channel the refusal itself speaks on, and the
+      one the Stop backstop hands to the agent when it blocks.
+    """
+    if trigger not in ledger.CONSOLIDATION_TRIGGERS:
+        raise ValueError(
+            f"consolidate: trigger must be one of {ledger.CONSOLIDATION_TRIGGERS}, "
+            f"got {trigger!r}"
+        )
+    from . import head_guard  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    left = head_guard.left_branch(project_dir, _manifest_branch(prawduct_dir))
+    moved = head_guard.message(left) if left else None
+    if moved is None:
+        return _consolidate(
+            project_dir, trigger=trigger, tree_changed_by_builder=tree_changed_by_builder,
+            moved=None,
+        )
+    import contextlib  # noqa: PLC0415 — only a moved HEAD pays for it
+    import io  # noqa: PLC0415
+
+    held = io.StringIO()
+    rc: "int | None" = None
+    try:
+        with contextlib.redirect_stderr(held):
+            rc = _consolidate(
+                project_dir, trigger=trigger,
+                tree_changed_by_builder=tree_changed_by_builder, moved=moved,
+            )
+    finally:
+        # rc 0 is an exit whose carrier already says it (the record or the
+        # in-flight no-op); anything else — a refusal, or an exception on its
+        # way out — has none, so the warning leads its stderr.
+        if rc != 0:
+            print(f"PRAWDUCT WARNING: {moved}", file=sys.stderr)
+        sys.stderr.write(held.getvalue())
+    return rc
+
+
+def _consolidate(
+    project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None",
+    moved: "str | None",
+) -> int:
     """Merge complete reviewer partials into evidence facts + the derived
-    cache. Idempotent.
+    cache. Idempotent. Reached only through :func:`consolidate`; ``moved`` is
+    its moved-HEAD sentence, or ``None``, for the carriers written here.
 
     ``trigger`` names the calling path (one of ``ledger.CONSOLIDATION_TRIGGERS``)
     and is recorded on the ``review.critic`` ledger event. Required, and never
@@ -5822,8 +8022,9 @@ def consolidate(
         dispatch age and whether silence is still normal (wait) or past the
         grace window (critic-end + re-dispatch).
       - ``0`` + ``consolidated:`` — review fact appended (or already present),
-        resolution facts appended, cache regenerated, ledger anchored, marker
-        cleared, partials removed.
+        resolution facts appended (a verify pass's, and any inherited-baseline
+        waivers), cache regenerated, ledger anchored, marker cleared, partials
+        removed.
       - ``1`` — fail-closed: malformed manifest/partial, a partial reviewed a
         different commit than dispatched, off-protocol resolutions, a
         resolution referencing a finding the store doesn't hold, a working
@@ -5833,13 +8034,6 @@ def consolidate(
         complete; the manifest is left in place so the fix can retry (fact
         appends already made are healed by the id-idempotency probe).
     """
-
-    if trigger not in ledger.CONSOLIDATION_TRIGGERS:
-        raise ValueError(
-            f"consolidate: trigger must be one of {ledger.CONSOLIDATION_TRIGGERS}, "
-            f"got {trigger!r}"
-        )
-
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     mpath = manifest_path(prawduct_dir)
     if not mpath.is_file():
@@ -5864,7 +8058,6 @@ def consolidate(
         return 1
 
     roster = manifest["roster"]
-    manifest_commit = manifest["commit_reviewed"]
     review_id = manifest["id"]
     is_verify = manifest["mode"] == _VERBOSE_VERIFY_RESOLUTIONS
 
@@ -5876,93 +8069,56 @@ def consolidate(
         if not ppath.is_file():
             missing.append(role)
             continue
-        try:
-            data = json.loads(ppath.read_text())
-        except (OSError, ValueError) as exc:  # ValueError: see the findings-cache read
+        data, why = _load_partial(prawduct_dir, manifest, role, ppath)
+        if data is None:
             print(
-                f"critic-consolidate: partial {role!r} unreadable ({exc}) — "
-                "fail-closed, not persisting a partial review as complete.",
-                file=sys.stderr,
-            )
-            return 1
-        valid, preason = validate_partial(data)
-        if not valid:
-            print(
-                f"critic-consolidate: partial {role!r} invalid — {preason}. "
-                "Fail-closed; not consolidating.",
-                file=sys.stderr,
-            )
-            return 1
-        if data["role"] != role:
-            print(
-                f"critic-consolidate: partial for {role!r} declares role "
-                f"{data['role']!r} — roster mismatch, fail-closed.",
-                file=sys.stderr,
-            )
-            return 1
-        # Belt-and-braces against the commit binding being the ONLY one. The
-        # keyed filename already stops a straggler from another review landing
-        # here; this catches the case the name cannot — a reviewer handed the
-        # wrong id in its dispatch prompt, writing to the right file with the
-        # wrong review's identity. Stripped before comparing, because
-        # surrounding whitespace normalizes identically and must not abort a
-        # whole consolidation (the `files: []` lesson, same module): hard-fail
-        # is for genuine ambiguity, which a different id is and a padded one
-        # is not.
-        if data["dispatch_id"].strip() != review_id.strip():
-            print(
-                f"critic-consolidate: reviewer {role!r} was dispatched by "
-                f"{data['dispatch_id'].strip()} but this manifest is "
-                f"{review_id} — the partial belongs to a different review, "
-                "fail-closed.",
-                file=sys.stderr,
-            )
-            return 1
-        if data["commit_reviewed"] != manifest_commit:
-            print(
-                f"critic-consolidate: reviewer {role!r} reviewed "
-                f"{data['commit_reviewed'][:12]} but dispatch was at "
-                f"{manifest_commit[:12]} — inconsistent, re-review.",
+                _partial_failure_message(prawduct_dir, manifest, role, why),
                 file=sys.stderr,
             )
             return 1
         partials.append(data)
 
     if missing:
-        print(_incomplete_noop_message(
-            missing, len(partials), len(roster), review_id, prawduct_dir))
+        # A moved HEAD is said here too, though no record is written: a review
+        # in flight is when a reviewer's checkout would have moved it, and the
+        # caller who ran the command is reading this message.
+        print(_lead_with_moved_head(
+            moved,
+            _incomplete_noop_message(
+                missing, len(partials), len(roster), review_id, prawduct_dir,
+                handed_off=bool(manifest.get("reviewer_model"))),
+        ))
         return 0
 
-    # Observations may only arrive from an INNER-stage dispatch, and the reason
-    # is the mirror image of the resolutions rule below. Demotion is a stage
-    # rule (`nonfunctional-requirements.md` § Direction, *Review rigor is
-    # stage-keyed*): at the inner stage — `chunk`, `final`, `verify-resolutions`
-    # — a finding is one of the inner BLOCKING set and everything else the
-    # protocol rates is an observation; at the boundary — `cumulative` — the
-    # full table stands and every rated item is a finding, which is what
-    # `counts` counts. An array outside `findings` that the boundary could
-    # write is therefore a severity-laundering path — a `cumulative` reviewer
-    # could put nine warnings in it and consolidate a 0/0/0 review with nothing
-    # anywhere reporting the difference. Refusing is the only answer that
-    # cannot record a falsehood, and it costs a conforming reviewer nothing,
-    # because at the boundary it has no reason to write the array at all.
-    # `stage_of_manifest` reads the recorded stage and derives it only for a
-    # manifest written before the field existed.
+    # Observations arrive from every stage, and a finding a reviewer still
+    # rates `note` joins them here rather than being refused.
+    partials, demoted = demote_note_findings(partials)
+    if demoted:
+        print(
+            f"critic-consolidate: recorded {demoted} finding(s) rated `note` as "
+            "observations — a note is not a finding, gates nothing and is owed "
+            "no disposition.",
+            file=sys.stderr,
+        )
+    # What is enforced: `_validate_observations` refuses a `blocking` entry at
+    # every stage, and at the boundary an entry rated `warning` is promoted
+    # into `findings` (`promote_rated_observations`). An entry that carries no
+    # rating at all is taken as the reviewer's observation; nothing here can
+    # tell a WARNING the reviewer chose not to rate from a true observation.
     if stage_of_manifest(manifest) == STAGE_BOUNDARY:
-        for partial in partials:
-            if partial.get("observations"):
-                print(
-                    f"critic-consolidate: partial {partial['role']!r} carries "
-                    f"observations but the dispatch is a {STAGE_BOUNDARY}-stage "
-                    f"review ({manifest['mode']!r}) — only an inner-stage review "
-                    "demotes findings to observations; at the boundary every "
-                    "item you would rate is a finding; fail-closed.",
-                    file=sys.stderr,
-                )
-                return 1
+        partials, promoted = promote_rated_observations(partials)
+        if promoted:
+            print(
+                f"critic-consolidate: promoted {promoted} observation(s) rated "
+                "`warning` into findings — at the boundary a WARNING is a "
+                "finding, so the rating is kept rather than dropped.",
+                file=sys.stderr,
+            )
 
-    # Resolutions may only arrive from a verify-resolutions dispatch — they
-    # WEAKEN gates (they unblock findings), so off-protocol ones fail closed.
+    # A reviewer's resolutions may only arrive from a verify-resolutions
+    # dispatch — they WEAKEN gates (they unblock findings), so off-protocol ones
+    # fail closed. The one resolution written in other modes is consolidate's
+    # own inherited-baseline waiver, computed from facts, never from a partial.
     resolutions: list[dict] = []
     seen_res: set[tuple[str, str]] = set()
     for partial in partials:
@@ -5971,7 +8127,8 @@ def consolidate(
             print(
                 f"critic-consolidate: partial {partial['role']!r} carries "
                 f"resolutions but the dispatch mode is {manifest['mode']!r} — "
-                "only a verify-resolutions dispatch may resolve findings; "
+                "only a verify-resolutions dispatch may carry a reviewer's "
+                "resolutions; "
                 "fail-closed.",
                 file=sys.stderr,
             )
@@ -6018,6 +8175,7 @@ def consolidate(
                     file=sys.stderr,
                 )
                 return 1
+    resolutions, member_answers, withheld = grade_member_coverage(resolutions, store)
 
     dropped = 0
     if is_verify:
@@ -6049,7 +8207,7 @@ def consolidate(
         dispatched_at, _clock_reason = review_dispatch.peek(
             prawduct_dir, "review.critic", review_dispatch.head_sha(project_dir)
         )
-        body = build_fact_body(manifest, partials, dispatched_at=dispatched_at)
+        body = build_fact_body(manifest, partials, dispatched_at=dispatched_at, store=store)
         if dropped:
             # On the fact, not only stderr: without it a verify pass that noticed
             # nothing and one whose every observation was dropped read alike, and
@@ -6108,6 +8266,8 @@ def consolidate(
             "at_tree": manifest["head_tree"],
             "rationale": r.get("rationale"),
         }
+        if (r["review_id"], r["fid"]) in member_answers:
+            res_body["members"] = member_answers[(r["review_id"], r["fid"])]
         result = evidence.append_fact(project_dir, "resolution", res_id, res_body)
         if result["status"] != "appended":
             print(
@@ -6120,6 +8280,15 @@ def consolidate(
         # fix's verdict travels with the round that judged it.
         _attach_note(project_dir, result.get("envelope"), review_anchor)
         appended_resolutions += 1
+
+    # Inherited-baseline waivers: a BLOCKING test failure the merge-base tree
+    # already had is resolved here, from the base run's fact, not by a round.
+    # The renderers below read the waivers back from the store re-read next.
+    waiver_refusals: dict[str, str] = {}
+    if _waive_inherited_failures(
+        project_dir, manifest, review_id, review_anchor, waiver_refusals
+    ) is None:
+        return 1
 
     # Regenerate the derived cache FROM the stored fact (D7) — re-read so a
     # retry after a partial failure renders the original fact, not a new one.
@@ -6183,9 +8352,17 @@ def consolidate(
         project_dir, prawduct_dir, store.get("facts") or [], fact
     )
 
+    # The merge base, resolved ONCE per consolidation and handed to both of
+    # its readers below: the carried blockers' composition starts there, and
+    # the rounds clause counts the lineage from it (#815) — one lineage walk.
+    merge_base = coverage.resolve_merge_base_tree(project_dir)
     carried = (
         carried_blocking(
-            store.get("facts") or [], manifest.get("base_tree"), review_id
+            store.get("facts") or [], manifest.get("base_tree"), review_id,
+            gate_counted_blockers(
+                project_dir, store.get("facts") or [], manifest.get("base_tree"),
+                resolved=merge_base, read=store,
+            ),
         )
         if is_verify
         else []
@@ -6209,10 +8386,31 @@ def consolidate(
         span = span_clause(answer, _span_commits(project_dir, answer))
 
     uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
-    record = fact_to_cache_record(
-        fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified
+
+    # #815: how many rounds this branch has bought, said where the builder
+    # decides whether to buy another — the gate prints it only after one is
+    # bought. One lineage walk over the store just re-read, so the count
+    # includes this review and matches what the gate will print next. Rendered
+    # once and handed in like the price, so both carriers say the same thing.
+    # `merge_base` is the one resolved above for the carried blockers.
+    tally = (
+        coverage.count_branch_rounds(
+            project_dir, store.get("facts") or [], merge_base["merge_base"]
+        )
+        if merge_base["status"] == "ok"
+        else {"status": "unavailable", "reason": merge_base["reason"]}
     )
-    findings_path = prawduct_dir / ".critic-findings.json"
+    rounds_clause = coverage.branch_rounds_clause(tally)
+
+    record = fact_to_cache_record(
+        fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
+        store=store, not_waived=waiver_refusals, prawduct_dir=prawduct_dir,
+        rounds_clause=rounds_clause,
+    )
+    record["next_action"] = _lead_with_moved_head(
+        moved, record["next_action"] + withheld_members_clause(withheld)
+    )
+    findings_path = findings_cache_path(prawduct_dir)
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
     # Belt-and-suspenders: the cache we just rendered must satisfy the schema
@@ -6246,8 +8444,13 @@ def consolidate(
         argv = ["--event", "review.critic", "--trigger", trigger]
         if manifest.get("scope"):
             argv += ["--scope", manifest["scope"]]
-        if manifest.get("chunk"):
-            argv += ["--chunk", manifest["chunk"]]
+        # The event's one `chunk` is the first the review names — `chunks`, or
+        # a pre-`chunks` manifest's bare `chunk` — by the one reader rule.
+        from . import plan_status  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+        named = plan_status.fact_chunks(manifest)
+        if named:
+            argv += ["--chunk", named[0]]
         if models:
             argv += ["--model", models[0]]
         rc = ledger.ledger_append(project_dir, argv)
@@ -6322,7 +8525,9 @@ def consolidate(
 
     fact_body = fact.get("body") or {}
     counts = fact_body.get("counts") or {}
-    res_note = f", {appended_resolutions} resolution fact(s)" if resolutions else ""
+    res_note = f", {appended_resolutions} resolution fact(s)" if resolutions or withheld else ""
+    if withheld:
+        res_note += f" ({len(withheld)} withheld: members unanswered)"
     all_findings = fact_body.get("findings") or []
     groups = likely_duplicate_groups(all_findings)
     # A finding count is not a defect count: reviewers hold disjoint goals, so
@@ -6357,29 +8562,15 @@ def consolidate(
         # Last: the directive above continues the summary sentence inline.
         + _tree_changed_line(fact_body)
     )
-    # The single-pass reviewer runs this command itself, so everything above
-    # lands in the REVIEWER's context and dies there — the builder never sees a
-    # word of it. This one line is the part that has to travel: both protocol
-    # files tell the reviewer to relay `NEXT-ACTION:` verbatim as their closing line.
-    # Code owns the wording so it cannot be paraphrased into something weaker,
-    # and so it stays identical to the `next_action` the builder reads in
-    # `.critic-findings.json` on the coordinator path.
-    print(
-        "NEXT-ACTION: "
-        + next_action_line(
-            review_id,
-            counts.get("blocking", 0),
-            counts.get("warning", 0),
-            counts.get("note", 0),
-            price_sentence,
-            carried=carried,
-            span=span,
-            observations=len(fact_body.get("observations") or []),
-            cost=cost_sentence,
-            rides_next_review=rides_next_review,
-            uncertified=uncertified,
-        )
-    )
+    # When a reviewing fork runs this command itself, everything above lands in
+    # the REVIEWER's context and dies there — the builder never sees a word of
+    # it. This one line is the part that has to travel: both protocol files tell
+    # that fork to relay `NEXT-ACTION:` verbatim as its closing line. Code owns
+    # the wording so it cannot be paraphrased into something weaker, and so it
+    # stays identical to the `next_action` the builder reads in
+    # `.critic-findings.json` whenever the reviewers were dispatched instead —
+    # identical by construction: it IS that record's sentence, rendered once.
+    print("NEXT-ACTION: " + record["next_action"])
     return 0
 
 

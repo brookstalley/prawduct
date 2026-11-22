@@ -35,7 +35,8 @@ Design note — per-probe lock-in (fires / clears / reader-action)
   Health sweep's job. *Clears:* the item is closed (``status: shipped|dropped``
   or moved to Archive), or its ``revisit:`` is renewed to a future date /
   removed. *Reader-action:* the summary names each past-due item so the reader
-  can renew the exception (fresh ``revisit:`` + reason) or schedule its removal.
+  can do the work a dated re-check scheduled, renew an exception (fresh
+  ``revisit:`` + reason), or schedule its removal.
   Post-cutover it reads the backlog cache — see the paragraph below and the function.
 
 **Three of the five read the LIVE backlog, and which backlog depends on the product.**
@@ -1085,7 +1086,11 @@ def _norms_exist(codebase: Codebase) -> bool:
 
 
 def probe_revisit_due(state: ProjectState, codebase: Codebase):
-    """Fire when an open backlog item's ``revisit: YYYY-MM-DD`` clock is past due.
+    """Fire when an open backlog item's ``revisit: YYYY-MM-DD`` date is past.
+
+    The field carries two intents, and the probe cannot tell them apart: a norm
+    exception's expiry (``docs/norms.md`` § Exceptions expire) and a dated re-check,
+    such as a measurement booked for a date. The summary and owner line name both.
 
     Non-date ``revisit:`` values are ignored (the janitor Norm Health sweep walks
     event triggers). One stable advisory; the past-due items are listed in the
@@ -1128,20 +1133,25 @@ def probe_revisit_due(state: ProjectState, codebase: Codebase):
     return [
         AdvisoryCandidate(
             type="revisit-due",
+            # The evidence is hashed into the advisory id (`advisory_store.compute_id`):
+            # rewording it re-mints the id and lapses every dismissal, so it moves only with
+            # a PROBE_VERSION bump (tests/test_advisory_evidence_pins.py).
             evidence=("one or more open backlog items carry a past-dated `revisit:` exception clock",),
             trigger_summary=(
-                f"Exception clock expired — `revisit:` past due on: {listed}. "
-                "Renew (fresh `revisit:` date + reason) or schedule removal."
+                f"`revisit:` date passed on: {listed}. "
+                "Do what the item scheduled, renew (fresh `revisit:` date + reason), or schedule removal."
             ),
             owner_action=(
-                "Decide, for each expired item, whether the exception still earns its keep: "
-                "renew it with a fresh date and a reason, or let it lapse and I will schedule "
-                "the cleanup. Only you can say whether the original reason still holds."
+                "For each item, decide what its date asks for. If it scheduled work for "
+                "that date, confirm and I will do it. If it is an exception, decide whether "
+                "it still earns its keep: renew it with a fresh date and a reason, or let it "
+                "lapse and I will schedule the cleanup. Only you can say whether the original "
+                "reason still holds."
             ),
             # `/prawduct:backlog` and not prose (docs/norms.md § Exceptions expire is the
-            # rule; the pointer belongs here, not in text an owner reads). Whichever way
-            # the owner decides, the change is a metadata edit on the item — renew the
-            # `revisit:` date, or close it out — and that is what this skill does.
+            # rule; the pointer belongs here, not in text an owner reads). Renewing the
+            # date and closing the item out are metadata edits this skill makes; scheduled
+            # work is done first, then the item is shipped through it.
             recommended_action="/prawduct:backlog",
             priority="info",
         )
@@ -1506,7 +1516,7 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
             # `trigger_summary` (which is id-free) and, when the wording must change,
             # bump PROBE_VERSION so the supersession is deliberate.
             evidence=("norms exist (`## Direction` sections) but the janitor Norm Health sweep is overdue or never run",),
-            # The Health Check #14 route lives HERE, once: the briefing renders
+            # The leftover-scaffold route lives HERE, once: the briefing renders
             # `trigger_summary` and only `advisory show` renders
             # `alternative_actions`, so the summary is the one field every surface
             # prints — and it is not part of `compute_id`, so the route can be
@@ -1515,7 +1525,7 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
             trigger_summary=(
                 f"Norm Health sweep overdue (>{SWEEP_WINDOW_DAYS}d or never run) while norms exist — "
                 "erosion and decay go unmeasured. If this repo has ratified nothing, the rows are "
-                "probably leftover template scaffold: run `/prawduct:doctor` Health Check #14 "
+                "probably leftover template scaffold: run `/prawduct:doctor`'s *Leftover norm-index scaffold rows* check "
                 "(`norm-index-scaffold`) instead of a sweep."
             ),
             owner_action=(

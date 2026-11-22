@@ -88,7 +88,6 @@ _FLATTENED_EXPORTS: dict[str, str] = {
     "VerificationEntry": "operator_verification",
     "count_pending": "operator_verification",
     "format_operator_verification": "operator_verification",
-    "is_operator_verification_required": "operator_verification",
     "mark_accepted": "operator_verification",
     "mark_verified": "operator_verification",
     "parse_operator_verification": "operator_verification",

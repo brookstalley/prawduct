@@ -162,17 +162,18 @@ _OP_USAGE: dict[str, str] = {
         "  cache-query <query> [args] --repo owner/repo   (read the local cache; "
         "never touches the network)\n"
         "           open | unstaged | by-area [--all] | stale [--older-than N] |\n"
-        "           search <text> [--area A] | affecting <path>... [--all] |\n"
-        "           created-since <ISO> | resolve <id>\n"
+        "           search <text> [--area A] | resolve <id>\n"
         "           exit 6 means the cache could not be read — NOT that nothing matched\n"
     ),
     "link": (
         "  link     <id> --edge blocks|blocked-by|parent|child|related "
         "--to <target-id> [--repo owner/repo]\n"
+        "           `related` is written on both items\n"
     ),
     "unlink": (
         "  unlink   <id> --edge blocks|blocked-by|parent|child|related "
         "--to <target-id> [--repo owner/repo]\n"
+        "           `related` is written on both items\n"
     ),
     "provision": "  provision --repo owner/repo\n",
     # GV6. The id stays here, out of the operator's way: text emitted into a
@@ -453,7 +454,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
         elif op == "file-upstream":
             result = _run_file_upstream(rest, project_dir, transport)
         elif op in ("get", "show"):
-            result = _run_get(rest, transport)
+            result = _run_get(rest, transport, project_dir)
         elif op == "status":
             result = _run_status(rest, transport, project_dir)
         elif op == "update":
@@ -689,7 +690,7 @@ def _file_upstream_preview(project_dir, *, title, body, component):
     )
 
 
-def _run_get(rest: list[str], transport):
+def _run_get(rest: list[str], transport, project_dir=None):
     flags, positionals, err = _parse_flags(rest, valued={"repo"})
     if err:
         return core.error("validation", err)
@@ -705,9 +706,56 @@ def _run_get(rest: list[str], transport):
         default_owner = parsed[0]
         default_repo = parsed  # (owner, repo) — the repo a bare PFX resolves against
     transport = _resolve_transport(transport)
-    return core.get_item(
-        transport, id_raw=id_raw, default_owner=default_owner, default_repo=default_repo
+    warnings: list[str] = []
+
+    def on_gone(owner, repo, number):
+        _evict_gone(project_dir, owner, repo, number, warnings)
+
+    result = core.get_item(
+        transport,
+        id_raw=id_raw,
+        default_owner=default_owner,
+        default_repo=default_repo,
+        on_gone=on_gone if project_dir is not None else None,
     )
+    if warnings:
+        result["warnings"] = list(result.get("warnings") or []) + warnings
+    return result
+
+
+def _evict_gone(project_dir, owner, repo, number, warnings: list[str]) -> None:
+    """Evict a provider-confirmed hard-deleted item from the local cache (#1080).
+
+    The 410 verdict is already decided and a cache failure cannot change it, so a
+    failed eviction rides out as a warning (a ghost that stays is a stale open
+    row, which the operator should know) rather than altering the envelope. A
+    repo with no cache, or a cache for some other scope, has nothing to evict and
+    says nothing — the same two silent outcomes as the write mirror."""
+    from pathlib import Path  # noqa: PLC0415
+    from . import sync  # noqa: PLC0415 — lazy; no store import on other paths
+
+    stale = (
+        f"{owner}/{repo}#{number} was deleted on GitHub but could not be removed "
+        "from the local backlog cache ({}); cached reads stay stale until "
+        "`prawduct-hook backlog sync --rebuild`"
+    )
+    try:
+        outcome = sync.evict_gone(Path(project_dir), owner=owner, repo=repo, number=number)
+    # A supervisor boundary, as in `_with_mirror`: the cache is bookkeeping and the
+    # not_found verdict does not depend on it. Not silenced: it becomes a warning
+    # and the type reaches the diagnostic log.
+    #
+    # prawduct:allow prawduct/broad-except -- supervisor boundary; see above
+    except Exception as exc:
+        warnings.append(stale.format(type(exc).__name__))
+        core.log_diag(f"the backlog cache eviction raised: {type(exc).__name__}: {exc}")
+        return
+    if outcome.get("status") == "ok":
+        return
+    failure = outcome.get("error") or {}
+    if (failure.get("details") or {}).get("mirror") == sync.MIRROR_ABSENT:
+        return
+    warnings.append(stale.format(failure.get("message") or "unknown reason"))
 
 
 def _run_status(rest: list[str], transport, project_dir):
@@ -1041,8 +1089,7 @@ _STALE_DEFAULT_DAYS = 90
 #: `stale`, not `stale_items` — because the operator typing this has no register
 #: to resolve module names against.
 _CACHE_QUERIES: tuple[str, ...] = (
-    "open", "created-since", "by-area", "affecting", "search",
-    "stale", "unstaged", "resolve",
+    "open", "by-area", "search", "stale", "unstaged", "resolve",
 )
 
 
@@ -1055,8 +1102,8 @@ _CACHE_QUERIES: tuple[str, ...] = (
 #: Arity is the count of positionals, or `None` for "one or more".
 _CACHE_QUERY_ARITY: dict[str, int | None] = {
     "open": 0, "unstaged": 0, "by-area": 0, "stale": 0,
-    "created-since": 1, "resolve": 1,
-    "search": None, "affecting": None,
+    "resolve": 1,
+    "search": None,
 }
 
 #: Valued/boolean flags each query accepts, beyond the universal `--repo`.
@@ -1064,10 +1111,8 @@ _CACHE_QUERY_FLAGS: dict[str, frozenset[str]] = {
     "open": frozenset(),
     "unstaged": frozenset(),
     "by-area": frozenset({"all"}),
-    "affecting": frozenset({"all"}),
     "stale": frozenset({"older-than"}),
     "search": frozenset({"area"}),
-    "created-since": frozenset(),
     "resolve": frozenset(),
 }
 
@@ -1075,17 +1120,16 @@ _CACHE_QUERY_FLAGS: dict[str, frozenset[str]] = {
 def _run_cache_query(rest: list[str], project_dir):
     """Read the local backlog cache — the **agent-facing** door onto ``cachequery``.
 
-    Every consumer bound before this one was in-process Python (the norm probes,
-    ``pick``), so the query surface needed no CLI. The consumers this serves are
-    agents — the Critic's backlog-reconciliation walk, the PR reviewer's
-    resolved-items and closes/status checks, the janitor's Backlog Health block —
-    and an agent reaches a Python module only by running something.
+    The in-process consumers (the norm and upstream probes, record-lint's
+    retired-claim check, the release-readiness check, ``pick``) call
+    ``cachequery`` directly. The consumers this serves are
+    agents — the backlog skill's find and dedup scans, the janitor's Backlog
+    Health block, the bug-report triage — and an agent reaches a Python module
+    only by running something.
 
     **This op reads and does nothing else**: no provider call, no store write, no
-    session state touched. That is what makes it grantable to the ``critic-reviewer``
-    agent type, whose narrow tool list is the Critic's no-execution enforcement — a
-    reviewer holding this can ask the backlog a question and still cannot run a
-    test, reach the network, or mutate the session it is reviewing.
+    session state touched. That is what lets a skill grant it on its own, without
+    the backlog writes beside it.
 
     ``unavailable`` surfaces as exit 6, which is the whole contract for these
     consumers: a reader that cannot reach the store must be able to say so rather
@@ -1153,10 +1197,6 @@ def _run_cache_query(rest: list[str], project_dir):
         if int_err:
             return core.error("validation", int_err)
         return cachequery.stale_items(**common, older_than_days=days)
-    if name == "affecting":
-        return cachequery.items_affecting(**common, changed_paths=args, open_only=open_only)
-    if name == "created-since":
-        return cachequery.items_created_since(**common, since=args[0])
     if name == "search":
         return cachequery.search(**common, text=" ".join(args), area=flags.get("area"))
     # `resolve` — the only remaining member, and the exhaustiveness is guaranteed
@@ -1385,7 +1425,7 @@ def _run_restructure_preview(rest: list[str]):
     )
     out_path = Path(flags["out"])
     try:
-        out_path.write_text(preview, encoding="utf-8")
+        out_path.write_text(preview, encoding="utf-8", errors="backslashreplace")
     except OSError as exc:
         # "unavailable", matching export's local-write failure class — an
         # environment failure, not bad input.

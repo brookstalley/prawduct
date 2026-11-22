@@ -8,6 +8,10 @@ grep), #167 (round count, the sibling attack on the same review-cost volume), #7
 investigation (`.prawduct/artifacts/review-cost-investigation-2026-09-19.md`, source of the 23% / 18%
 figures — re-derive before quoting; the command is in its §6).
 
+*Note, 2026-11-11 (#1129):* one of the two files this design edits, `plugin/skills/pr/review-
+protocol.md`, was removed with the PR reviewer. The Critic's protocol is the one place the rule
+lives.
+
 ## Problem (restated)
 
 A reviewer files a finding rated `class` and lists its members in prose. The builder fixes the
@@ -86,6 +90,11 @@ Extend a resolution entry with an optional `members` array:
              {"id": "m2", "disposition": "waived", "rationale": "..."}]}
 ```
 
+*Superseded in one cell by #847's decided fork, which is what was built: an uncovered member
+WITHHOLDS the resolution fact rather than recording one as partial, because
+`coverage_algebra.resolution_index` lifts on any `fixed` fact and an older plugin would read a
+partial one as resolved. The table's "partial" row below therefore appends nothing.*
+
 Consolidation rule for a `fixed` resolution whose target finding has recorded members:
 
 | Members covered by the resolution | Outcome |
@@ -149,7 +158,8 @@ of fixing rather than after.
 5. **Where the closure property is evaluated (#694's acceptance).** Proposed answer: the *finding
    author* records it (D1), the *resolver* addresses it per member (D2), and the *verifier*
    grades each member against the `closure` sentence (D3 + existing grading directive).
-   `verify-resolutions` remains the only place resolution facts are minted (data-model rule).
+   `verify-resolutions` remains the only place a reviewer's judgment mints resolution facts
+   (data-model rule; consolidation's inherited-baseline waiver is computed from a base-tree test run).
 
 ## Measurement (before building)
 

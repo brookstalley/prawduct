@@ -1107,7 +1107,7 @@ class TestNormHealthSweepOverdueProbe:
         assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
 
     def test_the_advisory_names_the_repair_route_not_only_the_sweep(self, tmp_path):
-        """The pointer to Health Check #14 must live where every surface renders it.
+        """The pointer to the leftover-scaffold check must live where every surface renders it.
 
         It was first set on `alternative_actions`, which the briefing does not
         render (only `advisory show` does) — so the fix was inert where most
@@ -1126,7 +1126,9 @@ class TestNormHealthSweepOverdueProbe:
             "the summary must offer the repair, not only the audit"
         )
         rendered = " ".join([out[0].trigger_summary, *out[0].alternative_actions])
-        assert rendered.count("Health Check #14") == 1, "the route is said once"
+        # Named, not numbered: doctor's list renumbers under an ordinal.
+        assert rendered.count("*Leftover norm-index scaffold rows* check") == 1, "the route is said once"
+        assert "Check #" not in rendered
 
     def test_window_boundary_is_inclusive(self, tmp_path):
         # age == SWEEP_WINDOW_DAYS is still "fresh" (the guard is `<=`); one day past fires.
@@ -1411,6 +1413,17 @@ class TestRevisitDueProbe:
         assert len(out) == 1
         assert out[0].type == "revisit-due"
         assert "EXC-1A2B" in out[0].trigger_summary
+
+    def test_owner_action_names_both_intents_of_a_revisit_date(self, tmp_path):
+        """A `revisit:` date is an exception's expiry OR a dated re-check (a measurement
+        booked for a date); the probe cannot tell which, so its summary and owner line
+        must name both."""
+        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
+        cand = np.probe_revisit_due(ProjectState({}), _cb(tmp_path))[0]
+        assert "scheduled work for that date" in cand.owner_action
+        assert "If it is an exception" in cand.owner_action
+        assert "Do what the item scheduled" in cand.trigger_summary
+        assert not cand.trigger_summary.startswith("Exception clock expired")
 
     def test_silent_when_no_revisit(self, tmp_path):
         _write_backlog(tmp_path, _item("EXC-1A2B"))

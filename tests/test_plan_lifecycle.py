@@ -413,7 +413,10 @@ class TestBranchGone:
         )
         assert _observe(_plan(repo), repo).state == "unknown"
 
-    def test_an_untagged_change_log_entry_infers_too(self, repo):
+    def test_a_pending_change_log_entry_infers_nothing_and_says_it_was_refused(self, repo):
+        """Was: a pending legacy entry inferred `merged-unreleased`. Since #1125 the
+        release reads fragments only, so the entry is no pending record; the
+        reason names the refusal, and with it the way to `/prawduct:doctor`."""
         _feature(repo)
         _delete(repo)
         (repo / ".prawduct" / "change-log.md").write_text(
@@ -421,8 +424,9 @@ class TestBranchGone:
         )
         _plan_in_base(repo)
         lc = _observe(_plan(repo), repo)
-        assert lc.state == "merged-unreleased", lc
-        assert "its change-log entry for scope `unit` is pending release" in lc.reason
+        assert lc.state == "unknown", lc
+        assert "legacy-pending-entry: '2026-10-01: unit work'" in lc.reason
+        assert "/prawduct:doctor" in lc.reason
 
     def test_squash_merged_and_deleted_with_no_fragment_is_unknown(self, repo):
         sha = _feature(repo)

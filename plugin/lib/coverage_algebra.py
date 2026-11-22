@@ -59,7 +59,7 @@ coverage, because its tree is not a node the path stands on.
 from __future__ import annotations
 
 from collections import deque
-from typing import Callable
+from typing import Callable, Iterator
 
 from . import buildplan_refs
 from .gitstate import METADATA_PREFIXES, is_object_id
@@ -241,8 +241,8 @@ def affects_test_outcome(path: str, extra_prefixes: "tuple[str, ...]" = ()) -> b
 
     **Callers pass prefixes only where the question is FRESHNESS.** The
     doc-only PR fast path asks a review question and must not inherit them:
-    widening it there would make a documentation-only PR buy a full Critic and
-    PR review, which nothing priced. Passing them is therefore a deliberate act
+    widening it there would make a documentation-only PR buy a full Critic
+    review, which nothing priced. Passing them is therefore a deliberate act
     at each site, not a default the predicate applies on its own.
     """
     return (
@@ -355,6 +355,92 @@ def unresolved_blocking(review_fact: dict, resolved: set[tuple[str, str]]) -> li
 
 
 # ---------------------------------------------------------------------------
+# The review link — which earlier review a review's interval starts from
+# ---------------------------------------------------------------------------
+
+
+def _store_position(reviews: list[dict], fact: dict) -> int:
+    """``fact``'s index in ``reviews`` (store order) — by identity, else by
+    fact id, else ``len(reviews)`` (a fact not yet in the store, as at
+    dispatch, comes after every review it holds)."""
+    for i, other in enumerate(reviews):
+        if other is fact:
+            return i
+    fid = fact.get("id")
+    if fid is not None:
+        for i, other in enumerate(reviews):
+            if other.get("id") == fid:
+                return i
+    return len(reviews)
+
+
+def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
+    """THE review-link rule: the reviews ``fact``'s interval starts from —
+    every review recorded strictly BEFORE it (store order) whose ``head_tree``
+    is its ``base_tree`` — oldest first, so ``[-1]`` is the one it links to
+    (:func:`prior_review`).
+
+    One rule for every reader that follows the link, because three copies of it
+    had already drifted (identity by ``id()`` vs by fact id; every review at
+    the tree vs the newest; the pass itself excluded or not):
+    ``critic_mode.review_chain`` walks it back through every review at each
+    linked tree, ``plan_status._extended_reviews`` follows it to the review
+    that records a commit, and ``critic_consolidate.carried_blocking`` takes
+    one hop of it as a verify pass's anchor.
+
+    **Strictly before** is what makes every walk end and what excludes the
+    pass from its own anchor: a review cannot start from one recorded after
+    it. ``reviews`` is the store's review facts in store order (append order is
+    recording order; ``ts`` has one-second resolution). ``fact`` need not be
+    in it — a dispatch asks before its fact exists, and then every review
+    counts as earlier. A ``base_tree`` that is not a non-empty string links to
+    nothing (a missing tree must not match another fact's missing tree).
+    """
+    base = (fact.get("body") or {}).get("base_tree")
+    if not isinstance(base, str) or not base:
+        return []
+    here = _store_position(reviews, fact)
+    return [
+        f for f in reviews[:here]
+        if f is not fact and (f.get("body") or {}).get("head_tree") == base
+    ]
+
+
+def prior_review(reviews: list[dict], fact: dict) -> "dict | None":
+    """The review ``fact`` links to — the newest of :func:`linked_reviews` —
+    or ``None`` when its interval starts at a tree no earlier review stands
+    at."""
+    linked = linked_reviews(reviews, fact)
+    return linked[-1] if linked else None
+
+
+def reviews_linked_from(reviews: list[dict], root_tree: str) -> list[dict]:
+    """Every review whose chain of links reaches back to ``root_tree``, in
+    store order: one standing AT it, one starting from it, and — the link rule
+    read forward — one starting from the ``head_tree`` of an earlier member.
+
+    The same relation :func:`linked_reviews` reads backward, from a root
+    instead of from a review, so the forward and backward readings cannot
+    disagree about what links. ``coverage.branch_review_ids`` bounds its
+    empty-span fallback with it."""
+    if not isinstance(root_tree, str) or not root_tree:
+        return []
+    reached = {root_tree}
+    out = []
+    for fact in reviews:
+        body = fact.get("body") or {}
+        head = body.get("head_tree")
+        base = body.get("base_tree")
+        # A malformed or newer-schema body can carry a non-string tree; a set
+        # lookup on an unhashable one would raise out of every gate reading this.
+        if (isinstance(base, str) and base in reached) or head == root_tree:
+            out.append(fact)
+            if isinstance(head, str) and head:
+                reached.add(head)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Edges (D6)
 # ---------------------------------------------------------------------------
 
@@ -455,6 +541,77 @@ def _free_classes(nodes: "set[str]", key_fn: KeyFn) -> dict[str, list[str]]:
     return adjacency
 
 
+class _EvidenceGraph:
+    """The one graph composed coverage is searched over: review edges plus free
+    edges among the trees the evidence mentions and the span's two endpoints.
+
+    Every search builds it here — :func:`_find_path` for the single path
+    :func:`coverage_verdict` settles, :func:`_reach` for the closures
+    :func:`excused_gap_verdict` composes across one gap. The excused-gap verdict
+    is relax-only because it uses no edge the coverage verdict would not; that
+    holds by construction only while both read the same graph, so neither
+    builds its own. Free edges between trees outside the node set are left out
+    because nothing connects such trees to anything.
+
+    Free edges come from ``key_fn`` when one is supplied (:func:`_free_classes`
+    — *n* keys, the form every gate uses) and from pairwise ``diff_fn`` probing
+    otherwise (*n²* diffs, the reference implementation the injected-table
+    tests exercise). Both decide "no judgeable path differs", one per tree and
+    one per pair.
+    """
+
+    def __init__(
+        self,
+        edges: list[dict],
+        start: str,
+        end: str,
+        diff_fn: DiffFn,
+        key_fn: "KeyFn | None",
+    ) -> None:
+        self.nodes = {start, end}
+        self._out: dict[str, list[dict]] = {}
+        self._in: dict[str, list[dict]] = {}
+        for edge in edges:
+            self.nodes.add(edge["src"])
+            self.nodes.add(edge["dst"])
+            step = {
+                "kind": "review",
+                "id": edge["fact"].get("id"),
+                "src": edge["src"],
+                "dst": edge["dst"],
+            }
+            self._out.setdefault(edge["src"], []).append(step)
+            self._in.setdefault(edge["dst"], []).append(step)
+        self._diff_fn = diff_fn
+        self._free = _free_classes(self.nodes, key_fn) if key_fn is not None else None
+
+    def steps_from(
+        self, node: str, *, reverse: bool, skip: Callable[[str], bool]
+    ) -> "Iterator[tuple[str, dict]]":
+        """Each tree one evidence step from ``node`` — after it when ``reverse``
+        is False, before it when True — with that step in forward orientation
+        (``src`` precedes ``dst``). Review steps first, then free steps.
+
+        ``skip`` is asked lazily, per candidate, and only spares the pairwise
+        probe a diff for a tree the caller has already reached; a caller still
+        re-checks every yielded tree, so ``skip`` cannot change what is reached.
+        """
+        for step in (self._in if reverse else self._out).get(node, ()):
+            yield (step["src"] if reverse else step["dst"]), step
+        if self._free is not None:
+            for other in self._free.get(node, ()):
+                src, dst = (other, node) if reverse else (node, other)
+                yield other, {"kind": "free", "src": src, "dst": dst}
+            return
+        for other in self.nodes:
+            if other == node or skip(other):
+                continue
+            src, dst = (other, node) if reverse else (node, other)
+            files = _free_edge_files(self._diff_fn, src, dst)
+            if files is not None:
+                yield other, {"kind": "free", "src": src, "dst": dst, "files": files}
+
+
 def _attribute_free_steps(path: list[dict], diff_fn: DiffFn) -> list[dict]:
     """Fill in the ``files`` a ``free`` step reports, for the steps on a
     *found* path only.
@@ -519,9 +676,14 @@ def _verify_anchor_id(facts: list[dict], nodes: "set[str]") -> "str | None":
 
     This is what makes a blocking finding *reachable*. A verify pass reviews
     the delta from one prior fact and records resolutions against that fact
-    alone, so a blocker carried by any OTHER fact on the path is one no verify
-    pass will ever name again — it is superseded, and only a review spanning
-    the whole interval can supply a clean path around it.
+    alone, so a blocker carried by any OTHER fact on the path is superseded:
+    no verify pass will anchor to it again. Superseded is not stranded: since
+    #334 a verify pass's roll-call NAMES every blocker this module's verdict
+    counts when composing to the tree it anchors on
+    (``critic_consolidate.carried_blocking`` over :func:`blockers_counted`),
+    so a superseded blocker that composition still counts clears through
+    verify-resolutions; only one it does not count needs a review spanning the
+    whole interval (``gates.blocking_remedy_lines``).
 
     Two deliberate choices, because both directions of error are wrong advice:
 
@@ -628,10 +790,19 @@ def coverage_verdict(
     node can carry findings (CRT-5H2D).
 
     Each unresolved entry carries ``superseded``: True when its fact is not the
-    one a verify-resolutions pass would anchor to (:func:`_verify_anchor_id`),
-    which means no verify pass will revisit it and only a spanning review can
-    clear it. Gate messages need this to avoid prescribing a route the operator
-    cannot take; the verdict itself is unaffected — a blocker blocks either way.
+    one a verify-resolutions pass would anchor to (:func:`_verify_anchor_id`).
+    That alone no longer means only a spanning review can clear it: a verify
+    pass's roll-call names every blocker this verdict counts at its anchor's
+    tree (:func:`blockers_counted`, #334), so a superseded entry is stranded
+    only when that composition does not count it
+    (``gates.blocking_remedy_lines`` asks). The verdict itself is unaffected —
+    a blocker blocks either way.
+
+    A blocker the verdict does NOT list is not open, whatever its resolution
+    facts say: one recorded at a tree no composed path stands on (a clean
+    spanning review routed around it) gates nothing. :func:`blockers_counted`
+    is the one reading of that answer for every surface that reports open
+    blockers, so none of them can count one the gate has stopped counting.
     """
     if not isinstance(base_tree, str) or not base_tree:
         return {"status": "uncovered", "reason": "no base tree to compose from"}
@@ -689,6 +860,170 @@ def coverage_verdict(
     }
 
 
+def blockers_counted(verdict: dict) -> "list[dict] | None":
+    """The unresolved blocking findings a :func:`coverage_verdict` result
+    COUNTS — the gate's own answer to "is this blocker still open", read off
+    the verdict rather than re-derived.
+
+    A blocker is open when a resolution fact has not lifted it AND it stands at
+    a tree the composed path stands on (:func:`_unresolved_at_nodes`). The first
+    half alone is the tempting second predicate, and it is wrong after a clean
+    spanning review: the path routes around the round that raised the blocker,
+    the gate passes, and a surface asking only "is there a resolution fact"
+    keeps reporting it open — a manufactured round, a false NOT DONE.
+
+    ``[]`` for ``covered``; the listed entries for ``blocked`` (shape:
+    ``review_id``, ``fid``, ``title``, ``superseded``, …); ``None`` for
+    ``uncovered`` or anything else — no path composes, so the verdict counts no
+    blocker and cannot say which one a path would. ``None`` is "unknown", never
+    "none open": each caller picks its own degraded posture."""
+    status = verdict.get("status") if isinstance(verdict, dict) else None
+    if status == "covered":
+        return []
+    if status == "blocked":
+        return [dict(e) for e in verdict.get("unresolved") or []]
+    return None
+
+
+#: The most (forward-reached, backward-reached) tree pairs :func:`excused_gap_verdict`
+#: diffs per search phase. A cost bound, not a condition: pairs past it are not
+#: asked, which can only leave a span uncovered that a wider search would have
+#: excused — never excuse one.
+EXCUSED_GAP_MAX_PAIRS = 32
+
+
+def _reach(
+    edges: list[dict],
+    start: str,
+    other_end: str,
+    diff_fn: DiffFn,
+    key_fn: "KeyFn | None",
+    *,
+    reverse: bool,
+) -> dict[str, list[dict]]:
+    """Every tree composed evidence connects to ``start``, with the steps that
+    connect it, in forward order: ``start → node`` when ``reverse`` is False,
+    ``node → start`` when it is True. The graph :func:`_find_path` searches —
+    one :class:`_EvidenceGraph`, so the two cannot disagree on an edge — asked
+    as a closure instead of a single path. A key-form free step carries no
+    ``files`` here; the caller attributes the one path it returns."""
+    graph = _EvidenceGraph(edges, start, other_end, diff_fn, key_fn)
+    reached: dict[str, list[dict]] = {start: []}
+    queue: deque[str] = deque([start])
+    while queue:
+        node = queue.popleft()
+        for to, step in graph.steps_from(node, reverse=reverse, skip=reached.__contains__):
+            if to in reached:
+                continue
+            reached[to] = [step] + reached[node] if reverse else reached[node] + [step]
+            queue.append(to)
+    return reached
+
+
+def excused_gap_verdict(
+    facts: list[dict],
+    base_tree: str,
+    target_tree: str,
+    diff_fn: DiffFn,
+    key_fn: "KeyFn | None",
+    excused: Callable[[list[str]], bool],
+    *,
+    max_pairs: int = EXCUSED_GAP_MAX_PAIRS,
+) -> dict:
+    """Does composed coverage span ``base_tree → target_tree`` EXCEPT for one
+    interval whose judgeable files the caller excuses?
+
+    The question :func:`coverage_verdict` cannot ask: it composes by tree, so a
+    span reads ``uncovered`` whenever any interval on it lacks review, whoever
+    wrote that interval. A caller that knows some files are not the subject of
+    its gate (the Stop gate: files a sync brought in that this session did not
+    author) needs the composition with one hole allowed — evidence from the base
+    forward to a tree ``f``, evidence from a tree ``r`` forward to the target,
+    and the interval ``f → r`` whose judgeable diff ``excused`` accepts.
+
+    **Only relaxes, never covers more than the evidence does.** Every review
+    edge and free edge used is one :func:`coverage_verdict` would use; the gap
+    is the only interval no evidence spans, and ``excused`` sees its full
+    judgeable diff — a file changed both inside and outside the excused set is
+    in that diff and is the caller's to refuse. A diff that cannot be computed
+    is never excused. Blockers settle exactly as in :func:`coverage_verdict`:
+    every review fact standing at a tree on the composed path, the gap's two
+    endpoints included, still blocks.
+
+    Search mirrors :func:`coverage_verdict`'s two phases — blocker-free edges
+    first, then all valid edges — so a gap reachable only through a blocked
+    review settles as ``blocked`` (the blocker is still owed) rather than as
+    ``uncovered``. Pairs are tried longest-evidence first and capped at
+    ``max_pairs`` per phase (:data:`EXCUSED_GAP_MAX_PAIRS`).
+
+    Returns::
+
+        {"status": "covered", "path": [..., {"kind": "gap", "src", "dst",
+         "files"}, ...], "gap": {"src", "dst", "files"}}
+      | {"status": "blocked", "path", "unresolved", "gap"}
+      | {"status": "uncovered", "gap": {"src", "dst", "files"} | None,
+         "capped": True}   # ``capped`` present only when the cap cut a phase
+
+    The ``path`` steps other than the gap have :func:`coverage_verdict`'s shape,
+    a free step's ``files`` included in both free-edge forms: a returned path is
+    a found path, attributed by :func:`_attribute_free_steps` as that one is.
+
+    For ``uncovered``, ``gap`` is the smallest unexcused interval found (the one
+    whose files a message should name), or ``None`` when no pair could be
+    diffed; ``capped`` says pairs went unasked, so a caller can tell "nothing
+    excusable" from "the search stopped". Cost: two closures over the evidence graph plus at most
+    ``max_pairs`` diffs per phase, the second phase's mostly answered by the
+    caller's diff memo.
+    """
+    if not (isinstance(base_tree, str) and base_tree and isinstance(target_tree, str) and target_tree):
+        return {"status": "uncovered", "gap": None}
+    facts = [f for f in facts if f.get("kind") in VERDICT_INPUT_KINDS]
+    resolved = resolution_index(facts)
+    edges = review_edges(facts)
+    clean_edges = [e for e in edges if not unresolved_blocking(e["fact"], resolved)]
+
+    smallest: "dict | None" = None
+    blocked: "dict | None" = None
+    capped = False
+    for phase_edges in (clean_edges, edges):
+        forward = _reach(phase_edges, base_tree, target_tree, diff_fn, key_fn, reverse=False)
+        backward = _reach(phase_edges, target_tree, base_tree, diff_fn, key_fn, reverse=True)
+        candidates = sorted(
+            ((f, r) for f in forward for r in backward if f != r),
+            key=lambda p: (-(len(forward[p[0]]) + len(backward[p[1]])), p),
+        )
+        capped = capped or len(candidates) > max_pairs
+        pairs = candidates[:max_pairs]
+        for f, r in pairs:
+            files = diff_fn(f, r)
+            if files is None:
+                continue
+            judgeable = judgeable_files(files)
+            gap = {"src": f, "dst": r, "files": judgeable}
+            if not excused(judgeable):
+                if smallest is None or len(judgeable) < len(smallest["files"]):
+                    smallest = gap
+                continue
+            path = forward[f] + [{"kind": "gap", **gap}] + backward[r]
+            unresolved = _unresolved_at_nodes(facts, resolved, _path_nodes(base_tree, path))
+            if not unresolved:
+                return {
+                    "status": "covered", "path": _attribute_free_steps(path, diff_fn),
+                    "gap": gap,
+                }
+            if blocked is None:
+                blocked = {
+                    "status": "blocked", "path": _attribute_free_steps(path, diff_fn),
+                    "unresolved": unresolved, "gap": gap,
+                }
+    if blocked is not None:
+        return blocked
+    uncovered: dict = {"status": "uncovered", "gap": smallest}
+    if capped:
+        uncovered["capped"] = True
+    return uncovered
+
+
 def _find_path(
     edges: list[dict],
     src: str,
@@ -696,66 +1031,20 @@ def _find_path(
     diff_fn: DiffFn,
     key_fn: "KeyFn | None" = None,
 ) -> "list[dict] | None":
-    """BFS from ``src`` to ``dst`` over review edges plus free edges between
-    known nodes. Nodes are the trees the evidence mentions plus the two
-    endpoints — free edges between *unknown* trees can't help because nothing
-    connects them to anything.
-
-    Free edges come from ``key_fn`` when one is supplied (``_free_classes`` —
-    *n* keys, the form every gate uses) and from pairwise ``diff_fn`` probing
-    otherwise (*n²* diffs, retained as the reference implementation the
-    injected-table tests exercise). The two agree by construction: both
-    decide "no judgeable path differs", one per tree and one per pair.
-    """
-    nodes = {src, dst}
-    adjacency: dict[str, list[dict]] = {}
-    for edge in edges:
-        nodes.add(edge["src"])
-        nodes.add(edge["dst"])
-        adjacency.setdefault(edge["src"], []).append(
-            {
-                "kind": "review",
-                "id": edge["fact"].get("id"),
-                "src": edge["src"],
-                "dst": edge["dst"],
-            }
-        )
-
-    free_adjacency = _free_classes(nodes, key_fn) if key_fn is not None else None
-
+    """BFS from ``src`` to ``dst`` over the :class:`_EvidenceGraph` — review
+    edges plus free edges among the trees the evidence mentions and the two
+    endpoints. Free steps on the returned path carry their ``files``, filled in
+    for the found path only when the key form established them."""
+    graph = _EvidenceGraph(edges, src, dst, diff_fn, key_fn)
     visited = {src}
     queue: deque[tuple[str, list[dict]]] = deque([(src, [])])
-    probed: set[tuple[str, str]] = set()
     while queue:
         node, path = queue.popleft()
         if node == dst:
             return _attribute_free_steps(path, diff_fn)
-        for step in adjacency.get(node, []):
-            if step["dst"] not in visited:
-                visited.add(step["dst"])
-                queue.append((step["dst"], path + [step]))
-        if free_adjacency is not None:
-            for other in free_adjacency.get(node, ()):
-                if other in visited:
-                    continue
-                visited.add(other)
-                queue.append(
-                    (other, path + [{"kind": "free", "src": node, "dst": other}])
-                )
-            continue
-        for other in nodes:
-            if other in visited or (node, other) in probed:
-                continue
-            probed.add((node, other))
-            files = _free_edge_files(diff_fn, node, other)
-            if files is None:
+        for other, step in graph.steps_from(node, reverse=False, skip=visited.__contains__):
+            if other in visited:
                 continue
             visited.add(other)
-            queue.append(
-                (
-                    other,
-                    path
-                    + [{"kind": "free", "src": node, "dst": other, "files": files}],
-                )
-            )
+            queue.append((other, path + [step]))
     return None

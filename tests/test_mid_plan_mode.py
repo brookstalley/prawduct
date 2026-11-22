@@ -80,7 +80,7 @@ def _commit_all(repo: Path, msg: str) -> str:
 
 def _review_uncommitted(repo: Path, chunk: str) -> None:
     """The contract's order: review the chunk while it is uncommitted."""
-    begin = _run_begin(repo, "--mode", "chunk", "--chunk", chunk)
+    begin = _run_begin(repo, "--mode", "chunk", "--chunks", chunk)
     assert begin.returncode == 0, begin.stderr
     manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
     _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[])
@@ -386,7 +386,7 @@ class TestTheMergeBaseStartSaysWhy:
     def _blocked_then_committed(self, tmp_path) -> Path:
         repo = _repo(tmp_path)
         (repo / "src/app.py").write_text("x = 2  # chunk 1\n")
-        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "1")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "1")
         assert begin.returncode == 0, begin.stderr
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[

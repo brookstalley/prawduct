@@ -84,8 +84,11 @@ ACTIONS = (ACCEPT, FILE, FIXED)
 #: ``observations``/``observations_answered`` pair. Additive — a version-1
 #: reader that ignores unknown keys still reads a version-2 report correctly —
 #: but the number is what lets a consumer say which shape it was written for,
-#: and a bump costs nothing next to a consumer guessing.
-REPORT_SCHEMA_VERSION = 2
+#: and a bump costs nothing next to a consumer guessing. 3 added the summary's
+#: ``open_blocking``/``undispositioned_warning`` pair and ``open_blocking_basis``
+#: (additive again), and a bare ``render-dispositions`` now renders the branch's
+#: review set rather than the newest review.
+REPORT_SCHEMA_VERSION = 3
 
 #: Display states a census row can carry, in the order the summary reports
 #: them. ``resolved-*`` covers a resolution fact whose disposition this
@@ -94,6 +97,19 @@ REPORT_SCHEMA_VERSION = 2
 #: it correctly counts as unresolved.
 STATE_FIXED = "fixed"
 STATE_WAIVED = "waived"
+#: The ``origin`` of a ``waived`` resolution fact consolidation writes itself,
+#: for a BLOCKING test failure the merge-base tree already had — the one
+#: resolution no ``verify-resolutions`` pass judged.
+INHERITED_BASELINE_ORIGIN = "inherited-baseline"
+#: A finding waived as inherited from the base tree. Kept DISTINCT from
+#: :data:`STATE_WAIVED` for the reason :data:`STATE_FIXED_FREE` is kept apart
+#: from :data:`STATE_FIXED`: both lift the blocker, and only one says a reviewer
+#: weighed it. Counted together, "a reviewer accepted a blocker" and "the base
+#: was already red" would be one number in the yield figures.
+STATE_WAIVED_INHERITED = "waived-inherited"
+#: The resolution states that lift a blocking finding — every reader asking
+#: "is it answered" rather than "how" reads this set, not a literal.
+RESOLVED_STATES = frozenset({STATE_FIXED, STATE_WAIVED, STATE_WAIVED_INHERITED})
 STATE_ACCEPTED = "accepted"
 STATE_FILED = "filed"
 #: A fix recorded by :data:`FIXED` rather than by a resolution fact. Kept
@@ -326,19 +342,52 @@ def disposition_history(store: dict, review_id: str, fid: str) -> list[dict]:
 
 
 def resolution_detail_index(store: dict) -> dict[tuple[str, str], str]:
-    """``(review_id, fid)`` → the resolution fact's disposition string.
+    """``(review_id, fid)`` → the resolution fact's disposition string, or
+    :data:`STATE_WAIVED_INHERITED` for a ``waived`` one whose ``origin`` is
+    :data:`INHERITED_BASELINE_ORIGIN`.
 
     Deliberately *not* ``coverage_algebra.resolution_index``: that one answers
     the gate's boolean question and must fail toward stricter, so it discards
     both which disposition resolved a finding and any value it does not
-    recognize. A census has to show what was actually recorded."""
+    recognize. A census has to show what was actually recorded — the origin
+    included, which is what tells consolidation's own waiver from a judged one.
+
+    The one reader of a resolution's ``origin``: the census and ``review-stats``
+    (through :func:`finding_state`) and the derived findings cache
+    (:func:`inherited_waivers`) all ask here, so they cannot disagree."""
     index: dict[tuple[str, str], str] = {}
     for fact in evidence.facts_of_kind(store, "resolution"):
         key = _target(fact)
-        disposition = (fact.get("body") or {}).get("disposition")
-        if key is not None and _nonempty(disposition):
-            index[key] = disposition.strip()
+        body = fact.get("body") or {}
+        disposition = body.get("disposition")
+        if key is None or not _nonempty(disposition):
+            continue
+        disposition = disposition.strip()
+        if disposition == STATE_WAIVED and body.get("origin") == INHERITED_BASELINE_ORIGIN:
+            disposition = STATE_WAIVED_INHERITED
+        index[key] = disposition
     return index
+
+
+def inherited_waivers(store: dict, review: dict) -> list[str]:
+    """The fids of ``review``'s BLOCKING findings waived as inherited from the
+    base tree, in the review's own order — derived from the store's resolution
+    facts, never handed in, so every renderer of one review fact (consolidation,
+    and the ingest path that re-renders it in another clone) names the same
+    ones."""
+    rid = review.get("id")
+    findings = (review.get("body") or {}).get("findings")
+    if not isinstance(findings, list):
+        return []
+    index = resolution_detail_index(store)
+    return [
+        f["fid"]
+        for f in findings
+        if isinstance(f, dict)
+        and isinstance(f.get("fid"), str)
+        and _severity_of(f) == "blocking"
+        and index.get((rid, f["fid"])) == STATE_WAIVED_INHERITED
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -642,6 +691,7 @@ def census(
     review_id: str | None = None,
     scope: str | None = None,
     review_ids: "list[str] | None" = None,
+    open_blockers: "list[dict] | None" = None,
 ) -> dict:
     """Derive the disposition census.
 
@@ -655,7 +705,19 @@ def census(
     when the set was derived some other way makes the rendered table and the
     caller's actual subject two different things.
 
-    With no selector, the newest review fact is rendered.
+    With no selector, the newest review fact is rendered — a fallback for a
+    caller that could not derive a set; ``render-dispositions`` passes the
+    branch's review set (:func:`render_dispositions_cmd`).
+
+    ``open_blockers`` is the GATE's answer to which blockers are still open
+    (``coverage.branch_open_blockers``): the summary's ``open_blocking`` counts
+    the rows it names, because a blocker a clean spanning review routed around
+    has no resolution fact and gates nothing — counting it would report a
+    branch the gate just passed as blocked. ``None`` (no composition, or a
+    caller with no repository) counts blocking rows no resolution lifted, the
+    conservative over-count; ``summary["open_blocking_basis"]`` says which
+    (``"gate"`` / ``"resolution-facts"``) so no reader mistakes one for the
+    other.
     """
     review_facts = evidence.facts_of_kind(store, "review")
     if not review_facts:
@@ -722,7 +784,7 @@ def census(
                 "ts": fact.get("ts"),
                 "mode": body.get("mode"),
                 "scope": body.get("scope"),
-                "chunk": body.get("chunk"),
+                "chunk": _review_chunks_label(body),
                 "rows": rows,
                 # A SEPARATE list, never appended to ``rows``. Every consumer of
                 # ``rows`` — the summary's severity tally, its undispositioned
@@ -735,11 +797,23 @@ def census(
 
     all_rows = [row for r in reviews for row in r["rows"]]
     all_observations = [row for r in reviews for row in r["observations"]]
-    return {
-        "status": "ok",
-        "reviews": reviews,
-        "summary": _summarize(all_rows, all_observations),
-    }
+    summary = _summarize(all_rows, all_observations)
+    if open_blockers is not None:
+        # The gate's answer narrows the summary's open count to the blockers it
+        # still counts. A row carries no review id, so the join is made here,
+        # where each row's review is in hand.
+        gate_open = {(b.get("review_id"), b.get("fid")) for b in open_blockers}
+        summary["open_blocking"] = sum(
+            1
+            for review in reviews
+            for row in review["rows"]
+            if _blocking_unresolved(row)
+            and (review["review_id"], row["fid"]) in gate_open
+        )
+    summary["open_blocking_basis"] = (
+        "resolution-facts" if open_blockers is None else "gate"
+    )
+    return {"status": "ok", "reviews": reviews, "summary": summary}
 
 
 def finding_state(key: "tuple[str, str]", dispositions: dict, resolutions: dict) -> str:
@@ -747,12 +821,15 @@ def finding_state(key: "tuple[str, str]", dispositions: dict, resolutions: dict)
 
     ``dispositions`` is :func:`disposition_index`, ``resolutions`` is
     :func:`resolution_detail_index`. A resolution outranks any disposition,
-    because it is the only answer an independent verify pass attests; among
-    dispositions the newest wins. A resolution value this plugin does not
-    recognize is shown as ``resolved-<value>`` rather than hidden."""
+    because it is a recorded fact the gate itself reads: a verify pass's
+    judgment, or — :data:`STATE_WAIVED_INHERITED`, reported apart — the
+    waiver consolidation computes from a base-tree run that already failed the
+    same tests. Among dispositions the newest wins. A resolution value this
+    plugin does not recognize is shown as ``resolved-<value>`` rather than
+    hidden."""
     resolution = resolutions.get(key)
     disposition = ((dispositions.get(key) or {}).get("body")) or {}
-    if resolution in (STATE_FIXED, STATE_WAIVED):
+    if resolution in RESOLVED_STATES:
         return resolution
     if resolution is not None:
         return f"resolved-{resolution}"
@@ -834,6 +911,12 @@ def _observation_row(
     }
 
 
+def _blocking_unresolved(row: dict) -> bool:
+    """A blocking row no resolution lifted — the store-only half of "open";
+    :func:`census` narrows it by the gate's answer when it has one."""
+    return row["severity"] == "blocking" and row["state"] not in RESOLVED_STATES
+
+
 def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> dict:
     by_severity: dict[str, int] = {}
     by_state: dict[str, int] = {}
@@ -847,6 +930,16 @@ def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> di
         # The gap `review-cycle.md`'s "severity does not exempt" rule asserts
         # but which nothing measured before this renderer existed.
         "undispositioned": by_state.get(STATE_OPEN, 0),
+        # The two numbers a reader resuming a branch needs first (#334), named
+        # on the gate's terms: a blocking finding is open while the gate COUNTS
+        # it — a resolution lifts it, and so does a clean spanning review that
+        # routed around its tree (:func:`census` narrows this by the gate's
+        # answer when it has one); an accepted disposition never does. A
+        # warning is owed an answer until it has any.
+        "open_blocking": sum(1 for r in rows if _blocking_unresolved(r)),
+        "undispositioned_warning": sum(
+            1 for r in rows if r["severity"] == "warning" and r["state"] == STATE_OPEN
+        ),
         "owner_ruled": sum(1 for r in rows if _nonempty(r.get("owner_ruling"))),
         "conflicts": sum(1 for r in rows if r["conflict"]),
         # Reported beside the findings and never mixed into them. The pair is
@@ -864,6 +957,16 @@ def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> di
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
+
+
+def _review_chunks_label(body: dict) -> "str | None":
+    """The chunk(s) a review fact names, comma-joined, or ``None`` — read through
+    :func:`plan_status.fact_chunks`, the one rule for both fact shapes (``chunks``,
+    and the bare ``chunk`` of a fact written before it), so the census and
+    chunk-status cannot name different chunks for one review."""
+    from . import plan_status  # noqa: PLC0415 — lazy: plan_status imports this module
+
+    return ", ".join(plan_status.fact_chunks(body)) or None
 
 
 def render_markdown(report: dict) -> str:
@@ -933,7 +1036,9 @@ def render_markdown(report: dict) -> str:
     if summary["undispositioned"]:
         lines.append(
             f"**{summary['undispositioned']} undispositioned** — every finding "
-            "takes an ACCEPT, FIX or FILE regardless of severity "
+            "takes an ACCEPT or FILE (`prawduct-hook disposition`), or a FIX: "
+            "verified by `/prawduct:critic verify-resolutions`, or recorded with "
+            "`disposition --fixed <paths>` when it bought no round "
             "(`review-cycle.md`)."
         )
     if summary["conflicts"]:
@@ -1101,6 +1206,54 @@ def disposition_cmd(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
+def _branch_selection(
+    project_dir: Path, store: dict
+) -> "tuple[list[str] | None, list[dict] | None]":
+    """What a bare ``render-dispositions`` renders, and the gate's answer its
+    summary counts open blockers by: ``(review_ids, open_blockers)``.
+
+    The set is the branch's (``coverage.branch_review_ids``), the one the round
+    budget composes over (#334) — rendering the newest review alone hid every
+    earlier round's undispositioned findings while the census read clean. The
+    open blockers are ``coverage.branch_open_blockers`` over that set: the
+    gate's composition, so a blocker a clean spanning review routed around is
+    not reported open while the gate passes.
+
+    ``(None, None)`` — the newest review, as before — when the set is
+    unavailable (no merge base) or empty (no review anchors on this branch),
+    with ONE stderr line saying so, because a census of the newest review
+    silently standing in for the branch is the defect this replaces. A set with
+    no composed answer renders with ``None`` for the second, and one stderr line
+    saying the open count is by resolution facts alone."""
+    from . import coverage  # noqa: PLC0415 — lazy: coverage pulls git helpers this module otherwise never needs
+
+    facts = store.get("facts") or []
+    answer = coverage.branch_review_ids(project_dir, facts)
+    if answer.get("status") == "ok" and answer["review_ids"]:
+        gate = coverage.branch_open_blockers(
+            project_dir, facts, answer["review_ids"], read=store
+        )
+        if gate.get("status") == "ok":
+            return answer["review_ids"], gate["blockers"]
+        print(
+            "render-dispositions: open blocking is counted by resolution facts "
+            f"alone — the gate's composition is unavailable ({gate.get('reason')}).",
+            file=sys.stderr,
+        )
+        return answer["review_ids"], None
+    why = (
+        answer.get("reason")
+        if answer.get("status") != "ok"
+        else "no review anchors on this branch"
+    )
+    print(
+        f"render-dispositions: rendering the newest review only — this branch's "
+        f"review set is unavailable ({why}). Pass --review or --scope to choose.",
+        file=sys.stderr,
+    )
+    return None, None
+
+
 def render_dispositions_cmd(project_dir: Path, argv: list[str]) -> int:
     """Render the census. Exit 0 rendered, 1 nothing to render / store
     unreadable, 2 usage error."""
@@ -1147,7 +1300,13 @@ def render_dispositions_cmd(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
-    report = census(store, review_id=review_id, scope=scope)
+    review_ids = open_blockers = None
+    if review_id is None and scope is None:
+        review_ids, open_blockers = _branch_selection(project_dir, store)
+    report = census(
+        store, review_id=review_id, scope=scope, review_ids=review_ids,
+        open_blockers=open_blockers,
+    )
     if report["status"] == "error":
         print(f"render-dispositions: {report['reason']}", file=sys.stderr)
         return 1

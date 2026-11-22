@@ -104,81 +104,16 @@ def _ids(result) -> list[str]:
     return [item["id"] for item in result["data"]["items"]]
 
 
-# --- consumer 2: created since ------------------------------------------------
-
-
-class TestItemsCreatedSince:
-    def test_it_returns_the_items_created_after_the_mark(self, fake, repo_dir):
-        old = _file(fake, title="cache: an item filed long ago", area="backlog")
-        recent = _file(fake, title="cache: an item filed this week", area="backlog")
-        _stamp(fake, old, created=NOW - timedelta(days=30))
-        _stamp(fake, recent, created=NOW - timedelta(days=2))
-        _rebuild(fake, repo_dir)
-
-        result = cachequery.items_created_since(
-            repo_dir, scope=SCOPE, since=(NOW - timedelta(days=7)).isoformat(), now=NOW
-        )
-
-        assert _ids(result) == [recent], "the mark must exclude what predates it"
-
-    def test_the_mark_itself_is_included(self, fake, repo_dir):
-        """Inclusive, matching the provider's own ``since`` (Cache Spec §6,
-        verified live). A caller passing a ref's timestamp means "everything from
-        that point", and the two ends of the feature disagreeing about the
-        boundary item is the off-by-one nobody notices."""
-        boundary = _file(fake, title="cache: the item exactly on the mark", area="backlog")
-        mark = NOW - timedelta(days=3)
-        _stamp(fake, boundary, created=mark)
-        _rebuild(fake, repo_dir)
-
-        result = cachequery.items_created_since(
-            repo_dir, scope=SCOPE, since=mark.isoformat(), now=NOW
-        )
-
-        assert _ids(result) == [boundary]
-
-    def test_a_locally_spelled_mark_compares_as_an_instant(self, fake, repo_dir):
-        """The provider stamps ``...Z`` and Python's ``isoformat()`` writes
-        ``...+00:00``, so one moment has two spellings and the lexicographic answer
-        between them is not the chronological one. Compared as strings this passes
-        by luck on most inputs and fails on the boundary."""
-        item = _file(fake, title="cache: an item to compare across spellings", area="backlog")
-        _stamp(fake, item, created=NOW - timedelta(days=1))
-        _rebuild(fake, repo_dir)
-
-        # `+00:00` on the left, `Z` in the store — the same instant, two spellings.
-        result = cachequery.items_created_since(
-            repo_dir, scope=SCOPE, since=(NOW - timedelta(days=1)).isoformat(), now=NOW
-        )
-
-        assert _ids(result) == [item]
-
-    def test_a_mark_that_is_not_a_timestamp_is_a_validation_error(self, fake, repo_dir):
-        _file(fake, title="cache: any item at all", area="backlog")
-        _rebuild(fake, repo_dir)
-
-        result = cachequery.items_created_since(
-            repo_dir, scope=SCOPE, since="last tuesday", now=NOW
-        )
-
-        assert result["status"] == "error"
-        assert result["error"]["code"] == "validation"
-
-
-# --- consumers 3 and 8: grouping and counting by area -------------------------
-
-
 class TestDatePredicatesCompareInstantsNotDigits:
-    """The two date predicates must be right across the **epoch digit boundary**,
-    not just across the two ISO spellings.
+    """The date predicate must be right across the **epoch digit boundary**, not
+    just across the two ISO spellings.
 
     `_instant` was written to fix a spelling problem — the provider stamps `...Z`
     while `isoformat()` writes `...+00:00` — and it reintroduced the same class one
     level down: `strftime` returns TEXT, so without a CAST two epoch strings
     compare lexicographically and `'946684800' < '1577836800'` is **false**. Any
     bound before 2001-09-09 has nine digits where a current one has ten, so the
-    answer inverts: an empty set for a distant `created-since`, and every open item
-    reported stale for a distant `--older-than`.
+    answer inverts: every open item reported stale for a distant `--older-than`.
 
     These fixtures sit deliberately on either side of that boundary rather than at
     a realistic bound, because the in-tree callers all pass recent dates — which is
@@ -188,35 +123,6 @@ class TestDatePredicatesCompareInstantsNotDigits:
 
     PRE_2001 = datetime(1999, 6, 1, tzinfo=timezone.utc)   # 9-digit epoch
     POST_2001 = datetime(2020, 6, 1, tzinfo=timezone.utc)  # 10-digit epoch
-
-    def test_created_since_a_pre_2001_bound_returns_everything(self, fake, repo_dir):
-        item = _file(fake, title="cache: an item created in the modern era", area="backlog")
-        _stamp(fake, item, created=self.POST_2001)
-        _rebuild(fake, repo_dir)
-
-        result = cachequery.items_created_since(
-            repo_dir, scope=SCOPE, since=self.PRE_2001.isoformat(), now=NOW
-        )
-
-        assert _ids(result) == [item], (
-            "a bound 21 years before the item excluded it — the epoch comparison "
-            "is lexicographic, not chronological"
-        )
-
-    def test_created_since_a_post_2001_bound_still_excludes_what_predates_it(
-        self, fake, repo_dir
-    ):
-        """The other direction, so a CAST that accidentally inverted the whole
-        comparison could not pass the test above on its own."""
-        old = _file(fake, title="cache: an item created before the boundary", area="backlog")
-        _stamp(fake, old, created=self.PRE_2001)
-        _rebuild(fake, repo_dir)
-
-        result = cachequery.items_created_since(
-            repo_dir, scope=SCOPE, since=self.POST_2001.isoformat(), now=NOW
-        )
-
-        assert _ids(result) == []
 
     def test_a_horizon_reaching_past_2001_does_not_report_everything_stale(
         self, fake, repo_dir
@@ -301,87 +207,6 @@ def _group_ids(result, area: str) -> list[str]:
 
 
 # --- consumers 1 and 4: the changed-file intersection -------------------------
-
-
-class TestItemsAffecting:
-    def _touching(self, fake, paths: str, *, title="cache: an item that touches code"):
-        item_id = _file(fake, title=title, area="backlog")
-        assert core.update_item(fake, id_raw=item_id, fields={"affected": paths})["status"] == "ok"
-        return item_id
-
-    def test_a_changed_file_finds_the_item_that_claims_its_directory(self, fake, repo_dir):
-        item_id = self._touching(fake, "plugin/lib/backlog, docs/x.md")
-        _file(fake, title="cache: an item nobody changed", area="critic")
-        _rebuild(fake, repo_dir)
-
-        result = cachequery.items_affecting(
-            repo_dir, scope=SCOPE, changed_paths=["plugin/lib/backlog/sync.py"], now=NOW
-        )
-
-        assert _ids(result) == [item_id]
-
-    def test_it_reports_which_entry_matched(self, fake, repo_dir):
-        """A consumer saying "this item looks related" has to be able to say which
-        path made it think so."""
-        item_id = self._touching(fake, "plugin/lib/backlog, docs/x.md")
-        _rebuild(fake, repo_dir)
-
-        result = cachequery.items_affecting(
-            repo_dir, scope=SCOPE, changed_paths=["docs/x.md"], now=NOW
-        )
-
-        assert result["data"]["items"][0]["id"] == item_id
-        assert result["data"]["items"][0]["matched"] == ["docs/x.md"]
-
-    def test_a_sibling_directory_is_not_an_overlap(self, fake, repo_dir):
-        """`plugin/lib` must not swallow `plugin/libexec` — a string-prefix match
-        would, and it would read as a confident hit rather than as a miss."""
-        self._touching(fake, "plugin/lib")
-        _rebuild(fake, repo_dir)
-
-        result = cachequery.items_affecting(
-            repo_dir, scope=SCOPE, changed_paths=["plugin/libexec/thing.py"], now=NOW
-        )
-
-        assert _ids(result) == []
-
-    def test_a_one_shot_iterator_answers_the_same_as_a_list(self, fake, repo_dir):
-        """`changed_paths` is walked three times, so a generator would exhaust.
-
-        Without the materialization at function entry the caller gets `keys`
-        correct and everything after it empty — no matches, `changed_paths: []`,
-        and `status: ok`. A confident wrong answer, which is the shape this
-        module exists to prevent. This is the assertion that keeps the one-line
-        guard from being deleted as redundant by a later reader.
-        """
-        item_id = self._touching(fake, "plugin/lib/backlog, docs/x.md")
-        _rebuild(fake, repo_dir)
-
-        result = cachequery.items_affecting(
-            repo_dir,
-            scope=SCOPE,
-            changed_paths=iter(["plugin/lib/backlog/sync.py"]),
-            now=NOW,
-        )
-
-        assert _ids(result) == [item_id]
-        assert result["data"]["items"][0]["matched"] == ["plugin/lib/backlog"]
-        assert result["data"]["changed_paths"] == ["plugin/lib/backlog/sync.py"]
-
-    def test_an_empty_change_set_still_carries_an_age(self, fake, repo_dir):
-        """The answer is empty because the *input* was, and a caller cannot tell
-        that from an unreachable cache unless the envelope says which."""
-        self._touching(fake, "plugin/lib")
-        _rebuild(fake, repo_dir)
-
-        result = cachequery.items_affecting(repo_dir, scope=SCOPE, changed_paths=[], now=NOW)
-
-        assert result["status"] == "ok", result
-        assert result["data"]["items"] == []
-        assert result["data"]["age_seconds"] is not None
-
-
-# --- consumer 9: text search --------------------------------------------------
 
 
 class TestSearch:
@@ -883,13 +708,7 @@ def _every_query(repo_dir):
     ``_serve`` fails these rather than quietly opting out of them."""
     return {
         "open_items": lambda: cachequery.open_items(repo_dir, scope=SCOPE, now=NOW),
-        "items_created_since": lambda: cachequery.items_created_since(
-            repo_dir, scope=SCOPE, since=(NOW - timedelta(days=7)).isoformat(), now=NOW
-        ),
         "by_area": lambda: cachequery.by_area(repo_dir, scope=SCOPE, now=NOW),
-        "items_affecting": lambda: cachequery.items_affecting(
-            repo_dir, scope=SCOPE, changed_paths=["plugin/lib/backlog/sync.py"], now=NOW
-        ),
         "search": lambda: cachequery.search(repo_dir, scope=SCOPE, text="item", now=NOW),
         "stale_items": lambda: cachequery.stale_items(
             repo_dir, scope=SCOPE, older_than_days=90, now=NOW
@@ -1153,10 +972,10 @@ def _cq(repo_dir, *args, json_mode=True):
 class TestTheCacheQueryOp:
     """The agent-facing door onto ``cachequery``.
 
-    Every consumer bound before this one was in-process Python, so the query
-    surface needed no CLI. These consumers are agents — the Critic's
-    reconciliation walk, the PR reviewer's checks, the janitor's Backlog Health —
-    and an agent reaches a Python module only by running something.
+    The in-process consumers call ``cachequery`` directly. These consumers are
+    agents — the backlog skill's find and dedup scans, the janitor's Backlog
+    Health, the bug-report triage — and an agent reaches a Python module only by
+    running something.
     """
 
     #: Every sub-query and a valid argument list for it. Parametrized rather than
@@ -1168,9 +987,7 @@ class TestTheCacheQueryOp:
         "unstaged": [],
         "by-area": [],
         "stale": [],
-        "created-since": ["2026-01-01T00:00:00+00:00"],
         "search": ["item"],
-        "affecting": ["plugin/lib/backlog/sync.py"],
         "resolve": [f"{SCOPE}#1"],
     }
 
@@ -1224,8 +1041,8 @@ class TestTheCacheQueryOp:
     def test_it_never_reaches_the_provider(self, fake, repo_dir):
         """No transport is resolved at all: the op takes no `transport` argument
         and imports nothing that egresses. Asserted by running with the network
-        boundary poisoned, because "it reads locally" is the property the Critic
-        reviewer's tool grant rests on."""
+        boundary poisoned, because "it reads locally" is the property a skill's
+        narrow grant of this op rests on."""
         _file(fake, title="cache: a locally answerable item", area="backlog")
         _rebuild(fake, repo_dir)
 
@@ -1237,8 +1054,8 @@ class TestTheCacheQueryOp:
 
     def test_it_writes_nothing(self, fake, repo_dir):
         """The other half of the grant's premise. `open_store(create=False)` means
-        a query cannot even bring a store into being, so a reviewer holding this op
-        cannot leave a trace in the tree it is reviewing."""
+        a query cannot even bring a store into being, so an agent holding this op
+        cannot leave a trace in the tree it is working in."""
         _file(fake, title="cache: an item to read back", area="backlog")
         _rebuild(fake, repo_dir)
         # A WAL reader touching a sidecar is how a WAL read works; every other file,
@@ -1262,7 +1079,7 @@ class TestTheCacheQueryOp:
     ):
         """`#621` is how citations are nearly always written — this repo's
         change-log carries 259 bare refs against 5 qualified ones, and `closes:
-        #621` is the shape the PR reviewer's R-2 reads. `normalize_id` cannot
+        #621` is the shape `check-pr-hygiene`'s closure check reads. `normalize_id` cannot
         qualify one on its own (it takes an owner and still needs a repo), so
         without this the restored checks would resolve almost nothing and report it
         as "no such item".
@@ -1301,13 +1118,31 @@ class TestTheCacheQueryOp:
         assert code == 2
         assert "open" in envelope["error"]["message"]
 
+    @pytest.mark.parametrize(
+        ("name", "args"),
+        [("affecting", ["plugin/lib/backlog/sync.py"]),
+         ("created-since", ["2026-01-01T00:00:00+00:00"])],
+    )
+    def test_a_removed_query_is_refused_with_the_ones_that_remain(
+        self, name, args, repo_dir
+    ):
+        """`affecting` and `created-since` were removed on the owner's ruling of
+        2026-11-10: no reader asks either question. A caller holding the old name
+        is refused as for any unknown query, and told what it can ask instead."""
+        code, envelope = _cq(repo_dir, name, *args)
+        assert code == 2, envelope
+        message = envelope["error"]["message"]
+        assert message.startswith(f"unknown query {name!r}"), message
+        expected = "open|by-area|search|stale|unstaged|resolve"
+        assert f"(expected {expected})" in message, message
+
     def test_a_missing_query_is_a_validation_error(self, repo_dir):
         assert _cq(repo_dir, )[0] == 2
 
     @pytest.mark.parametrize("name", ["open", "stale", "resolve", "search"])
     def test_all_is_refused_where_it_does_not_apply(self, name, repo_dir):
-        """Refused rather than ignored. `--all` widens the two groupings that
-        default to open-only; on a query whose predicate already IS a status,
+        """Refused rather than ignored. `--all` widens the grouping that defaults
+        to open-only; on a query whose predicate already IS a status,
         silently accepting it would hand back an unwidened answer the caller
         believes was widened."""
         code, envelope = _cq(repo_dir, name, *TestTheCacheQueryOp.CASES[name], "--all")

@@ -974,3 +974,325 @@ class TestReviewEligibilityIsItsOwnQuestion:
         assert ca.review_subjects(
             ["b.py", ".prawduct/x.md", "a.py"]
         ) == ["b.py", "a.py"]
+
+
+# ---------------------------------------------------------------------------
+# One excused interval (the session gate's imported-history arm)
+# ---------------------------------------------------------------------------
+
+
+def _not_any(paths: set[str]):
+    return lambda files: not any(f in paths for f in files)
+
+
+class TestExcusedGapVerdict:
+    """``excused_gap_verdict`` composes with ONE interval no evidence spans,
+    when the caller excuses every judgeable file in it. Each case below is a
+    span ``coverage_verdict`` reports uncovered."""
+
+    def test_a_gap_after_the_reviewed_interval_is_excused(self):
+        facts = [_review("r1", T0, T1, ["lib/a.py"])]
+        table = {(T0, T2): ["lib/a.py", "lib/b.py"], (T1, T2): ["lib/b.py"]}
+        assert ca.coverage_verdict(facts, T0, T2, _diff(table))["status"] == "uncovered"
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"})
+        )
+        assert verdict["status"] == "covered", verdict
+        assert verdict["gap"] == {"src": T1, "dst": T2, "files": ["lib/b.py"]}
+        assert [s["kind"] for s in verdict["path"]] == ["review", "gap"]
+
+    def test_a_gap_before_the_reviewed_interval_is_excused(self):
+        # Sync first, then the session's own reviewed work: the gap sits at
+        # the START of the span, reached by walking evidence backward.
+        facts = [_review("r1", T1, T2, ["lib/a.py"])]
+        table = {(T0, T1): ["lib/b.py"], (T0, T2): ["lib/a.py", "lib/b.py"]}
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"})
+        )
+        assert verdict["status"] == "covered", verdict
+        assert [s["kind"] for s in verdict["path"]] == ["gap", "review"]
+
+    def test_a_gap_holding_a_refused_file_is_not_excused(self):
+        """A file both authored and imported is in the gap's diff, so the
+        caller sees it and refuses — authorship is per path."""
+        facts = [_review("r1", T0, T1, ["lib/a.py"])]
+        table = {
+            (T0, T2): ["lib/a.py", "lib/b.py"],
+            (T1, T2): ["lib/a.py", "lib/b.py"],
+        }
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"})
+        )
+        assert verdict["status"] == "uncovered"
+        assert sorted(verdict["gap"]["files"]) == ["lib/a.py", "lib/b.py"]
+
+    def test_an_uncomputable_gap_is_never_excused(self):
+        facts = [_review("r1", T0, T1, ["lib/a.py"])]
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff({}), None, lambda files: True
+        )
+        assert verdict == {"status": "uncovered", "gap": None}
+
+    def test_a_blocker_on_the_path_still_blocks(self):
+        facts = [_review("r1", T0, T1, ["lib/a.py"], findings=[BLOCKER])]
+        table = {(T0, T2): ["lib/a.py", "lib/b.py"], (T1, T2): ["lib/b.py"]}
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"})
+        )
+        assert verdict["status"] == "blocked", verdict
+        assert [u["fid"] for u in verdict["unresolved"]] == ["F-1"]
+
+    def test_a_resolved_blocker_lets_the_gap_cover(self):
+        facts = [
+            _review("r1", T0, T1, ["lib/a.py"], findings=[BLOCKER]),
+            _resolution("res1", "r1", "F-1"),
+        ]
+        table = {(T0, T2): ["lib/a.py", "lib/b.py"], (T1, T2): ["lib/b.py"]}
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"})
+        )
+        assert verdict["status"] == "covered", verdict
+
+    def test_the_pair_cap_can_only_deny(self):
+        facts = [_review("r1", T0, T1, ["lib/a.py"])]
+        table = {(T0, T2): ["lib/a.py", "lib/b.py"], (T1, T2): ["lib/b.py"]}
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"}), max_pairs=0
+        )
+        assert verdict["status"] == "uncovered"
+        # The cap says it cut the search, so a caller can tell "nothing
+        # excusable" from "the search stopped" (Critic R-5); an uncapped
+        # search carries no `capped` key at all (test above pins the exact dict).
+        assert verdict["capped"] is True
+        uncapped = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, lambda files: False
+        )
+        assert uncapped["status"] == "uncovered" and "capped" not in uncapped
+
+    def test_the_key_form_agrees_with_the_pairwise_form(self):
+        """Free edges from per-tree keys (the form every gate uses) reach the
+        trees the pairwise probe does: T1 and T11 differ only in docs, and
+        only T11 has a diff to the target the table can answer. T11 is a tree
+        some unrelated review ended at — free edges join only trees the
+        evidence mentions."""
+        facts = [_review("r1", T0, T1, ["lib/a.py"]), _review("r9", T3, T11, ["lib/z.py"])]
+        table = {
+            (T1, T11): ["docs/x.md"],
+            (T11, T1): ["docs/x.md"],
+            (T11, T2): ["lib/b.py"],
+        }
+        keys = {T0: "k0", T1: "k1", T11: "k1", T2: "k2"}
+        for key_fn in (None, keys.get):
+            verdict = ca.excused_gap_verdict(
+                facts, T0, T2, _diff(table), key_fn, _not_any({"lib/a.py"})
+            )
+            assert verdict["status"] == "covered", (key_fn, verdict)
+            assert verdict["gap"]["src"] == T11
+
+    def test_free_steps_carry_their_files_in_both_forms(self):
+        """#1159: ``coverage_verdict`` documents a free step as
+        ``{kind: free, src, dst, files}``. The key form learns an interval is
+        free without listing it, so the files are filled in on the found path.
+        The excused path is a found path too, covered or blocked, so its free
+        steps owe the same shape in both forms."""
+        table = {
+            (T1, T11): ["docs/x.md"],
+            (T11, T1): ["docs/x.md"],
+            (T11, T2): ["lib/b.py"],
+        }
+        keys = {T0: "k0", T1: "k1", T11: "k1", T2: "k2"}
+        for findings, status in (([], "covered"), ([BLOCKER], "blocked")):
+            facts = [
+                _review("r1", T0, T1, ["lib/a.py"], findings=findings),
+                _review("r9", T3, T11, ["lib/z.py"]),
+            ]
+            for key_fn in (None, keys.get):
+                verdict = ca.excused_gap_verdict(
+                    facts, T0, T2, _diff(table), key_fn, _not_any({"lib/a.py"})
+                )
+                assert verdict["status"] == status, (key_fn, verdict)
+                free = [s for s in verdict["path"] if s["kind"] == "free"]
+                assert free, (key_fn, verdict["path"])
+                for step in free:
+                    assert set(step) == {"kind", "src", "dst", "files"}, (key_fn, step)
+                    assert step["files"] == table[(step["src"], step["dst"])], key_fn
+
+
+def _random_evidence_case(rng):
+    """One generated evidence graph over trees that differ in judgeable and
+    doc-only content, so both review edges and free edges occur. Returns
+    ``(facts, contents, nodes)`` where ``nodes`` are the trees the valid review
+    edges mention — the node set both searches build when their endpoints are
+    drawn from it."""
+    names = [_tree(f"g{i}") for i in range(rng.randint(3, 7))]
+    contents = {
+        t: {"lib/a.py": rng.choice("xyz"), "docs/r.md": rng.choice("12")}
+        for t in names
+    }
+    facts = []
+    for i in range(rng.randint(2, 9)):
+        src, dst = rng.sample(names, 2)
+        changed = sorted(
+            p for p in contents[src] if contents[src][p] != contents[dst][p]
+        )
+        reviewed = changed if rng.random() > 0.15 else []  # some under-reviewed
+        findings = [BLOCKER] if rng.random() < 0.2 else []
+        facts.append(_review(f"g-r{i}", src, dst, changed, reviewed, findings))
+    nodes = {n for e in ca.review_edges(facts) for n in (e["src"], e["dst"])}
+    return facts, contents, sorted(nodes)
+
+
+class TestOneEvidenceGraph:
+    """The excused-gap search and the coverage search must walk ONE graph.
+    ``excused_gap_verdict`` claims every review and free edge it composes is one
+    ``coverage_verdict`` would use; that claim fails open in the Stop gate the
+    moment the two searches build different graphs. Generated cases, both
+    free-edge forms (pairwise reference and per-tree keys)."""
+
+    SEEDS = range(300)
+
+    def test_reach_closure_is_exactly_what_find_path_reaches(self):
+        import random
+
+        checked = 0
+        for seed in self.SEEDS:
+            rng = random.Random(seed)
+            facts, contents, nodes = _random_evidence_case(rng)
+            if len(nodes) < 2:
+                continue
+            base, target = rng.sample(nodes, 2)
+            edges = ca.review_edges(facts)
+            diff_fn, key_fn = _trees(contents)
+            for kf in (None, key_fn):
+                forward = ca._reach(edges, base, target, diff_fn, kf, reverse=False)
+                backward = ca._reach(edges, target, base, diff_fn, kf, reverse=True)
+                for n in nodes:
+                    to_n = ca._find_path(edges, base, n, diff_fn, kf)
+                    from_n = ca._find_path(edges, n, target, diff_fn, kf)
+                    assert (n in forward) == (to_n is not None), (seed, kf, n)
+                    assert (n in backward) == (from_n is not None), (seed, kf, n)
+                    checked += 1
+        assert checked > 1000  # the generator really produced graphs to compare
+
+    def test_every_non_gap_step_of_an_excused_path_is_an_evidence_edge(self):
+        import random
+
+        composed = 0
+        for seed in self.SEEDS:
+            rng = random.Random(seed)
+            facts, contents, nodes = _random_evidence_case(rng)
+            if len(nodes) < 2:
+                continue
+            base, target = rng.sample(nodes, 2)
+            valid = {
+                (e["fact"]["id"], e["src"], e["dst"]) for e in ca.review_edges(facts)
+            }
+            diff_fn, key_fn = _trees(contents)
+            for kf in (None, key_fn):
+                verdict = ca.excused_gap_verdict(
+                    facts, base, target, diff_fn, kf, lambda files: True
+                )
+                path = verdict.get("path") or []
+                if not path:
+                    continue
+                composed += 1
+                assert path[0]["src"] == base and path[-1]["dst"] == target, seed
+                for a, b in zip(path, path[1:]):
+                    assert a["dst"] == b["src"], (seed, kf)
+                assert [s["kind"] for s in path].count("gap") == 1, (seed, kf)
+                for step in path:
+                    if step["kind"] == "review":
+                        assert (step["id"], step["src"], step["dst"]) in valid, seed
+                    elif step["kind"] == "free":
+                        assert step["src"] in nodes and step["dst"] in nodes, seed
+                        files = diff_fn(step["src"], step["dst"])
+                        assert files is not None and not ca.judgeable_files(files), seed
+                        assert step["files"] == files, (seed, kf)  # #1159
+        assert composed > 100  # excused paths were actually produced and walked
+
+
+# ---------------------------------------------------------------------------
+# The review link and the counted blockers — one owner each (Chunk 04 fix round)
+# ---------------------------------------------------------------------------
+
+
+class TestTheReviewLink:
+    """`linked_reviews` / `prior_review` / `reviews_linked_from` are THE link
+    rule; `critic_mode.review_chain`, `plan_status._extended_reviews` and
+    `critic_consolidate.carried_blocking` follow it rather than restating it
+    (three copies had drifted: identity by `id()` vs fact id, every review at a
+    tree vs the newest, the pass excluded or not)."""
+
+    def _store(self):
+        return [
+            _review("a", T0, T1, ["x.py"]),
+            _review("b", T0, T1, ["x.py"]),   # a second review of the same tree
+            _review("c", T1, T2, ["x.py"]),
+            _review("d", T1, T3, ["x.py"]),   # recorded after c, also from T1
+        ]
+
+    def test_it_links_to_every_earlier_review_at_its_base_newest_last(self):
+        reviews = self._store()
+        assert [f["id"] for f in ca.linked_reviews(reviews, reviews[2])] == ["a", "b"]
+        assert ca.prior_review(reviews, reviews[2])["id"] == "b"
+
+    def test_strictly_earlier_excludes_the_fact_itself_and_anything_after_it(self):
+        reviews = self._store() + [_review("self", T1, T1, ["x.py"])]
+        assert ca.prior_review(reviews, reviews[-1])["id"] == "b"
+        # Placed by id when the caller holds a different dict for the same fact.
+        assert ca.prior_review(reviews, {"id": "a", "body": {"base_tree": T1}}) is None
+
+    def test_a_fact_not_yet_in_the_store_sees_every_review(self):
+        reviews = self._store()
+        probe = {"id": None, "body": {"base_tree": T1}}
+        assert ca.prior_review(reviews, probe)["id"] == "b"
+
+    def test_a_missing_base_links_to_nothing(self):
+        reviews = [{"kind": "review", "id": "x", "body": {"head_tree": None}}]
+        assert ca.linked_reviews(reviews, {"id": "y", "body": {}}) == []
+
+    def test_read_forward_from_a_root(self):
+        reviews = self._store() + [_review("off", T11, T_DEAD, ["x.py"])]
+        assert [f["id"] for f in ca.reviews_linked_from(reviews, T0)] == ["a", "b", "c", "d"]
+        assert [f["id"] for f in ca.reviews_linked_from(reviews, T1)] == ["a", "b", "c", "d"]
+        assert [f["id"] for f in ca.reviews_linked_from(reviews, T2)] == ["c"]
+        assert ca.reviews_linked_from(reviews, "") == []
+
+
+class TestBlockersCounted:
+    """The gate's answer to "is this blocker open", read off a verdict: a
+    blocker with no resolution fact that a clean spanning review routed around
+    is NOT counted."""
+
+    def test_a_routed_around_blocker_is_not_counted(self):
+        facts = [
+            _review("r1", T0, T1, ["x.py"], findings=[BLOCKER]),
+            _review("r2", T1, T2, ["x.py"]),
+            _review("span", T0, T2, ["x.py"]),
+        ]
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff({}))
+        assert verdict["status"] == "covered", verdict
+        assert ca.unresolved_blocking(facts[0], ca.resolution_index(facts)), "premise"
+        assert ca.blockers_counted(verdict) == []
+
+    def test_without_the_spanning_review_it_is_counted(self):
+        facts = [
+            _review("r1", T0, T1, ["x.py"], findings=[BLOCKER]),
+            _review("r2", T1, T2, ["x.py"]),
+        ]
+        counted = ca.blockers_counted(ca.coverage_verdict(facts, T0, T2, _diff({})))
+        assert [(c["review_id"], c["fid"]) for c in counted] == [("r1", "F-1")]
+
+    def test_no_path_is_unknown_not_none_open(self):
+        assert ca.blockers_counted({"status": "uncovered", "reason": "x"}) is None
+        assert ca.blockers_counted(None) is None
+
+
+def test_reviews_linked_from_tolerates_an_unhashable_tree():
+    """A malformed or newer-schema body can carry a non-string `base_tree`; the
+    walk skips it rather than raising out of every gate that reads the set."""
+    from lib import coverage_algebra as ca  # noqa: PLC0415
+
+    odd = {"id": "r-odd", "kind": "review", "body": {"base_tree": ["t0"], "head_tree": "t9"}}
+    good = {"id": "r-ok", "kind": "review", "body": {"base_tree": "t0", "head_tree": "t1"}}
+    assert [f["id"] for f in ca.reviews_linked_from([odd, good], "t0")] == ["r-ok"]

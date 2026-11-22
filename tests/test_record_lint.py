@@ -233,21 +233,23 @@ class TestAddedLineScoping:
         found = _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "suite-total-claim")
         assert [f["line"] for f in found] == [2]
 
-    def test_a_diff_that_cannot_be_decoded_reports_unchecked(self, tmp_path):
-        """`git diff` output carries file CONTENT, and `text=True` decodes it
-        strictly — one non-UTF-8 byte in any consumer's changed `.md` used to
-        raise straight through `critic-begin`. It must degrade to a reported
-        non-answer, never a traceback and never a clean pass."""
+    def test_a_non_utf8_byte_in_the_diff_is_linted_not_unchecked(self, tmp_path):
+        """`git diff` output carries file CONTENT, so one non-UTF-8 byte in a
+        consumer's changed `.md` is ordinary input. It used to make the whole
+        diff unchecked (#1188), which hid every other line from every check; the
+        diff now decodes losslessly and the line beside the byte is still read.
+        An interval git cannot diff at all stays unchecked
+        (`TestUncheckedReporting`)."""
         repo = _make_repo(tmp_path)
         doc = repo / ".prawduct" / "artifacts" / "notes.md"
         doc.write_text("seed\n")
         base = _commit(repo, "seed")
-        doc.write_bytes("seed\nlatin1: caf\xe9\n".encode("latin-1"))
+        doc.write_bytes("seed\nlatin1: caf\xe9\nfull suite 900\n".encode("latin-1"))
         head = _commit(repo, "add")
 
         result = _lint(repo, [".prawduct/artifacts/notes.md"], base, head)
-        assert _checks(result, "suite-total-claim") == []
-        assert any("could not read the diff" in r for r in result["unchecked"])
+        assert [f["line"] for f in _checks(result, "suite-total-claim")] == [3]
+        assert not any("could not read the diff" in r for r in result["unchecked"])
 
     def test_line_numbers_point_at_the_added_line(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -1262,6 +1264,8 @@ class TestUncheckedReporting:
                 "change-fragment": 0,
                 # Repo-wide, but this fixture declares no retired phrase.
                 "retired-claim-survives": 0,
+                # No record changed, so no late requirement was added to grade.
+                "late-requirement-record": 0,
             },
         }
 
@@ -1510,99 +1514,50 @@ class TestVerifyRecordsCLI:
 
 
 class TestEveryCheckCarriesASeverity:
-    """`CHECKS` and the reviewer-facing severity surfaces cannot drift apart.
+    """`CHECKS` and the severity table cannot drift apart.
 
-    A check that fires with no documented severity leaves the Goal-2 reviewer —
-    told to "raise them at the severities given there" — to invent one or drop
-    the finding. A check has shipped in exactly that state, and all three
-    coordinator reviewers found it independently, which is the signal that
-    nothing pinned the relationship.
+    A check that fires with no severity used to leave the Goal-2 reviewer to
+    invent one or drop the finding. The ratings now live in one table in code,
+    `record_lint.SEVERITY`, which consolidation applies itself — so the pin is
+    on that table, and on the `unchecked` shapes as the emitters spell them.
     """
 
-    SURFACES = (
-        "plugin/skills/critic/cross-checks.md",
-        "plugin/skills/critic/goals-1-3.md",
-        ".prawduct/cross-cutting-concerns.md",
-    )
+    def test_every_check_has_exactly_one_rating(self):
+        assert set(record_lint.SEVERITY) == set(record_lint.CHECKS), (
+            "record_lint.SEVERITY and CHECKS disagree — a check with no rating "
+            "reaches the review as an observation whatever it means"
+        )
+        assert set(record_lint.SEVERITY.values()) <= {"blocking", "warning", None}
+        assert record_lint.INNER_BLOCKING <= {
+            c for c, sev in record_lint.SEVERITY.items() if sev == "blocking"
+        }
 
-    def test_every_check_name_appears_on_every_reviewer_surface(self):
-        import sys
-        root = Path(__file__).resolve().parent.parent
-        sys.path.insert(0, str(root / "plugin"))
-        from lib.record_lint import CHECKS
-
-        for rel in self.SURFACES:
-            text = (root / rel).read_text()
-            missing = [c for c in CHECKS if c not in text]
-            assert not missing, (
-                f"{rel} documents no severity for {missing} — a reviewer meets "
-                "the finding with no verdict. Add a row, or remove the check."
-            )
-
-    def test_both_unchecked_shapes_are_graded_on_every_reviewer_surface(self):
-        """The two `unchecked` shapes are told apart by PREFIX, on both surfaces.
-
-        `_check_chunk_refs` emits two textually distinct strings and only one
-        means the check could not run. Compressing them to "a
-        `chunk-ref-missing` entry is BLOCKING" — which `goals-1-3.md` did, and
-        which is the natural casualty of a token-diet pass on a file with ~50
-        tokens of headroom — turns the *assumption* shape into a BLOCKING with
-        no remedy available: a branch that builds no chunk has no `--chunk` to
-        supply. That fired on real reviews before it was caught, and a blocker
-        is the one severity that gates.
-
-        Keyed off the strings the emitters actually produce, so the pin tracks
-        the code rather than the prose that describes it.
-        """
-        import sys
-        root = Path(__file__).resolve().parent.parent
-        sys.path.insert(0, str(root / "plugin"))
-        from lib import record_lint
-
-        # Both shapes must still be what the code emits, or the anchors below
-        # are pinning prose against a contract that moved. The assumption shape
-        # has two causes — an inferred chunk and an inferred plan — assembled
-        # from two modules, and a surface naming only one leaves the other to be
-        # read as a clean grade.
+    def test_the_unchecked_shapes_are_graded_by_their_emitted_prefix(self):
+        """`_check_chunk_refs` emits textually distinct strings and only one
+        means the check could not run. Reading every `chunk-ref-missing` entry
+        as BLOCKING turns the *assumption* shape into a blocker no `--chunks`
+        value can clear. Keyed off the strings the emitters produce, so the pin
+        tracks the code."""
         emitter_src = Path(record_lint.__file__).read_text()
-        assert "chunk-ref-missing unchecked — " in emitter_src
-        assert "chunk-ref-missing graded chunk " in emitter_src
-        assert "inferred as the plan's first open chunk" in emitter_src
-        # The plan half's caveat (`… bound through the active_build_plan pointer`)
-        # is pinned by behaviour, not by its spelling in the source: R-2 replaced
-        # a presence pin here, which stayed green with the branch unreachable,
-        # with `TestChunkRefs`'s legacy-pointer, conventional-path and
-        # claimed-control fixtures.
+        for prefix in ("chunk-ref-missing unchecked — ", "chunk-ref-missing no-subject — ",
+                       "chunk-ref-missing graded chunk "):
+            assert prefix in emitter_src, prefix
+        grade = record_lint._unchecked_severity
+        assert grade("chunk-ref-missing unchecked — x") == ("chunk-ref-missing", "blocking")
+        assert grade("chunk-ref-missing no-subject — x") == ("chunk-ref-missing", None)
+        assert grade("chunk-ref-missing graded chunk 01 of p.md: x") == ("chunk-ref-missing", None)
+        # Everything else inherits one step below its check's rating.
+        assert grade("learnings-rule-body unchecked on f — x")[1] == "warning"
+        assert grade("change-fragment unchecked on f — x")[1] is None
 
-        for rel in ("plugin/skills/critic/cross-checks.md",
-                    "plugin/skills/critic/goals-1-3.md"):
-            text = (root / rel).read_text()
-            assert "chunk-ref-missing unchecked" in text, (
-                f"{rel} no longer names the cannot-run shape by its prefix — a "
-                "reviewer cannot tell which `unchecked` entry blocks."
-            )
-            assert "inferred as the plan's first open chunk" in text, (
-                f"{rel} dropped the assumption shape, so the compressed reading "
-                "('any chunk-ref-missing entry is BLOCKING') returns and with it "
-                "a false blocker that no --chunk value can clear."
-            )
-            assert "active_build_plan` pointer" in text, (
-                f"{rel} names only the chunk half of the assumption. The plan "
-                "half is the one that graded another plan's chunk and reported "
-                "zero over deliverables that were not there."
-            )
-            # The assumption shape must be graded NOTE somewhere after it is
-            # named — the specific severity, not merely a mention.
-            tail = text[text.index("inferred as the plan's first open chunk"):]
-            assert "NOTE" in tail[:600], (
-                f"{rel} names the assumption shape but does not grade it NOTE "
-                "nearby; an ungraded mention is how the BLOCKING reading wins."
-            )
-            # …and a null count must never be presentable as a zero.
-            assert "not a zero" in text, (
-                f"{rel} does not tell the reviewer that a `null` count differs "
-                "from a `0` — the reading a quoted tally invites."
-            )
+    def test_a_crash_reaches_the_review_at_the_deliverable_checks_severity(self):
+        """`lint_records_safe`'s crash return carries the cannot-run prefix, so a
+        lint that never ran blocks rather than reading as clean."""
+        result = {"findings": [], "unchecked": [
+            "chunk-ref-missing unchecked — record-lint did not run at all (X: y)."
+        ]}
+        [item] = record_lint.graded(result)
+        assert item["severity"] == "blocking"
 
 
 # ---------------------------------------------------------------------------
@@ -2321,10 +2276,9 @@ class TestLearningsAreaDead:
     """An area file reachable by nothing is a rule nobody will ever be shown.
 
     The rules directory only grows, and an area file is reached by its globs or
-    not at all. Rename the directory those globs name and the file stops being
-    loaded by the harness and stops being returned by `files_for_paths`, so the
-    Critic stops reading it too — while the file sits there, valid and full of
-    rules, looking exactly like a live one.
+    not at all. Rename the directory those globs name and the harness stops
+    loading the file — while it sits there, valid and full of rules, looking
+    exactly like a live one.
     """
 
     def _area(self, repo: Path, name: str, globs: list[str]) -> None:
@@ -2349,6 +2303,13 @@ class TestLearningsAreaDead:
         # The globs are named, or the reader cannot tell which one to rename.
         assert "`engine/**`" in findings[0]["detail"]
         assert "fold the rules into core.md" in findings[0]["detail"]
+        # The reason the check exists, and nothing that is not true: no
+        # cross-check reads area files, so the finding names only the harness.
+        assert (
+            "the harness loads this file only when a file its globs match is read, "
+            "so its rules reach no session"
+        ) in findings[0]["detail"]
+        assert "cross-check" not in findings[0]["detail"]
 
     def test_globs_matching_a_tracked_file_are_quiet(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -2524,3 +2485,135 @@ class TestChangeFragments:
         assert _checks(result, "change-fragment") == []
         assert any("unknown-reopen-target unchecked" in u for u in result["unchecked"])
         assert result["counts"]["change-fragment"] is None
+
+
+# ---------------------------------------------------------------------------
+# late-requirement-record (#1034)
+# ---------------------------------------------------------------------------
+
+_LR_CHECK = "late-requirement-record"
+
+
+def _lr(n: int, why: str = "operating", surfaced: str = "03") -> str:
+    return f"- **LR-{n}** (2026-11-18 · why: {why} · surfaced: {surfaced}) — It must hold {n}."
+
+
+def _brief(*items: str) -> str:
+    body = "\n".join(items)
+    return f"# Product brief\n\nScope.\n\n## Late requirements\n\n{body}\n\n## Glossary\n\nTerms.\n"
+
+
+class TestLateRequirementRecord:
+    """The record shape is graded on the lines a change ADDED, product-wide for
+    ids, and is silent where no `## Late requirements` section exists (LR-M3)."""
+
+    BRIEF = ".prawduct/artifacts/product-brief.md"
+
+    def _seed(self, tmp_path: Path, *items: str) -> "tuple[Path, str]":
+        repo = _make_repo(tmp_path)
+        (repo / self.BRIEF).write_text(_brief(*items))
+        return repo, _commit(repo, "seed brief")
+
+    def test_a_duplicate_id_and_a_missing_why_are_one_finding_each(self, tmp_path):
+        # The issue's red-first acceptance fixture.
+        repo, base = self._seed(tmp_path, _lr(1), _lr(2))
+        (repo / self.BRIEF).write_text(_brief(
+            _lr(1), _lr(2),
+            _lr(2, why="constraint"),
+            "- **LR-3** (2026-11-18 · surfaced: 04) — Missing its why.",
+        ))
+        head = _commit(repo, "add two records")
+        found = _checks(_lint(repo, [self.BRIEF], base, head), _LR_CHECK)
+        assert len(found) == 2, found
+        dup, missing = sorted(found, key=lambda f: f["line"])
+        assert "LR-2" in dup["detail"] and "duplicate" in dup["detail"]
+        assert "`why`" in missing["detail"]
+        assert dup["path"] == self.BRIEF
+        # The finding sits on the ADDED duplicate, never on the original.
+        lines = (repo / self.BRIEF).read_text().splitlines()
+        assert lines[dup["line"] - 1] == _lr(2, why="constraint")
+        assert lines[missing["line"] - 1].startswith("- **LR-3**")
+
+    def test_a_why_outside_the_fixed_set_is_a_finding(self, tmp_path):
+        repo, base = self._seed(tmp_path, _lr(1))
+        (repo / self.BRIEF).write_text(_brief(_lr(1), _lr(2, why="hunch")))
+        found = _checks(_lint(repo, [self.BRIEF], base, _commit(repo)), _LR_CHECK)
+        assert len(found) == 1 and "`why: hunch`" in found[0]["detail"]
+
+    def test_well_formed_and_superseded_records_are_not_findings(self, tmp_path):
+        repo, base = self._seed(tmp_path, _lr(1))
+        superseded = _lr(1) + " SUPERSEDED 2026-11-19: replaced by LR-2."
+        (repo / self.BRIEF).write_text(_brief(superseded, _lr(2)))
+        result = _lint(repo, [self.BRIEF], base, _commit(repo))
+        assert _checks(result, _LR_CHECK) == []
+        assert result["counts"][_LR_CHECK] == 0
+
+    def test_two_added_duplicates_are_one_finding_not_two(self, tmp_path):
+        repo, base = self._seed(tmp_path)
+        (repo / self.BRIEF).write_text(_brief(_lr(4), _lr(4, why="constraint")))
+        found = _checks(_lint(repo, [self.BRIEF], base, _commit(repo)), _LR_CHECK)
+        assert len(found) == 1 and "LR-4" in found[0]["detail"]
+
+    def test_ids_are_unique_across_the_product_not_per_file(self, tmp_path):
+        repo, _ = self._seed(tmp_path, _lr(1))
+        plan = ".prawduct/artifacts/build-plan-x.md"
+        base = _tree(repo)
+        (repo / plan).write_text(_brief(_lr(1, why="constraint")))
+        found = _checks(_lint(repo, [plan], base, _commit(repo)), _LR_CHECK)
+        assert len(found) == 1
+        assert found[0]["path"] == plan and self.BRIEF in found[0]["detail"]
+
+    def test_only_added_lines_are_graded(self, tmp_path):
+        # A malformed record already in history is not re-reported when an
+        # unrelated well-formed one is added beside it.
+        repo, base = self._seed(tmp_path, "- **LR-1** (2026-11-18) — old, malformed.")
+        (repo / self.BRIEF).write_text(_brief(
+            "- **LR-1** (2026-11-18) — old, malformed.", _lr(2)
+        ))
+        assert _checks(_lint(repo, [self.BRIEF], base, _commit(repo)), _LR_CHECK) == []
+
+    def test_a_record_shaped_line_outside_the_section_is_not_graded(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        notes = ".prawduct/artifacts/notes.md"
+        (repo / notes).write_text("# Notes\n")
+        base = _commit(repo)
+        (repo / notes).write_text("# Notes\n\n- **LR-1** (bad) — not in a section.\n")
+        assert _checks(_lint(repo, [notes], base, _commit(repo)), _LR_CHECK) == []
+
+    def test_no_section_anywhere_emits_nothing(self, tmp_path, monkeypatch):
+        """LR-M3: with no `## Late requirements` section the check emits no
+        finding, no unchecked line, and never walks the product."""
+        from lib import late_requirements
+
+        def _no_scan(*_a, **_k):
+            raise AssertionError("scanned the product with no section in the diff")
+
+        monkeypatch.setattr(late_requirements, "scan", _no_scan)
+        repo = _make_repo(tmp_path)
+        doc = ".prawduct/artifacts/notes.md"
+        (repo / doc).write_text("# Notes\n")
+        base = _commit(repo)
+        (repo / doc).write_text("# Notes\n\n- an ordinary bullet\n")
+        result = _lint(repo, [doc], base, _commit(repo))
+        assert _checks(result, _LR_CHECK) == []
+        assert not any(u.startswith(_LR_CHECK) for u in result["unchecked"])
+        assert result["counts"][_LR_CHECK] == 0
+
+    def test_an_unreadable_product_scan_is_unchecked_not_clean(self, tmp_path, monkeypatch):
+        from lib import late_requirements
+
+        def _broken(*_a, **_k):
+            raise late_requirements.ScanError("git grep failed")
+
+        repo, base = self._seed(tmp_path)
+        (repo / self.BRIEF).write_text(_brief(_lr(1)))
+        head = _commit(repo)
+        monkeypatch.setattr(late_requirements, "scan", _broken)
+        result = _lint(repo, [self.BRIEF], base, head)
+        assert result["counts"][_LR_CHECK] is None
+        assert any(u.startswith(f"{_LR_CHECK} unchecked") for u in result["unchecked"])
+
+    def test_the_check_is_rated_and_advisory(self):
+        assert _LR_CHECK in record_lint.CHECKS
+        assert record_lint.SEVERITY[_LR_CHECK] == "warning"
+        assert _LR_CHECK not in record_lint.INNER_BLOCKING

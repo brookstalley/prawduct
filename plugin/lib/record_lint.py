@@ -8,22 +8,26 @@ times. Each correction is a commit, each commit extends HEAD, and that is how a
 record defect buys a review round.
 
 None of those need judgment. This module answers them in code, at dispatch
-time, and :func:`lint_records` results ride the Critic's dispatch manifest so
-the review protocol can tell reviewers the answers are already known.
+time, and :func:`lint_records` results ride the Critic's dispatch manifest;
+``critic_consolidate.record_lint_partial`` delivers them into the review at the
+severities :data:`SEVERITY` assigns, so no reviewer re-derives or restates one.
 
-**Advice, not authority.** Findings here are advisory: they enter the manifest
-for the builder to fix or disposition, and they never gate. What they must never
-do is *silently pass* — a check that cannot read its inputs reports itself
+**Rated here, never at dispatch.** A result never refuses a dispatch; it gates
+only as a finding of the review that carried it. What a result must never do is
+*silently pass* — a check that cannot read its inputs reports itself
 ``unchecked`` with a reason (the same posture the per-language dispatch norm
 requires of the compliance canary), because an unrun check and a clean one are
 otherwise indistinguishable at the output.
 
-**Cost is proportional to the diff, never the repo** — with one named
-exception, ``retired-claim-survives``, whose subject is text the diff did not
-touch (``retired_claims`` states its cost). It is also the one check that reads
+**Cost is proportional to the diff, never the repo** — with two named
+exceptions. ``retired-claim-survives``'s subject is text the diff did not
+touch (``retired_claims`` states its cost); it is also the one check that reads
 beyond the record set, into every tracked file: the phrase it looks for is a
 record's own retired wording, so a hit grades the record's sweep, not the
-product's content. Consumers are ~20x this
+product's content. ``late-requirement-record`` checks an added record's id
+against every record in the product, so it searches the product's markdown for
+the section — one ``git grep``, paid only when the diff added a record.
+Consumers are ~20x this
 repo's size, so every line-scoped check reads only the lines a change *added*
 (``git diff --unified=0``) rather than re-scanning whole files. That is also why
 the tripwire below does not drown in history: ``.prawduct/change-log.md`` holds
@@ -68,7 +72,14 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import buildplan_refs, evidence, learnings_files, plan_index, retired_claims
+from . import (
+    buildplan_refs,
+    evidence,
+    late_requirements,
+    learnings_files,
+    plan_index,
+    retired_claims,
+)
 
 #: Every check this module can run, in manifest order. Named so a consumer can
 #: tell "ran and found nothing" from "never ran" (see ``unchecked`` below).
@@ -84,7 +95,93 @@ CHECKS = (
     "learnings-area-dead",
     "change-fragment",
     "retired-claim-survives",
+    "late-requirement-record",
 )
+
+#: Each check's severity at the boundary stage, ``None`` meaning an observation.
+#: This table is the one home of those ratings: ``critic_consolidate`` delivers
+#: every result into the review at them, so no reviewer restates a result. A
+#: check missing here (a new one, before it is rated) is an observation.
+SEVERITY = {
+    "chunk-ref-missing": "blocking",
+    "governed-by-gap": "warning",
+    "suite-total-claim": None,
+    "learnings-over-budget": "blocking",
+    "learnings-budget-unreasoned": "blocking",
+    "learnings-core-raise-unapproved": "warning",
+    "learnings-rule-too-long": "blocking",
+    "learnings-rule-body": "blocking",
+    "learnings-area-dead": "warning",
+    "change-fragment": "warning",
+    "retired-claim-survives": "warning",
+    "late-requirement-record": "warning",
+}
+
+#: The checks whose blocking result stays a finding at the INNER stage too: a
+#: missing declared deliverable is a silently dropped requirement, which the
+#: inner BLOCKING set names. A learnings budget row blocks only at the boundary.
+INNER_BLOCKING = frozenset({"chunk-ref-missing"})
+
+#: The three ``chunk-ref-missing`` ``unchecked`` shapes that do not inherit one
+#: step below the check's severity. A deliverable check that could not run is
+#: indistinguishable from one that passed, so it blocks; a plan-less scope the
+#: change-log declares, and a subject half-inferred, are assumptions that no
+#: edit clears, so they are observations.
+_UNCHECKED_SHAPES = (
+    ("chunk-ref-missing unchecked", "blocking"),
+    ("chunk-ref-missing no-subject", None),
+    ("chunk-ref-missing graded chunk", None),
+)
+_UNCHECKED_CHECK_RE = re.compile(r"^([a-z][a-z-]*)")
+
+
+def _unchecked_severity(reason: str) -> "tuple[str, str | None]":
+    """``(check, boundary severity)`` for one ``unchecked`` entry: the shape
+    table first, else one step below the named check's severity (BLOCKING →
+    WARNING, anything else an observation)."""
+    m = _UNCHECKED_CHECK_RE.match(reason)
+    check = m.group(1) if m else "record-lint"
+    for prefix, severity in _UNCHECKED_SHAPES:
+        if reason.startswith(prefix):
+            return check, severity
+    return check, ("warning" if SEVERITY.get(check) == "blocking" else None)
+
+
+def graded(result: "dict | None") -> list[dict]:
+    """Every result and ``unchecked`` entry of a ``lint_records`` result, each
+    as ``{check, severity, where, detail, path}`` at its BOUNDARY severity
+    (``None`` = an observation). ``path`` is the repo file the result is about,
+    or ``None`` when its subject is not a file (a chunk). The stage narrowing is
+    the review's to apply (``critic_consolidate``), since the stage is a fact
+    about the review, not about the record."""
+    if not isinstance(result, dict):
+        return []
+    items: list[dict] = []
+    for finding in result.get("findings") or []:
+        if not isinstance(finding, dict) or not isinstance(finding.get("check"), str):
+            continue
+        check = finding["check"]
+        path = finding.get("path") if isinstance(finding.get("path"), str) else None
+        where = path or "?"
+        if finding.get("line"):
+            where = f"{where}:{finding['line']}"
+        items.append({
+            "check": check,
+            "severity": SEVERITY.get(check),
+            "where": where,
+            "detail": str(finding.get("detail") or ""),
+            "path": None if check == "chunk-ref-missing" else path,
+        })
+    for reason in result.get("unchecked") or []:
+        if not isinstance(reason, str) or not reason.strip():
+            continue
+        check, severity = _unchecked_severity(reason)
+        items.append({
+            "check": check, "severity": severity, "where": "unchecked",
+            "detail": reason, "path": None,
+        })
+    return items
+
 
 # Two checks were built, measured, and REMOVED before this shipped — recorded
 # here because the removal is the norm working, not an omission to be helpfully
@@ -160,7 +257,7 @@ _VALUE_START_RE = re.compile(
 #: open, which is precisely the break case: in ``a: "one`` / ``b: ", two"`` the
 #: unterminated scalar swallows the next line and closes on its quote, stranding
 #: ``, two"``. Admitting ``,`` there suppressed the exact defect this check was
-#: built for, silently, on a machine-answered channel reviewers relay verbatim.
+#: built for, silently, on a machine-answered channel the review delivers verbatim.
 _LEGAL_AFTER_CLOSING_QUOTE = frozenset("#:")
 
 #: A value that opens a BLOCK scalar (``|``/``>`` with any chomping or
@@ -410,6 +507,81 @@ def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]
     return findings
 
 
+def _check_late_requirements(
+    project_dir: Path,
+    records: list[str],
+    added_by_path: "dict[str, list[tuple[int, str]]]",
+    head_tree: str,
+) -> "tuple[list[dict], list[str], set[str]]":
+    """The record shape of each late requirement a change ADDED (#1034).
+
+    A record is a top-level item in a ``## Late requirements`` section
+    (:mod:`late_requirements` is the one parser). Only an added line inside a
+    section is graded, so a record already in history is never re-reported, and
+    a change that adds none never searches the product: with no section in the
+    diff this check costs nothing and says nothing (LR-M3).
+
+    Ids are unique per PRODUCT, so a duplicate is found against every record
+    :func:`late_requirements.scan` reads at ``head_tree``. The finding lands on
+    the added occurrence, never on the record that held the id first; two added
+    copies of one new id are one finding, on the later.
+    """
+    added_records: list[tuple[str, int]] = []
+    findings: list[dict] = []
+    for rel in records:
+        added = added_by_path.get(rel)
+        if not rel.endswith(".md") or not added:
+            continue
+        text = late_requirements.read_at(project_dir, rel, head_tree)
+        if text is None:
+            continue
+        in_section = {num for num, _line in late_requirements.record_lines(text)}
+        for line_num, line in added:
+            if line_num not in in_section:
+                continue
+            added_records.append((rel, line_num))
+            rec = late_requirements.parse_line(line, path=rel, line_num=line_num)
+            findings.extend(
+                _finding("late-requirement-record", rel, line_num, problem)
+                for problem in rec.problems
+            )
+    if not added_records:
+        return [], [], set()
+    try:
+        product = late_requirements.scan(project_dir, tree=head_tree)
+    except late_requirements.ScanError as exc:
+        gap = (
+            "late-requirement-record unchecked — could not read the product's "
+            f"late requirements to check id uniqueness ({exc})"
+        )
+        return findings, [gap], {"late-requirement-record"}
+    added_set = set(added_records)
+    by_id: "dict[str, list[late_requirements.LateReq]]" = {}
+    for rec in product:
+        if rec.id is not None:
+            by_id.setdefault(rec.id, []).append(rec)
+    for rec_id, holders in by_id.items():
+        if len(holders) < 2:
+            continue
+        # The id belongs to the first record the change did NOT add; when the
+        # change added every copy, to the first of those.
+        prior = [r for r in holders if (r.path, r.line) not in added_set]
+        owner = prior[0] if prior else holders[0]
+        for rec in holders:
+            if rec is owner or (rec.path, rec.line) not in added_set:
+                continue
+            findings.append(
+                _finding(
+                    "late-requirement-record",
+                    rec.path or "",
+                    rec.line,
+                    f"duplicate id {rec_id} — {owner.where} already holds it; "
+                    "ids are unique per product, so take the next free LR-<n>",
+                )
+            )
+    return findings, [], set()
+
+
 def _read_text(path: Path) -> "str | None":
     try:
         return path.read_text(encoding="utf-8")
@@ -436,20 +608,22 @@ def _scope_declared_in_change_log(prawduct_dir: Path, scope: "str | None") -> bo
       plan or departing from the rule silently. Three consecutive reviews took
       the second.
 
-    The change-log is the witness because a code-changing branch cannot open a
-    PR without ADDING an entry (`check-change-log-entry`, enforced at the PR
-    boundary), and the `scope=` tag on that entry is what the release flow
-    reads to enumerate what is still unshipped. So the declaration already
-    exists by the time any review runs, and it lives in a durable, reviewed,
-    release-tracked record.
+    The change record is the witness because a code-changing branch cannot open
+    a PR without ADDING one (`check-change-log-entry`, enforced at the PR
+    boundary): a fragment named for its scope, which is what the release flow
+    reads to enumerate what is still unshipped. Since #1125 an unreleased
+    change-log entry is refused there as it is at the release, so for new work
+    the witness is the fragment; the archive and the live log witness scopes
+    that already shipped. So the declaration already exists by the time any
+    review runs, and it lives in a durable, reviewed, release-tracked record.
 
     That premise is exactly as strong as the probe. Where a repo gitignores
-    `.prawduct/` the log is untracked, git cannot see which branch added what,
-    and the probe passes on the weaker `entry-present-untracked` check — so
-    there the entry is a convention the PR flow asks an operator to confirm
-    (`skills/pr/SKILL.md` Step 1c), not something the gate forced out of the
-    branch. The witness still exists and is still read; what weakens is the
-    guarantee that it was written for THIS branch.
+    `.prawduct/`, git cannot see which branch added what, and the probe passes
+    on the weaker `fragment-present-untracked` check — so there the record is a
+    convention the PR flow asks an operator to confirm (`skills/pr/SKILL.md`
+    Step 1c), not something the gate forced out of the branch. The witness still
+    exists and is still read; what weakens is the guarantee that it was written
+    for THIS branch.
 
     Be precise about the strength of that: the PR probe requires the entry, not
     the tag, so a builder who writes `scope=` is still declaring something
@@ -1523,13 +1697,11 @@ def _check_learnings_areas(
     Returns ``(findings, unchecked, no_answer)``.
 
     The rules directory only grows, and an area file is reached by its globs or
-    not at all: rename the directory those globs name, or retire the area, and
-    the file stops being loaded by the harness and stops being returned by
-    ``files_for_paths`` — so the Critic never reads it either. Nothing else
-    notices, because the file is still there, still valid, still full of rules.
-    The corpus then *displays* a rule no session will ever see, which is the
-    cross-check going dark from the opposite direction to the one
-    ``learnings_files`` was written to prevent.
+    not at all: the harness loads it only when a file its ``paths:`` match is
+    read, so rename the directory those globs name, or retire the area, and the
+    file stops being loaded. Nothing else notices, because the file is still
+    there, still valid, still full of rules. The corpus then *displays* a rule
+    no session will ever see.
 
     Matched against **tracked** paths (``git ls-files``), not the working tree:
     build output and ignored scratch directories would keep a dead area alive,
@@ -1570,9 +1742,9 @@ def _check_learnings_areas(
                 None,
                 "no tracked file matches "
                 + ", ".join(f"`{glob}`" for glob in area.globs)
-                + " — the harness never loads this file and the cross-check "
-                "never reads it, so its rules reach nobody. Rename the globs to "
-                "what the code is called now, or fold the rules into core.md",
+                + " — the harness loads this file only when a file its globs "
+                "match is read, so its rules reach no session. Rename the globs "
+                "to what the code is called now, or fold the rules into core.md",
             )
         )
     return findings, [], set()
@@ -1597,7 +1769,7 @@ def lint_records(
     """Run every check over the record subset of ``paths``.
 
     Returns ``{"records", "chunk_graded", "chunks_graded", "plan_graded",
-    "findings", "unchecked", "counts"}``. ``findings`` is advisory — it never gates.
+    "findings", "unchecked", "counts"}``. Severity is :func:`graded`'s, never this function's.
 
     ``chunk_ids`` is the set the review's fact names (``critic_consolidate``'s
     ``chunks``, ST8 #1051): every one of them is graded, so the deliverables
@@ -1652,14 +1824,16 @@ def lint_records(
     if all_graded and chunks_graded:
         chunk_graded = chunks_graded[0]
     if chunk_graded is None:
-        # Agrees with `chunk_graded` by construction: `cross-checks.md` already
-        # reads a null subject as "nothing was checked at all", and the counter
-        # said 0 in the same breath.
+        # Agrees with `chunk_graded` by construction: a null subject means
+        # "nothing was checked at all", and a counter of 0 beside it would say
+        # the opposite in the same breath.
         no_answer.add("chunk-ref-missing")
 
     added_by_path: dict = {}
+    diff_unread = False
     if records:
         diffed = _added_lines(project_dir, base_tree, head_tree, records)
+        diff_unread = diffed is None
         if diffed is None:
             unchecked.append(
                 "suite-total-claim unchecked — git could "
@@ -1673,6 +1847,20 @@ def lint_records(
         added = added_by_path.get(rel)
         if added:
             findings.extend(_check_suite_totals(rel, added))
+    if diff_unread:
+        # The same unread diff: no added line is known, so no record is graded.
+        unchecked.append(
+            "late-requirement-record unchecked — git could not read the diff over "
+            "the changed records"
+        )
+        no_answer.add("late-requirement-record")
+    else:
+        lr_findings, lr_gaps, lr_no_answer = _check_late_requirements(
+            project_dir, records, added_by_path, head_tree
+        )
+        findings.extend(lr_findings)
+        unchecked.extend(lr_gaps)
+        no_answer.update(lr_no_answer)
 
     for rel in _plans_to_check(prawduct_dir, records):
         text = _read_text(project_dir / rel)
@@ -1730,14 +1918,12 @@ def lint_records_safe(
     """:func:`lint_records`, but a crash degrades to a reported ``unchecked``
     instead of taking the caller down with it.
 
-    **This is the only form the review-dispatch path may call.** Record-lint is
-    *advice*, and `architecture.md` § Direction says advice fails soft — but
-    ``critic-begin`` had no handler between this module and ``main()``, so a
-    single unreadable byte in one changed ``.md`` would abort every review
-    dispatch in every consuming repo with a raw traceback. That inverts two
-    recorded dispositions at once (advice fails soft; errors are attributed,
-    never stack traces across the boundary), and it fails in the worst
-    direction: an advisory check taking out the authority path it advises.
+    **This is the only form the review-dispatch path may call.** A record check
+    must never cost the review it rides — but ``critic-begin`` had no handler
+    between this module and ``main()``, so a single unreadable byte in one
+    changed ``.md`` would abort every review dispatch in every consuming repo
+    with a raw traceback, a stack trace across the boundary where an attributed
+    error belongs, and a record check taking out the review that rates it.
 
     The failure is *reported*, never swallowed — the reason lands in
     ``unchecked``, which is the same "this did not run" channel every other
@@ -1760,11 +1946,10 @@ def lint_records_safe(
             "plan_graded": None,
             "findings": [],
             # The `chunk-ref-missing unchecked` prefix is load-bearing:
-            # `cross-checks.md` grades that string BLOCKING, inheriting the
-            # retired `cannot-verify:` bar. A crash takes the deliverable check
-            # down with everything else, so it must reach the reviewer at the
-            # deliverable check's severity — not as a generic NOTE, which is the
-            # BLD-5J8N habituation arriving by a new route.
+            # `_UNCHECKED_SHAPES` grades that string BLOCKING. A crash takes the
+            # deliverable check down with everything else, so it must reach the
+            # review at the deliverable check's severity — not as a generic
+            # observation, which is habituation arriving by a new route.
             "unchecked": [
                 f"chunk-ref-missing unchecked — record-lint did not run at all "
                 f"({type(exc).__name__}: {exc}). The review proceeds; NO record "

@@ -251,7 +251,7 @@ class TestApply:
         layout = lf.resolve(repo)
         app = next(a for a in layout.areas if a.path.name == "app.md")
         assert app.globs == ["src/**"]
-        assert lf.files_for_paths(layout, ["src/app.py"])[-1].name == "app.md"
+        assert lf.matches(app.globs, ["src/app.py"])
 
     def test_an_area_left_with_no_rules_is_deleted(self, tmp_path):
         repo = _repo(tmp_path, _legacy_core(), {

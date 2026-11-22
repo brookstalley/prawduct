@@ -441,7 +441,7 @@ class TestDegradation:
 
     def test_a_failed_status_leaves_the_dirty_count_unknown(self, clone, tmp_path, monkeypatch):
         git(clone, "worktree", "add", "-q", "-b", "side", str(tmp_path / "wt"))
-        self._fail(monkeypatch, "status", err="output is not valid UTF-8: ...")
+        self._fail(monkeypatch, "status", err="fatal: index file corrupt")
         rows = [w for w in _scan(clone).worktrees if not w.is_current]
         assert rows and all(w.dirty is None for w in rows)
 
@@ -533,8 +533,8 @@ class TestCommand:
         git(clone, "switch", "-q", "main")
         assert sw.worktrees_cmd(clone, ["--json"]) == 0
         payload = json.loads(capsys.readouterr().out)
-        assert set(payload) == {"schema_version", "worktrees", "branches", "worktrees_checked",
-                                "has_remotes", "problems"}
+        assert set(payload) == {"schema_version", "worktrees", "branches", "unlanded",
+                                "worktrees_checked", "has_remotes", "problems"}
         assert set(payload["worktrees"][0]) == {"path", "branch", "is_current", "ephemeral",
                                                 "state", "last_activity", "dirty"}
         assert set(payload["worktrees"][0]["last_activity"]) == {"source", "at"}
@@ -552,7 +552,171 @@ class TestCommand:
 
     def test_unknown_argument_is_a_usage_error(self, clone, capsys):
         assert sw.worktrees_cmd(clone, ["--all"]) == 2
-        assert "usage" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "usage" in err and "[--prs]" in err
+
+
+# --- finished, pushed, unmerged branches and their pull requests (#843) ------
+
+
+def _finished(repo: Path, branch: str, *, age_days: float = 3) -> None:
+    """Cut ``branch`` from main, commit on it ``age_days`` ago, push it, and
+    write the ticked build plan claiming it."""
+    git(repo, "switch", "-q", "-c", branch, "main")
+    name = f"{branch.replace('/', '-')}.txt"
+    (repo / name).write_text(name)
+    git(repo, "add", name)
+    stamp = f"@{int(time.time() - age_days * DAY)} +0000"
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
+         "-c", "commit.gpgsign=false", "commit", "-q", "-m", name],
+        cwd=str(repo), check=True, capture_output=True,
+        env={**os.environ, "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp},
+    )
+    git(repo, "push", "-q", "origin", branch)
+    git(repo, "switch", "-q", "main")
+    artifacts = repo / ".prawduct" / "artifacts"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    (repo / ".prawduct" / "changes").mkdir(exist_ok=True)
+    scope = branch.replace("/", "-")
+    (artifacts / f"build-plan-{scope}.md").write_text(
+        f"---\nartifact: build-plan\nscope: {scope}\nbranch: {branch}\nbase: main\n---\n\n"
+        "# Build Plan\n\n## Build Chunks\n\n### Chunk 01: c01\n\n## Status\n\n- [x] Chunk 01\n"
+    )
+
+
+# Answers are files named by the branch asked about; every call is logged.
+FAKE_GH = r'''#!PYTHON
+import json, os, sys
+d = os.environ["FAKE_GH_DIR"]
+args = sys.argv[1:]
+with open(os.path.join(d, "calls.log"), "a") as f:
+    f.write(json.dumps(args) + "\n")
+head = args[args.index("--head") + 1].replace("/", "--") if "--head" in args else ""
+if os.path.exists(os.path.join(d, "fail-" + head)):
+    sys.exit(1)
+path = os.path.join(d, head + ".json")
+print(open(path).read() if os.path.exists(path) else "[]")
+'''
+
+
+@pytest.fixture
+def fake_gh(tmp_path, monkeypatch):
+    import stat
+    import sys
+    d = tmp_path / "fakegh"
+    (d / "bin").mkdir(parents=True)
+    exe = d / "bin" / "gh"
+    exe.write_text(FAKE_GH.replace("#!PYTHON", f"#!{sys.executable}"))
+    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("FAKE_GH_DIR", str(d))
+    monkeypatch.setenv("PATH", f"{d / 'bin'}{os.pathsep}{os.environ['PATH']}")
+
+    class Fake:
+        def serve(self, branch, prs):
+            (d / f"{branch.replace('/', '--')}.json").write_text(json.dumps(prs))
+
+        def fails(self, branch):
+            (d / f"fail-{branch.replace('/', '--')}").write_text("")
+
+        def calls(self):
+            log = d / "calls.log"
+            return [json.loads(x) for x in log.read_text().splitlines()] if log.exists() else []
+    return Fake()
+
+
+def _section(out: str) -> str:
+    """The table's finished-branch section, up to the next heading or note."""
+    start = out.index("FINISHED BRANCHES")
+    rest = out[start:].splitlines()
+    lines = [rest[0]]
+    for line in rest[1:]:
+        if not line.startswith("  "):
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+class TestUnlandedBranches:
+    def test_the_table_lists_them_offline_and_asks_nothing(self, clone, fake_gh, capsys):
+        _finished(clone, "fix/x")
+        assert sw.worktrees_cmd(clone, []) == 0
+        section = _section(capsys.readouterr().out)
+        assert "fix/x" in section and "build-plan-fix-x.md" in section
+        assert "pull request not checked" in section
+        assert "--prs" in section, "the table names how to ask"
+        assert fake_gh.calls() == [], "the default table makes no network call"
+
+    def test_prs_asks_once_per_branch_for_every_state(self, clone, fake_gh, capsys):
+        _finished(clone, "fix/x")
+        assert sw.worktrees_cmd(clone, ["--prs"]) == 0
+        section = _section(capsys.readouterr().out)
+        assert "no pull request, ever" in section
+        [call] = fake_gh.calls()
+        assert call[:6] == ["pr", "list", "--state", "all", "--head", "fix/x"]
+
+    def test_a_pull_request_in_any_state_is_named(self, clone, fake_gh, capsys):
+        _finished(clone, "fix/x")
+        fake_gh.serve("fix/x", [
+            {"number": 7, "state": "CLOSED", "isCrossRepository": False},
+            {"number": 3, "state": "CLOSED", "isCrossRepository": False},
+        ])
+        assert sw.worktrees_cmd(clone, ["--prs"]) == 0
+        section = _section(capsys.readouterr().out)
+        assert "pull request #7 (closed)" in section
+        assert "no pull request, ever" not in section
+
+    def test_a_forks_same_named_branch_is_not_this_ones(self, clone, fake_gh, capsys):
+        _finished(clone, "fix/x")
+        fake_gh.serve("fix/x", [{"number": 9, "state": "OPEN", "isCrossRepository": True}])
+        assert sw.worktrees_cmd(clone, ["--prs"]) == 0
+        assert "no pull request, ever" in _section(capsys.readouterr().out)
+
+    def test_gh_failing_is_could_not_ask_never_none(self, clone, fake_gh, capsys):
+        _finished(clone, "fix/x")
+        fake_gh.fails("fix/x")
+        assert sw.worktrees_cmd(clone, ["--prs"]) == 0
+        section = _section(capsys.readouterr().out)
+        assert "could not ask gh" in section
+        assert "no pull request, ever" not in section
+
+    def test_checks_are_capped_oldest_first_and_the_rest_named(self, clone, fake_gh, capsys):
+        for n in range(sw.MAX_PR_CHECKS + 1):
+            _finished(clone, f"fix/b{n}", age_days=2 + n)
+        assert sw.worktrees_cmd(clone, ["--prs", "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        asked = [c[5] for c in fake_gh.calls()]
+        assert len(asked) == sw.MAX_PR_CHECKS == 8
+        assert "fix/b0" not in asked, "the newest is the one left unchecked"
+        by_name = {r["name"]: r for r in payload["unlanded"]}
+        assert by_name["fix/b0"]["pr_check"] == "unchecked"
+        assert any("not checked" in p and "1 " in p for p in payload["problems"])
+
+    def test_json_rows_carry_the_documented_keys(self, clone, fake_gh, capsys):
+        _finished(clone, "fix/x")
+        fake_gh.serve("fix/x", [{"number": 4, "state": "MERGED", "isCrossRepository": False}])
+        assert sw.worktrees_cmd(clone, ["--json", "--prs"]) == 0
+        [row] = json.loads(capsys.readouterr().out)["unlanded"]
+        assert set(row) == {"name", "last_commit", "plans", "pr_check", "pull_request"}
+        assert row["pr_check"] == "found"
+        assert row["pull_request"] == {"number": 4, "state": "merged"}
+        assert row["plans"] == ["build-plan-fix-x.md"]
+
+    def test_the_egress_inventory_names_this_caller(self):
+        """`--prs` reaches the network through git_hygiene's gh seam, so the
+        egress_boundary clause for that seam must name it as a caller."""
+        repo_root = Path(__file__).resolve().parents[1]
+        state = (repo_root / ".prawduct" / "project-state.yaml").read_text()
+        clause = state[state.index("lib/git_hygiene.py"):]
+        clause = clause[:clause.index('"')]
+        assert "any_pr_for" in clause and "worktrees --prs" in clause
+        source = (repo_root / "plugin" / "lib" / "stranded_work.py").read_text()
+        assert "git_hygiene.any_pr_for" in source, "control: the caller the clause names exists"
+
+    def test_the_briefing_scan_never_looks(self, clone, monkeypatch):
+        _finished(clone, "fix/x")
+        monkeypatch.setattr(sw, "unlanded_branches", lambda *a, **k: pytest.fail("briefing paid for it"))
+        assert _scan(clone, branches=False).unlanded == []
 
 
 class TestRecordHelpers:

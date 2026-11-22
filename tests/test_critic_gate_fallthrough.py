@@ -36,8 +36,9 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 # The empirical diff is a non-`.md` code file. This keeps the gate's *other*
-# carveout — `gates.session_changes_all_non_judgeable` (a fully non-judgeable
-# diff) — False, so the only thing that could skip the gate is the Type ->
+# carveout — a session work span with nothing judgeable
+# (`gates.session_work_span(...)["judgeable"]` False) — off, so the only thing
+# that could skip the gate is the Type ->
 # designer_handoff_skip branch. That isolation is the whole point: we are
 # pinning the Type field's effect, not the empirical doc-only shortcut.
 _CODE_DIFF = " M src/app.py"

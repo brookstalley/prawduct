@@ -471,12 +471,6 @@ def live_declarations(
     return declarations, unreadable
 
 
-# The pre-#1051 private name, kept one release for any out-of-tree caller that
-# imported it (the hook's `plan check-claims` reads `live_declarations`). Delete
-# in the release after 3.7.x.
-_live_declarations = live_declarations
-
-
 def _frontmatter_unterminated(content: str) -> bool:
     """Whether the document opens a frontmatter block it never closes.
 

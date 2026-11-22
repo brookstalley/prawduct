@@ -57,6 +57,7 @@ def register_all() -> None:
     from .git_hygiene_probes import register as register_git_hygiene
     from .work_unit_probes import register as register_work_unit
     from .testament_cache_probes import register as register_testament_cache
+    from .testament_evidence_probes import register as register_testament_evidence
 
     register_backlog()  # the backlog feature's probes (incl. legacy-backlog-format)
     register_upstream()  # upstream-bug-reporting receiving-side probe
@@ -73,7 +74,8 @@ def register_all() -> None:
     register_adhoc_delegate()  # ad-hoc delegate worktree left unintegrated (its brief is the signal)
     register_oversized_state()  # governance files over this repo's size threshold
     register_evidence_size()  # clone-shared evidence store over its size threshold (#953)
-    register_stranded_branch()  # local branch checked out nowhere, commits no remote has (#843's local arm)
+    register_stranded_branch()  # #843: a branch checked out nowhere with commits no remote has; a finished, pushed, unmerged one
     register_git_hygiene()  # merged branches and dead worktrees whose removal loses nothing
     register_work_unit()  # plan-unbound-legacy: a plan governing through the retiring legacy window (#1050)
     register_testament_cache()  # causes that alone keep tests uncacheable, from testament's offline snapshot
+    register_testament_evidence()  # testament in use, but no declared suite command runs it

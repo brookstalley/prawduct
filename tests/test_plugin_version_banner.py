@@ -149,7 +149,10 @@ class TestBundledData:
     def test_gates_json_well_formed(self):
         data = json.loads(GATES_JSON.read_text())
         gates = data["gates"]
-        assert {g["id"] for g in gates} >= {"reflection", "critic", "pr"}
+        assert {g["id"] for g in gates} >= {"reflection", "critic"}
+        # The PR-review gate left with the PR reviewer (#1129); an entry would
+        # attribute blocks to a gate that can no longer fire.
+        assert "pr" not in {g["id"] for g in gates}
         # #301 retired the trivial gate; a registry entry would announce and
         # attribute a gate that can no longer fire.
         assert "trivial" not in {g["id"] for g in gates}
@@ -160,7 +163,7 @@ class TestBundledData:
 
     def test_parse_gates_reads_registry(self, banner):
         ids = {g["id"] for g in banner.parse_gates(ROOT)}
-        assert {"reflection", "critic", "pr"} <= ids
+        assert {"reflection", "critic"} <= ids
 
 
 # =============================================================================

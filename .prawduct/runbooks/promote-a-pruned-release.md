@@ -51,6 +51,74 @@ scope in particular, which is the thing Phase 0 exists to catch.
 
 - **If `K withheld` is 0:** → `cut-and-publish-a-plugin-release.md` Phase 2.
 - **If Phase 1 is not finished and pushed:** → `cut-and-publish-a-plugin-release.md`, from the top.
+  The one exception is the section below, which Phase 0 step 0a of that runbook sends you to
+  **before** Phase 1.
+
+---
+
+## Before Phase 1 — find the collateral
+
+*Run from `cut-and-publish-a-plugin-release.md` Phase 0 step 0a, whenever the gate reports
+`K withheld` of 1 or more, and before its Phase 1. Then return there.*
+
+The prune is by **commit range, not by feature**: everything that merged at or before the cut point
+waits for a later release, including work unrelated to the withheld scopes. That held work is the
+**collateral**. Phase 1's cut ships every `ships` row, so a collateral scope left `ships` would be
+archived as shipped in vX.Y.Z and have its fragment removed, while its code stays on `develop`.
+That is why the collateral is found and declared here, before the cut, and not in Phase 2 (#1024).
+
+**C1.** Find the cut point — the newest commit that delivered **withheld** work. The gate named the
+withheld scopes; the boundary between them and the ship set is normally a PR merge, since
+feature work arrives that way:
+
+```
+git log --oneline --merges <prev-tag>..origin/develop
+```
+
+**Expected:** one sha you can name, and the PR title beside it belongs to withheld work. Record
+it in the release plan. (Full history, if the boundary is not a merge:
+`git log --oneline <prev-tag>..origin/develop`.)
+
+**C2.** Confirm nothing withheld would ship — read the range **after** the cut point:
+
+```
+git log --oneline <cut-point>..origin/develop
+```
+
+**Expected:** every line is work you intend to ship.
+**If a withheld scope's commit appears here:** the two streams interleave and a range prune
+cannot separate them. Re-take the classification — either withhold the shipping scope too, or
+ship the withheld one. Do **not** try to split by file: on v3.1.2 the ship and withhold sets
+overlapped in 11 files.
+
+**C3.** List the collateral — the fragments that arrived **at or before** the cut point:
+
+```
+git log --format= --name-only --diff-filter=A <prev-tag>..<cut-point> -- .prawduct/changes/
+git log --oneline <prev-tag>..<cut-point>
+```
+
+**Expected:** the first command lists one `.prawduct/changes/<scope>.md` per scope that merged
+in that range. Each one that is not already `withheld` in the table is collateral. Read the
+second command's commits against that list: every commit is a withheld scope's work or a
+collateral scope's.
+
+**Declare each collateral scope in the classification table**, as `withheld` with
+`collateral-of <scope>` naming the withheld scope whose cut point holds it:
+
+```markdown
+| big-feature | withheld | BKL-6J2X |
+| small-fix   | withheld | collateral-of big-feature |
+```
+
+The gate holds a collateral row behind its parent's blocker, refuses one written `ships`
+(``… `ships` but declared `collateral-of …` ``), and refuses a parent that is missing, not
+`withheld`, or itself collateral. Re-run `check-releasability --release vX.Y.Z`: `K` now
+counts the collateral too, and the withheld list names each as `(collateral of <scope>, blocked
+by <id>)`. That table is the record of what a consumer is missing.
+
+**If you are not willing to hold the collateral,** the alternative is to ship the withheld
+scope, which is re-taking the classification.
 
 ## Before you start
 
@@ -70,65 +138,48 @@ amended 2026-07-29). Step 10 is that test.
 - [ ] Push access to `origin` for `main` and for tags.
 - [ ] The previous release tag: `git describe --tags --abbrev=0 origin/main`.
 - [ ] `.prawduct/artifacts/release-plan-vX.Y.Z.md` exists with its `## Release classification` table
-      — Phase 0 required it. You will add the cut point, the collateral, and the conflict
-      resolutions to it as you go. Worked example: `release-plan-v3.1.2-pruned.md`.
-- [ ] **You accept the collateral.** The prune is by **commit range, not by feature**: everything
-      that merged before the cut point waits for a later release, including work unrelated to the
-      withheld scopes. Step 3 makes it visible. If you are not willing to hold it, stop — the
-      alternative is to ship the withheld scope, which is Phase 0's decision to re-take.
+      — Phase 0 required it — and it records the cut point (C1) and declares every collateral scope
+      `withheld | collateral-of <scope>` (C3). You add the conflict resolutions to it as you go.
+      Worked example: `release-plan-v3.1.2-pruned.md`.
 
 ---
 
 ## Steps
 
-1. Find the cut point — the newest commit that delivered **withheld** work. Step 0 named the withheld
-   scopes; the boundary between them and the ship set is normally a PR merge, since feature work
-   arrives that way:
-
-   ```
-   git log --oneline --merges <prev-tag>..origin/develop
-   ```
-
-   **Expected:** one sha you can name, and the PR title beside it belongs to withheld work. Record it
-   in the release plan. (Full history, if the boundary is not a merge:
-   `git log --oneline <prev-tag>..origin/develop`.)
-
-2. Confirm nothing withheld would ship — read the range **after** the cut point:
+1. Confirm the cut point recorded at Phase 0 (C1) still holds. Only Phase 1's release-prep commit
+   should have reached `develop` since:
 
    ```
    git log --oneline <cut-point>..origin/develop
    ```
 
-   **Expected:** every line is work you intend to ship.
-   **If a withheld scope's commit appears here:** the two streams interleave and a range prune
-   cannot separate them. Go back to Phase 0 and re-take the classification — either withhold the
-   shipping scope too, or ship the withheld one. Do **not** try to split by file: on v3.1.2 the ship
-   and withhold sets overlapped in 11 files.
+   **Expected:** the ship-set commits C2 read, plus the release-prep commit on top.
+   **If anything else appears:** work merged after Phase 0. Classify its scope (re-run
+   `check-releasability --release vX.Y.Z`), and if it is withheld work, go back to C1.
 
-3. Confirm nothing shipping would be withheld, and record the collateral — read the range **at and
-   before** the cut point:
+2. Confirm nothing withheld would ship: in that same output, no line belongs to a withheld scope.
+   **If one does:** the two streams interleave. C2's remedy applies, and Phase 1 must be redone
+   (its cut shipped by the old table).
 
-   ```
-   git log --oneline <prev-tag>..<cut-point>
-   ```
-
-   **Expected:** every line is either a withheld scope's work or collateral you are willing to hold.
-   Write the collateral into the release plan by name — it is what makes "what is a consumer
-   missing?" answerable later.
-
-   Then confirm the collateral is still pending on `develop`:
+3. Confirm the withheld and collateral work is still pending on `develop`:
 
    ```
    ls .prawduct/changes/
    ```
 
-   **Expected:** a fragment for every withheld scope and every collateral scope. Phase 1's cut
+   **Expected:** a fragment for every `withheld` row, collateral rows included. Phase 1's cut
    removed only the fragments the classification table marked `ships`.
    **If a collateral scope has no fragment here:** the cut archived it as shipped in vX.Y.Z, and
-   this tree will not carry its code. Stop: the record and the release now disagree, and this
-   runbook has no tested remedy for it.
-   **If a shipping scope's commit appears here:** that scope would ship partially. Back to step 2's
-   remedy.
+   this tree will not carry its code — it was left `ships` instead of declared at C3. The archive is
+   append-only, so do not edit the entry. Instead:
+   - **Before the prep commit** (Phase 1 step 12): undo the cut as Phase 1 step 3's note says,
+     declare the scope `withheld | collateral-of <scope>`, and redo Phase 1 from step 1.
+   - **After it:** write a fragment `.prawduct/changes/<scope>-reopen-1.md` with
+     `reopens: <scope>` (`plugin/templates/change-fragment.md`), carrying the collateral's change,
+     so it is pending again and ships with the release that actually carries its code. Classify it
+     `withheld | collateral-of <scope>` here, and record the misclassification and the reopen
+     fragment in the release plan under the classification table. Also delete the scope's
+     paragraph from the release notes at step 14, since this tree does not carry it.
 
 4. Create the candidate worktree on the previous release's tree:
 
@@ -395,7 +446,7 @@ amended 2026-07-29). Step 10 is that test.
   > lesson is narrow and worth keeping: a check copied into a runbook whose invariants differ is a
   > new defect wearing the old one's fix.*
 - `git diff --stat origin/main origin/develop` is **non-empty**, and what it lists is the withheld
-  work plus step 3's collateral, nothing else. *Unlike a whole-develop promotion, an empty diff here
+  work plus the collateral the classification table declares, nothing else. *Unlike a whole-develop promotion, an empty diff here
   means the withheld work shipped.*
 
 ## If this doesn't work

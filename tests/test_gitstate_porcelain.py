@@ -68,23 +68,29 @@ def _repo(tmp_path: Path, *, baseline: str = "") -> Path:
 class TestDocOnlyWithQuotedPaths:
     """A doc-only session touching a space-containing .md path must classify
     as doc-only — the regression that falsely blocked the reflection gate.
-    (The carveout now lives in gates.session_changes_all_non_judgeable —
-    kernel-v3 chunk 04 — but the quoted-path parse it depends on is this
-    module's, so the regression stays pinned here.)"""
+    The Stop hook's doc-only reader is ``gates.session_work_span``, which
+    reads this module's porcelain parse when the session has no base-tree
+    marker (these fixtures write none), so the quoted-path parse is pinned
+    through it."""
 
     def test_quoted_md_path_is_doc_only(self, tmp_path, monkeypatch):
         project = _repo(tmp_path)
         monkeypatch.setattr(
             gitstate, "git_status_output", lambda _: ' M "my doc.md"\n'
         )
-        assert gates.session_changes_all_non_judgeable(project) is True
+        span = gates.session_work_span(project)
+        assert span["source"] == "porcelain"
+        assert span["changed"] == ["my doc.md"]
+        assert span["judgeable"] is False
 
     def test_quoted_code_path_is_not_doc_only(self, tmp_path, monkeypatch):
         project = _repo(tmp_path)
         monkeypatch.setattr(
             gitstate, "git_status_output", lambda _: ' M "my module.py"\n'
         )
-        assert gates.session_changes_all_non_judgeable(project) is False
+        span = gates.session_work_span(project)
+        assert span["changed"] == ["my module.py"]
+        assert span["judgeable"] is True
 
     def test_mixed_quoted_and_plain_all_md(self, tmp_path, monkeypatch):
         project = _repo(tmp_path)
@@ -93,7 +99,9 @@ class TestDocOnlyWithQuotedPaths:
             "git_status_output",
             lambda _: ' M "my doc.md"\n M README.md\n',
         )
-        assert gates.session_changes_all_non_judgeable(project) is True
+        span = gates.session_work_span(project)
+        assert sorted(span["changed"]) == ["README.md", "my doc.md"]
+        assert span["judgeable"] is False
 
 
 class TestSessionChangesWithQuotedPaths:

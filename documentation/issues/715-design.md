@@ -27,6 +27,10 @@ requirements doc's "further construction sites" list did not name (`briefing.py`
 None of this is drift from the requirements pass — ART-4 asked for exactly this enumeration and
 named it a design-pass deliverable, not a requirements-pass one.
 
+*Note, 2026-11-11 (#1129):* `init_product`'s scaffold tuple no longer includes `.prawduct/.pr-
+reviews`; that directory went with the PR reviewer, so the return value sketched below has two
+members.
+
 ## 1. Summary of what ships
 
 1. **ART-1, ART-2, ART-3** — one resolver, `get_artifacts_dir(project_dir)`, added to `plugin/lib/core.py`

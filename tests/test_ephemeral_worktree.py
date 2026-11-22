@@ -493,6 +493,30 @@ class TestGuardRefusesWrites:
         assert "BLOCKED" in result.stderr
         assert "ephemeral agent worktree" in result.stderr
 
+    def test_a_delegate_is_told_the_coordinator_runs_the_critic(self, tmp_path):
+        """A build delegate dispatched with worktree isolation sits on the
+        harness scratch branch, so this guard is what stops it running the
+        Critic its brief may have asked for. The refusal must say WHO runs it
+        instead — a delegate told only "not here" goes looking for a tree where
+        it is allowed. Control: the same command from the coordinator's own
+        checkout reaches its own logic, unrefused and unnamed."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree(primary)
+
+        refused = _run(wt, "critic-begin", "--mode", "chunk")
+        blocked = next(
+            (ln for ln in refused.stderr.splitlines() if ln.startswith("BLOCKED")), ""
+        )
+        assert refused.returncode == 1
+        assert "build delegate" in blocked
+        assert "the coordinator" in blocked
+        assert "runs Critic reviews" in blocked
+
+        unrefused = _run(primary, "critic-begin", "--mode", "chunk")
+        assert "BLOCKED" not in unrefused.stderr
+        assert "build delegate" not in unrefused.stderr
+
     @pytest.mark.parametrize(
         "argv",
         [
@@ -933,6 +957,36 @@ class TestGuardScope:
         assert "BLOCKED" not in result.stderr  # still exempt from the refusal
         assert "snapshot of the commit it was forked from" in result.stderr
 
+    def test_session_start_says_the_notice_once_on_stdout(self, tmp_path):
+        """SessionStart's stdout is what reaches the agent; stderr is only logged.
+
+        The notice rides stdout at `clear --session-start` (the one owner,
+        `_emit_pre_dispatch_notice`, shared with the skew guard), exactly once,
+        and not on stderr where nothing reads it.
+        """
+        wt = _agent_worktree(_seeded(tmp_path))
+        result = _run(wt, "clear", "--session-start", "--brief-only")
+        assert result.stdout.count("snapshot of the commit it was forked from") == 1
+        assert "snapshot of the commit it was forked from" not in result.stderr
+        assert "BLOCKED" not in result.stderr
+
+    @pytest.mark.parametrize("command", ["stop", "subagent-stop"])
+    def test_stop_hooks_are_silent_about_the_snapshot(self, tmp_path, command):
+        """Stop fires every turn and the agent has nothing to act on: no repeat."""
+        wt = _agent_worktree(_seeded(tmp_path))
+        result = _run(wt, command)
+        for channel in (result.stdout, result.stderr):
+            assert "snapshot of the commit it was forked from" not in channel
+        assert "BLOCKED" not in result.stderr
+
+    def test_durable_agent_tree_follows_the_same_policy(self, tmp_path):
+        wt = _agent_worktree_on_named_branch(_seeded(tmp_path))
+        start = _run(wt, "clear", "--session-start", "--brief-only")
+        assert start.stdout.count("snapshot of the commit it was forked from") == 1
+        assert "snapshot of the commit it was forked from" not in start.stderr
+        stop = _run(wt, "stop")
+        assert "snapshot of the commit it was forked from" not in stop.stdout + stop.stderr
+
     def test_override_env_reverses_the_refusal_but_keeps_the_notice(self, tmp_path):
         """The override waives permission to write, not the staleness warning.
 
@@ -1089,8 +1143,12 @@ class TestScratchWorktreeArmsNoCriticGate:
 # DG2 (#1051): `test-evidence record` from a scratch tree → shared store only
 # ---------------------------------------------------------------------------
 
+#: `time="0.0"`: the report is written right after the tree is checked out, and
+#: the ingest bounds the tree by the run's START (mtime less duration). A run
+#: claiming to have begun half a second before its report would have begun
+#: before the checkout, so the stamp would rightly be withheld.
 _JUNIT_GREEN = (
-    '<?xml version="1.0" encoding="utf-8"?>\n<testsuites><testsuite name="s" time="0.5">'
+    '<?xml version="1.0" encoding="utf-8"?>\n<testsuites><testsuite name="s" time="0.0">'
     '<testcase classname="tests.test_a" name="t1"/><testcase classname="tests.test_a" name="t2"/>'
     '<testcase classname="tests.test_a" name="t3"/></testsuite></testsuites>\n'
 )

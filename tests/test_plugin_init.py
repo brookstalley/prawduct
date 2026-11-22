@@ -152,8 +152,12 @@ def test_apply_creates_expected_file(scaffolded: Path, rel: str):
     assert (scaffolded / rel).is_file(), f"scaffold missing {rel}"
 
 
-def test_apply_creates_pr_reviews_dir(scaffolded: Path):
-    assert (scaffolded / ".prawduct" / ".pr-reviews").is_dir()
+def test_apply_creates_no_pr_reviews_dir(scaffolded: Path):
+    """The PR reviewer that wrote evidence there was retired (#1129), so the
+    scaffold no longer makes a directory nothing writes. Control: the scaffold
+    ran and made the directories it does own."""
+    assert (scaffolded / ".prawduct" / "artifacts").is_dir()
+    assert not (scaffolded / ".prawduct" / ".pr-reviews").exists()
 
 
 def test_a_new_product_records_changes_as_fragments_with_no_live_log(scaffolded: Path):
@@ -176,6 +180,17 @@ def test_a_repo_already_on_the_single_file_log_is_left_on_it(tmp_path: Path):
     assert ".prawduct/changes/.gitkeep" not in result["created"]
     assert not (target / ".prawduct" / "changes").exists()
     assert log.read_text(encoding="utf-8") == "# Change Log\n"
+    # Left on the log, but told: since #1125 releases and the PR gate read only
+    # fragments, so the repo's next PR would be refused with no word at onboarding.
+    told = [w for w in result["warnings"] if ".prawduct/change-log.md" in w]
+    assert len(told) == 1, result["warnings"]
+    assert "/prawduct:doctor" in told[0] and "migrate-change-log" in told[0]
+
+
+def test_a_repo_with_no_log_gets_no_log_warning(scaffolded: Path):
+    """Control for the warning above: a fresh product starts on fragments."""
+    result = run_init(scaffolded, "Again", "--apply")
+    assert not [w for w in result["warnings"] if "change-log.md" in w]
 
 
 @pytest.mark.parametrize("bad", FORBIDDEN)
@@ -197,10 +212,16 @@ def test_scaffolded_state_file_leaves_room_for_discovery(scaffolded: Path):
     so a fresh repo started at three quarters of the oversized-file ceiling and
     one honest discovery tripped it, asking the owner to judge text they never
     wrote. That reference lives in the plugin now; this keeps it from creeping
-    back: under 12 KB leaves discovery most of the default ceiling.
+    back: about 12 KB leaves discovery most of the default ceiling.
+
+    RAISED 2026-11-12, DECLARED: 12,000 → 12,100 bytes for one key's hint,
+    `native_review_pairing` (#1130). The template sat 3 bytes under the old
+    line, so any new key would have crossed it, and the cuts available were a
+    pointer the next reader needs. A hundred bytes leaves discovery's headroom
+    under the 40 KB oversized-file default where it was.
     """
     size = (scaffolded / ".prawduct" / "project-state.yaml").stat().st_size
-    assert size < 12_000, f"a fresh state file is {size} bytes before discovery writes anything"
+    assert size < 12_100, f"a fresh state file is {size} bytes before discovery writes anything"
 
 
 def test_name_detectable_by_briefing(scaffolded: Path):

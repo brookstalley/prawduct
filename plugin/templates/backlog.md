@@ -57,8 +57,9 @@
     refs: <doc#section>, <doc>      links to governing artifacts (requirements /
                                     arch / design docs). Distinct from `related:`
                                     (which is item -> item).
-    revisit: YYYY-MM-DD | <event>   expiry on a norm exception or stopgap; a past date
-                                    raises an advisory while the item is open.
+    revisit: YYYY-MM-DD | <event>   expiry on a norm exception or stopgap, or a dated
+                                    re-check; a past date raises an advisory while
+                                    the item is open.
 
   Legacy items (no metadata) remain valid — tools treat them as
   `effort: ? · impact: ? · area: untagged · status: open` and rank them lower.

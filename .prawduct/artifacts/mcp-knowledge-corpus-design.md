@@ -52,6 +52,11 @@ a matching path is read; the Critic reads the same set via `prawduct-hook learni
 --for-diff` (`plugin/lib/learnings_files.py`, `plugin/agents/critic-reviewer.md`,
 `plugin/lib/gates.py`). One authored file, two automatic consumers, no reliance on recall.
 
+*Correction, 2026-11-11:* the second consumer no longer exists. No reviewer reads the learnings
+rules since #1128, and `learnings-files --for-diff` was removed with #1129 on the owner's ruling.
+The harness's on-read load is the one automatic consumer, so route (b) in §8.1 would need a read
+built for it rather than one that "already" exists.
+
 Routing is **file-granular**. There is no section-level load.
 
 ### 2.3 The gap that makes this a framework feature, not a document

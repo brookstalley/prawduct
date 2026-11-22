@@ -45,9 +45,7 @@ and outside the "cannot join the dispatch without joining a sum" guarantee:
 * **Files one level up.** The same paragraph routes reviewers to
   `../../docs/principles.md` and `../../docs/norms.md`; neither is summed
   here.
-* **Files the protocol reaches by a different route entirely.**
-  `skills/backlog/cache-reads.md`, which the backlog reconciliation pass opens.
-* **Product-side reads.** A reviewer opens the governed product's own
+* **Product-side reads.** A reviewer may open the governed product's own
   `.claude/rules/learnings/` — `core.md` alone is ~22,514 tokens in THIS repo,
   comparable to the whole priced single-pass-full route below, so the largest
   single input to a real review is not in any figure here and varies per product.
@@ -81,11 +79,13 @@ PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
 #: § Direction says unit-cost is "the reviewer's *payload* (what a given MODE
 #: must load to answer its goals)".
 #:
-#: **And the actor differs, not just the mode.** `chunk` and
-#: `verify-resolutions` are always single-pass, so no `critic-reviewer` body is
-#: ever loaded for them — charging the agent definition to those modes prices
-#: ~2.5k nobody reads. Conversely a dispatched reviewer never opens `SKILL.md`;
-#: the coordinator does, and then dispatches.
+#: **And the actor differs, not just the mode.** On a session at or below the
+#: reviewer ceiling, `chunk` and `verify-resolutions` are reviewed inline by the
+#: fork, so no `critic-reviewer` body is loaded for them — charging the agent
+#: definition to those routes prices ~2.5k nobody reads. Above the ceiling the
+#: fork hands the review to one dispatched reviewer, which is a route of its own
+#: (`dispatched-reviewer-inner`). Conversely a dispatched reviewer never opens
+#: `SKILL.md`; the coordinator does, and then dispatches.
 PAYLOAD_ROUTES = {
     # The single-pass fork on the cheap protocol — `chunk`, `verify-resolutions`.
     "single-pass-inner": (
@@ -110,13 +110,28 @@ PAYLOAD_ROUTES = {
         "skills/critic/framework-checks.md",
         "skills/critic/coordinator.md",
     ),
-    # One dispatched `critic-reviewer` on a coordinator roster. Its system
-    # prompt replaces `SKILL.md`, and a roster multiplies this by its size.
+    # One dispatched `critic-reviewer` on a coordinator roster, or the one a
+    # capped single-pass `final`/`cumulative` is handed to. Its system prompt
+    # replaces `SKILL.md`, and a roster multiplies this by its size.
     "dispatched-reviewer": (
         "agents/critic-reviewer.md",
         "skills/critic/review-protocol.md",
         "skills/critic/cross-checks.md",
         "skills/critic/framework-checks.md",
+    ),
+    # The fork on a capped `chunk`/`verify-resolutions`: it has read the cheap
+    # protocol at step 2 (the reviewer model is known only after `critic-begin`),
+    # then reads `coordinator.md`, dispatches one reviewer and stops.
+    "coordinator-fork-inner": (
+        "skills/critic/SKILL.md",
+        "skills/critic/goals-1-3.md",
+        "skills/critic/coordinator.md",
+    ),
+    # The reviewer a capped `chunk`/`verify-resolutions` is handed to: the agent
+    # definition and the cheap protocol, nothing else.
+    "dispatched-reviewer-inner": (
+        "agents/critic-reviewer.md",
+        "skills/critic/goals-1-3.md",
     ),
 }
 
@@ -229,7 +244,56 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # only writer of both" stopped being true when ingest began deriving the findings cache in a
     # clone that never consolidated one; the clause naming writers went, and `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
-    "single-pass-inner": 5806,
+    # -231 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
+    # +11 on 2026-11-11 (reviewer-model-cap), DECLARED: the Critic skill's `critic-begin` invocation
+    # carries `--session-model` (+11 on every fork route) and the coordinator's dispatch passes the
+    # manifest's `reviewer_model` (+30, the coordinator fork only). Priced against the SUM: a few
+    # tokens per review against a reviewer run on a tier above Opus-class by accident, which costs
+    # more than any payload this table prices.
+    # +58 on 2026-11-11 (reviewer-model-cap), DECLARED: a review on a session above the reviewer
+    # ceiling is handed from the fork to dispatched reviewers, so the Critic skill routes on the
+    # manifest's `reviewer_model` (step 5 skips to step 7; step 7's new branch), `coordinator.md`
+    # dispatches the single-pass `reviewer` role too, the reviewer contract learns that role and
+    # reads `dispatch_directives`, and `review-protocol.md` says only the fork consolidates.
+    # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
+    # every capped review running on a tier above Opus-class, which costs more per review than this
+    # whole table prices.
+    # -5 on 2026-11-11 (pr-reviewer-fold Chunk 03): `goals-1-3.md` stops naming the PR review as a
+    # boundary-stage review. Ceiling lowered with it.
+    # +11 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: `SKILL.md`'s per-mode `cumulative` entry, which every fork route loads. Priced against the SUM: tens of
+    # tokens per review against a repeat cumulative re-rating a whole bundle the earlier boundary review rated
+    # (the design measured same-base repeats cutting subject files 32-46%).
+    # +20 on 2026-11-11 (bounded-cumulative review round), DECLARED: SKILL step 5's pointer and the exit-3 wording. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    # +57 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the Critic skill grants and instructs `validate-partial` on the fork's own partial, and its refusal path names the one-reviewer re-dispatch. Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    # +13 on 2026-11-11 (review-round-cost Chunk 02, #900), DECLARED: one sentence in `goals-1-3.md`
+    # telling the reviewer to list a test-failure finding's failing ids in `failed_tests`. Priced
+    # against the SUM: those ids are what lets consolidate waive an inherited failure itself, against a
+    # verify-resolutions round per branch whose base is already red.
+    # -15 on 2026-11-11 (review-round-cost Critic round): the fork's refusal sentence in SKILL.md names the remedy the fork actually
+    # meets (rewrite its own partial, re-run consolidate) in place of the coordinator's re-dispatch
+    # remedy (R-8). A READING; ceiling lowered with it.
+    # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
+    # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
+    # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    # +38 on 2026-11-15 (verify-resolutions-lineage, #724), DECLARED: SKILL.md's exit table gains the
+    # `critic-begin` 7 row (stale or red test evidence on `verify-resolutions`: stop, never demote) and the
+    # exit-4 row's "never refused" is qualified "by the budget", which 7 made false. Priced against the SUM:
+    # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
+    # -12 on 2026-11-15 (retire-chunk-status-shims, #1055): SKILL.md step 4 lost the retired
+    # `--chunk` alias sentence.
+    # +24 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, goals-1-3.md +16): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): SKILL.md step 4 lost the exit-1 "apply the
+    # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
+    # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): SKILL.md's exit-3 qualifier stops restating
+    # which tree a pass anchored (`review-cycle.md` derives it). A READING; ceiling lowered with it.
+    "single-pass-inner": 5747,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -303,7 +367,69 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # only writer of both" stopped being true when ingest began deriving the findings cache in a
     # clone that never consolidated one; the clause naming writers went, and `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
-    "single-pass-full": 11538,
+    # -1762 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
+    # -5 on 2026-11-10 (critic-trim review round): the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. Ceiling lowered.
+    # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
+    # observation rather than refused, and the sentence saying so is shorter.
+    # +11 on 2026-11-11 (reviewer-model-cap), DECLARED: the Critic skill's `critic-begin` invocation
+    # carries `--session-model` (+11 on every fork route) and the coordinator's dispatch passes the
+    # manifest's `reviewer_model` (+30, the coordinator fork only). Priced against the SUM: a few
+    # tokens per review against a reviewer run on a tier above Opus-class by accident, which costs
+    # more than any payload this table prices.
+    # +72 on 2026-11-11 (reviewer-model-cap), DECLARED: a review on a session above the reviewer
+    # ceiling is handed from the fork to dispatched reviewers, so the Critic skill routes on the
+    # manifest's `reviewer_model` (step 5 skips to step 7; step 7's new branch), `coordinator.md`
+    # dispatches the single-pass `reviewer` role too, the reviewer contract learns that role and
+    # reads `dispatch_directives`, and `review-protocol.md` says only the fork consolidates.
+    # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
+    # every capped review running on a tier above Opus-class, which costs more per review than this
+    # whole table prices.
+    # -26 on 2026-11-11 (pr-reviewer-fold Chunk 03): `review-protocol.md` stops naming the PR review
+    # as a boundary-stage review, and `cross-checks.md` stops saying the PR reviewer does not re-run
+    # the final-mode passes. Ceiling lowered with it.
+    # +87 on 2026-11-11 (read-cost-review), DECLARED: `review-protocol.md` gains the Goal 7
+    # read-cost check (owner ruling 2026-11-11). Priced against the SUM: a three-reviewer roster
+    # pays it four times, once per reviewer and once in the fork, though only the design
+    # reviewer applies it. What that buys is a rated, countable verdict on a class reviewers
+    # raised unprompted under four goals and never above a note; its `read-cost:` yield is the
+    # evidence it is kept or retired on.
+    # +61 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: `review-protocol.md`'s bounded-span bullet (+50) and `SKILL.md`'s per-mode `cumulative` entry (+11). Priced against the SUM: tens of
+    # tokens per review against a repeat cumulative re-rating a whole bundle the earlier boundary review rated
+    # (the design measured same-base repeats cutting subject files 32-46%).
+    # +68 on 2026-11-11 (bounded-cumulative review round), DECLARED: the `files_context` rule's one home in `review-protocol.md` plus SKILL's pointer and exit-3 wording. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    # +57 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same SKILL.md edit as `single-pass-inner`. Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    # -2 on 2026-11-11 (review-round-cost Critic round): SKILL.md -15 (the fork's own refusal remedy, R-8) against review-protocol.md
+    # +13, DECLARED: Goal 1 tells the boundary reviewer to list a test-failure finding's ids in
+    # `failed_tests` (R-7/R-9), the one input the inherited-baseline waiver reads. Without it the
+    # waiver could not fire at `final`/`cumulative`, and the builder paid the verify-resolutions
+    # round #900 removes at the boundary, where it costs most. Net a READING; ceiling lowered.
+    # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
+    # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
+    # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    # +38 on 2026-11-15 (verify-resolutions-lineage, #724), DECLARED: SKILL.md's exit table gains the
+    # `critic-begin` 7 row (stale or red test evidence on `verify-resolutions`: stop, never demote) and the
+    # exit-4 row's "never refused" is qualified "by the budget", which 7 made false. Priced against the SUM:
+    # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
+    # -12 on 2026-11-15 (retire-chunk-status-shims, #1055): SKILL.md step 4 lost the retired
+    # `--chunk` alias sentence.
+    # +17 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, review-protocol.md +9): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): SKILL.md step 4 lost the exit-1 "apply the
+    # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
+    # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): SKILL.md's exit-3 qualifier stops restating
+    # which tree a pass anchored (`review-cycle.md` derives it). A READING; ceiling lowered with it.
+    # +40 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED (review-protocol.md +40): the Scope
+    # bullet asks for the answer as data (`scope`, `closure`, `members`), which consolidation then
+    # grades a `fixed` resolution against. Priced against the SUM: ~40 tokens per review against a
+    # class finding closed short of its members, measured well over 3 a month across the fleet
+    # (`tools/measure-class-member-closure.py`), each one a further round.
+    "single-pass-full": 10151,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -393,7 +519,60 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # goals-1-3.md / review-protocol.md, compressed in place first. Priced against the SUM: ~18 tokens
     # per review against a retry-only green on a test this branch changed reaching a PR unflagged,
     # the race-hiding the recorder's retry would otherwise buy.
-    "dispatched-reviewer": 11008,
+    # -1880 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
+    # +16 on 2026-11-10 (critic-trim review round), DECLARED: the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned — the role line in the
+    # agent definition, and the WARNING arm's cut in cross-checks.md, net. Ceiling raised with it.
+    # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
+    # observation rather than refused, and the sentence saying so is shorter.
+    # +187 on 2026-11-11 (reviewer-model-cap), DECLARED: a review on a session above the reviewer
+    # ceiling is handed from the fork to dispatched reviewers, so the Critic skill routes on the
+    # manifest's `reviewer_model` (step 5 skips to step 7; step 7's new branch), `coordinator.md`
+    # dispatches the single-pass `reviewer` role too, the reviewer contract learns that role and
+    # reads `dispatch_directives`, and `review-protocol.md` says only the fork consolidates.
+    # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
+    # every capped review running on a tier above Opus-class, which costs more per review than this
+    # whole table prices.
+    # A few tokens lower after the boundary review: the reviewer contract tells a handed-off
+    # reviewer that what its protocol file asks of "the fork" is not addressed to it, paid for by
+    # dropping why the hand-off happens from the role's entry and the agent's description.
+    # -26 on 2026-11-11 (pr-reviewer-fold Chunk 03): the same two cuts as `single-pass-full`.
+    # Ceiling lowered with it.
+    # +87 on 2026-11-11 (read-cost-review), DECLARED: the same check as `single-pass-full`.
+    # +50 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: `review-protocol.md`'s bounded-span bullet. Priced against the SUM: tens of
+    # tokens per review against a repeat cumulative re-rating a whole bundle the earlier boundary review rated
+    # (the design measured same-base repeats cutting subject files 32-46%).
+    # +71 on 2026-11-11 (bounded-cumulative review round), DECLARED: the `files_context` rule's one home plus the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: `critic-reviewer.md`'s `tools:` grants `validate-partial` and its write step says to run it. Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    # +34 on 2026-11-11 (review-round-cost Critic round), DECLARED: review-protocol.md's Goal 1 `failed_tests` clause (+13, see
+    # single-pass-full) and the field in `critic-reviewer.md`'s partial schema (+21), which says
+    # "match it exactly" and so read the field's absence as a ban (R-7/R-9). Priced against the
+    # SUM: ~34 tokens per dispatched reviewer — x3 on a roster — against a verify-resolutions
+    # round (minutes) per branch whose base is already red. Nothing another file owns was left to
+    # cut in the schema block; the Goal 1 clause is the same sentence goals-1-3.md carries.
+    # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
+    # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
+    # +5 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: the reviewer contract's write step gives `validate-partial`'s three exits, net of cutting its duplicated closing sentence. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    # +9 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (review-protocol.md +9): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    # -10 on 2026-11-16 (coherence-pass Critic round): critic-reviewer.md loses "the builder ran
+    # the tests before requesting review" — false since the suite moved to the boundary, and cut
+    # from the critic skill for that reason in Chunk 01. Ceiling lowered with it.
+    # +73 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED (review-protocol.md +40, critic-reviewer.md +33): the Scope
+    # bullet asks for the answer as data (`scope`, `closure`, `members`), which consolidation then
+    # grades a `fixed` resolution against. Priced against the SUM: ~40 tokens per review against a
+    # class finding closed short of its members, measured well over 3 a month across the fleet
+    # (`tools/measure-class-member-closure.py`), each one a further round.
+    # the critic-reviewer.md half: the
+    # partial schema admits `scope`, `closure` and `members`, the schema a reviewer is told to match
+    # exactly. Priced as `failed_tests` was: ~33 tokens per dispatched reviewer against a class
+    # finding closed short of its members (`tools/measure-class-member-closure.py`).
+    "dispatched-reviewer": 9663,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -443,14 +622,136 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # only writer of both" stopped being true when ingest began deriving the findings cache in a
     # clone that never consolidated one; the clause naming writers went, and `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
-    "coordinator-fork": 12132,
+    # -1779 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
+    # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
+    # observation rather than refused, and the sentence saying so is shorter.
+    # +41 on 2026-11-11 (reviewer-model-cap), DECLARED: the Critic skill's `critic-begin` invocation
+    # carries `--session-model` (+11 on every fork route) and the coordinator's dispatch passes the
+    # manifest's `reviewer_model` (+30, the coordinator fork only). Priced against the SUM: a few
+    # tokens per review against a reviewer run on a tier above Opus-class by accident, which costs
+    # more than any payload this table prices.
+    # +123 on 2026-11-11 (reviewer-model-cap), DECLARED: a review on a session above the reviewer
+    # ceiling is handed from the fork to dispatched reviewers, so the Critic skill routes on the
+    # manifest's `reviewer_model` (step 5 skips to step 7; step 7's new branch), `coordinator.md`
+    # dispatches the single-pass `reviewer` role too, the reviewer contract learns that role and
+    # reads `dispatch_directives`, and `review-protocol.md` says only the fork consolidates.
+    # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
+    # every capped review running on a tier above Opus-class, which costs more per review than this
+    # whole table prices.
+    # -26 on 2026-11-11 (pr-reviewer-fold Chunk 03): the same two cuts as `single-pass-full`.
+    # Ceiling lowered with it.
+    # +87 on 2026-11-11 (read-cost-review), DECLARED: the same check as `single-pass-full`.
+    # +61 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: `review-protocol.md`'s bounded-span bullet (+50) and `SKILL.md`'s per-mode `cumulative` entry (+11). Priced against the SUM: tens of
+    # tokens per review against a repeat cumulative re-rating a whole bundle the earlier boundary review rated
+    # (the design measured same-base repeats cutting subject files 32-46%).
+    # +75 on 2026-11-11 (bounded-cumulative review round), DECLARED: the `files_context` rule's one home plus SKILL's and `coordinator.md`'s pointers. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    # +93 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the SKILL.md edit (+57) and one sentence in `coordinator.md` naming the one-reviewer re-dispatch remedy (+36). Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    # -38 on 2026-11-11 (review-round-cost Critic round): coordinator.md -36 (its refused-partial remedy left: the coordinator stops
+    # before consolidation and never meets a refusal, R-8), SKILL.md -15, review-protocol.md +13
+    # (declared on single-pass-full). A READING; ceiling lowered with it.
+    # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
+    # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
+    # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    # +38 on 2026-11-15 (verify-resolutions-lineage, #724), DECLARED: SKILL.md's exit table gains the
+    # `critic-begin` 7 row (stale or red test evidence on `verify-resolutions`: stop, never demote) and the
+    # exit-4 row's "never refused" is qualified "by the budget", which 7 made false. Priced against the SUM:
+    # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
+    # -12 on 2026-11-15 (retire-chunk-status-shims, #1055): SKILL.md step 4 lost the retired
+    # `--chunk` alias sentence.
+    # +17 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, review-protocol.md +9): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): SKILL.md step 4 lost the exit-1 "apply the
+    # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
+    # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): SKILL.md's exit-3 qualifier stops restating
+    # which tree a pass anchored (`review-cycle.md` derives it). A READING; ceiling lowered with it.
+    # +40 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED (review-protocol.md +40): the Scope
+    # bullet asks for the answer as data (`scope`, `closure`, `members`), which consolidation then
+    # grades a `fixed` resolution against. Priced against the SUM: ~40 tokens per review against a
+    # class finding closed short of its members, measured well over 3 a month across the fleet
+    # (`tools/measure-class-member-closure.py`), each one a further round.
+    "coordinator-fork": 10821,
+    # Established 2026-11-11 (reviewer-model-cap). On a session above the
+    # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
+    # the fork to one dispatched reviewer on the capped model, so the cheap
+    # route splits in two: the fork that routes and the reviewer that reviews.
+    # Baselines, recorded where each stood when it first got an owner.
+    # -5 each on 2026-11-11 (pr-reviewer-fold Chunk 03): `goals-1-3.md` stops naming the PR review
+    # as a boundary-stage review. Ceilings lowered with them.
+    # +11 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: `SKILL.md`'s per-mode `cumulative` entry, which every fork route loads. Priced against the SUM: tens of
+    # tokens per review against a repeat cumulative re-rating a whole bundle the earlier boundary review rated
+    # (the design measured same-base repeats cutting subject files 32-46%).
+    # +27 on 2026-11-11 (bounded-cumulative review round), DECLARED: SKILL's pointer and exit-3 wording plus `coordinator.md`'s template. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    # +93 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same two edits as `coordinator-fork`. Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    # +13 on 2026-11-11 (review-round-cost Chunk 02, #900), DECLARED: one sentence in `goals-1-3.md`
+    # telling the reviewer to list a test-failure finding's failing ids in `failed_tests`. Priced
+    # against the SUM: those ids are what lets consolidate waive an inherited failure itself, against a
+    # verify-resolutions round per branch whose base is already red.
+    # -51 on 2026-11-11 (review-round-cost Critic round): coordinator.md -36 and SKILL.md -15 (R-8). A READING; ceiling lowered.
+    # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
+    # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
+    # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    # +38 on 2026-11-15 (verify-resolutions-lineage, #724), DECLARED: SKILL.md's exit table gains the
+    # `critic-begin` 7 row (stale or red test evidence on `verify-resolutions`: stop, never demote) and the
+    # exit-4 row's "never refused" is qualified "by the budget", which 7 made false. Priced against the SUM:
+    # ~38 tokens per fork review against a verify round (median ~300s) spent reporting a stale suite.
+    # -12 on 2026-11-15 (retire-chunk-status-shims, #1055): SKILL.md step 4 lost the retired
+    # `--chunk` alias sentence.
+    # +24 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (SKILL.md +8, goals-1-3.md +16): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    # -30 on 2026-11-18 (backlog-roi Chunk 03, #662): SKILL.md step 4 lost the exit-1 "apply the
+    # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
+    # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): SKILL.md's exit-3 qualifier stops restating
+    # which tree a pass anchored (`review-cycle.md` derives it). A READING; ceiling lowered with it.
+    "coordinator-fork-inner": 6417,
+    # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    # +13 on 2026-11-11 (review-round-cost Chunk 02, #900), DECLARED: one sentence in `goals-1-3.md`
+    # telling the reviewer to list a test-failure finding's failing ids in `failed_tests`. Priced
+    # against the SUM: those ids are what lets consolidate waive an inherited failure itself, against a
+    # verify-resolutions round per branch whose base is already red.
+    # +21 on 2026-11-11 (review-round-cost Critic round), DECLARED: `failed_tests` in `critic-reviewer.md`'s partial schema (R-7) —
+    # see dispatched-reviewer. goals-1-3.md already instructs the field; the schema the agent
+    # is told to match exactly did not admit it.
+    # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
+    # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
+    # +5 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: the reviewer contract's write step gives `validate-partial`'s three exits, net of cutting its duplicated closing sentence. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    # +16 on 2026-11-16 (coherence-pass Chunk 01), DECLARED (goals-1-3.md +16): the Goal 1 /
+    # step-5 clauses saying a suite in flight (`running:`, a `(running)` void) is never a
+    # finding, net of cutting a duplicated or stale clause in each file. Priced against the SUM: a dozen-odd tokens per review against a WARNING or BLOCKING raised on a run that has not landed, which costs a round to dispose of.
+    # -10 on 2026-11-16 (coherence-pass Critic round): critic-reviewer.md loses "the builder ran
+    # the tests before requesting review" — false since the suite moved to the boundary, and cut
+    # from the critic skill for that reason in Chunk 01. Ceiling lowered with it.
+    # +33 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED (critic-reviewer.md +33): the
+    # partial schema admits `scope`, `closure` and `members`, the schema a reviewer is told to match
+    # exactly. Priced as `failed_tests` was: ~33 tokens per dispatched reviewer against a class
+    # finding closed short of its members (`tools/measure-class-member-closure.py`).
+    "dispatched-reviewer-inner": 5259,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5807,
-    "single-pass-full": 11539,
-    "dispatched-reviewer": 11009,
-    "coordinator-fork": 12133,
+    "single-pass-inner": 5748,
+    "single-pass-full": 10152,
+    "dispatched-reviewer": 9664,
+    "coordinator-fork": 10822,
+    "coordinator-fork-inner": 6418,
+    "dispatched-reviewer-inner": 5260,
 }
 
 
@@ -498,7 +799,7 @@ def test_the_payload_is_non_empty_and_holds_what_it_names(route):
     assert payload, f"the {route} payload is empty — this sum measures nothing"
     for member, tokens in payload.items():
         assert tokens > 0, f"{member} contributed 0 tokens — it was not read"
-    if route.startswith("single-pass") or route == "coordinator-fork":
+    if route.startswith(("single-pass", "coordinator-fork")):
         assert "skills/critic/SKILL.md" in payload, (
             "a single-pass fork enters through SKILL.md — a sum omitting it "
             "understates what that route loads"
@@ -596,10 +897,13 @@ def test_the_cheap_protocol_route_stays_materially_cheaper():
     # must not move, the cheap route's own size, stays pinned by its exact
     # ratchet ceiling above. This relation still catches the cheap route
     # creeping toward the full one.
+    # Bound moved from 11/20 to 3/5 on 2026-11-10 (critic-trim), again because the
+    # DENOMINATOR moved: the cross-checks the full route alone loaded (~1.7k)
+    # left the reviewer's path, and the cheap route shrank too (5806 -> 5575).
     cheap = sum(_payload("single-pass-inner").values())
     full = sum(_payload("single-pass-full").values())
-    assert cheap * 20 < full * 11, (
-        f"the cheap protocol route ({cheap}) is no longer under 55% of the full "
+    assert cheap * 5 < full * 3, (
+        f"the cheap protocol route ({cheap}) is no longer under 60% of the full "
         f"one ({full}). The `goals-1-3.md` split exists to keep the common mode "
         f"cheap; if the cheap protocol has genuinely earned this much, say so and "
         f"move this bound — but do not let it drift."

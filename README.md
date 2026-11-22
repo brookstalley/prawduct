@@ -86,7 +86,8 @@ decides the task is too small to bother. So hooks enforce the parts that matter:
   changed in the plugin.
 - At the end of a turn, the Stop hook blocks if code was built against a plan with no Critic
   review, or code changed with no reflection.
-- `/prawduct:pr` runs an independent release-readiness review before a PR goes up.
+- `/prawduct:pr` opens a PR only when Critic reviews cover everything on the branch, and checks
+  the description against the repo's own PR template.
 - `/prawduct:janitor` catches the slow drift no single review sees: stale docs and tests, code on
   old patterns, dead branches.
 

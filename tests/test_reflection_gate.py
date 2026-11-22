@@ -43,13 +43,17 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from conftest import SHAPED_REFLECTION  # noqa: E402 — one home for the shape
+from lib import core as lib_core  # noqa: E402
 from lib import gates  # noqa: E402
+from lib import host as lib_host  # noqa: E402
 
 _hook_loader = importlib.machinery.SourceFileLoader(
     "prawduct_hook_reflection_gate", str(_ROOT / "bin" / "prawduct-hook")
@@ -228,7 +232,11 @@ class _Session:
         )
 
     def git(self, *args: str) -> str:
-        env = dict(os.environ, GIT_COMMITTER_DATE=f"@{self.started + 60} +0000")
+        return self.git_at(60, *args)
+
+    def git_at(self, offset: int, *args: str) -> str:
+        """``git`` with the clock at ``offset`` seconds after the session start."""
+        env = dict(os.environ, GIT_COMMITTER_DATE=f"@{self.started + offset} +0000")
         return subprocess.run(
             ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
             cwd=str(self.repo), capture_output=True, text=True, timeout=15,
@@ -388,8 +396,9 @@ class TestMovesThisSessionDidNotAuthor:
 
     def test_history_pulled_in_from_during_the_session_still_counts(self, tmp_path):
         """The rule is by age, not by who: a commit someone else made after the
-        session started is not excluded. That keeps a delegate's work in, at
-        the price of a concurrent session's — the class #1071 itself names."""
+        session started is not excluded here. That keeps a delegate's work in;
+        a concurrent session's commits are told apart only from the session's
+        own transcript (`TestAnotherSessionInThisCheckout`)."""
         repo = _repo(tmp_path)
         s = _Session(repo)
         _delegate_commits(s, tmp_path, branch="other", path="theirs.py")
@@ -467,6 +476,813 @@ class TestMovesThisSessionDidNotAuthor:
         assert gates.session_work_span(repo)["changed"] == ["code.py"]
         assert "rev-parse" in calls, "the guard must have been reached"
         assert "reflog" not in calls and "diff-tree" not in calls
+
+
+def _iso(epoch: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(epoch))
+
+
+def _transcripts(
+    tmp_path: Path,
+    s: "_Session",
+    windows: "list[tuple[int, int | None]]",
+    *,
+    background: bool = False,
+    concurrent: bool = True,
+    covered_from: int = 1,
+    extra: "list[dict] | None" = None,
+) -> str:
+    """This session's host transcript, in the shape Claude Code writes it, with
+    one tool call per ``(start, end)`` offset from the session start (``end``
+    ``None`` for a call with no result yet), and a second session's transcript
+    beside it, last written mid-session when ``concurrent`` and an hour before
+    the session otherwise. ``extra`` records (:func:`_edit_call`,
+    :func:`_bang_command`) are merged in by timestamp. Returns the path
+    the Stop payload carries as ``transcript_path``."""
+    folder = tmp_path / "host-projects" / "-repo"
+    folder.mkdir(parents=True, exist_ok=True)
+    records = [
+        {"type": "user", "timestamp": _iso(s.started + covered_from),
+         "message": {"role": "user", "content": "look around"}},
+    ]
+    for n, (start, end) in enumerate(windows):
+        call = {"type": "tool_use", "id": f"toolu_{n}", "name": "Bash",
+                "input": {"command": "git status"}}
+        if background:
+            call["input"]["run_in_background"] = True
+        records.append({"type": "assistant", "timestamp": _iso(s.started + start),
+                        "message": {"role": "assistant", "content": [call]}})
+        if end is not None:
+            records.append({"type": "user", "timestamp": _iso(s.started + end),
+                            "message": {"role": "user", "content": [
+                                {"type": "tool_result", "tool_use_id": f"toolu_{n}",
+                                 "content": "ok"}]}})
+    if extra:
+        # A stable sort keeps a use before its result when both share a second.
+        records = sorted(records + extra, key=lambda r: r["timestamp"])
+    ours = folder / "ours-session.jsonl"
+    ours.write_text("".join(json.dumps(r) + "\n" for r in records))
+    # Another session's transcript is always there; whether it was written
+    # since this session started is what `concurrent` varies, so the age test
+    # is what decides, not the file's mere presence.
+    theirs = folder / "their-session.jsonl"
+    theirs.write_text(json.dumps({"type": "user", "timestamp": _iso(s.started)}) + "\n")
+    written = s.started + 400 if concurrent else s.started - 3600
+    os.utime(theirs, (written, written))
+    return str(ours)
+
+
+def _edit_call(s: "_Session", at: int, path: Path, name: str = "Edit") -> "list[dict]":
+    """An Edit/Write tool call on ``path`` at ``at`` seconds into the session,
+    shaped as Claude Code records it: the ``tool_use`` input names the absolute
+    ``file_path`` (``notebook_path`` for NotebookEdit), read off this machine's
+    transcripts (2026-11-15: 15k Edit and 4k Write calls, all absolute)."""
+    key = "notebook_path" if name == "NotebookEdit" else "file_path"
+    call_id = f"toolu_edit_{name}_{at}"
+    return [
+        {"type": "assistant", "timestamp": _iso(s.started + at),
+         "message": {"role": "assistant", "content": [
+             {"type": "tool_use", "id": call_id, "name": name,
+              "input": {key: str(path), "old_string": "x = 1", "new_string": "x = 2"}}]}},
+        {"type": "user", "timestamp": _iso(s.started + at + 1),
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": call_id, "content": "ok"}]}},
+    ]
+
+
+def _bang_command(s: "_Session", start: int, end: "int | None", command: str) -> "list[dict]":
+    """A command the user ran with Claude Code's ``!`` bash mode. It is not a
+    tool call: the transcript records the input as a user message whose content
+    is the string ``<bash-input>…</bash-input>``, stamped when it was entered,
+    and the output as a later user message starting ``<bash-stdout>``, stamped
+    when the command finished (read off this machine's transcripts: a 62-second
+    ``afplay`` loop's two stamps are 62 s apart)."""
+    records = [{"type": "user", "timestamp": _iso(s.started + start),
+                "message": {"role": "user",
+                            "content": f"<bash-input>{command}</bash-input>"}}]
+    if end is not None:
+        records.append({"type": "user", "timestamp": _iso(s.started + end),
+                        "message": {"role": "user",
+                                    "content": "<bash-stdout>ok</bash-stdout><bash-stderr></bash-stderr>"}})
+    return records
+
+
+def _their_session_commits(s: "_Session", at: int = 300) -> None:
+    """#1071's repro: another session in THIS checkout switches branch and
+    commits, mid-session, while this session is between tool calls."""
+    s.git_at(at, "checkout", "-q", "-b", "their-fix")
+    (s.repo / "theirs.py").write_text("their_work = 1\n")
+    s.git_at(at, "add", "theirs.py")
+    s.git_at(at, "commit", "-q", "-m", "their session's commit")
+
+
+class TestAnotherSessionInThisCheckout:
+    """#1071: a second session committing in the same checkout lands inside
+    this session's span, and the reflog cannot tell the two apart: both are
+    `commit:` moves of one HEAD. This session's own record of when it acted
+    can. A commit made while another session was writing in this checkout, at
+    a moment this session had no tool call running, was not made by it.
+
+    The narrowing needs positive evidence on both counts (another session's
+    transcript written since this one started, and this session's transcript
+    read in full and covering the moment), so every case it cannot settle
+    keeps the commit counted."""
+
+    def test_their_commits_are_not_this_sessions_work(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20), (500, 510)])
+        _their_session_commits(s)
+
+        assert gates.session_work_span(repo, transcript_path=transcript)["changed"] == []
+        rc = _hook.cmd_stop(repo, {"transcript_path": transcript})
+        err = capsys.readouterr().err
+        assert rc == 0, err
+        assert BLOCKER not in err
+
+    def test_without_the_payload_their_commits_still_count(self, tmp_path, capsys):
+        """The control: the same checkout read with no transcript is the span
+        #1071 reported, so the narrowing above is the payload's doing."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        assert gates.session_work_span(repo)["changed"] == ["theirs.py"]
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BLOCKER in err
+
+    def test_this_sessions_own_commit_still_fires_beside_theirs(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(50, 70)])
+        (repo / "code.py").write_text("x = 2\n")
+        s.git("commit", "-q", "-am", "mine")  # at +60, inside the call
+        _their_session_commits(s)
+
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["code.py"]
+        rc = _hook.cmd_stop(repo, {"transcript_path": transcript})
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert BLOCKER in err
+
+    def test_a_delegate_merged_back_still_fires_beside_theirs(self, tmp_path):
+        """A worktree agent's commit is made during the call that ran it, and
+        the merge back during this session's own command."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(20, 45), (55, 65)])
+        _delegate_commits(s, tmp_path)  # committed at +30
+        s.git("merge", "-q", "--no-ff", "-m", "merge agent", "agent")  # at +60
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["delegate.py"]
+
+    def test_with_no_other_session_writing_their_commits_count(self, tmp_path):
+        """No second transcript written since the session began: nothing says
+        anyone else was here, so the commit stays this session's."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)], concurrent=False)
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["theirs.py"]
+
+    def test_a_background_call_keeps_their_commits(self, tmp_path):
+        """A background command can commit long after its call returned, so it
+        covers everything after it started."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)], background=True)
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["theirs.py"]
+
+    def test_a_call_with_no_result_keeps_their_commits(self, tmp_path):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, None)])
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["theirs.py"]
+
+    def test_a_commit_before_the_transcript_begins_still_counts(self, tmp_path):
+        """A transcript that starts after the commit (a resumed session in a
+        fresh file) says nothing about who made it."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(450, 460)], covered_from=400)
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["theirs.py"]
+
+    def test_an_unreadable_transcript_keeps_their_commits(self, tmp_path):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)])
+        Path(transcript).write_text('not json\n{"type": "user"}\n')
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["theirs.py"]
+
+    def test_a_broken_line_before_the_last_keeps_their_commits(self, tmp_path):
+        """Only the final line can be mid-write. A broken one earlier may have
+        held a tool call, and losing it would read as an idle moment."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = Path(_transcripts(tmp_path, s, [(10, 20)]))
+        lines = transcript.read_text().splitlines(keepends=True)
+        transcript.write_text(lines[0] + '{"type": "assistant", "timest\n' + "".join(lines[1:]))
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=str(transcript))
+        assert span["changed"] == ["theirs.py"]
+
+    def test_a_half_written_last_line_still_narrows(self, tmp_path):
+        """The control for the case above: the host may be mid-append."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = Path(_transcripts(tmp_path, s, [(10, 20)]))
+        with transcript.open("a") as fh:
+            fh.write('{"type": "assistant", "timest')
+        _their_session_commits(s)
+        assert gates.session_work_span(repo, transcript_path=str(transcript))["changed"] == []
+
+    def test_a_missing_transcript_keeps_their_commits(self, tmp_path):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)])
+        Path(transcript).unlink()
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["theirs.py"]
+
+    def test_the_transcript_is_not_read_when_no_other_session_wrote(
+        self, tmp_path, monkeypatch
+    ):
+        """The cost: this runs every Stop. With no sibling transcript newer than
+        the session start, one directory listing is the whole price."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)], concurrent=False)
+        _their_session_commits(s)
+
+        def _forbidden(*_a, **_k):  # pragma: no cover - must not run
+            raise AssertionError("the transcript must not be read")
+
+        monkeypatch.setattr(lib_host, "session_tool_activity", _forbidden)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["theirs.py"]
+
+
+class TestADropAsksWhoAuthoredTheWork:
+    """The Critic's R-6 on #1071's narrowing: the transcript says who RAN
+    ``git commit``, the gates ask who AUTHORED the change. The user commits the
+    session's work from a terminal between turns, or with ``!git commit``; no
+    tool call is open, and the paths left the span, disarming the reflection
+    and Critic gates in silence. A commit is now kept when any of its paths is
+    one this session's Edit/Write calls targeted, and a commit made while a
+    ``!`` command ran is the session's own. Whatever is still dropped is
+    carried on the span and named at Stop, so a wrong drop can be seen."""
+
+    @pytest.mark.parametrize("tool", ["Edit", "Write", "MultiEdit", "NotebookEdit"])
+    def test_a_terminal_commit_of_a_file_this_session_edited_still_counts(
+        self, tmp_path, capsys, tool
+    ):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_edit_call(s, 100, repo / "code.py", tool)
+        )
+        (repo / "code.py").write_text("x = 2\n")
+        s.git_at(200, "commit", "-q", "-am", "committed from a terminal")  # idle
+        _their_session_commits(s)
+
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["code.py"]
+        assert [d["paths"] for d in span["dropped"]] == [["theirs.py"]]
+        rc = _hook.cmd_stop(repo, {"transcript_path": transcript})
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert BLOCKER in err
+
+    def test_an_edit_in_another_checkout_rescues_nothing(self, tmp_path):
+        """The edited path is matched as a path in THIS checkout: the same name
+        edited somewhere else is not this checkout's file."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_edit_call(s, 100, elsewhere / "theirs.py")
+        )
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+
+    def test_an_edit_through_a_symlinked_path_still_rescues(self, tmp_path):
+        """macOS hands out ``/tmp`` and ``/private/tmp`` for one directory, so
+        the edited path and the checkout are compared resolved."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        alias = tmp_path / "alias"
+        alias.symlink_to(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_edit_call(s, 100, alias / "code.py")
+        )
+        (repo / "code.py").write_text("x = 2\n")
+        s.git_at(200, "commit", "-q", "-am", "committed from a terminal")
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["code.py"]
+
+    def test_a_bang_mode_commit_stays_counted(self, tmp_path, capsys):
+        """``!git commit`` runs no tool call; the transcript stamps its input
+        when it was entered and its output when it ended."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)],
+            extra=_bang_command(s, 295, 305, "git commit -am fix"),
+        )
+        (repo / "code.py").write_text("x = 2\n")
+        s.git_at(300, "commit", "-q", "-am", "fix")
+        _their_session_commits(s, at=400)
+
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["code.py"]
+        assert [d["paths"] for d in span["dropped"]] == [["theirs.py"]]
+        rc = _hook.cmd_stop(repo, {"transcript_path": transcript})
+        assert rc == 2
+        assert BLOCKER in capsys.readouterr().err
+
+    def test_a_bang_command_that_ended_before_the_commit_covers_nothing(self, tmp_path):
+        """The control for the case above: the ``!`` window is when the command
+        ran, not the rest of the session."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_bang_command(s, 250, 260, "git status"),
+        )
+        (repo / "code.py").write_text("x = 2\n")
+        s.git_at(300, "commit", "-q", "-am", "someone else's")
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+        assert [d["paths"] for d in span["dropped"]] == [["code.py"]]
+
+    def test_a_bang_command_with_no_output_yet_keeps_what_follows(self, tmp_path):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_bang_command(s, 250, None, "make release"),
+        )
+        _their_session_commits(s)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["theirs.py"]
+        assert span["dropped"] == []
+
+    def test_a_foreign_commit_is_dropped_and_named(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        sha = _git(repo, "rev-parse", "HEAD")
+
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+        assert len(span["dropped"]) == 1
+        dropped = span["dropped"][0]
+        assert dropped["sha"] == sha
+        assert dropped["paths"] == ["theirs.py"]
+        assert "another session" in dropped["why"]
+
+        rc = _hook.cmd_stop(repo, {"transcript_path": transcript})
+        err = capsys.readouterr().err
+        assert rc == 0, err
+        notes = [line for line in err.splitlines() if sha[:12] in line]
+        assert len(notes) == 1, err
+        assert "theirs.py" in notes[0]
+
+    def test_nothing_dropped_names_nothing(self, tmp_path, capsys):
+        """The control: the same commit read without the payload is counted,
+        the span carries an empty trace, and Stop prints no drop note."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        sha = _git(repo, "rev-parse", "HEAD")
+        assert gates.session_work_span(repo)["dropped"] == []
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert sha[:12] not in err
+
+    def test_a_degraded_span_still_carries_an_empty_trace(self, tmp_path):
+        repo = _repo(tmp_path)
+        (repo / "code.py").write_text("x = 2\n")
+        span = gates.session_work_span(repo)
+        assert span["source"] == "porcelain"
+        assert span["dropped"] == []
+
+
+def _tool_call(s: "_Session", start: int, end: int, name: str, args: dict) -> "list[dict]":
+    """One finished tool call of ``name`` from ``start`` to ``end`` seconds into
+    the session."""
+    call_id = f"toolu_{name}_{start}"
+    return [
+        {"type": "assistant", "timestamp": _iso(s.started + start),
+         "message": {"role": "assistant", "content": [
+             {"type": "tool_use", "id": call_id, "name": name, "input": args}]}},
+        {"type": "user", "timestamp": _iso(s.started + end),
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": call_id, "content": "ok"}]}},
+    ]
+
+
+def _write_at(s: "_Session", path: Path, text: str, at: int) -> None:
+    """``path`` written with its modification time ``at`` seconds into the
+    session. The fixture clock runs ahead of the real one (:class:`_Session`),
+    so the real write time is before the transcript begins and says nothing;
+    the modification time is what a write during the session would leave."""
+    path.write_text(text)
+    os.utime(path, (s.started + at, s.started + at))
+
+
+def _drop_observations(repo: Path, read_facts=None) -> "list[dict]":
+    """The recorded drops, read through ``read_facts`` when given — a test
+    counting calls to a patched reader passes the real one."""
+    from lib import evidence  # noqa: PLC0415
+
+    guard = evidence.STOP_OBSERVED_PREFIX + gates.DROPPED_COMMIT_CHECK
+    read = (read_facts or evidence.read_facts)(repo)
+    return [
+        f for f in evidence.facts_of_kind(read, "guard-refusal")
+        if f["body"].get("guard") == guard
+    ]
+
+
+class TestAFileThisSessionWroteByAnyMeans:
+    """#1184: authorship was read only off the Edit-family tools, so a file this
+    session wrote with Bash (``sed -i``, a heredoc, codegen) or through a
+    delegate subagent, committed from a terminal while another session wrote
+    here, left the span and disarmed the reflection and Critic gates. A file's
+    last write is on disk: a commit is now also kept when one of its files was
+    last written (modified, or its inode changed: a rename) while this session
+    had a tool call or ``!`` command running. A file written while this session
+    ran nothing is still not its own, so #1071's protection holds for a
+    session that sat idle while the other one worked."""
+
+    @pytest.mark.parametrize("writer", [
+        ("Bash", {"command": "sed -i '' 's/1/2/' code.py"}),
+        ("Agent", {"description": "delegate", "prompt": "fix code.py"}),
+    ], ids=["bash", "delegate"])
+    def test_a_terminal_commit_of_a_file_written_during_a_call_still_counts(
+        self, tmp_path, capsys, writer
+    ):
+        name, args = writer
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)], extra=_tool_call(s, 100, 160, name, args)
+        )
+        _write_at(s, repo / "code.py", "x = 2\n", 130)  # inside the call
+        s.git_at(200, "commit", "-q", "-am", "committed from a terminal")  # idle
+        _their_session_commits(s)
+
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == ["code.py"]
+        assert [d["paths"] for d in span["dropped"]] == [["theirs.py"]]
+        rc = _hook.cmd_stop(repo, {"transcript_path": transcript})
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert BLOCKER in err
+
+    def test_a_file_written_while_this_session_was_idle_is_still_dropped(self, tmp_path):
+        """The control, and #1071's protection: the same terminal commit of a
+        file last written between this session's calls is the other one's."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)],
+            extra=_tool_call(s, 100, 160, "Bash", {"command": "pytest"}),
+        )
+        _write_at(s, repo / "code.py", "x = 2\n", 180)  # after the call ended
+        s.git_at(200, "commit", "-q", "-am", "their terminal commit")
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+        assert [d["paths"] for d in span["dropped"]] == [["code.py"]]
+
+    def test_a_write_after_their_commit_does_not_make_it_this_sessions(self, tmp_path):
+        """The Critic's finding on #1184's first cut: the file's time is its
+        LAST write, so this session rewriting another session's committed file
+        later — a checkout, a stash pop, a formatter, ``cp`` over it — moved
+        that time into one of its calls and kept the other session's idle
+        commit, which is #1071's error again. A write after a commit cannot be
+        what the commit recorded, so it is not read as the commit's author."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(
+            tmp_path, s, [(10, 20)],
+            extra=_tool_call(s, 500, 560, "Bash", {"command": "git stash pop"}),
+        )
+        _their_session_commits(s)  # idle, at 300
+        # The same bytes, rewritten inside this session's call: no diff against
+        # HEAD, so only the write's time could claim the commit.
+        _write_at(s, repo / "theirs.py", "their_work = 1\n", 530)
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+        assert [d["paths"] for d in span["dropped"]] == [["theirs.py"]]
+
+    @pytest.mark.skipif(os.name == "nt", reason="st_ctime is creation time on Windows")
+    def test_a_rename_counts_by_its_inode_change(self, tmp_path):
+        """``mv`` keeps a file's modification time, so a renamed file is read
+        by when its inode last changed. The rename runs on the real clock, so
+        the call around it is placed there too."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        old = repo / "code.py"
+        idle = s.started - 700  # before the transcript begins: says nothing
+        os.utime(old, (idle, idle))
+        # The real clock is ~600 s before the session start.
+        transcript = _transcripts(
+            tmp_path, s, [(-620, -500)], covered_from=-630,
+        )
+        os.rename(old, repo / "renamed.py")
+        s.git_at(200, "rm", "-q", "--cached", "code.py")
+        s.git_at(200, "add", "renamed.py")
+        s.git_at(200, "commit", "-q", "-m", "git mv from a terminal")
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        # `git diff` reports a rename by its new name only.
+        assert span["changed"] == ["renamed.py"]
+        assert span["dropped"] == []
+
+    def test_each_drop_is_recorded_once_as_a_stop_observation(self, tmp_path, capsys):
+        """R-6: the drop's only trace was a stderr line at exit 0, which nobody
+        reads. Each dropped commit is now a stop observation in the evidence
+        store (``prawduct-hook stats``), once per session however many Stops
+        see it."""
+        from lib import evidence, stats  # noqa: PLC0415
+
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        sha = _git(repo, "rev-parse", "HEAD")
+
+        for _ in range(2):
+            assert _hook.cmd_stop(repo, {"transcript_path": transcript}) == 0
+        capsys.readouterr()
+        recorded = _drop_observations(repo)
+        assert len(recorded) == 1, recorded
+        body = recorded[0]["body"]
+        assert body["reason"] == gates.DROPPED_COMMIT_REASON
+        assert body["observed"] == {"commit": sha, "files": 1}
+        report = stats.aggregate(evidence.read_facts(repo)["facts"])
+        assert any(
+            v["stop_observations"]["by_gate"].get(gates.DROPPED_COMMIT_CHECK) == 1
+            for v in report.values()
+        ), report
+
+    @pytest.mark.parametrize("result, expected", [
+        ({"status": "error", "reason": "store locked"}, "was not recorded (store locked)"),
+        ({"status": "appended", "refused_fields": ["observed"]}, "without its observed"),
+        ({"status": "appended"}, None),
+        ({"status": "duplicate", "id": "x"}, None),
+    ], ids=["failed", "refused", "appended", "duplicate"])
+    def test_a_record_that_did_not_land_says_so(self, tmp_path, monkeypatch, result, expected):
+        """Advice fails soft, never silent: each record that did not land is
+        one line naming its commit, and a duplicate is a success."""
+        from lib import evidence  # noqa: PLC0415
+
+        monkeypatch.setattr(evidence, "append_stop_observation", lambda *a, **k: result)
+        notes = gates.record_dropped_commits(
+            _repo(tmp_path), [{"sha": "ab" * 20, "paths": ["theirs.py"], "why": "x"}],
+            session="/host/ours-session.jsonl",
+        )
+        if expected is None:
+            assert notes == []
+        else:
+            assert len(notes) == 1 and "abababababab" in notes[0] and expected in notes[0]
+
+    def test_the_store_is_read_once_per_stop(self, tmp_path, monkeypatch):
+        """The Critic's cost finding: the dedupe probe read the whole clone-wide
+        evidence store once per dropped commit, at every Stop the commits stay
+        in the span. One read now serves every commit's probe."""
+        from lib import evidence  # noqa: PLC0415
+
+        repo = _repo(tmp_path)
+        reads = {"n": 0}
+        real = evidence.read_facts
+
+        def _counting(project_dir):
+            reads["n"] += 1
+            return real(project_dir)
+
+        monkeypatch.setattr(evidence, "read_facts", _counting)
+        dropped = [{"sha": c * 40, "paths": ["theirs.py"], "why": "x"} for c in "abc"]
+        for _ in range(2):  # the second Stop finds all three already recorded
+            assert gates.record_dropped_commits(
+                repo, dropped, session="/host/ours-session.jsonl"
+            ) == []
+        assert reads["n"] == 2, reads
+        assert len(_drop_observations(repo, real)) == 3
+
+    def test_an_unreadable_store_names_each_commit_and_raises_nothing(
+        self, tmp_path, monkeypatch
+    ):
+        """The one read failing leaves each append to probe the store itself;
+        when that fails too, every commit is named and the Stop goes on."""
+        from lib import evidence  # noqa: PLC0415
+
+        def _broken(_project_dir):
+            raise OSError("store unreadable")
+
+        monkeypatch.setattr(evidence, "read_facts", _broken)
+        dropped = [{"sha": c * 40, "paths": ["theirs.py"], "why": "x"} for c in "ab"]
+        notes = gates.record_dropped_commits(
+            _repo(tmp_path), dropped, session="/host/ours-session.jsonl"
+        )
+        assert [n[n.index(" for ") + 5:][:12] for n in notes] == ["a" * 12, "b" * 12]
+        assert all("store unreadable" in n for n in notes), notes
+
+    def test_an_error_read_is_not_handed_down_as_an_empty_store(self, tmp_path, monkeypatch):
+        """`read_facts` REPORTS an unreadable store as an error envelope with no
+        facts. Read as `[]`, that is a valid known set, so the dedupe probe
+        answers "absent" and the same observation is re-appended at every Stop.
+        An error read hands nothing down, and each append probes for itself."""
+        from lib import evidence  # noqa: PLC0415
+
+        monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "error", "reason": "torn"})
+        seen = []
+
+        def _append(*args, **kwargs):
+            seen.append(kwargs.get("known_facts", "absent"))
+            return {"status": "appended"}
+
+        monkeypatch.setattr(evidence, "append_stop_observation", _append)
+        gates.record_dropped_commits(
+            _repo(tmp_path), [{"sha": "a" * 40, "paths": ["theirs.py"], "why": "x"}],
+            session="/host/ours-session.jsonl",
+        )
+        assert seen == [None], seen
+
+    def test_two_sessions_dropping_one_commit_are_two_records(self, tmp_path, capsys):
+        """The Critic's dedupe finding. Two sessions in one checkout share its
+        ``.session-start`` (each one's SessionStart writes it), and that is the
+        only population that drops a commit, so a key built on the stamp let
+        the second session's drop of a third session's commit dedupe away. The
+        key is now the session's own transcript."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        ours = _transcripts(tmp_path, s, [(10, 20)])
+        second = str(Path(ours).with_name("second-session.jsonl"))
+        Path(second).write_text(Path(ours).read_text())
+        _their_session_commits(s)
+
+        for transcript in (ours, second, ours, second):
+            assert _hook.cmd_stop(repo, {"transcript_path": transcript}) == 0
+        capsys.readouterr()
+        assert len(_drop_observations(repo)) == 2
+
+    def test_no_session_identity_records_nothing_and_says_so(self, tmp_path):
+        """With no transcript there is no key that is this session's alone: a
+        shared one undercounts, and none at all records the commit at every
+        Stop. Neither is recorded, and the note names the commit."""
+        repo = _repo(tmp_path)
+        notes = gates.record_dropped_commits(
+            repo, [{"sha": "ab" * 20, "paths": ["theirs.py"], "why": "x"}], session=None
+        )
+        assert _drop_observations(repo) == []
+        assert len(notes) == 1 and "abababababab" in notes[0]
+        assert "no session identity" in notes[0]
+
+    def test_the_telemetry_doc_has_the_checks_row(self):
+        """The reader's registry of Stop observations names this check and its
+        one reason, read off the module that records them."""
+        doc = (_ROOT / "docs" / "governance-telemetry.md").read_text()
+        rows = [
+            line for line in doc.splitlines()
+            if line.startswith(f"| `{gates.DROPPED_COMMIT_CHECK}` |")
+        ]
+        assert len(rows) == 1, rows
+        assert re.findall(r"`([a-z-]+)`", rows[0].split("|")[2])[0] == gates.DROPPED_COMMIT_REASON
+
+    def test_nothing_dropped_records_nothing(self, tmp_path, capsys):
+        """The control: the same commit read without the payload is counted."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        _stop(repo, capsys)
+        assert _drop_observations(repo) == []
+
+
+class _CountingFile:
+    """A file object that counts the bytes its reader actually took."""
+
+    def __init__(self, real, counter: dict):
+        self._real = real
+        self._counter = counter
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self._real.close()
+        return False
+
+    def __iter__(self):
+        for line in self._real:
+            self._counter["bytes"] += len(line)
+            yield line
+
+    def read(self, *args):
+        data = self._real.read(*args)
+        self._counter["bytes"] += len(data)
+        return data
+
+    def readline(self, *args):
+        data = self._real.readline(*args)
+        self._counter["bytes"] += len(data)
+        return data
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+class TestTheTranscriptReadIsBounded:
+    """The Critic's R-5: once a sibling had written, every later Stop re-parsed
+    this session's whole transcript, which grows to tens of MB. The parsed
+    state is now kept in ``.prawduct/.session-activity.json``, keyed by the
+    transcript's path, inode and byte offset, and each Stop parses only what
+    was appended since. Asserted on the bytes read from the transcript, which
+    is the work, not on whether the file was opened."""
+
+    def _count_transcript_reads(self, monkeypatch, transcript: str) -> dict:
+        counter = {"bytes": 0}
+        real_open = open
+
+        def counting_open(path, *args, **kwargs):
+            fh = real_open(path, *args, **kwargs)
+            if os.fspath(path) == transcript:
+                return _CountingFile(fh, counter)
+            return fh
+
+        monkeypatch.setattr(lib_host, "open", counting_open, raising=False)
+        return counter
+
+    def test_a_second_stop_reads_only_the_appended_bytes(self, tmp_path, monkeypatch):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)])
+        # Padding: the first read must be visibly bigger than the second.
+        with open(transcript, "a") as fh:
+            for n in range(200):
+                fh.write(json.dumps({"type": "user", "timestamp": _iso(s.started + 30),
+                                     "message": {"role": "user", "content": "x" * 200}}) + "\n")
+        counter = self._count_transcript_reads(monkeypatch, transcript)
+        _their_session_commits(s, at=300)
+        first_size = os.path.getsize(transcript)
+        assert gates.session_work_span(repo, transcript_path=transcript)["changed"] == []
+        assert counter["bytes"] >= first_size
+
+        # A call that ran across a second commit, appended after the first Stop.
+        appended = "".join(json.dumps(r) + "\n" for r in [
+            {"type": "assistant", "timestamp": _iso(s.started + 490), "message": {
+                "role": "assistant", "content": [
+                    {"type": "tool_use", "id": "toolu_late", "name": "Bash",
+                     "input": {"command": "git commit"}}]}},
+            {"type": "user", "timestamp": _iso(s.started + 510), "message": {
+                "role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "toolu_late", "content": "ok"}]}},
+        ])
+        with open(transcript, "a") as fh:
+            fh.write(appended)
+        (repo / "late.py").write_text("late = 1\n")
+        s.git_at(500, "add", "late.py")
+        s.git_at(500, "commit", "-q", "-m", "this session's, inside the late call")
+
+        counter["bytes"] = 0
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        # The answer the appended call gives, so the tail was really parsed...
+        assert span["changed"] == ["late.py"]
+        # ...and the work was the tail, plus at most the prefix check.
+        assert len(appended) <= counter["bytes"] <= len(appended) + lib_host.PREFIX_CHECK_BYTES
+        assert counter["bytes"] < first_size
+
+    def test_an_unchanged_transcript_is_not_reparsed(self, tmp_path, monkeypatch):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        transcript = _transcripts(tmp_path, s, [(10, 20)])
+        _their_session_commits(s)
+        gates.session_work_span(repo, transcript_path=transcript)
+        counter = self._count_transcript_reads(monkeypatch, transcript)
+        assert gates.session_work_span(repo, transcript_path=transcript)["changed"] == []
+        assert counter["bytes"] <= lib_host.PREFIX_CHECK_BYTES
+
+    def test_the_cache_is_a_registered_session_file(self):
+        assert gates.SESSION_ACTIVITY_FILE in {
+            p.rstrip("/").removeprefix(".prawduct/") for p in lib_core.GITIGNORE_ENTRIES
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -709,11 +1525,15 @@ class TestTheWaiverFooter:
         _mark_base(repo)
         _commit_code(repo)
         waived = repo / ".prawduct" / ".gates-waived"
-        waived.write_text(json.dumps({"pr": "merge is not happening today"}))
+        # A live key whose gate is not blocking here, so the recipe must carry
+        # it rather than re-print it. (This used `pr` until the PR-review gate
+        # was retired; a retired key is dropped from the recipe instead —
+        # `tests/test_pr_skill.py` pins that.)
+        waived.write_text(json.dumps({"learnings": "not migrating today"}))
         rc, err = _stop(repo, capsys)
         assert rc == 2
         recipe = _echoed_waiver(err[err.index("  Escape hatch"):])
-        assert recipe["pr"] == "merge is not happening today"
+        assert recipe["learnings"] == "not migrating today"
         assert "reflection" in recipe
 
     def test_every_gate_reads_its_waiver_key_from_the_map(self):

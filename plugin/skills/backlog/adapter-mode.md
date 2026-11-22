@@ -241,8 +241,7 @@ Route by what changed:
 - **affected** (`--affected p1,p2`) → repo-relative paths only, **no prose and no globs**; a
   directory covers everything under it, so write `plugin/lib/backlog`, never `plugin/lib/backlog/**`.
   An entry carrying whitespace or a glob character is refused (exit 2) — put the annotation in the
-  body. This is what lets a reviewer intersect items against a changed-file set instead of reading
-  item text and inferring.
+  body.
 - **working-branch** (`--working-branch owner/repo@branch`) → the branch someone is working the item
   on. It must name a **pushed** branch (exit 2 otherwise — push it, don't rename it or point the
   field somewhere else) and must be **repo-qualified**, because the backlog repo and the code repo
@@ -264,7 +263,9 @@ Route by what changed:
   block edit landed". A body carrying NO block is not reported — "I deleted it" and "I never pasted
   one" are the same text.
 - **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
-  `unlink …`.
+  `unlink …`. `related` is written on both items; if the second write fails retryably the error
+  carries `details.partial: true` (`written`/`unwritten`) and re-running the same command completes
+  it, and a permanent failure on the target returns ok with `target_written: false` and a warning.
 - **a free note** → `comment <id> --body B`.
 
 The optional `--if-updated-at <ts>` optimistic-concurrency guard takes the item's `data.updated_at`
@@ -327,10 +328,9 @@ store and nothing else: no network, no writes. `find <query>` maps to `cache-que
 delegated on purpose:** the provider's index is not read-your-writes, and the moment a dedup check is
 asked is exactly the moment the item it should find was just filed.
 
-The other queries — `open`, `by-area`, `stale`, `unstaged`, `created-since`, `resolve`, `affecting` —
-and the two rules every caller binds to (**exit 6 means the store could not be read, not that nothing
-matched**; every payload carries a visible age) are in `cache-reads.md`, which the Critic, PR reviewer
-and janitor read too.
+The other queries — `open`, `by-area`, `stale`, `unstaged`, `resolve` — and the two rules every
+caller binds to (**exit 6 means the store could not be read, not that nothing matched**; every payload
+carries a visible age) are in `cache-reads.md`, which the janitor reads too.
 
 ## Operations that don't apply post-cutover
 

@@ -209,7 +209,9 @@ class Block:
 def parse_block(body: str | None) -> Block:
     """Parse the ``prawduct:`` block out of an issue body (tolerant).
 
-    Zero blocks → an empty ``Block`` (all defaults, no warning). Two+ blocks →
+    Zero blocks → an empty ``Block`` (all defaults; this function adds no warning —
+    :func:`decode_item` does, for a scoped item, via ``_degradation_warnings``,
+    because only it can tell a plain repo issue from a damaged item). Two+ blocks →
     the **last** wins and each earlier one is flagged (ENC-3). A malformed inner
     line (no ``:`` separator) is skipped with a warning, never an error.
 
@@ -742,42 +744,6 @@ def validate_affected(entries: list[str]) -> tuple[list[str], str | None]:
     return normalized, None
 
 
-def path_ancestors(path: str) -> list[str]:
-    """Every `affected` entry a changed file answers to: itself, then each
-    ancestor directory.
-
-    This is what makes the intersection an **equality** match, which is what an
-    index can serve. The natural phrasing — does any entry prefix this path —
-    runs ``? LIKE path || '%'``, whose variable side is the wrong one for an
-    index on ``path``; expanding the changed file into its ancestors inverts it
-    into ``path IN (…)``. Changed sets are diffs and paths are shallow, so the
-    expansion is small.
-
-    Entries are exact paths or directory prefixes — **not globs.** A glob would
-    reintroduce the unindexable direction and buys nothing a directory prefix
-    does not already give.
-    """
-    value = normalize_affected([path])
-    if not value:
-        return []
-    parts = value[0].split("/")
-    return ["/".join(parts[: i + 1]) for i in range(len(parts))][::-1]
-
-
-def affected_matches(entries: list[str], changed_paths) -> list[str]:
-    """The `affected` entries touched by ``changed_paths`` (consumers 1 and 4).
-
-    The set intersection that replaces a reviewer reading item text and
-    inferring. Empty means this item claims no overlap with the change — which
-    is a different answer from *this item records no paths*, and the caller that
-    cares must check ``entries`` itself rather than reading emptiness as either.
-    """
-    keys: set[str] = set()
-    for path in changed_paths:
-        keys.update(path_ancestors(path))
-    return [entry for entry in normalize_affected(entries) if entry in keys]
-
-
 #: The longest a `tag:`-prefixed label may be. GitHub caps a label name at 50
 #: characters, and a tag that cannot become a label is a tag that cannot be
 #: written — better refused at the seam than discovered as a 422.
@@ -1171,13 +1137,63 @@ def reconcile_status_labels(
     return to_add, to_remove
 
 
-def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, list[str]]:
+def _degradation_warnings(
+    issue: dict, labels: list[str], status: str, block: Block
+) -> list[str]:
+    """Warnings for losses a human UI edit can cause that decode would otherwise
+    answer confidently (#745). **Advisory only — the decoded values are unchanged**;
+    decode does not guess what the lost data was.
+
+    Gated on :func:`is_prawduct_issue`: a plain repo issue has no encoding to have
+    damaged, and warning on it would flag every ordinary GitHub issue.
+
+    * **Zero blocks** (``parse_block`` documents this as all-defaults): a scoped
+      item with no ``prawduct:`` block reads as a fully-populated defaults item,
+      so ``id_aliases``/``superseded_by``/``claimed_at`` look never-set rather
+      than destroyed. An adapter-filed item always carries a block, so its
+      absence is a hand edit or a hand-filed item — either way worth saying.
+    * **Missing stage** (ENC-5(c)): an **open** scoped item with no ``stage:``
+      label reads as legitimately stageless. A finished item has no stage to
+      have lost, so it is not flagged. Stageless is also a legitimate filed state
+      (``--stage`` omitted, a ``file-upstream`` intake), and nothing in the issue
+      says which happened, so the warning names both readings rather than
+      asserting a deletion.
+
+    A deleted *soft facet* (``kind``/``area``/``effort``/``impact``/``source``) is
+    deliberately not here: it needs a record of the prior value to tell "deleted"
+    from "never set", and that evidence source is an open design question.
+    """
+    if not is_prawduct_issue(issue):
+        return []
+    found: list[str] = []
+    if not has_block(issue.get("body")):
+        found.append(
+            "the issue carries no `prawduct:` block, so every block field "
+            "(aliases, redirects, claim, affected files) decodes to its default; "
+            "if it had one, a GitHub UI edit destroyed it"
+        )
+    if status in OPEN_STATUSES and facet_value(labels, "stage") is None:
+        found.append(
+            "the issue has no `stage:` label — it was either never staged or its "
+            "stage label was removed; it decodes as stageless"
+        )
+    return found
+
+
+def decode_item(
+    issue: dict, *, canonical_id: str | None = None, advise_degraded: bool = True
+) -> tuple[dict, list[str]]:
     """Decode a GitHub issue JSON into the item projection (Data Model §1.1).
 
     The two axes are decoded independently (DM2, ENC-2): ``status`` from
     state/``state_reason``/``status:`` label, ``stage`` from the ``stage:`` label
     only. Soft-enum facets and the ``prawduct:`` block ride along. Returns
     ``(item, warnings)``.
+
+    ``advise_degraded=False`` drops the :func:`_degradation_warnings` advisories
+    for a caller decoding what it **just created itself** (``file``): the filer
+    chose the absent stage, and the adapter composed the block, so reporting either
+    back as a loss would be noise on every deliberately stageless filing.
     """
     warnings: list[str] = []
     labels = label_names(issue)
@@ -1187,6 +1203,8 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
 
     block = parse_block(issue.get("body"))
     warnings.extend(block.warnings)
+    if advise_degraded:
+        warnings.extend(_degradation_warnings(issue, labels, status, block))
 
     assignees = issue.get("assignees")
     if assignees:

@@ -202,6 +202,195 @@ class TestRelated:
 
 
 
+def _related_of(fake, ref):
+    """What ``ref``'s own stored block says it is related to — read back through
+    the provider, never inferred from the source side of the call (#835)."""
+    owner_repo, number = ref.split("#")
+    owner, repo = owner_repo.split("/")
+    issue = fake.get_issue(owner, repo, int(number))
+    return encode.parse_list(encode.parse_block(issue["body"]).get("related"))
+
+
+def _update_calls(fake):
+    return [c for c in fake.calls if c[0] == "update_issue"]
+
+
+class TestRelatedIsSymmetric:
+    """#835 — ``related`` has no native GitHub edge, so it is two body writes. One
+    call must own both, or the edge reads right from the source and is invisible
+    from the target."""
+
+    def test_link_writes_the_edge_on_both_items(self, fake):
+        a = _file(fake, title="link: the a item under test")
+        b = _file(fake, title="link: the b item under test")
+        result = core.link(fake, id_raw=a, edge="related", target_raw=b)
+        assert result["status"] == "ok", result
+        assert _related_of(fake, a) == [b]
+        assert _related_of(fake, b) == [a], "the target never learned about the edge"
+        assert result["data"]["target_written"] is True
+
+    def test_unlink_removes_the_edge_from_both_items(self, fake):
+        a = _file(fake, title="link: the a item under test")
+        b = _file(fake, title="link: the b item under test")
+        core.link(fake, id_raw=a, edge="related", target_raw=b)
+        result = core.unlink(fake, id_raw=a, edge="related", target_raw=b)
+        assert result["status"] == "ok", result
+        assert _related_of(fake, a) == []
+        assert _related_of(fake, b) == [], "unlink left the edge on the target"
+
+    def test_unlink_from_the_target_end_clears_both_too(self, fake):
+        a = _file(fake, title="link: the a item under test")
+        b = _file(fake, title="link: the b item under test")
+        core.link(fake, id_raw=a, edge="related", target_raw=b)
+        core.unlink(fake, id_raw=b, edge="related", target_raw=a)
+        assert _related_of(fake, a) == []
+        assert _related_of(fake, b) == []
+
+    def test_other_edges_on_the_target_survive(self, fake):
+        a = _file(fake, title="link: the a item under test")
+        b = _file(fake, title="link: the b item under test")
+        c = _file(fake, title="link: the c item under test")
+        core.link(fake, id_raw=b, edge="related", target_raw=c)
+        core.link(fake, id_raw=a, edge="related", target_raw=b)
+        assert sorted(_related_of(fake, b)) == sorted([a, c])
+        core.unlink(fake, id_raw=a, edge="related", target_raw=b)
+        assert _related_of(fake, b) == [c]
+
+    def test_repeating_link_is_a_no_op_on_both_sides(self, fake):
+        a = _file(fake, title="link: the a item under test")
+        b = _file(fake, title="link: the b item under test")
+        core.link(fake, id_raw=a, edge="related", target_raw=b)
+        before = len(_update_calls(fake))
+        result = core.link(fake, id_raw=a, edge="related", target_raw=b)
+        assert result["status"] == "ok"
+        assert len(_update_calls(fake)) == before, "the repeat wrote a body"
+
+    def test_repeating_unlink_is_a_no_op_on_both_sides(self, fake):
+        a = _file(fake, title="link: the a item under test")
+        b = _file(fake, title="link: the b item under test")
+        core.link(fake, id_raw=a, edge="related", target_raw=b)
+        core.unlink(fake, id_raw=a, edge="related", target_raw=b)
+        before = len(_update_calls(fake))
+        assert core.unlink(fake, id_raw=a, edge="related", target_raw=b)["status"] == "ok"
+        assert len(_update_calls(fake)) == before
+
+    def test_each_side_is_mirrored_with_its_own_owner_and_repo(self, fake):
+        a = _file(fake, title="link: the a item under test")
+        b = _file(fake, title="link: the b item under test", owner="other", repo="up")
+        seen = []
+        core.link(
+            fake, id_raw=a, edge="related", target_raw=b,
+            absorb=lambda issue, owner, repo: seen.append((owner, repo, issue["number"])),
+        )
+        assert seen == [(OWNER, REPO, _num(a)), ("other", "up", _num(b))]
+
+    def test_a_no_op_side_is_not_mirrored(self, fake):
+        a = _file(fake, title="link: the a item under test")
+        b = _file(fake, title="link: the b item under test")
+        core.link(fake, id_raw=a, edge="related", target_raw=b)
+        seen = []
+        core.link(
+            fake, id_raw=a, edge="related", target_raw=b,
+            absorb=lambda *args: seen.append(args),
+        )
+        assert seen == []
+
+    def test_native_edges_are_untouched_by_the_related_rewrite(self, fake):
+        """Control: `blocked-by` stays one provider call and reports no
+        `target_written`, which belongs to the two-write edge only."""
+        a = _file(fake, title="link: the a item under test")
+        b = _file(fake, title="link: the b item under test")
+        result = core.link(fake, id_raw=a, edge="blocked-by", target_raw=b)
+        assert "target_written" not in result["data"]
+        assert _update_calls(fake) == []
+
+
+class TestRelatedPartialFailure:
+    """The target write is a second, independent provider write. What a failure of
+    it means depends on whether a retry can ever succeed."""
+
+    def _pair(self, fake, *, cross_repo=False):
+        a = _file(fake, title="link: the a item under test")
+        b = (
+            _file(fake, title="link: the b item under test", owner="other", repo="up")
+            if cross_repo
+            else _file(fake, title="link: the b item under test")
+        )
+        return a, b
+
+    def test_a_retryable_target_failure_is_an_error_marked_partial(self, fake):
+        a, b = self._pair(fake)
+        fake.fail_at_mutation(2, code="unavailable")  # 1 = source write, 2 = target write
+        result = core.link(fake, id_raw=a, edge="related", target_raw=b)
+        assert result["status"] == "error", result
+        assert result["error"]["retryable"] is True
+        details = result["error"]["details"]
+        assert details["partial"] is True
+        assert details["written"] == a
+        assert details["unwritten"] == b
+        assert _related_of(fake, a) == [b], "the source write must stay landed"
+        assert _related_of(fake, b) == []
+
+    def test_replay_after_a_partial_writes_only_the_target(self, fake):
+        a, b = self._pair(fake)
+        fake.fail_at_mutation(2, code="rate_limited")
+        core.link(fake, id_raw=a, edge="related", target_raw=b)
+        before = len(_update_calls(fake))
+        replay = core.link(fake, id_raw=a, edge="related", target_raw=b)
+        assert replay["status"] == "ok", replay
+        new_calls = _update_calls(fake)[before:]
+        assert [c[1:4] for c in new_calls] == [(OWNER, REPO, _num(b))], new_calls
+        assert _related_of(fake, b) == [a]
+
+    def test_a_partial_unlink_is_marked_the_same_way(self, fake):
+        a, b = self._pair(fake)
+        core.link(fake, id_raw=a, edge="related", target_raw=b)
+        fake.fail_at_mutation(2, code="unavailable")
+        result = core.unlink(fake, id_raw=a, edge="related", target_raw=b)
+        assert result["status"] == "error"
+        assert result["error"]["details"]["partial"] is True
+        assert _related_of(fake, a) == []
+        assert _related_of(fake, b) == [a]
+
+    def test_the_source_failing_is_the_plain_error_with_nothing_written(self, fake):
+        a, b = self._pair(fake)
+        fake.fail_at_mutation(1, code="unavailable")
+        result = core.link(fake, id_raw=a, edge="related", target_raw=b)
+        assert result["status"] == "error"
+        assert "partial" not in result["error"]["details"]
+        assert _related_of(fake, a) == [] and _related_of(fake, b) == []
+
+    def test_a_permanent_target_failure_is_ok_with_a_warning(self, fake):
+        a, b = self._pair(fake, cross_repo=True)
+        fake.fail_at_mutation(2, code="auth")
+        result = core.link(fake, id_raw=a, edge="related", target_raw=b)
+        assert result["status"] == "ok", result
+        assert result["data"]["target_written"] is False
+        assert len(result["warnings"]) == 1
+        assert f"recorded on {a} only" in result["warnings"][0]
+        assert b in result["warnings"][0]
+        assert _related_of(fake, a) == [b]
+
+    def test_a_permanent_target_failure_on_unlink_warns_the_same_way(self, fake):
+        a, b = self._pair(fake, cross_repo=True)
+        core.link(fake, id_raw=a, edge="related", target_raw=b)
+        fake.fail_at_mutation(2, code="not_found")
+        result = core.unlink(fake, id_raw=a, edge="related", target_raw=b)
+        assert result["status"] == "ok"
+        assert result["data"]["target_written"] is False
+        assert f"removed from {a} only" in result["warnings"][0]
+
+    def test_the_mirror_is_offered_the_source_even_when_the_target_fails(self, fake):
+        a, b = self._pair(fake)
+        fake.fail_at_mutation(2, code="unavailable")
+        seen = []
+        core.link(
+            fake, id_raw=a, edge="related", target_raw=b,
+            absorb=lambda issue, owner, repo: seen.append((owner, repo, issue["number"])),
+        )
+        assert seen == [(OWNER, REPO, _num(a))]
+
+
 class TestLinkValidation:
     def test_self_link_rejected(self, fake):
         a = _file(fake, title="link: the a item under test")

@@ -1,23 +1,14 @@
-"""Guards for three things the PR flow gets wrong quietly: the two carriers of
-the PR-review evidence contract, the class of claim that a GitHub closing
-keyword closes a backlog item, and whether Step 1 names the command that
-records a suite run as well as the one that dates it.
+"""Guards for two things the PR flow gets wrong quietly: the class of claim
+that a GitHub closing keyword closes a backlog item, and whether Step 1 names
+the command that records a suite run as well as the one that dates it.
 
-All three defects these guards close were found the same way: by a PR that
-completed cleanly and left something undone — two that merged with work
-outstanding, and one that merged correctly having paid for a second full suite
-run to get there.
+Both defects these guards close were found the same way: by a PR that completed
+cleanly and left something undone — one that merged with work outstanding, and
+one that merged correctly having paid for a second full suite run to get there.
 
-**The evidence contract has two carriers.** `skills/pr/review-protocol.md`
-tells the reviewer what to write; `skills/pr/SKILL.md` tells the caller what to
-read. They agree on `commit_reviewed` — the SHA the reviewer actually read —
-and if either drops or renames it, the Update Flow's substantive-delta test
-silently loses its input. Before the field existed, that test said to diff from
-"the reviewed commit" with nothing recording which commit that was, so the
-caller reconstructed it from `timestamp` and `commits_reviewed`. That inference
-is correct exactly until a commit lands *during* the review, which is the case
-it needed to catch: PR #709's evidence was written at 12:05 claiming 16 commits
-while its 17th landed at 12:02, inside the reviewer's own 420-second window.
+(This file also carried the PR-review evidence contract — the `commit_reviewed`
+field a reviewer wrote and the caller read. That contract left with the PR
+reviewer (#1129); `tests/test_pr_skill.py` pins its absence.)
 
 **The closing-keyword claim is a class, not an instance.** A PR-review agent
 dispositioned a backlog item as closed-by-the-merge because the PR body opened
@@ -43,7 +34,6 @@ a future correction to GitHub's semantics has to be applied at each site.
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -51,7 +41,6 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN = REPO / "plugin"
-PROTOCOL = PLUGIN / "skills" / "pr" / "review-protocol.md"
 PR_SKILL = PLUGIN / "skills" / "pr" / "SKILL.md"
 BACKLOG_SKILL = PLUGIN / "skills" / "backlog" / "SKILL.md"
 
@@ -136,76 +125,8 @@ def names_closing_keyword(text: str) -> bool:
     return False
 
 
-def _fenced_json_blocks(text: str) -> list[dict]:
-    """Every ```json fence in a document, parsed. A malformed example is a
-    defect in its own right — the reviewer copies these verbatim."""
-    blocks = []
-    for raw in re.findall(r"```json\n(.*?)```", text, re.DOTALL):
-        blocks.append(json.loads(raw))
-    return blocks
-
-
 def _paragraphs(text: str) -> list[str]:
     return [p for p in re.split(r"\n\s*\n", text) if p.strip()]
-
-
-class TestEvidenceSchemaCarriers:
-    def test_protocol_example_documents_commit_reviewed_as_a_sha(self):
-        """The reviewer's template must carry the field, with a value shaped
-        like what the instruction asks for (`git rev-parse HEAD`). A truncated
-        or placeholder value teaches the reviewer to write a short SHA, which
-        `git merge-base --is-ancestor` accepts but a later string comparison
-        against a full SHA does not."""
-        blocks = _fenced_json_blocks(PROTOCOL.read_text())
-        evidence = [b for b in blocks if isinstance(b, dict) and "findings" in b]
-        assert evidence, "review-protocol.md has no evidence-shaped ```json example"
-        for block in evidence:
-            assert "commit_reviewed" in block, (
-                "The evidence example dropped `commit_reviewed`. The Update Flow's "
-                "substantive-delta test reads it; without it the caller is back to "
-                "inferring the reviewed commit from a timestamp."
-            )
-            assert re.fullmatch(r"[0-9a-f]{40}", block["commit_reviewed"]), (
-                f"`commit_reviewed` example is {block['commit_reviewed']!r}; it must be a "
-                "full 40-hex SHA so the reviewer copies the right shape."
-            )
-
-    def test_caller_reads_the_field_at_both_points_it_matters(self):
-        """Create Step 4 validates the field; the Update Flow consumes it. Two
-        sites, asserted separately — a bare occurrence count does not do this
-        job, because Create Step 4 alone contributes three and the Update Flow
-        half could be deleted whole with the count still passing."""
-        skill = PR_SKILL.read_text()
-        assert "git merge-base --is-ancestor <commit_reviewed> HEAD" in skill, (
-            "Create Step 4 no longer validates `commit_reviewed` against HEAD. That check "
-            "is what catches a rebase or amend moving the tree out from under a review."
-        )
-        assert "git diff --name-only <commit_reviewed>..HEAD" in skill, (
-            "The Update Flow no longer prices its delta from `commit_reviewed` — the "
-            "consumer the field exists for. Without it the field is written and never read."
-        )
-
-    def test_reviewed_commit_is_never_inferred_from_the_upstream_ref(self):
-        """`@{u}..HEAD` was the old stand-in for "since the review". It answers a
-        different question — since the last *push* — and the two diverge exactly
-        when a commit lands mid-review and is pushed before the caller looks."""
-        skill = PR_SKILL.read_text()
-        assert "@{u}..HEAD" not in skill, (
-            "`SKILL.md` is back to deriving the reviewed commit from the upstream ref. "
-            "The reviewed commit is `commit_reviewed`; the upstream ref tracks pushes, "
-            "not reviews."
-        )
-
-    def test_protocol_forbids_advancing_the_field_after_the_fact(self):
-        """`pr_number` is backfilled after PR creation, and the neighbouring
-        instruction must not read as licence to backfill the SHA too — that
-        would launder unreviewed commits into the reviewed set."""
-        protocol = PROTOCOL.read_text()
-        assert re.search(r"[Nn]ever rewrite `commit_reviewed`", protocol), (
-            "review-protocol.md no longer forbids rewriting `commit_reviewed`. It sits "
-            "next to the `pr_number` backfill instruction, which is what makes the "
-            "prohibition load-bearing."
-        )
 
 
 class TestClosingKeywordClaims:
@@ -330,24 +251,22 @@ class TestIssuesBackendCloseIsDeferred:
             "A deferral with no named target is a drop."
         )
 
-    def test_the_close_step_precedes_the_deletions_that_destroy_its_record(self):
-        """Ordering is the property, so assert the order — not the numbers. Steps
-        5-7 delete the branch and the evidence file; a close numbered after them
-        has had its own audit trail deleted first."""
+    def test_the_close_step_follows_the_merge_and_precedes_the_cleanup(self):
+        """Ordering is the property, so assert the order — not the numbers. The
+        close fires right after the merge it is owed by, and before the cleanup
+        that moves this worktree off the branch: a close numbered after the
+        cleanup is one more step for a session to end before reaching. (It also
+        used to precede the PR-review evidence deletion; that step left with the
+        reviewer.)"""
         skill = PR_SKILL.read_text()
         merge_flow = skill[skill.index("## Merge Flow"):]
+        merge_at = merge_flow.index("gh pr merge --merge")
         close_at = merge_flow.index("Close the backlog items this PR resolves")
-        # The branch-deletion step is the one `git-tidy --after-merge` call.
-        delete_at = merge_flow.index("git-tidy --after-merge")
-        # The evidence-deletion step is the one Merge Flow step naming the
-        # `review.pr` ledger event (the durable record that survives it), so the
-        # event name anchors it rather than the step's wording.
-        assert merge_flow.count("`review.pr`") == 1, "re-anchor: `review.pr` is no longer unique to one step"
-        evidence_at = merge_flow.index("`review.pr`")
-        assert close_at < delete_at < evidence_at, (
-            "The close must come before the branch and evidence deletions. Those destroy "
-            "the local artifacts that record the close was owed, and this step is its own "
-            "only detector until the GV3 reconciliation sweep exists."
+        # The branch-cleanup step is the one `git-tidy --after-merge` call.
+        cleanup_at = merge_flow.index("git-tidy --after-merge")
+        assert merge_at < close_at < cleanup_at, (
+            "The close must come right after the merge and before the branch "
+            "cleanup — this step is its own only detector."
         )
 
     def test_no_surface_restates_the_timing_as_unconditionally_on_the_branch(self):
@@ -401,19 +320,6 @@ class TestIssuesBackendCloseIsDeferred:
             "form that is false on the Issues backend, where an API close on an unmerged "
             "branch survives an abandoned PR. Route to the owner instead of "
             "restating:\n" + "\n".join(offenders)
-        )
-
-    def test_the_ledger_cross_check_on_commit_reviewed_is_present(self):
-        """The remedy for a `commit_reviewed` advanced after the fact. The
-        is-ancestor check cannot see that failure — every commit on the branch
-        passes it — so the second witness is the `review.pr` ledger event, whose
-        payload is the evidence record verbatim. Unpinned, this is the same shape
-        the deferral guard above was added for: a remedy with nothing holding it."""
-        skill = PR_SKILL.read_text()
-        assert "review.pr" in skill and ".review.commit_reviewed" in skill, (
-            "The Update Flow no longer cross-checks `commit_reviewed` against the "
-            "ledger's independent copy. Without it the field is self-certifying, and "
-            "the prohibition on advancing it has nothing behind it."
         )
 
 

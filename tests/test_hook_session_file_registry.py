@@ -106,11 +106,17 @@ _BOUNDARY_SURVIVORS = {
         "compute already spent",
     ".prawduct/.governance-ledger.jsonl":
         "the append-only ledger; it is history, and history does not end with a session",
+    ".prawduct/.native-reviews":
+        "the paired native review's texts (#1130): the monthly comparison reads every one, "
+        "and a wrapper may still be writing this review's when a session ends",
     ".prawduct/.test-evidence.json":
         "the test record the freshness gates compare against `.session-start` — the "
         "comparison is what makes it stale, so deleting it would defeat the gate",
-    ".prawduct/.pr-reviews":
-        "PR review records, read at the merge boundary rather than the session one",
+    ".prawduct/.session-activity.json":
+        "a cache keyed inside by transcript path, inode and offset, so an entry never "
+        "answers for another session; a second session in this checkout may be "
+        "mid-session when this one's boundary runs, and deleting its entry costs it a "
+        "full transcript read; old entries are evicted by count",
     ".prawduct/.session-handoff.md":
         "REWRITTEN by the boundary, not removed — it is the bridge the next session "
         "reads, so an unlink here would delete the thing being handed over",
@@ -284,3 +290,40 @@ class TestEveryDispatchMarkerJoinsEveryRegistry:
                 f"{name} outlives a session boundary — a mark from a previous "
                 "session can then attest an interval spanning it"
             )
+
+
+# ---------------------------------------------------------------------------
+# A file a skill writes into `.prawduct/` for one step is a session file too
+# ---------------------------------------------------------------------------
+
+
+class TestThePrDescriptionFileIsASessionFile:
+    """`/prawduct:pr` drafts the PR description into a file under `.prawduct/`
+    and removes it after `gh pr create` / `gh pr edit`. A flow that stops
+    before then leaves it untracked, and unless it is registered the next
+    `git add -A` commits it. The path is read from the skill's own
+    `--body-file` argument, so renaming it there fails here."""
+
+    @staticmethod
+    def _body_file() -> str:
+        skill = (REPO_ROOT / "plugin" / "skills" / "pr" / "SKILL.md").read_text(encoding="utf-8")
+        found = set(re.findall(r"--body-file (\.prawduct/[^\s`\"]+)", skill))
+        assert len(found) == 1, f"expected one --body-file path in the PR skill, found {found}"
+        return found.pop()
+
+    def test_it_is_in_every_registry_site(self):
+        path = self._body_file()
+        assert path in _core.GITIGNORE_ENTRIES
+        assert path in _hook._SESSION_GITIGNORED_PATHS
+        assert path in TestSiteThreeThisReposOwnGitignore._lines()
+        assert path in _boundary_deleted(), "a leftover must be swept at the next boundary"
+
+    def test_a_review_does_not_read_it_as_a_tree_change(self):
+        """`critic_consolidate` exempts session files from the dispatch-to-
+        consolidation tree check by reading the same list, so drafting the
+        description while a review runs cannot void it. Control: a sibling
+        `.prawduct/` file that is not a session file is not exempt."""
+        from lib import critic_consolidate
+
+        assert critic_consolidate._is_session_file(self._body_file(), "")
+        assert not critic_consolidate._is_session_file(".prawduct/pr-body.md", "")
