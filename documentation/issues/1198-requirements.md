@@ -165,7 +165,7 @@ together and built as one plan.
    day, which suggests it is natural. Recommendation: support it, state it in `planning.md`, and
    keep the advice to split a plan that is known in advance to ship in waves.
 2. R2: how far should the rule generalise? Recommendation: (b), the plan-order rule, because it
-   also closes #1141's route A and needs no knowledge of chunk types; (a) is the smallest change
+   also shuts #1141's route A and needs no knowledge of chunk types; (a) is the smallest change
    if (b) breaks plans that are legitimately built out of order.
 3. Should #1141 and this item be merged into one backlog item at design, or stay two items with
    one design document?

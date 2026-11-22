@@ -48,7 +48,7 @@ Serial is a decision like any other. Record it either way in the plan's `partiti
 What has to be said, in your own words — not a template. A brief that could be copy-pasted from the last one has stopped carrying information.
 
 - **The work** — the chunk spec and the artifacts it references, or the task stated in full.
-- **The ownership boundary** — what it owns, what it must not touch, and any budget its files sit under (a size ceiling, a byte cap) that it would otherwise meet only as a red test.
+- **The ownership boundary** — what it owns, what it must not touch, and any budget its files sit under (a size ceiling, a byte cap) that it would otherwise meet only as a red test. It includes its own scratch subdirectory: a worktree isolates the repo, not session scratch, where parallel delegates overwrite each other's same-named copies.
 - **A verification ceiling** — the narrowest run that covers its own change. **Read `project-preferences.md`'s `Delegate verification` row first**: a ceiling invented beside one the owner ratified is the retyping that row exists to end.
 - **What to return**, and in what form — for a removal or a sweep, the output of the command that shows it complete.
 - **Who integrates** — you or your integrator, by name, so the delegate neither merges nor governs.
@@ -73,6 +73,7 @@ Each carries a **tell** — the thing you can catch yourself doing.
 - **The inherited model.** *Tell:* a dispatch with no model named, from a session on a tier stronger than Opus-class.
 - **The delegate that verifies the whole product.** *Tell:* the brief names a command the integration branch will run.
 - **N baselines.** *Tell:* the brief says "make sure tests pass before you start." A delegate inherits your baseline.
+- **The shared scratch.** *Tell:* two briefs in one wave name no scratch location, or the same one.
 - **The unattributable green.** *Tell:* you accepted a pass count without knowing what was collected, from a box running several agents. A worker that dies under contention is typically not re-queued and does not fail the run, so one tree can report different totals, all exiting 0. Record it as what it is: `test-evidence record --degraded "<what did not report>"`, which the gates read as stale rather than as a pass.
 - **The Done taken on faith.** *Tell:* you accepted a completion report on a removal or a sweep that carried no evidence — no grep for the removed symbol, no recount against the source. These fail in the direction of looking finished.
 - **Boundaryless fan-out.** *Tell:* you cannot say which files each delegate owns without reopening their briefs.

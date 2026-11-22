@@ -138,7 +138,7 @@ worker: prawduct-hook                                    # the unattended worker
 original_title: Add the harbor map overlay               # pre-migration title, verbatim (MG6 — only when the scrub changed it)
 original_body: "line one\nline two"                      # pre-migration body, verbatim; JSON-string-encoded to one line
 refs: requirements-x.md#section, arch-y.md               # governing docs (item→doc; `related`/`superseded_by` are item→item)
-revisit: 2027-01-01 | <event trigger text>               # norm-exception / stopgap expiry clock
+revisit: 2027-01-01 | <event trigger text>               # norm-exception / stopgap expiry, or a dated re-check
 closed-by: fix/some-branch                               # manual-close ship handle (§1.1 `closed_by`; NOTE the hyphen)
 reviewed: 2026-08-02                                     # import-only TF2 re-confirmation date — see § Editorial fields below
 ```

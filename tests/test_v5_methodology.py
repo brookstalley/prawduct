@@ -1972,7 +1972,11 @@ LAST_MEASURED_TOKENS = {
     # Critic's skill alone. A READING.
     # +14 on 2026-11-18 (#1190): the reaping paragraph's pointer says the clear verdict's home also
     # says what the forward notes must carry about a delegate, which the delegating agent writes. A READING.
-    "methodology/delegation.md": 2862,
+    # +52 on 2026-11-22 (#1210): the ownership-boundary bullet names a per-delegate scratch
+    # subdirectory, and the anti-patterns gain its tell. Parallel delegates sharing session scratch
+    # overwrote each other's mutation-check backups; no existing clause covered it, so nothing was
+    # cut to pay. A READING.
+    "methodology/delegation.md": 2914,
 }
 
 

@@ -1414,6 +1414,17 @@ class TestRevisitDueProbe:
         assert out[0].type == "revisit-due"
         assert "EXC-1A2B" in out[0].trigger_summary
 
+    def test_owner_action_names_both_intents_of_a_revisit_date(self, tmp_path):
+        """A `revisit:` date is an exception's expiry OR a dated re-check (a measurement
+        booked for a date); the probe cannot tell which, so its summary and owner line
+        must name both."""
+        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
+        cand = np.probe_revisit_due(ProjectState({}), _cb(tmp_path))[0]
+        assert "scheduled work for that date" in cand.owner_action
+        assert "If it is an exception" in cand.owner_action
+        assert "Do what the item scheduled" in cand.trigger_summary
+        assert not cand.trigger_summary.startswith("Exception clock expired")
+
     def test_silent_when_no_revisit(self, tmp_path):
         _write_backlog(tmp_path, _item("EXC-1A2B"))
         assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
