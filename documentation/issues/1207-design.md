@@ -9,8 +9,8 @@ ledger holds reviews, never outcomes), #1052 (the notes transport), #1063 (opt-o
 
 **Owner rulings this design is built to (2026-11-22).** Disposition facts, all three actions
 (accept, file, fixed), travel between clones on the same footing as resolutions. Q1 (backfill):
-dispositions recorded before the change are sent. Q2 (budget sweeps) is not ruled; D10 carries the
-requirements' recommendation as a proposal. Q3 is answered by this document existing. *The
+dispositions recorded before the change are sent. Q2 (budget sweeps): they travel like any ACCEPT
+(D10). No archive-wide backfill for already-merged branches (D7). Both ruled 2026-11-22. Q3 is answered by this document existing. *The
 `.prawduct/owner-rulings.md` on `develop` at `8b1847e2` does not yet hold the 2026-11-22 entry (its
 top entry is 2026-11-18). It must be committed before this design is cited as ruled.*
 
@@ -182,7 +182,8 @@ the change. So every branch still in flight is sent whole at its next sync, whic
 What this does **not** reach: dispositions answering reviews on branches already merged. `reconcile`
 is bounded to `merge_base..HEAD`, and resolutions have had that bound since #1052, which did no
 archive-wide backfill either. At most 339 dispositions here (about 208 KB) could be sent by such a
-sweep. Whether to add one is open question 2. A disposition recorded *after* a branch merged is
+sweep. None is added (owner ruling 2026-11-22); one would be its own item and would cover
+resolutions too. A disposition recorded *after* a branch merged is
 attached locally by D1 and pushed with the whole local ref at the next sync from any branch. A
 receiver gets it only through `evidence ingest --all`, exactly as for a resolution recorded at that
 point.
@@ -228,15 +229,15 @@ question, not answered here.
   event, so an ingested answer, or two answers in conflict, counts once. #1058's duplicate counting
   of reviews is not touched.
 
-### D10 — Budget sweeps (Q2): proposed, awaiting the owner
+### D10 — Budget sweeps (Q2): ruled 2026-11-22
 
-**Proposed: sweep ACCEPTs travel like any other ACCEPT.** On a branch with commits, the budget
+**Sweep ACCEPTs travel like any other ACCEPT** (owner ruling 2026-11-22, `.prawduct/owner-rulings.md`). On a branch with commits, the budget
 counts the branch's lineage, which every synced clone shares, so "this work bought N rounds on this
 branch's lineage" is true there too. In the empty-span fallback the reason already says "in this
 worktree". The trade-off: in another clone, a sweep ACCEPT nobody weighed by hand suppresses a
 re-raise through `prior_dispositions`, as it already does in the clone that wrote it. Keeping sweeps
 local would need a marker field, or a match on the reason text, and would rebuild the divergence
-this item removes. *Awaiting owner confirmation.*
+this item removes.
 
 ## Security model and norms (R11)
 
@@ -329,9 +330,4 @@ After merge, and before the first sync from this repo: the operator scan above.
 
 ## Open questions for the owner
 
-1. **Q2, budget sweeps (D10).** Proposed: they travel like any ACCEPT. Confirm, or rule that they stay
-   local.
-2. **Archive-wide backfill (D7).** Recommended: none. The Q1 ruling is met for every branch in flight,
-   resolutions never had one, and the most it could add here is 339 dispositions (about 208 KB),
-   answering reviews of work already merged. Say if you want a one-time `reconcile --all` anyway; it
-   would be its own item and would also cover resolutions.
+None. Q2 and the archive-wide backfill were ruled on 2026-11-22 (D10, D7).

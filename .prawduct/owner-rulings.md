@@ -27,6 +27,18 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-22.** "1. yes 3.9.0 2. agreed 3. agred 4. agreed" — answering four asks together (asks 5
+and 6, on the #1141/#1198 design, were not answered and stay open):
+1. The release is v3.9.0, a minor, replacing the v3.8.2 named in the ruling below: it ships
+   `release-fragments-only` and `retire-chunk-status-shims`, which break what consumers run. Lands in
+   `.prawduct/artifacts/release-plan-v3.9.0.md` (Version).
+2. No rework item for the alignment pass yet, despite the asked-first fall in the #981 re-run (14.5% →
+   3.2%): hand-read corrections also fell, and the counts wait on #1211.
+3. #1207 Q2: budget-sweep ACCEPTs (`auto_accept`) travel to other clones like any other ACCEPT. Lands
+   in `documentation/issues/1207-design.md`.
+4. #1207: dispositions on already-merged branches are not swept; the backfill covers in-flight
+   branches through `reconcile`. Lands in `documentation/issues/1207-design.md`.
+
 **2026-11-22.** "yes to all" — answering six asks together:
 1. Cut v3.8.2 now: write the release plan classifying the 55 release-pending scopes and the
    headline. Lands in `.prawduct/artifacts/release-plan-v3.8.2.md` and `.prawduct/release-headline.md`.
