@@ -27,6 +27,10 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-22.** "yes update prawduct live" — `../prawduct-live` is advanced to `origin/develop` after
+the v3.9.0 release (the dogfood track, `documentation/release-process.md` § Dogfooding the develop
+track), so this machine's sessions run the released plugin plus the 3.9.1-dev reopen.
+
 **2026-11-22.** "1. agree confirm 2. yes agreed" — answering the two open asks on the #1141/#1198
 design:
 1. The plan-order rule binds only chunks proposed because the diff touched their paths. `--chunks`,
