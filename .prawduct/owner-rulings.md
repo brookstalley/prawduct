@@ -27,6 +27,17 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-22.** "1. yes keep running 2. yes agred 3. yes please do fix" — answering three asks
+from the post-v3.9.0 orientation:
+1. The #1130 paired experiment runs to its stop condition (four weeks, about 2026-12-10), even
+   though the 60-boundary-pair sample is already met (104). Before the final blind check,
+   #1170 (consolidation duplicates inflate Critic-only counts) is fixed and native-review token
+   cost is measured (`compare.py --transcripts`). No fourth interim check. Lands on #1130.
+2. The next build is #1141 + #1198 (shared design `documentation/issues/1141-1198-design.md`),
+   then #1207.
+3. The delegation brief's verification ceiling names the whole-tree guard class, as the
+   scratch-subdirectory item does for scratch. Lands in `plugin/methodology/delegation.md`.
+
 **2026-11-22.** "yes update prawduct live" — `../prawduct-live` is advanced to `origin/develop` after
 the v3.9.0 release (the dogfood track, `documentation/release-process.md` § Dogfooding the develop
 track), so this machine's sessions run the released plugin plus the 3.9.1-dev reopen.

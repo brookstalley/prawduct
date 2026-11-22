@@ -585,7 +585,10 @@ LAST_MEASURED_TOKENS = {
     # -8 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): Resolve findings names `gates.FIX_ORDER`
     # and cites the anchoring derivation instead of copying the order and restating what committing
     # first does to the pass. A READING; ceiling lowered with it.
-    "methodology/building.md": 5658,
+    # -2 on 2026-11-22 (delegate-ceiling-whole-tree-guards): the delegate brief's verification
+    # ceiling points at delegation.md "What a brief must say", which owns it, instead of restating
+    # it, so the whole-tree guard class has one home. A READING; ceiling lowered with it.
+    "methodology/building.md": 5656,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1976,7 +1979,11 @@ LAST_MEASURED_TOKENS = {
     # subdirectory, and the anti-patterns gain its tell. Parallel delegates sharing session scratch
     # overwrote each other's mutation-check backups; no existing clause covered it, so nothing was
     # cut to pay. A READING.
-    "methodology/delegation.md": 2914,
+    # +55 on 2026-11-22 (owner ruling, owner-rulings.md): the verification-ceiling bullet names the
+    # whole-tree guard class, and the anti-patterns gain its tell. Two delegates' narrow ceilings
+    # missed a whole-tree guard in one batch, and tests.md's learning alone was a recall miss both
+    # times; no existing clause covered it, so nothing was cut to pay. A READING.
+    "methodology/delegation.md": 2969,
 }
 
 
@@ -4030,7 +4037,8 @@ class TestBuildingMethodology:
         # LOWERED 5409 -> 5407 (testament-evidence-wiring, 2026-11-13) with the reading's cut.
         # RAISED 5407 -> 5667 (backlog-roi Chunk 09, #1034 + #678, 2026-11-18) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 5667 -> 5659 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 5659, f"building.md is ~{tokens} tokens, should be <5659"
+        # LOWERED 5659 -> 5657 (delegate-ceiling-whole-tree-guards, 2026-11-22) with the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 5657, f"building.md is ~{tokens} tokens, should be <5657"
 
 
 # =============================================================================
