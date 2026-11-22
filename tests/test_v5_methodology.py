@@ -588,7 +588,14 @@ LAST_MEASURED_TOKENS = {
     # -2 on 2026-11-22 (delegate-ceiling-whole-tree-guards): the delegate brief's verification
     # ceiling points at delegation.md "What a brief must say", which owns it, instead of restating
     # it, so the whole-tree guard class has one home. A READING; ceiling lowered with it.
-    "methodology/building.md": 5656,
+    # -5 on 2026-11-22 (same scope, Critic round on a04758d4): the review found the pointer had
+    # dropped the `How:` line's reach for the `Delegate verification` row (R-13's fix), and the
+    # shared ceiling paragraph still gave a delegate the builder's touched-files ceiling. The `How:`
+    # line names the row and the guards again, and the paragraph says a delegate runs its brief's.
+    # Paid in place: the removal-evidence paragraph drops "these fail silently, in the direction of
+    # looking finished" and "the files it touched", which delegation.md's "The Done taken on faith"
+    # owns. A READING; ceiling lowered with it.
+    "methodology/building.md": 5651,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1983,7 +1990,10 @@ LAST_MEASURED_TOKENS = {
     # whole-tree guard class, and the anti-patterns gain its tell. Two delegates' narrow ceilings
     # missed a whole-tree guard in one batch, and tests.md's learning alone was a recall miss both
     # times; no existing clause covered it, so nothing was cut to pay. A READING.
-    "methodology/delegation.md": 2969,
+    # +32 on 2026-11-22 (same scope, Critic round on a04758d4): the ceiling bullet says the row sets
+    # the narrow run and the guards are added either way (a narrow ratified row otherwise dropped
+    # them), and describes the class by property instead of this repo's guard names. A READING.
+    "methodology/delegation.md": 3001,
 }
 
 
@@ -2893,6 +2903,25 @@ class TestBuildingMethodology:
     @pytest.fixture(autouse=True)
     def load(self):
         self.content = read_file("methodology/building.md")
+
+    def test_every_delegate_ceiling_sentence_reaches_the_row_and_the_guards(self):
+        """building.md states a delegate's ceiling twice: in the shared ceiling
+        paragraph, which a delegate reads because its brief points it at the
+        build cycle, and in the `How:` line a coordinator writes the brief from.
+        Each must agree with delegation.md "What a brief must say". The
+        paragraph defers to the brief, so a delegate never takes the builder's
+        narrower touched-files ceiling for its own. The `How:` line reaches for
+        a ratified `Delegate verification` row, so a coordinator does not invent
+        a ceiling beside the owner's, and it names the whole-tree guards, which
+        a narrow run never reads.
+        """
+        para = next(
+            ln for ln in self.content.splitlines() if ln.startswith("**A verification ceiling")
+        )
+        assert "A delegate runs the one its brief names" in para
+        how = next(ln for ln in self.content.splitlines() if ln.startswith("**How:**"))
+        assert "`Delegate verification` row" in how
+        assert "whole-tree guards" in how
 
     def test_work_scaled_governance(self):
         """Has governance model with size/type levels, no v4 phase references."""
@@ -4038,7 +4067,8 @@ class TestBuildingMethodology:
         # RAISED 5407 -> 5667 (backlog-roi Chunk 09, #1034 + #678, 2026-11-18) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 5667 -> 5659 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
         # LOWERED 5659 -> 5657 (delegate-ceiling-whole-tree-guards, 2026-11-22) with the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 5657, f"building.md is ~{tokens} tokens, should be <5657"
+        # LOWERED 5657 -> 5652 (same scope, Critic round on a04758d4) with the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 5652, f"building.md is ~{tokens} tokens, should be <5652"
 
 
 # =============================================================================
@@ -4214,6 +4244,34 @@ class TestDelegationGuide:
         assert "not a template" in self.content.lower(), (
             "the brief section no longer refuses to be a template, which is the "
             "one sentence stopping the next editor from writing one"
+        )
+
+    def _ceiling_bullet(self) -> str:
+        return next(
+            ln for ln in self.content.splitlines() if ln.startswith("- **A verification ceiling**")
+        )
+
+    def test_the_ceiling_takes_the_ratified_row_first_and_adds_the_whole_tree_guards_either_way(self):
+        """A delegate's narrow run never reads the files a whole-tree guard
+        checks, so a file it wrote broke such a guard only at the merge: twice
+        in one batch, while the rule lived only in a learnings file. The bullet
+        is where a brief's ceiling is written, so it carries the class. It must
+        also say how the class meets a ratified `Delegate verification` row.
+        Without that, a coordinator honouring the row drops the guards, or adds
+        them and so writes a ceiling beside the owner's, which the same bullet
+        forbids. The row sets the narrow part, and the guards are added on top.
+        """
+        bullet = self._ceiling_bullet()
+        assert "`Delegate verification` row first" in bullet
+        assert "whole-tree guards" in bullet
+        assert "Either way, add" in bullet, (
+            "the ceiling bullet must say the guards are added whether or not a "
+            "`Delegate verification` row is ratified"
+        )
+        tells = [b for b in self._anti_pattern_bullets() if b.startswith("- **The narrow green.**")]
+        assert tells and "whole-tree guard" in tells[0], (
+            "the narrow-green anti-pattern and its tell are the dispatch-time "
+            "check for the ceiling bullet"
         )
 
     def test_the_guide_names_no_consumer_test_vocabulary(self):

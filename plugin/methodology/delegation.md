@@ -49,7 +49,7 @@ What has to be said, in your own words — not a template. A brief that could be
 
 - **The work** — the chunk spec and the artifacts it references, or the task stated in full.
 - **The ownership boundary** — what it owns, what it must not touch, and any budget its files sit under (a size ceiling, a byte cap) that it would otherwise meet only as a red test. It includes its own scratch subdirectory: a worktree isolates the repo, not session scratch, where parallel delegates overwrite each other's same-named copies.
-- **A verification ceiling** — the narrowest run that covers its own change, plus the whole-tree guards (path references, closing keywords, packaging lint, prose budgets, goldens) named as a class, since a narrow run never reads what they check. **Read `project-preferences.md`'s `Delegate verification` row first**: a ceiling invented beside one the owner ratified is the retyping that row exists to end.
+- **A verification ceiling** — a narrow run, plus the whole-tree guards. **Read `project-preferences.md`'s `Delegate verification` row first** for the narrow run: a ceiling invented beside one the owner ratified is the retyping that row exists to end. Absent the row, it is the narrowest run that covers the delegate's own change. Either way, add the tests that read files outside any one change (reference and link checks, size budgets, goldens, record schemas), named as a class, since a narrow run never reads what they check.
 - **What to return**, and in what form — for a removal or a sweep, the output of the command that shows it complete.
 - **Who integrates** — you or your integrator, by name, so the delegate neither merges nor governs.
 
