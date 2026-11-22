@@ -1,7 +1,9 @@
 # Release Plan — v3.9.0
 
-**Status:** IN PROGRESS 2026-11-22. Owner go-ahead to cut: 2026-11-22 ("yes to all"), and the
-version: 2026-11-22 ("yes 3.9.0"), both in `.prawduct/owner-rulings.md`.
+**Status:** COMPLETE as measured 2026-11-22: `main` promoted at `e2ff6a0b`, tag and Release
+`v3.9.0` published in one call, `check-released v3.9.0` verified 3 of 3, develop reopened on
+`3.9.1-dev`. Owner go-ahead: 2026-11-22 ("yes to all"; version "yes 3.9.0"). Re-derive rather than
+reading this as a measurement: `prawduct-hook check-released v3.9.0`.
 
 **Version:** v3.9.0, a **minor**, confirmed by the owner 2026-11-22. The first go-ahead named
 v3.8.2; reading the 56 pending scopes (57 with one found during the cut) changed the recommendation, and the owner agreed. Two of them break what a consumer runs:
