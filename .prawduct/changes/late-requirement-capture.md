@@ -30,5 +30,4 @@ product for the section only when the diff added a record, so a product that cap
 nothing and sees nothing.
 
 ## Consumer note
-None required. Capturing a late requirement is a methodology step. The new check fires only on lines
-added inside a `## Late requirements` section, which no product has until it writes one.
+none: a methodology step; its check fires only on lines inside a `## Late requirements` section, which no product has until it writes one

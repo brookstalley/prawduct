@@ -20,4 +20,4 @@ every detached warm (`transport.spawn_detached` caller) against the test proving
 failure, so adding a new one without an outcome record fails the suite.
 
 ## Consumer note
-None. The new snapshot fields are additive, and a snapshot written before them reads as it did.
+none: the new snapshot fields are additive, and a snapshot written before them reads as it did

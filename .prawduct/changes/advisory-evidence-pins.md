@@ -21,4 +21,4 @@ version 1, needs no bump: that advisory type has not shipped in a release, so no
 stale.
 
 ## Consumer note
-None. No advisory id changes.
+none: a test-only guard; no advisory id changes

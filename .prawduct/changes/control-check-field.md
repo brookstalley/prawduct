@@ -30,5 +30,4 @@ The issue's PR-path step (stamping `check` in `ledger-append --event review.pr`)
 to change. That kind was retired with the PR reviewer (#1129) and is refused at the CLI.
 
 ## Consumer note
-None. Review records gain an optional `check` key on findings and observations; readers that ignore
-unknown keys are unaffected.
+none: review records gain an optional `check` key, and readers that ignore unknown keys are unaffected

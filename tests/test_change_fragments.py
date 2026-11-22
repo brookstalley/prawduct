@@ -80,6 +80,22 @@ class TestValid:
         assert fragment.none_reason == "test-only change"
         assert fragment.consumer_text is None
 
+    def test_a_none_reason_wrapped_onto_a_second_line_is_still_none(self):
+        # Fragment prose wraps; a wrapped `none:` once read as consumer text and was published.
+        fragment = cf.parse_fragment(
+            fragment_text(note="none: affects only development builds' records and the\ncomparison script"),
+            filename="backlog-file-path.md",
+        )
+        assert cf.validate_fragment(fragment) == []
+        assert fragment.consumer_text is None
+        assert fragment.none_reason == "affects only development builds' records and the comparison script"
+        # Control: a real note that merely mentions none: later is still published.
+        real = cf.parse_fragment(
+            fragment_text(note="Run doctor.\nnone: of this needs a flag"), filename="backlog-file-path.md"
+        )
+        assert real.none_reason is None
+        assert real.consumer_text == "Run doctor.\nnone: of this needs a flag"
+
     @pytest.mark.parametrize("scope", ["release-v3.7.1", "dev-track-bump-3.7.1-dev.2"])
     def test_a_version_named_scope_is_a_valid_slug(self, scope):
         assert codes(fragment_text(with_("scope", scope)), filename=f"{scope}.md") == []
@@ -158,6 +174,7 @@ REFUSALS = [
     ("empty-consumer-note", fragment_text(note=""), "backlog-file-path.md"),
     ("empty-consumer-note", fragment_text(note="none:"), "backlog-file-path.md"),
     ("empty-consumer-note", fragment_text(note="None:   "), "backlog-file-path.md"),
+    ("none-with-note", fragment_text(note="none: internal\n\nRun doctor after upgrading."), "backlog-file-path.md"),
 ]
 
 

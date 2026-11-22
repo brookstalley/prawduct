@@ -27,6 +27,14 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-22.** "1. agree confirm 2. yes agreed" — answering the two open asks on the #1141/#1198
+design:
+1. The plan-order rule binds only chunks proposed because the diff touched their paths. `--chunks`,
+   a scoped `(Chunk N)` commit subject and span credit still certify out of order, so data-model D1
+   and its #1199 departure stand unamended. Lands in `documentation/issues/1141-1198-design.md`.
+2. The `chunk`-mode refusal (a proposal still naming two chunks) exits 8, a new code. Lands in
+   `documentation/issues/1141-1198-design.md`.
+
 **2026-11-22.** "1. yes 3.9.0 2. agreed 3. agred 4. agreed" — answering four asks together (asks 5
 and 6, on the #1141/#1198 design, were not answered and stay open):
 1. The release is v3.9.0, a minor, replacing the v3.8.2 named in the ruling below: it ships

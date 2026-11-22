@@ -20,4 +20,4 @@ is in flight, so it runs after the record. Both reconcile at `/prawduct:pr` Step
 then the coverage gate), not inside the review.
 
 ## Consumer note
-None. This is guidance on ordering; neither the gate nor the review changed.
+none: guidance on ordering; neither the gate nor the review changed

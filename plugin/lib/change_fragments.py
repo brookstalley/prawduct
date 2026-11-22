@@ -69,7 +69,10 @@ _SCOPE_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]|\.(?=[a-z0-9]))*")
 _KEY_LINE_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):(.*)")
 #: One item of a YAML block list under an empty ``key:`` line.
 _BLOCK_ITEM_RE = re.compile(r"[ \t]+-[ \t]*(.*)")
-_NONE_RE = re.compile(r"none:(.*)", re.IGNORECASE)
+# DOTALL: fragment prose wraps at the file's width, and a `none:` reason wrapped onto a second
+# line is still a `none:` note. Without it the wrapped note failed to match and the cut published
+# "none: …" to consumers as if it were their note.
+_NONE_RE = re.compile(r"none:(.*)", re.IGNORECASE | re.DOTALL)
 # `date.fromisoformat` accepts compact and week forms from Python 3.11 on, so the
 # shape is pinned first: the archive header is always `YYYY-MM-DD`.
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -243,7 +246,7 @@ class Fragment:
         if self.consumer_note is None:
             return None
         match = _NONE_RE.fullmatch(self.consumer_note.strip())
-        return match.group(1).strip() if match else None
+        return " ".join(match.group(1).split()) if match else None
 
     @property
     def unwritten(self) -> bool:
@@ -537,6 +540,16 @@ def validate_fragment(
         )
     elif _NONE_RE.fullmatch(fragment.consumer_note.strip()) and not fragment.none_reason:
         problems.append(Problem("empty-consumer-note", "`none:` needs a reason after it"))
+    elif fragment.none_reason is not None and re.search(r"\n[ \t]*\n", fragment.consumer_note.strip()):
+        # A `none:` note is the whole note, and its reason may wrap — but a paragraph after a
+        # blank line reads as text for consumers, which the cut would silently drop.
+        problems.append(
+            Problem(
+                "none-with-note",
+                "a `none:` note is the whole note; a paragraph after it would be dropped — write the "
+                "note for consumers instead, or keep only the `none:` reason",
+            )
+        )
 
     return problems
 

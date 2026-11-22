@@ -71,4 +71,4 @@ mid-download is an outage, and a test holds the `pool` job's time limit above wh
 wait.
 
 ## Consumer note
-None. This changes how this repository tests itself; nothing under `plugin/` changed.
+none: changes how this repository tests itself; nothing under `plugin/` changed

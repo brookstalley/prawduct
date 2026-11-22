@@ -4,7 +4,7 @@
 version: 2026-11-22 ("yes 3.9.0"), both in `.prawduct/owner-rulings.md`.
 
 **Version:** v3.9.0, a **minor**, confirmed by the owner 2026-11-22. The first go-ahead named
-v3.8.2; reading the 56 pending scopes changed the recommendation, and the owner agreed. Two of them break what a consumer runs:
+v3.8.2; reading the 56 pending scopes (57 with one found during the cut) changed the recommendation, and the owner agreed. Two of them break what a consumer runs:
 - `release-fragments-only` (#1125): releases and the PR gate read change fragments only, and refuse
   a `.prawduct/change-log.md` that still holds an unreleased entry.
 - `retire-chunk-status-shims`: `critic-begin --chunk` is gone, so `--chunks` is required.
@@ -52,6 +52,7 @@ broke.
 | late-requirement-capture | ships | |
 | ledger-outcomes | ships | |
 | measure-record-findings | ships | |
+| none-reason-wraps | ships | |
 | native-review-inner | ships | |
 | native-review-paired | ships | |
 | native-review-parse | ships | |
@@ -93,3 +94,5 @@ broke.
   span credits them. The work is built and covered by the integration branch's cumulative review
   (rev-20261118T232657Z-72818172, merged in #1206). It is archived `--state completed` with that
   reason, as the runbook directs for a completeness refusal.
+- `none-reason-wraps` was found and fixed during this cut: the Phase 1 preview published three
+  wrapped `none:` notes as consumer text. It ships here.
