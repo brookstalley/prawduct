@@ -27,6 +27,19 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-22.** "yes to all" — answering six asks together:
+1. Cut v3.8.2 now: write the release plan classifying the 55 release-pending scopes and the
+   headline. Lands in `.prawduct/artifacts/release-plan-v3.8.2.md` and `.prawduct/release-headline.md`.
+2. #981 is run now rather than renewed or lapsed. Lands in
+   `.prawduct/artifacts/requirements-alignment-discovery.md` § Yield re-run 2026-11.
+3. #1198 Q1: shipping one plan in two PRs is a supported shape. `planning.md` says so, and keeps the
+   advice to split a plan known in advance to ship in waves.
+4. #1198 Q2–Q3: the plan-order rule (option (b): no chunk is certified while an earlier chunk is open),
+   and #1141 and #1198 stay two backlog items with one shared design document.
+5. #1207: disposition facts (accept, file, fixed) travel between clones like resolutions, and
+   dispositions recorded before the change are sent too (Q1 backfill: send them).
+6. #855 is reworked as an advisory, not a blocking Stop gate, to fit the 2026-09-19 tax ruling.
+
 **2026-11-18.** "yes let's run now, 12-10 is too long to wait. yes to triage"
 In reply to two asks: (1) whether to blind-verify the Critic-vs-native comparison now, at 68 paired
 reviews (54 boundary pairs), or wait for #1130's stop at about 2026-12-10. It settles: verify now.
