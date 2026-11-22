@@ -16,8 +16,9 @@ scratch location, or the same one.
 The `revisit-due` advisory called every past `revisit:` date an expired exception and asked the
 owner to renew it or let it lapse. The field also carries dated re-checks, such as a measurement
 booked for a date (#981), and for those the answer is to do the work. The advisory's summary and
-owner line now name both kinds of date, and so does every description of the field: the backlog
-skill, the scaffolded backlog legend and the backlog data model. The advisory's evidence line is
+owner line now name both kinds of date, and so do the field's operational descriptions: the
+backlog skill, the scaffolded backlog legend, the backlog data model and the probe's docstrings.
+Design rationale that describes only the exception use is left as written, because it is still true. The advisory's evidence line is
 unchanged, so its id is stable and an open advisory is not re-minted.
 
 ## Consumer note
