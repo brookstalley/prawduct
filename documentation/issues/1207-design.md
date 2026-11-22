@@ -3,7 +3,7 @@
 `status: draft · stage: design · area: governance · added: 2026-11-22 · issue:
 https://github.com/brookstalley/prawduct/issues/1207`
 
-Requirements: [`1207-requirements.md`](1207-requirements.md) (R1–R15, A1–A7). Related: #606 (the
+Requirements: [`1207-requirements.md`](./1207-requirements.md) (R1–R15, A1–A7). Related: #606 (the
 ledger holds reviews, never outcomes), #1052 (the notes transport), #1063 (opt-out preference, open),
 #1058 (stats double-count ingested reviews, open).
 

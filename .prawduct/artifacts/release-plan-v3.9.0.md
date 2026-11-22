@@ -96,3 +96,9 @@ broke.
   reason, as the runbook directs for a completeness refusal.
 - `none-reason-wraps` was found and fixed during this cut: the Phase 1 preview published three
   wrapped `none:` notes as consumer text. It ships here.
+- Step 10 (minor bump): `README.md` re-read against this release. Its prerequisites, install and
+  onboard steps, commands and "How it works" are still true; `pr-reviewer-fold` had already updated
+  the `/prawduct:pr` line. No change.
+- Step 11: `plan-backfill --apply` archived 12 plans. Both backlog-ROI plans were archived by hand
+  with `archive-plan --state completed --release v3.9.0`; wave 1 records 8 of 11 chunks
+  `unbuilt_at_archive`, for the reason given above.
