@@ -15,7 +15,7 @@ governed_by:
       - "a governance document reaches a terminal state → inapplicable because this work archives or deletes no document other than its own plan at the end"
       - "backlog issues conform to the title rules → inapplicable because no backlog write path changes; D10 changes only the version label value"
       - "a newer-schema fact is surfaced, never dropped → conforms; the two new keys are optional and typed by the validator as `chunks_proposed` is; chunk 02 confirms whether SCHEMA_VERSION must move and records the answer"
-      - "two stores, two lifetimes → conforms; the fact keys go to the shared store, and chunk 02's refusal event goes to the per-clone governance ledger"
+      - "two stores, two lifetimes → conforms; the fact keys and chunk 02's `guard-refusal` fact go to the shared evidence store, the sink `evidence.append_guard_refusal` names for every pre-dispatch refusal"
       - "backlog_service_repo selects the authoritative store → inapplicable because no backlog read changes"
       - "D1 (chunk state from facts; spans credit by subject only; the #1199 departure) → conforms; owner ruling 2026-11-22 confirmed the design's reading, so D1 and its departure stand unamended"
   - artifact: api-contract
@@ -26,8 +26,8 @@ governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall clock is P0 → conforms; the refusal costs one re-run of `critic-begin` before any reviewer starts, D5 and D6 render with no git (1198-NF1), and D4's deferral reads a field from the pass it already makes"
-      - "proportionality ratchets both ways: a new control names its yield and emits it → conforms, by a plan-time addition to the design. D3's refusal is a new control. Expected yield: rare. The store scan found 4 of 180 facts naming out of order, and each refusal is one wrong certification that does not happen. It emits a `critic.chunks-ambiguous` event to the governance ledger, the same way `native.review` is emitted. D6's flag is not a control, because it gates nothing and `plan status --json` re-derives it"
-      - "state-file growth is an advisory → inapplicable because no state file grows beyond one ledger line per refusal"
+      - "proportionality ratchets both ways: a new control names its yield and emits it → conforms, by a plan-time addition to the design. D3's refusal is a new control. Expected yield: rare. The store scan found 4 of 180 facts naming out of order, and each refusal is one wrong certification that does not happen. It records one `guard-refusal` fact (guard `critic-dispatch-chunks-ambiguous`), the class's one sink, read by `prawduct-hook evidence list --kind guard-refusal`. D6's flag is not a control, because it gates nothing and `plan status --json` re-derives it"
+      - "state-file growth is an advisory → inapplicable because no state file grows beyond one `guard-refusal` fact per refusal"
       - "review rigor is stage-keyed → inapplicable because the blocking sets do not change"
   - artifact: architecture
     dispositions:
@@ -62,11 +62,13 @@ last_validated: 2026-11-22
 - Adjacent path credit in whole-plan modes stays open (design Risks, first bullet). D5 makes it diagnosable. Revisit if a `plan status` route line shows a wrong adjacent certification in practice.
 - A delegated chunk with unscoped subjects, reviewed before an earlier chunk lands, stays open until it is named. It fails closed, and the dispatch note names `--chunks`.
 
-**Inferred (not in the design):** D3's refusal emits a `critic.chunks-ambiguous` governance-ledger event, because the proportionality norm requires a new control to emit its yield, and the design names neither the yield nor an emission. The event carries the review mode, the proposed ids and the plan scope, and no paths.
+**Inferred (not in the design):** D3's refusal records its firing, because the proportionality norm requires a new control to emit its yield, and the design names neither the yield nor an emission. It is one `guard-refusal` fact carrying the review mode, the proposed ids, the plan scope and the branch, and no paths. *Corrected in Chunk 02:* the plan first said a governance-ledger event. `evidence.append_guard_refusal`'s docstring records the #596 ruling that every pre-dispatch refusal has this one sink, and that a ledger route is what that ruling forbids.
 
 **Decisions made mid-build:**
 - Chunk 01: tests (f) and (g) live in `tests/test_review_interval_extension.py`, not `test_critic_mode_inference.py`, because that file's fixture builds plans with Deliverables paths (settled by: match the product's choices). (g) is green on develop as well: it pins mutant M5, as the design says. (f) went red on develop only once its shared path existed at review time. Before that, a missing-Deliverable finding kept chunk 1 open and the test never reached the deferral.
 - Chunk 01: beyond the design's six fixtures, six tests in `tests/test_critic_consolidate.py` (`_st8_repo` and the stub-dispatch control) proposed 03 or 04 with an earlier chunk open. They were renegotiated in the open: the ST8 work now touches the adjacent 01 and 02, and the stub-dispatch control asserts the withheld note. Each docstring says why.
+- Chunk 02: the refusal is recorded as a `guard-refusal` fact, not a ledger event (the #596 one-sink ruling; Goals). The SKILL.md exit-8 row is a declared raise of +22 tokens, net of cutting step 4's restated proposal definition for a pointer to `planning.md`. The two ST8 tests that dispatched `chunk` with two chunks proposed (`test_omitted_flags_declare_the_proposal`, `test_no_declared_chunks_grades_the_whole_proposal`) now dispatch `final`: they pin default naming, which every whole-plan mode shares.
+- Chunk 02: `evidence.SCHEMA_VERSION` stays 1. `chunks_declared` and `chunks_evidence` are optional review-body keys, as `chunks_proposed` was when it was added under schema 1. An older reader ignores them, and a fact without them renders "route not recorded". So no reader can misread a fact, and the schema-ahead block has nothing to guard.
 - Chunk 01: the change fragment is written now, not in 06, because `plan new`'s stub fails the live-fragment guard (`test_change_fragments.py`) once it is committed. 06 completes it.
 
 **Level:** High. The design reproduced both bugs on develop, prototyped the rule against every fixture shape, and named the six fixtures it changes. Two items were read and not run: the Stop-path deferral (D4) and the `critic-begin` dispatch order. Chunks 01 and 02 run both first.
@@ -95,7 +97,7 @@ Beyond the tests: after 01, run `plan status` and `prawduct-hook infer-critic-mo
 - **Description:** D3 and D5's recording half. A `chunk` dispatch whose proposal holds two chunks exits 8 before writing anything. The manifest and the fact record `chunks_declared` and `chunks_evidence`.
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** design D3, D5; `.prawduct/artifacts/api-contract.md` "Special sentinels"
-- **Deliverables:** `plugin/lib/critic_consolidate.py` (the refusal just after `_proposed_chunks` in `begin_review`; `chunks_declared` and `chunks_evidence` on the manifest, validator and `_fact_chunk_fields`; the `critic.chunks-ambiguous` ledger event, per the Goals inference); `plugin/bin/prawduct-hook` (the exit 8 mapping); `plugin/skills/critic/SKILL.md` (the exit table row for 8, and step 4's "Omit the flag" sentence); tests (j) with mutant M6, and (k); a test that the refusal appends one ledger event and nothing else
+- **Deliverables:** `plugin/lib/critic_consolidate.py` (the refusal just after `_proposed_chunks` in `begin_review`; `chunks_declared` and `chunks_evidence` on the manifest, validator and `_fact_chunk_fields`; one `guard-refusal` fact per refusal, per the Goals inference); `plugin/bin/prawduct-hook` (the exit 8 mapping); `plugin/skills/critic/SKILL.md` (the exit table row for 8, and step 4's "Omit the flag" sentence); tests (j) with mutant M6, and (k); a test that the refusal appends one `guard-refusal` fact and writes nothing else
 - **Acceptance criteria:** exit 8 with both re-run lines on stdout and no manifest, marker or archive; `--chunks 03` and `final` over the same diff still dispatch; the validator refuses a non-bool and a non-dict; the decision on SCHEMA_VERSION is recorded under Decisions made mid-build
 - **Done when:**
   1. Acceptance criteria met and tests pass

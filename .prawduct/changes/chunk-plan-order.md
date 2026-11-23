@@ -30,8 +30,20 @@ and `evidence` (the paths and commits that named each proposed chunk). The Stop-
 either rule read as "touches no open chunk", which deferred the review of a chunk nobody had
 reviewed (#1141-R3).
 
+### Chunk 02: the `chunk`-mode refusal and the recorded route
+
+A `chunk` review is one chunk's review, and plan order cannot tell two adjacent chunks apart. So a
+`chunk` dispatch with `--chunks` omitted, whose proposal names more than one chunk, now exits 8
+(`chunks-ambiguous`) before anything is written. The message names the paths that proposed each
+chunk and the two `--chunks` lines to re-run with. Each refusal records one `guard-refusal` fact,
+the one sink every pre-dispatch refusal uses. The manifest and the review fact also record
+`chunks_declared` (whether `--chunks` was passed) and `chunks_evidence` (the paths and commits that
+named each proposed chunk). Nothing reads them for state; they carry the route a `done` row will
+print. The critic skill's exit table gains the row for 8.
+
 ## Consumer note
 A review no longer certifies a later chunk just because its diff touched that chunk's files while
 an earlier chunk is still open. `critic-begin` prints a note when it holds a chunk back. To credit
 a chunk you built ahead of an earlier one, give its commits a scoped subject
-(`<type>(<scope>): … (Chunk N)`) or pass `--chunks N`.
+(`<type>(<scope>): … (Chunk N)`) or pass `--chunks N`. A `chunk` review whose diff proposes two
+chunks now stops with exit 8 and asks you to name the one you built with `--chunks`.

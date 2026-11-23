@@ -1378,7 +1378,10 @@ LAST_MEASURED_TOKENS = {
     # names the covering mode on every demotion. Ceiling lowered with it.
     # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): the exit-3 qualifier stops restating which
     # tree a `cumulative`/`verify-resolutions` pass anchored. A READING; ceiling lowered with it.
-    "skills/critic/SKILL.md": 3225,
+    # +22 on 2026-11-22 (chunk-plan-order Chunk 02, #1141), DECLARED: the exit table gains exit 8
+    # (chunks ambiguous), net of cutting step 4's restated definition of the proposal for a pointer
+    # to planning.md "Chunk state", which owns it. Priced in `test_reviewer_payload_budget.py`.
+    "skills/critic/SKILL.md": 3247,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -6523,7 +6526,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3254 -> 3262 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3262 -> 3232 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 3232 -> 3226 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 3226, f"SKILL.md is ~{tokens} tokens, should be <3226"
+        # RAISED 3226 -> 3248 (chunk-plan-order Chunk 02, #1141): exit 8's row — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3248, f"SKILL.md is ~{tokens} tokens, should be <3248"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

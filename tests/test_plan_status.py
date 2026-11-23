@@ -920,7 +920,8 @@ class TestPlanOrder:
         plan = self._part_one(repo, "docs/site/new.md", "`docs/site/`")
         diff = ["src/c01.py", "src/c02.py", "src/c03.py", "src/c04.py", "docs/site/new.md"]
         proposal = plan_status.chunk_proposal(plan, _facts(), diff, mode, repo_dir=repo)
-        assert (proposal.chunks, proposal.withheld) == (["01", "02", "03", "04"], ("06",))
+        assert proposal.chunks == ["01", "02", "03", "04"]
+        assert proposal.withheld == ("06",)
         assert any("`docs/site/new.md`" in n and "chunk 05" in n for n in proposal.notes)
 
     @pytest.mark.parametrize("mode", ["chunk", "cumulative"])
@@ -948,11 +949,13 @@ class TestPlanOrder:
         plan = _plan(repo, ("01", "02", "03", "04", "05"), deliverables={"04": "`lib/c04/`"})
         done01 = _facts(_review("R1", head, chunks=["01"]))
         alone = plan_status.chunk_proposal(plan, done01, ["lib/c04/new.py"], "chunk", repo_dir=repo)
-        assert (alone.chunks, alone.withheld) == ([], ("04",))
+        assert alone.chunks == []
+        assert alone.withheld == ("04",)
         with_own = plan_status.chunk_proposal(
             plan, done01, ["src/c02.py", "lib/c04/new.py"], "chunk", repo_dir=repo
         )
-        assert (with_own.chunks, with_own.withheld) == (["02"], ("04",))
+        assert with_own.chunks == ["02"]
+        assert with_own.withheld == ("04",)
         (note,) = with_own.notes
         assert "`lib/c04/new.py`" in note and "chunk 03" in note
 

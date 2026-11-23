@@ -2241,6 +2241,10 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     anything is derived, so no manifest and no marker; run the suite and
     re-dispatch the same mode (`--force` dispatches anyway; one inert
     `guard-refusal` fact is appended; absent evidence does not refuse);
+    exit 8 = a `chunk` dispatch with `--chunks` omitted whose proposal names
+    more than one chunk — refused before anything is written, the paths that
+    proposed each chunk and the two `--chunks` re-runs on stdout, and one inert
+    `guard-refusal` fact appended;
     exit 1 = any other
     dispatch failure (reason on stderr). The scheme these cite is prawduct's own API contract — its
     Error Model section, in the framework repo rather than in yours.
@@ -2450,6 +2454,15 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             "`/prawduct:critic verify-resolutions --force`."
         )
         return 7
+    if result.get("kind") == consolidate.CHUNKS_AMBIGUOUS_KIND:
+        # Exit 8, not 1: the skill's exit-1 row says "report and stop", and the
+        # remedy here is one re-dispatch naming the chunk the builder built.
+        # Stdout, because like a 3 or a 7 it is a normal outcome the caller
+        # acts on. Nothing was written: no manifest, no marker, no archive.
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
+        print(f"PRAWDUCT: chunk review refused — {result['reason']}")
+        return 8
     if result["status"] != "ok":
         # Notes first, then the reason: a failed dispatch still learned things
         # about the tree, and the reason is what the reader acts on. Most error

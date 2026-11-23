@@ -11374,11 +11374,15 @@ class TestTheReviewNamesItsChunks:
         }
 
     def test_omitted_flags_declare_the_proposal(self, tmp_path):
+        """A `final` here: a `chunk` dispatch whose proposal names two chunks is
+        refused (TestAChunkDispatchProposingTwoChunksIsRefused), and this test
+        pins the default naming, which every whole-plan mode shares."""
         repo = _st8_repo(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk")
+        result = _run_begin(repo, "--mode", "final")
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
         assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "02"]
+        assert manifest["chunks_declared"] is False
         assert "chunk" not in manifest
         assert "WARNING: declared chunk" not in result.stderr
 
@@ -11555,7 +11559,8 @@ class TestRecordLintGradesTheChunksTheFactNames:
 
     def test_no_declared_chunks_grades_the_whole_proposal(self, tmp_path):
         repo = self._repo_touching_one_and_two(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk")
+        # `final`: a `chunk` dispatch proposing two chunks is refused (exit 8).
+        result = _run_begin(repo, "--mode", "final")
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
         assert manifest["chunks"] == ["01", "02"]
@@ -11613,6 +11618,105 @@ class TestAVerifyPassProposesTheChunksItVerifies:
             n.startswith("WARNING: declared chunk(s) 02 are not in the proposal") and "(01, 03)" in n
             for n in result["notes"]
         ), result["notes"]
+
+
+class TestAChunkDispatchProposingTwoChunksIsRefused:
+    """#1141-R1, design D3. A `chunk` review is one chunk's review, and the
+    plan-order rule cannot tell adjacent chunks apart: building 01, a diff that
+    also touches 02's path proposes both. With `--chunks` omitted the dispatch
+    refuses with exit 8, before the manifest, the marker or the archive of
+    leftovers is written, and names both re-runs. Whole-plan modes name several
+    chunks by design and do not refuse."""
+
+    def test_the_adjacency_shape_exits_8_and_writes_nothing_but_the_refusal_fact(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 8, (result.stdout, result.stderr)
+        assert "chunk review refused" in result.stdout
+        assert "chunk 01: `src/one.py`" in result.stdout
+        assert "chunk 02: `src/two.py`" in result.stdout
+        assert "`--chunks 01`" in result.stdout and "`--chunks 01,02`" in result.stdout
+        assert not (repo / PARTIALS_REL / "manifest.json").exists()
+        assert not (repo / MARKER_REL).exists()
+        assert not (repo / ".prawduct/.critic-partials-archive").exists()
+        (refusal,) = _store_facts(repo, "guard-refusal")
+        body = refusal["body"]
+        assert body["guard"] == "critic-dispatch-chunks-ambiguous"
+        assert (body["reason"], body["chunks_proposed"]) == ("chunks-ambiguous", ["01", "02"])
+
+    def test_naming_the_chunk_or_a_whole_plan_mode_dispatches(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        named = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
+        assert named.returncode == 0, named.stderr
+        assert _st8_manifest(repo)["chunks"] == ["01"]
+        _abandon(repo)
+        final = _run_begin(repo, "--mode", "final")
+        assert final.returncode == 0, final.stderr
+        assert _st8_manifest(repo)["chunks"] == ["01", "02"]
+        assert _store_facts(repo, "guard-refusal") == []
+
+    def test_a_chunk_withheld_by_plan_order_is_not_counted(self, tmp_path):
+        """Work on 01 and on 03 with 02 open proposes 01 alone (03 is
+        withheld), so the dispatch is one chunk's and goes ahead. Counting the
+        touched chunks before plan order would refuse it."""
+        repo = _st8_repo(tmp_path)
+        (repo / "src/two.py").write_text("two = 0\n")  # back to committed
+        (repo / "src/three.py").write_text("three = 1\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        manifest = _st8_manifest(repo)
+        assert (manifest["chunks"], manifest["chunks_proposed"]) == (["01"], ["01"])
+        assert "chunk 03 not proposed" in result.stderr
+
+
+class TestTheFactRecordsHowEachChunkWasNamed:
+    """#1141-R4, design D5. Whether `--chunks` was passed, and per proposed
+    chunk the paths or commits that named it, so `plan status` can say how a
+    `done` row became done. Recorded at dispatch, because the route costs a git
+    walk to recompute; never read for state."""
+
+    def test_declared_and_evidence_reach_the_fact(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        _git(repo, "commit", "-qam", "feat(cs): one and two")  # path-named: no chunk in the subject
+        _commit_file(repo, "notes.txt", "x\n", "docs(cs): three's notes (Chunk 03)")
+        sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        assert cc.begin_review(repo, "cumulative", force=True)["status"] == "ok"
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks_declared"] is False
+        assert manifest["chunks_evidence"]["01"] == {
+            "paths": ["src/one.py"], "paths_more": 0, "commits": [],
+        }
+        assert manifest["chunks_evidence"]["03"] == {"paths": [], "paths_more": 0, "commits": [sha[:12]]}
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        (fact,) = _store_facts(repo, "review")
+        assert fact["body"]["chunks_declared"] is False
+        assert fact["body"]["chunks_evidence"] == manifest["chunks_evidence"]
+
+    def test_a_declared_set_is_recorded_as_declared(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        assert cc.begin_review(repo, "chunk", chunks=["01"])["status"] == "ok"
+        assert _st8_manifest(repo)["chunks_declared"] is True
+
+    def test_the_validator_types_both_fields(self):
+        ok_entry = {"paths": ["a.py"], "paths_more": 0, "commits": []}
+        assert cc.validate_manifest(
+            _manifest_dict(chunks_declared=True, chunks_evidence={"01": ok_entry})
+        )[0]
+        bad, why = cc.validate_manifest(_manifest_dict(chunks_declared="yes"))
+        assert not bad and "'chunks_declared'" in why
+        bad, why = cc.validate_manifest(_manifest_dict(chunks_evidence=["01"]))
+        assert not bad and "'chunks_evidence'" in why
+        bad, why = cc.validate_manifest(
+            _manifest_dict(chunks_evidence={"01": {**ok_entry, "paths_more": -1}})
+        )
+        assert not bad and "'chunks_evidence'" in why
+
+    def test_a_manifest_without_the_fields_writes_neither(self):
+        """A fact from an older manifest renders "route not recorded"; copying
+        a default would claim a route nobody observed."""
+        body = cc.build_fact_body(_manifest_dict(chunks=["01"]), [_partial("reviewer", "abc123")])
+        assert "chunks_declared" not in body and "chunks_evidence" not in body
 
 
 class TestPartOneOfAPlanLeavesItsLaterChunksOpen:

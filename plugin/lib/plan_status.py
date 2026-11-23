@@ -1317,7 +1317,8 @@ def chunk_proposal(
     ``chunk`` mode: the open chunks whose Deliverables paths intersect
     ``diff_paths`` (repo-relative; a deliverable directory matches what is
     under it), less a change fragment still the ``plan new`` stub
-    (:func:`_work_paths`). ``head_tree`` is the full id of the tree
+    (:func:`_work_paths`), less what the one-owner and plan-order rules hold
+    back. ``head_tree`` is the full id of the tree
     ``diff_paths`` ends at, which is where a fragment is read; without one,
     the working tree.
     ``final`` / ``cumulative``: those, and the open chunks a commit subject in
