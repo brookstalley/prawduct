@@ -479,22 +479,31 @@ class TestStatsCountAnAnswerOnce:
 
 
 class TestALegacyIdCollisionIsReported:
-    def _collide(self, a: Path, b: Path, *, same_body: bool = False) -> None:
+    def _collide(self, a: Path, b: Path, *, same_body: bool = False) -> str:
         """A and B each hold a legacy ``disp:rev-1:R-1:1``: with different
-        bodies, or (``same_body``) with one answer recorded twice."""
-        _review(a, "rev-1", [_finding("R-1", "warning")])
+        bodies, or (``same_body``) with one answer recorded twice. B's is on
+        B's local note, as its writer attaches it, so after B merges, A's line
+        sits on two different note blobs: B's merged local note and the
+        fetched tracking note."""
+        anchor = _review(a, "rev-1", [_finding("R-1", "warning")])
         _sync(a)
         _sync(b, push=False)
         _raw_disposition(a, "disp:rev-1:R-1:1", "R-1", reason="A's answer")
-        _raw_disposition(b, "disp:rev-1:R-1:1", "R-1",
-                         reason="A's answer" if same_body else "B's answer")
+        mine = _raw_disposition(b, "disp:rev-1:R-1:1", "R-1",
+                                reason="A's answer" if same_body else "B's answer")
+        assert evidence_notes.attach(b, mine, anchor)["status"] == "attached"
         _sync(a)
+        return anchor
 
     def test_ingest_counts_one_collision_once(self, a, b):
-        self._collide(a, b)
-        result = _sync(b, push=False)  # merges the notes: the line is on two refs
+        anchor = self._collide(a, b)
+        result = _sync(b, push=False)
         assert (f"1 {DIVERGED} before #1207; re-answer the finding to converge"
                 in result["reason"]), result
+        # The premise of "once": A's line is on two refs, as two blobs.
+        local = _git(b, "notes", "--ref", NOTES_REF, "list", anchor)
+        tracking = _git(b, "notes", "--ref", TRACKING_REF, "list", anchor)
+        assert local and tracking and local != tracking
         # B keeps its own answer: facts are immutable and dedupe keeps the first.
         assert _winner(b, "R-1")["body"]["reason"] == "B's answer"
         again = _fetch_and_ingest(b)
