@@ -517,6 +517,42 @@ class TestSynthesisAdvisoryWalksBackOverVerifyPasses:
         _append_review_at(repo, "rev-verify", _MODE_VERIFY, _T1, _T2)
         assert _critic_session_satisfies_gate(repo) == (True, "")
 
+    @pytest.mark.parametrize("mode", [["cumulative"], {"name": "final"}])
+    def test_a_review_whose_mode_is_not_a_string_counts_as_no_synthesis(
+        self, tmp_path, mode
+    ):
+        """The store's reader keeps a review whose body is a dict, whatever its
+        fields hold, and this runs inside the Stop hook. So a mode a person or a
+        newer schema wrote as a list or a dict reads as no synthesis instead of
+        raising on the set lookup. The fact is the store's own last line, from
+        this worktree, so it is the review the advisory reads."""
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from lib import evidence
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _finished_three_chunk_repo(tmp_path)
+        _append_review_at(repo, "rev-good", _MODE_CUMULATIVE, _T4, _T5)
+        appended = evidence.append_fact(
+            repo, "review", "rev-probe",
+            {"mode": _MODE_CHUNK, "base_tree": _T0, "head_tree": _T1},
+        )
+        assert appended["status"] == "appended", appended
+        store = evidence.store_path(repo)
+        lines = store.read_text(encoding="utf-8").splitlines()
+        probe = json.loads(lines[-1])
+        assert probe["id"] == "rev-probe"
+        probe["body"]["mode"] = mode
+        lines[-1] = json.dumps(probe)
+        store.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        latest = evidence.facts_of_kind(evidence.read_facts(repo), "review")[-1]
+        assert latest["id"] == "rev-probe" and latest["body"]["mode"] == mode
+
+        satisfied, reason = _critic_session_satisfies_gate(repo)
+        assert satisfied is False, reason
+        assert "end-of-cycle" in reason
+
     def test_a_chain_of_verify_passes_walks_to_the_cumulative(self, tmp_path):
         """A second round of fixes means a second pass, verifying the first."""
         from lib.gates import _critic_session_satisfies_gate

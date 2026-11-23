@@ -2930,8 +2930,14 @@ _CRITIC_MODE_SYNTHESIS = frozenset({
 
 def _review_mode(fact: dict) -> str:
     """A review fact's persisted mode; a fact with none predates the field and
-    was a ``final`` (legacy hooks pre-v1.3.13 recorded no mode)."""
-    return (fact.get("body") or {}).get("mode", _CRITIC_MODE_FINAL)
+    was a ``final`` (legacy hooks pre-v1.3.13 recorded no mode).
+
+    ``evidence.read_facts`` keeps a review whose body is a dict whatever its
+    fields hold, and this feeds the Stop hook, so a mode that is not a string
+    (a list or a dict would raise on the set lookup the caller makes) reads as
+    ``""``: no known mode, so not synthesis."""
+    mode = (fact.get("body") or {}).get("mode", _CRITIC_MODE_FINAL)
+    return mode if isinstance(mode, str) else ""
 
 
 def _review_verified_passes_stand_on(
