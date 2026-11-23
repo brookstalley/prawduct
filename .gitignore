@@ -27,6 +27,7 @@ uv.lock
 
 # Prawduct session files
 .prawduct/.test-evidence.json
+.prawduct/.test-evidence.json.tmp
 .prawduct/.gates-waived
 
 # The conventional test report and its scope record (the plugin's

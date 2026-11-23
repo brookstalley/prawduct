@@ -1026,6 +1026,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.handoff-notes.md",
     ".prawduct/.pr-body.md",
     ".prawduct/.test-evidence.json",
+    ".prawduct/.test-evidence.json.tmp",
     ".prawduct/.test-report.xml",
     ".prawduct/.test-report.xml.scope.json",
     ".prawduct/.critic-review-dispatch.json",

@@ -11386,6 +11386,26 @@ class TestTreeUnchangedDuringReview:
         state, detail = cc.tree_changed_since_dispatch(proj, {"dispatch_tree": before})
         assert (state, detail) == ("changed", [".prawduct/.critic-active"])
 
+    def test_the_evidence_recorders_temp_file_is_a_session_file(self, tmp_path):
+        """`test-evidence record` writes `.test-evidence.json` through a `.tmp`
+        sibling and renames it (#1202). A capture landing between the write and
+        the rename must read as unchanged, or the recorder's own write refuses a
+        review — which `building.md` says it never does."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        before = evidence.capture_tree(repo)["tree"]
+        (repo / ".prawduct" / ".test-evidence.json.tmp").write_text("{}\n")
+        # The subject was reached: the temp file is in the captured tree, so an
+        # `unchanged` below comes from the exemption, not from an untracked file
+        # the capture never saw.
+        assert evidence.capture_tree(repo)["tree"] != before
+
+        state, detail = cc.tree_changed_since_dispatch(repo, {"dispatch_tree": before})
+
+        assert (state, detail) == ("unchanged", [])
+
 
 # ---------------------------------------------------------------------------
 # Untracked files in a reviewed working tree (#1003)
