@@ -58,3 +58,47 @@ learnings   = ["tests/test_learn*", "tests/test_ledger_*", "tests/test_governanc
 plugin      = ["tests/test_plugin_*", "tests/test_onboarding_*", "tests/test_install_reference_*", "tests/test_lifecycle_*", "tests/test_doctor_*", "tests/test_gitignore_*", "tests/test_gitattributes_*", "tests/test_python_floor.py", "tests/test_project_*", "tests/test_core_yaml_keys.py", "tests/test_norm_*", "tests/test_opt_in_*", "tests/test_skill_command_grants.py"]
 methodology = ["tests/test_v5_*", "tests/test_cutover_*", "tests/test_retired_*", "tests/test_deprecated_*", "tests/test_path_reference_*", "tests/test_markdown_*", "tests/test_reference_verifier.py", "tests/test_record_lint.py", "tests/test_drop_box_*", "tests/test_discipline_table.py", "tests/test_coverage_algebra.py"]
 core        = ["tests/**"]   # what the areas above leave: shared state, codecs, state writes, small utilities
+
+# Declined on purpose: tests whose subject is THIS checkout's own repository (its tracked files,
+# its ignore rules, its tags, its history). A runner's tree is the same files, but these read
+# them through git from the checkout, which testament cannot vouch for, so their results are
+# never reused. A `site` entry declines one shared reader, and reaches exactly the tests that
+# call it; an `items` entry names tests whose read is their own or is shared across a process.
+# Tests that only START git in this checkout while aiming it at a temp repo are not here: that
+# is a fixture to fix (run git from the temp repo), not a read to decline.
+
+# What the plugin ships is what this checkout tracks under `plugin/` (`git ls-files`).
+[[uncacheable]]
+site = "tests/test_plugin_packaging.py:_tracked"
+why = "its subject is what this checkout tracks, read with git ls-files"
+
+# References in tracked markdown resolve against this checkout's tracked set, read once per
+# process and shared by every test in the file, so a test that starts no git still depends on it.
+[[uncacheable]]
+items = "tests/test_path_reference_resolution.py::*"
+why = "resolves references against this checkout's tracked files, read once per process"
+
+# A misplaced test file is judged against what this checkout's git ignores.
+[[uncacheable]]
+site = "tests/preferences/test_test_location.py:_git_ignored"
+why = "its subject is what this checkout's git ignores"
+
+# Every anchor prawduct ever shipped: this clone's release tags and each tag's tree.
+[[uncacheable]]
+site = "tests/test_anchor_repair.py:_release_tags"
+why = "reads this checkout's release tags"
+
+[[uncacheable]]
+site = "tests/test_anchor_repair.py:_shipped_anchor"
+why = "reads a file as each of this checkout's release tags has it"
+
+# The inline-field check must agree with the regex it replaced on every real line that
+# carries the field, the corpus being this checkout's tracked markdown.
+[[uncacheable]]
+items = "tests/test_retired_claims.py::TestTheInlineFormTestIsLinear::test_it_agrees_on_every_real_line_that_carries_the_field"
+why = "its corpus is this checkout's tracked markdown, listed with git ls-files"
+
+# The chunk-subject pattern is checked against this checkout's own recent commit subjects.
+[[uncacheable]]
+items = "tests/test_handoff_parser_correctness.py::TestChunkCommitSubjectForms::test_the_pattern_matches_nothing_beyond_a_chunk_id_in_any_case"
+why = "its corpus is this checkout's commit subjects, read with git log"
