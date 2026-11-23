@@ -8594,6 +8594,9 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
             "imported": s.imported,
             "built": chunk_id in built,
             "reason": s.reason,
+            # The earliest open chunk before a review-done one (#1198), else
+            # null. Advice; no gate reads it.
+            "ahead_of": s.ahead_of,
         }
         for chunk_id, s in states.items()
     ]

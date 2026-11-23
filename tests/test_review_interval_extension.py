@@ -109,6 +109,7 @@ def _commit_all(repo: Path, msg: str) -> str:
 def _scenario(
     tmp_path: Path, ticked: int, findings: list, *, commit_fix: bool, commit_reviewed: bool = True,
     last_type: "str | None" = None, deliverables: "dict[int, str] | None" = None,
+    chunks: "str | None" = None, seed: "dict[str, str] | None" = None,
 ) -> tuple[Path, str]:
     """The current chunk reviewed with ``findings``, committed verbatim (unless
     ``commit_reviewed`` is False: the fix then goes straight onto the reviewed,
@@ -117,6 +118,8 @@ def _scenario(
     repo = tmp_path / "r"
     _init_repo(repo)
     _commit_file(repo, "src/app.py", "x = 1\n", "init")
+    for rel, text in (seed or {}).items():  # files a later chunk's Deliverables name
+        _commit_file(repo, rel, text, f"seed {rel}")
     _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
     _commit_file(
         repo, ".prawduct/artifacts/build-plan-work.md",
@@ -124,7 +127,7 @@ def _scenario(
     )
     _git(repo, "checkout", "-b", "feat/work", "--quiet")
     (repo / "src/app.py").write_text("x = 2\n")
-    begin = _run_begin(repo, "--mode", "chunk", "--chunks", str(ticked + 1))
+    begin = _run_begin(repo, "--mode", "chunk", "--chunks", chunks or str(ticked + 1))
     assert begin.returncode == 0, begin.stderr
     manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
     _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=findings)
@@ -261,6 +264,72 @@ class TestAFixIsToldFromTheNextChunkByItsDeliverables:
             repo, repo / ".prawduct", work_unit.resolve(repo),
             critic_mode.binding_progress(repo, work_unit.resolve(repo)),
         ) is None
+
+    def _owed(self, repo: Path):
+        return critic_mode.extension_deferral_owed(
+            repo, repo / ".prawduct", work_unit.resolve(repo),
+            critic_mode.binding_progress(repo, work_unit.resolve(repo)),
+        )
+
+    def test_a_fix_to_the_reviewed_chunk_names_no_done_chunk(self, tmp_path):
+        """Design D8's control: the deferral's ordinary case, a fix to the one
+        chunk just reviewed, says nothing about retracting it."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False,
+                            deliverables={1: "src/app.py"})
+        owed = self._owed(repo)
+        assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
+        assert "plan retract" not in owed[1]
+
+    def test_the_1141_sequence_names_the_wrong_certification_then_retracting_it_reviews_it(self, tmp_path):
+        """#1141 (A2, R8, R9) end to end. A pre-#1141 fact named 1 and 3, so 3
+        reads done though nobody built it. 3's work then reads as a fix and
+        defers, and the deferral names 3 and the fact so the builder can see
+        the wrong certification where they meet it. Retracting 3 reopens it,
+        its work then infers a review, and a review naming 3 certifies it."""
+        from lib import evidence, plan_status
+
+        repo, _ = _scenario(
+            tmp_path, MID, [WARNING], commit_fix=False, chunks="1,3",
+            deliverables={1: "src/app.py", 3: "src/three.py"}, seed={"src/three.py": "w = 0\n"},
+        )
+        # The reported repos' facts predate `chunks_declared`, and their
+        # proposal named 3 (a path it merely touched): rewrite the fact so, as
+        # `--chunks` cannot produce it now. Its route then reads unrecorded,
+        # not the builder's own words.
+        store = evidence.store_path(repo)
+        lines = [json.loads(line) for line in store.read_text().splitlines() if line.strip()]
+        for fact in lines:
+            if fact.get("kind") == "review":
+                fact["body"].pop("chunks_declared", None)
+                fact["body"].pop("chunks_evidence", None)
+                fact["body"]["chunks_proposed"] = ["1", "3"]
+        store.write_text("".join(json.dumps(f) + "\n" for f in lines))
+        (repo / "src/app.py").write_text("x = 2\n")  # the reviewed tree: no fix
+        (repo / "src/three.py").write_text("w = 1  # chunk 3's real work\n")
+        _commit_all(repo, "chunk 3's work")
+        owed = self._owed(repo)
+        assert owed is not None, owed
+        assert "touches chunk 3's Deliverables" in owed[1] and "plan retract 3 --all" in owed[1], owed
+        plan = repo / ".prawduct/artifacts/build-plan-work.md"
+        fact_id = plan_status.chunk_states(plan, evidence.read_facts(repo), repo_dir=repo)["3"].fact_id
+        assert f"`{fact_id}`" in owed[1]
+
+        retract = subprocess.run(
+            [sys.executable, str(HOOK), "plan", "retract", "3", "--reason", "never built"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert retract.returncode == 0, retract.stderr
+        assert self._owed(repo) is None
+        mode, why = infer_mode(repo, None)
+        assert mode != MODE_DEFERRED, why
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "3")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        states = plan_status.chunk_states(plan, evidence.read_facts(repo), repo_dir=repo)
+        assert states["3"].state == "done" and states["3"].fact_id != fact_id
 
     def test_a_chunk_with_no_path_deliverables_reads_as_a_fix_and_loses_nothing(self, tmp_path):
         """The accepted fail-open, with its DIRECTION asserted. No chunk here

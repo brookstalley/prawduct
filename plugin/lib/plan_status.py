@@ -110,7 +110,7 @@ so a chunk both ticked and reviewed reads ``done, imported`` with no fact cited.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterable, Literal
 
@@ -167,8 +167,17 @@ class ChunkState:
     a ``dropped`` chunk; for an ``open`` one it says why something that looked
     like an answer was not one (an unreadable ``dropped:`` entry, a review that
     names the chunk but cannot certify it, an unparseable heading); for a
-    ``done`` one certified by span it says so, since that fact does not name
-    it. ``None`` for a plain open chunk and a done one certified by name.
+    ``done`` one a review fact certified it says how that fact came to name it
+    (:func:`_route`: the proposal's path or commit, ``--chunks``, a span, or
+    that the fact predates the record), derived from the fact alone, with no
+    git. ``None`` for a plain open chunk and a done one from an import or a
+    box. ``route`` is that route's kind (``proposal`` | ``declared`` |
+    ``span`` | ``unrecorded``), the one value the out-of-order line's wording
+    turns on.
+
+    ``ahead_of`` is, for a chunk ``done`` by a review fact, the earliest open
+    chunk before it in plan order, else ``None``. Advice: out of order is
+    legitimate for a delegated chunk, and no gate reads it.
 
     ``synthetic`` marks an entry that is not a chunk of the plan but stands in,
     open, for what could not be read — the :data:`UNREADABLE_PLAN` key and a
@@ -182,6 +191,8 @@ class ChunkState:
     imported: bool = False
     reason: str | None = None
     synthetic: bool = False
+    route: str | None = None
+    ahead_of: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -803,6 +814,41 @@ def _extended_reviews(reviews: "list[dict]", fact: dict) -> "list[dict] | None":
 # ---------------------------------------------------------------------------
 
 
+def _route(body: dict, norm_id: str, by_norm: "dict[str, str]") -> "tuple[str, str]":
+    """How a review fact came to name a chunk, as ``(kind, text)`` for the
+    ``done`` row: read off the fact alone (``chunks_declared``,
+    ``chunks_proposed``, ``chunks_evidence``), never recomputed with git.
+
+    A proposal never names outside itself, so a chunk outside
+    ``chunks_proposed`` was declared even on a fact from before
+    ``chunks_declared`` was recorded; inside it, such a fact cannot say which."""
+    def shown(ids: object) -> str:
+        return ", ".join(by_norm.get(_norm(c), str(c)) for c in ids or []) or "none"
+
+    if not isinstance(body.get("chunks"), list) or not isinstance(body.get("chunks_proposed"), list):
+        return "unrecorded", "named; route not recorded (fact predates chunks_proposed)"
+    proposed = {_norm(c) for c in body.get("chunks_proposed") or []}
+    declared = body.get("chunks_declared")
+    if norm_id not in proposed and declared is not False:
+        return "declared", (
+            f"named by --chunks, outside the proposal ({shown(body.get('chunks_proposed'))})"
+        )
+    if declared is True:
+        return "declared", "named by --chunks (in the proposal)"
+    if declared is None:
+        return "unrecorded", (
+            "named; whether by --chunks or the proposal is not recorded (fact predates #1141)"
+        )
+    evidence_map = body.get("chunks_evidence") if isinstance(body.get("chunks_evidence"), dict) else {}
+    entry = next((v for k, v in evidence_map.items() if _norm(k) == norm_id), None) or {}
+    if entry.get("paths"):
+        more = f" (+{entry['paths_more']} more)" if entry.get("paths_more") else ""
+        return "proposal", f"named by its proposal: path `{entry['paths'][0]}`{more}"
+    if entry.get("commits"):
+        return "proposal", f"named by its proposal: commit {entry['commits'][0]}'s subject"
+    return "proposal", "named by its proposal; what proposed it is not recorded"
+
+
 def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str, ChunkState]:
     """Each chunk's :class:`ChunkState`, keyed by the id the plan prints, in plan order.
 
@@ -942,7 +988,10 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
                     note(n, f"review {fact['id']} names it, but {why}")
                 continue
             for n in targets:
-                states[by_norm[n]] = ChunkState("done", fact["id"], _date(fact.get("ts")))
+                kind, text = _route(body, n, by_norm)
+                states[by_norm[n]] = ChunkState(
+                    "done", fact["id"], _date(fact.get("ts")), reason=text, route=kind,
+                )
 
         def line_refusal(line: "list[dict]") -> "str | None":
             """Why a review ``line`` an extended span stands on certifies
@@ -980,6 +1029,7 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
                         "done", fact["id"], _date(fact.get("ts")),
                         reason="by span: its review's interval carries a commit whose subject "
                         "names the chunk",
+                        route="span",
                     )
 
     for key, heading in plan.unparsed:
@@ -989,7 +1039,56 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             "heading the parser reads, so it cannot be certified — fix the heading",
             synthetic=True,
         )
+    # Out of order, flagged (#1198): one pass over plan order and the states
+    # just computed, no git. A box or an import is a hand claim on a retiring
+    # path, so only a review-certified chunk is flagged.
+    earliest_open: "str | None" = None
+    for key in list(plan.chunks):
+        st = states[key]
+        if st.state == "open" and earliest_open is None:
+            earliest_open = key
+        elif st.state == "done" and st.fact_id and not st.imported and earliest_open is not None:
+            states[key] = replace(st, ahead_of=earliest_open)
     return states
+
+
+def ahead_of_line(chunk_id: str, st: ChunkState) -> "str | None":
+    """The advice printed under a ``done`` row with an open chunk before it,
+    worded by its route: a builder's own words (``--chunks``, a span's scoped
+    subject) make out of order expected, a proposal or an unrecorded route
+    does not. ``None`` when the row is in order."""
+    if st.ahead_of is None:
+        return None
+    retract = f"`prawduct-hook plan retract {chunk_id} --all --reason …`"
+    if st.route in ("declared", "span"):
+        how = "named by --chunks" if st.route == "declared" else "by span"
+        return (
+            f"done ahead of open chunk {st.ahead_of} ({how}) — expected when chunks are built "
+            f"out of order; if {chunk_id}'s work is not built, {retract}"
+        )
+    return f"done ahead of open chunk {st.ahead_of} — if chunk {chunk_id}'s work is not built, {retract}"
+
+
+def done_chunks_touched(
+    plan_path: Path, states: "dict[str, ChunkState]", paths: "Iterable[str]", *, repo_dir: Path,
+) -> "list[tuple[str, str]]":
+    """``(chunk id, certifying fact id)`` for each chunk ``done`` by a review
+    fact whose Deliverables cover one of ``paths``, in plan order — the path
+    rule's one home (:func:`_deliverable_chunks`, every owner credited, since
+    this names chunks to look at and certifies nothing). ``[]`` when the plan
+    cannot be read."""
+    try:
+        content = Path(plan_path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    done = [k for k, st in states.items() if st.state == "done" and st.fact_id and not st.imported]
+    if not done:
+        return []
+    hit = _deliverable_chunks(
+        content, done, _read_plan(content).chunks, paths, _read_worktree(Path(repo_dir)),
+        certifying=False,
+    ).chunks
+    return [(k, states[k].fact_id) for k in done if _norm(k) in hit]
 
 
 @dataclass(frozen=True)
@@ -1809,7 +1908,8 @@ def render_table(
     Columns: chunk id, state, the certifying fact id, its date, and the tags
     ``imported`` and ``built`` (``built`` is :func:`built_chunks`' answer, passed
     in because it walks git and only the caller knows whether to pay for it);
-    a chunk's ``reason`` is indented beneath its row. ``plan status``, the
+    a chunk's ``reason`` is indented beneath its row, and beneath that the
+    out-of-order line (:func:`ahead_of_line`) when one applies. ``plan status``, the
     ``/clear`` handoff's progress block and the PR payload's build-plan section
     all print these lines, each under its own indent. ``[]`` for a plan with no
     chunks. ``built_unavailable`` is :class:`BuiltReport`'s cause: when set, a
@@ -1828,10 +1928,11 @@ def render_table(
                 tag for tag, on in (("imported", st.imported), ("built", chunk_id in built)) if on
             ) or "-",
             st.reason,
+            ahead_of_line(chunk_id, st),
         )
         for chunk_id, st in states.items()
     ]
-    table = [("chunk", "state", "fact", "date", "tags", None), *rows]
+    table = [("chunk", "state", "fact", "date", "tags", None, None), *rows]
     widths = [max(len(row[i]) for row in table) for i in range(4)]
     lines: list[str] = []
     for row in table:
@@ -1839,6 +1940,8 @@ def render_table(
         lines.append(f"{line}  {row[4]}".rstrip())
         if row[5]:
             lines.append(f"    {row[5]}")
+        if row[6]:
+            lines.append(f"    {row[6]}")
     if built_unavailable:
         lines.append(f"built: unavailable ({built_unavailable})")
     return lines

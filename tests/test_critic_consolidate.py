@@ -11316,7 +11316,7 @@ def _st8_repo(tmp_path: Path, *, plan: "str | None" = _ST8_PLAN) -> Path:
     uncommitted work touching chunks 01's and 02's Deliverables — so a `chunk`
     dispatch proposes exactly 01 and 02. They are adjacent: work on 01 and 03
     with 02 open would withhold 03 (the plan-order rule,
-    `test_plan_status.py::TestPlanOrder`), which these tests do not pin.
+    `test_plan_status.py::TestPlanOrder`).
     ``plan=None`` leaves the checkout unbound (no plan at all)."""
     repo = tmp_path / "r"
     _init_repo(repo)
@@ -11630,6 +11630,11 @@ class TestAChunkDispatchProposingTwoChunksIsRefused:
 
     def test_the_adjacency_shape_exits_8_and_writes_nothing_but_the_refusal_fact(self, tmp_path):
         repo = _st8_repo(tmp_path)
+        # A leftover partial a dispatch would archive: it must still be in
+        # place after the refusal, which shows the refusal precedes the sweep.
+        leftover = repo / PARTIALS_REL / "reviewer-old.json"
+        leftover.parent.mkdir(parents=True, exist_ok=True)
+        leftover.write_text("{}\n")
         result = _run_begin(repo, "--mode", "chunk")
         assert result.returncode == 8, (result.stdout, result.stderr)
         assert "chunk review refused" in result.stdout
@@ -11638,6 +11643,7 @@ class TestAChunkDispatchProposingTwoChunksIsRefused:
         assert "`--chunks 01`" in result.stdout and "`--chunks 01,02`" in result.stdout
         assert not (repo / PARTIALS_REL / "manifest.json").exists()
         assert not (repo / MARKER_REL).exists()
+        assert leftover.read_text() == "{}\n"
         assert not (repo / ".prawduct/.critic-partials-archive").exists()
         (refusal,) = _store_facts(repo, "guard-refusal")
         body = refusal["body"]
@@ -11646,9 +11652,13 @@ class TestAChunkDispatchProposingTwoChunksIsRefused:
 
     def test_naming_the_chunk_or_a_whole_plan_mode_dispatches(self, tmp_path):
         repo = _st8_repo(tmp_path)
+        leftover = repo / PARTIALS_REL / "reviewer-old.json"
+        leftover.parent.mkdir(parents=True, exist_ok=True)
+        leftover.write_text("{}\n")
         named = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
         assert named.returncode == 0, named.stderr
         assert _st8_manifest(repo)["chunks"] == ["01"]
+        assert not leftover.exists()  # control: a dispatch that goes ahead sweeps it
         _abandon(repo)
         final = _run_begin(repo, "--mode", "final")
         assert final.returncode == 0, final.stderr
@@ -11692,6 +11702,31 @@ class TestTheFactRecordsHowEachChunkWasNamed:
         (fact,) = _store_facts(repo, "review")
         assert fact["body"]["chunks_declared"] is False
         assert fact["body"]["chunks_evidence"] == manifest["chunks_evidence"]
+
+    def test_a_span_ahead_of_an_open_chunk_is_flagged_as_expected(self, tmp_path):
+        """#1198-R5, design D6: a delegate's scoped `(Chunk 03)` commit, which a
+        clean cumulative spans while 02 is open, is done by span and flagged
+        ahead of 02, worded as expected out of order. The chunk the builder
+        named is in order and carries its route."""
+        from lib import plan_status
+
+        repo = _st8_repo(tmp_path)
+        (repo / "src/two.py").write_text("two = 0\n")  # 02 stays unbuilt
+        (repo / "src/three.py").write_text("three = 1\n")
+        _git(repo, "commit", "-qam", "feat(cs): one, and three by its delegate (Chunk 03)")
+        assert cc.begin_review(repo, "cumulative", chunks=["01"], force=True)["status"] == "ok"
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        states = plan_status.chunk_states(
+            repo / ".prawduct/artifacts/build-plan-cs.md", evidence.read_facts(repo), repo_dir=repo,
+        )
+        assert (states["01"].state, states["01"].reason, states["01"].ahead_of) == (
+            "done", "named by --chunks (in the proposal)", None,
+        )
+        assert (states["03"].state, states["03"].route, states["03"].ahead_of) == ("done", "span", "02")
+        assert plan_status.ahead_of_line("03", states["03"]).startswith(
+            "done ahead of open chunk 02 (by span) — expected when chunks are built out of order"
+        )
 
     def test_a_declared_set_is_recorded_as_declared(self, tmp_path):
         repo = _st8_repo(tmp_path)

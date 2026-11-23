@@ -3711,12 +3711,18 @@ def begin_review(
     set. The code-derived proposal,
     ``chunks_proposed``, is :func:`plan_status.chunk_proposal` over this
     dispatch interval's ``files_changed`` (``chunk`` mode: the open chunks whose
-    Deliverables it touches; ``final``/``cumulative``: those and the open
-    chunks a scoped commit subject in the interval names — a mode sets depth,
-    never reach; ``verify-resolutions``: the chunks the review it verifies
-    names, inherited along that review's chain). The proposal's own notes —
-    why it named fewer than a reader might expect — join ``notes``. With
-    nothing declared, the declared set IS the proposal. A declared id the reviewed plan does not declare is refused
+    Deliverables it touches, a path joining only while every earlier open chunk
+    is in; ``final``/``cumulative``: those and the open chunks a scoped commit
+    subject in the interval names — a mode sets depth, never reach;
+    ``verify-resolutions``: the chunks the review it verifies names, inherited
+    along that review's chain). The proposal's own notes — why it named fewer
+    than a reader might expect — join ``notes``. With nothing declared, the
+    declared set IS the proposal — except in ``chunk`` mode when it names more
+    than one chunk: that dispatch is refused (``{"status": "error", "kind":
+    "chunks-ambiguous"}``, exit 8) before anything is written, with one
+    ``guard-refusal`` fact recorded. ``chunks_declared`` and
+    ``chunks_evidence`` ride the manifest beside the two lists: whether a set
+    was declared, and what named each proposed chunk. A declared id the reviewed plan does not declare is refused
     (``{"status": "error", "kind": "unknown-chunk"}``, exit 1 through the CLI's
     error path) before the tree is captured; a declared set that leaves the
     proposal is recorded as declared, with a ``WARNING:`` note, so the edit is
@@ -6483,7 +6489,8 @@ def _valid_chunk_evidence(chunk_id: object, entry: object) -> bool:
 
 
 def _fact_chunk_fields(manifest: dict) -> dict:
-    """``chunks`` and ``chunks_proposed`` for a review fact body.
+    """``chunks`` and ``chunks_proposed`` for a review fact body, with
+    ``chunks_declared`` and ``chunks_evidence`` when the manifest recorded them.
 
     The singular ``chunk`` (``chunks[0]``) is no longer written; facts already
     in a store keep theirs and :func:`plan_status.fact_chunks` still reads it.

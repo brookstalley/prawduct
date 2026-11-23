@@ -41,9 +41,22 @@ the one sink every pre-dispatch refusal uses. The manifest and the review fact a
 named each proposed chunk). Nothing reads them for state; they carry the route a `done` row will
 print. The critic skill's exit table gains the row for 8.
 
+### Chunk 03: legible rows and the out-of-order flag
+
+Every row a review fact certified now says how that fact came to name the chunk, read from the fact
+alone. The proposal's path or commit, `--chunks` (in or outside the proposal), a span, or that the
+fact predates the record. `plan status` also flags a review-done chunk with an open chunk before it
+(`ahead_of`, also a key in `plan status --json`). The flag is worded by route: out of order is
+expected when the builder's own words named the chunk, and otherwise the flag names the retraction
+to run if the work is not built. The `/clear` handoff prints the same table. When the Stop-path
+deferral holds, its message now names a done chunk that the pending work touches, other than the one
+just reviewed, together with the fact that certified it (`plan_status.done_chunks_touched`). That is
+where a wrong certification is met first.
+
 ## Consumer note
 A review no longer certifies a later chunk just because its diff touched that chunk's files while
 an earlier chunk is still open. `critic-begin` prints a note when it holds a chunk back. To credit
 a chunk you built ahead of an earlier one, give its commits a scoped subject
 (`<type>(<scope>): … (Chunk N)`) or pass `--chunks N`. A `chunk` review whose diff proposes two
 chunks now stops with exit 8 and asks you to name the one you built with `--chunks`.
+`plan status` now says how each done chunk became done, and flags one with an open chunk before it.
