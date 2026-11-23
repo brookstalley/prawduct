@@ -150,8 +150,12 @@ clone that wrote them are `guard-refusal`, `test-run` and `session-start`.
   membership) and `members[]` (`{id, site, note?}`, ids unique within the finding) — each absent
   when the reviewer gave none, and a malformed part dropped at consolidation, never refused),
   `counts`, `verifies` (a `verify-resolutions` pass only: the id of the review it anchored to,
-  which every reader walking from a pass to its review follows; absent on a fact written before
-  2026-11-23, which links by tree, and naming a review this store lacks it links to none), and
+  which every reader walking from a pass to its review follows; absent on a fact from a plugin
+  version before the field, which older clones keep writing, and such a fact links by tree. A
+  present value that does not resolve links to no review, never to the tree's: one that is not a
+  non-empty string, one naming the pass itself, one whose review's `head_tree` is not the pass's
+  `base_tree`, and one naming no review this store holds (when shaped like a review id, perhaps
+  another clone's not yet synced). A pass with no usable `base_tree` links to none either way), and
   `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
   `recommendation` and no severity. A `verify-resolutions` pass keeps only observations whose

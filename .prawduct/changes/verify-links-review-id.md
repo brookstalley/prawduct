@@ -24,10 +24,12 @@ the pass's `base_tree`, for a value not shaped like a review id, and for a pass 
 `base_tree`, anchored or not. A pass that names its review links to that review alone: another
 review of the same tree, from either worktree and in any store order, is on the pass's chain
 only if the walk from the named review reaches it. So the chain credits no boundary review and
-inherits no chunk that the walk does not reach. This costs a second `cumulative` when one
-worktree's pass anchors to a `chunk` re-review of a tree it had already reviewed as a
-`cumulative`; the cost is accepted because it errs toward more review, and lineage cannot be
-told after a sync, which trims a fact's `actor`.
+inherits no chunk that the walk does not reach. In one worktree this costs review in both
+directions: a pass anchored to a `chunk` re-review of a tree already reviewed as a `cumulative`
+asks for a second `cumulative`, and a pass anchored to a boundary `cumulative` of a tree already
+reviewed as a `chunk` names and certifies none of that chunk review's chunks; both costs are
+accepted because they err toward more review, and lineage cannot be told after a sync, which
+trims a fact's `actor`.
 
 The coverage gate does not read the chain. It counts every unresolved blocker recorded at a tree
 its composed path stands on, including another review's at the anchor's tree, and none at a tree
@@ -41,15 +43,18 @@ When the Stop hook's walk ends at a pass naming a review, shaped like a review i
 store does not hold, the NOTE names that review (and the pass that recorded it, when that pass is
 not the latest review), and gives both
 repairs: `prawduct-hook evidence sync` if another clone recorded it, else
-`/prawduct:critic final`, since a dropped or unreadable fact never arrives. The walks that loop
-over the link stop at a fact they have already visited, since an anchor found by id no longer
-follows store order. A malformed `verifies` value (not shaped like a review id) is
+`/prawduct:critic final`, since a dropped or unreadable fact never arrives. An anchor found by id
+no longer follows store order, so store order no longer ends a walk over the link:
+`coverage_algebra.walk_links` steps every walker back along it and ends the walk at a fact it
+has already visited, keyed by fact id. The three walkers go through it, so the guard lives in
+one place rather than in each walker's loop. A malformed `verifies` value (not shaped like a review id) is
 unresolved but never "not yet ingested"; the dispatch-age reader keeps reading only the id's `rev-<stamp>-`
 prefix. The schema change is additive: old facts stay valid, and git notes carry the field
 unchanged. Tests put two reviews at one tree with the pass anchored to the older one, and pin each
 walker, the dangling, mismatched and malformed cases, each Stop-hook message, the deferral against
-the gate's count (and its chain fallback when the gate cannot compose), and the field written end to
-end through `critic-begin` and `critic-consolidate`.
+the gate's count (and its chain fallback when the gate cannot compose), the field written end to
+end through `critic-begin` and `critic-consolidate`, and the walkers on `walk_links` reaching
+exactly what their own loops reached, on stores read back through the store reader.
 
 `review-cycle.md`'s "never a chunk's first review" line also says not to verify after drift
 unrelated to the findings, which `critic-begin` refuses only past the scope-widened threshold.

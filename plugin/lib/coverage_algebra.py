@@ -426,8 +426,8 @@ def _resolve_claim(
     Looked up by id over the WHOLE store, not only what precedes the pass:
     ingest appends another clone's facts in note order, which can put a pass
     ahead of the review it verifies, and the id says which review it is
-    wherever it sits. Walkers that loop over this therefore guard against a
-    revisit themselves (a malformed store could name a cycle)."""
+    wherever it sits. So store order does not end a walk over the link (a
+    malformed store could name a cycle); :func:`walk_links` ends it."""
     body = fact.get("body") or {}
     claim = body.get(VERIFIES_KEY)
     if claim is None:
@@ -477,17 +477,21 @@ def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
 
     One rule for every reader that follows the link, because three copies of it
     had already drifted (identity by ``id()`` vs by fact id; every review at
-    the tree vs the newest; the pass itself excluded or not):
-    ``critic_mode.review_chain`` walks it back through every review at each
-    linked tree, ``plan_status._extended_reviews`` follows it to the review
-    that records a commit, and ``critic_consolidate.carried_blocking`` takes
-    one hop of it as a verify pass's anchor.
+    the tree vs the newest; the pass itself excluded or not). The walkers go
+    through :func:`walk_links`, which owns stepping back along the link and
+    ending the walk: ``gates._review_verified_passes_stand_on`` follows it back
+    over verify passes to the review they stand for, ``critic_mode.review_chain``
+    walks it back through every review at each linked tree, and
+    ``plan_status._extended_reviews`` follows it to the review that records a
+    commit. ``critic_consolidate.carried_blocking`` takes one hop of it, as a
+    verify pass's anchor, through :func:`prior_review`.
 
-    On the tree link, **strictly before** is what makes a walk end and what
-    excludes the pass from its own anchor: a review cannot start from one
-    recorded after it. A recorded anchor is found by id wherever it sits, so
-    every walker that loops over this link also refuses to revisit a fact.
-    ``reviews`` is the store's review facts in store order (append order is
+    On the tree link, **strictly before** excludes the pass from its own
+    anchor: a review cannot start from one recorded after it. It does not
+    end a walk by itself, because a recorded anchor is found by id wherever
+    it sits; :func:`walk_links` refuses to revisit a fact instead, so a loop
+    that steps along this link by calling it repeatedly would have to repeat
+    that guard. ``reviews`` is the store's review facts in store order (append order is
     recording order; ``ts`` has one-second resolution). ``fact`` need not be
     in it — a dispatch asks before its fact exists, and then every review
     counts as earlier. A ``base_tree`` that is not a non-empty string links to
@@ -519,6 +523,66 @@ def prior_review(reviews: list[dict], fact: dict) -> "dict | None":
     probe carrying it (``critic_consolidate.carried_blocking``)."""
     linked = linked_reviews(reviews, fact)
     return linked[-1] if linked else None
+
+
+def _walk_identity(fact: dict) -> object:
+    """The key :func:`walk_links` asks "already visited?" of: the fact's id,
+    else the object itself (by ``id()``) for a fact without a non-empty string
+    id.
+
+    The id, because it is the store's own identity: ``evidence.read_facts``
+    keeps one fact per ``(kind, id)``, and the link rule finds a recorded
+    anchor and a fact's own store position by id, so a copy of a stored fact
+    (the envelope a consolidation just appended, an anchor read in another
+    pass over the store) is the same review as the stored one and must end the
+    walk as a revisit would. The object for an id-less fact, because ids that
+    are absent must not collide: every hand-built probe without one is a
+    different fact. Over what the store can hold the two readings agree,
+    since every review fact there carries a unique non-empty id."""
+    fid = fact.get("id")
+    return fid if isinstance(fid, str) and fid else id(fact)
+
+
+def walk_links(
+    reviews: list[dict], fact: "dict | None", *, siblings: bool = False
+) -> Iterator[dict]:
+    """The facts on the line ``fact`` stands on, nearest first: ``fact``, the
+    review it links to (:func:`prior_review`), the one that links to, and so
+    on, each yielded once.
+
+    The ONE owner of stepping back along the link and of ending the walk. A
+    recorded anchor is found by id wherever it sits in the store
+    (:func:`_resolve_claim`), so store order does not end a walk over a
+    malformed store naming a cycle; this ends it, at a fact whose link is
+    empty or whose linked review is already yielded, under one identity rule
+    (:func:`_walk_identity`). A caller stops early by breaking out; the next
+    link is computed only when the caller asks for the next fact.
+
+    ``siblings`` also yields, after each spine fact, the OTHER reviews it links
+    to (:func:`linked_reviews`' ``[:-1]``: the older reviews at the same tree)
+    that are not yet yielded, then steps back through the newest. They are
+    yielded but not walked themselves, and they count as visited: a walk ends
+    where the review a fact links to is already on it, siblings included,
+    because stepping on to it again would walk a line already walked.
+    ``critic_mode.review_chain`` asks for them; the walkers that only follow
+    the link to one review do not.
+
+    ``reviews`` is the store's review facts in store order; ``fact`` need not
+    be in it, and ``None`` yields nothing."""
+    seen: "set[object]" = set()
+    current = fact
+    while current is not None and _walk_identity(current) not in seen:
+        seen.add(_walk_identity(current))
+        yield current
+        linked = linked_reviews(reviews, current)
+        if not linked or _walk_identity(linked[-1]) in seen:
+            return
+        if siblings:
+            for other in linked[:-1]:
+                if _walk_identity(other) not in seen:
+                    seen.add(_walk_identity(other))
+                    yield other
+        current = linked[-1]
 
 
 def reviews_linked_from(reviews: list[dict], root_tree: str) -> list[dict]:
@@ -813,16 +877,22 @@ def _verify_anchor_id(facts: list[dict], nodes: "set[str]") -> "str | None":
       a step's ``dst`` IS its fact's ``head_tree``, so this is a superset of
       the path-step reading rather than a different one.
 
-    **The residual, stated rather than implied.** This is a faithful *proxy*
-    for the dispatcher's anchor, not the same value. Should the cache point at
-    a fact that is not on the composed path, an on-path blocker is reported
-    reachable and the message prescribes a verify pass that will demote rather
-    than clear it — the original defect in a narrower case. Nothing detects
-    that, and nothing here can: reading the cache to check is the very thing
-    D7 forbids a gate to do. It stays a proxy because the failure is soft (the
-    verdict never moves, only the advice) and because closing it properly means
-    giving the anchor a home in the shared store, which is a larger change than
-    a message correction.
+    **The residual, stated rather than implied.** This PREDICTS the anchor a
+    future verify pass will choose, by the newest review at the path's trees;
+    it is a *proxy* for the dispatcher's choice, not the same value. A pass
+    already recorded names its anchor (:data:`VERIFIES_KEY`, read through
+    :func:`prior_review`), but the pass this advice is about has not been
+    dispatched, and the dispatcher picks its anchor from this worktree's
+    findings cache pointer or this branch's newest review. So the two can
+    differ: when a sibling worktree reviews the same tree later, its review is
+    the newest here, this branch's own blocker at that tree reads superseded,
+    and the remedy prescribes a review spanning the interval where a verify
+    pass would clear it; and should the cache point at a fact that is not on
+    the composed path, an on-path blocker reads reachable and the message
+    prescribes a verify pass that will demote rather than clear it. Nothing
+    here can detect either: reading the cache to check is the very thing D7
+    forbids a gate to do. It stays a proxy because the failure is soft (the
+    verdict never moves, only the advice).
     """
     newest = None
     for fact in _facts_at_nodes(facts, nodes):

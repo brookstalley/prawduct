@@ -816,23 +816,20 @@ def _extended_reviews(reviews: "list[dict]", fact: dict) -> "list[dict] | None":
     ``base_commit`` to the first that does. A ``base_tree`` that is not an
     object id names no tree a commit could hold, so the line ends there, as it
     does at an anchor the store does not hold. ``reviews`` is the store's
-    review facts in store order."""
+    review facts in store order. The steps and the walk's end are
+    ``coverage_algebra.walk_links``': a walk that ends before a review
+    recording a commit (no link, or a revisit on a malformed cycle) is a line
+    that cannot be followed to a commit, so no line."""
     line: list[dict] = []
-    current = fact
-    seen = {id(fact)}
-    while not gitstate.is_object_id((current.get("body") or {}).get("base_commit")):
-        if not gitstate.is_object_id((current.get("body") or {}).get("base_tree")):
+    for current in coverage_algebra.walk_links(reviews, fact):
+        if current is not fact:
+            line.append(current)
+        body = current.get("body") or {}
+        if gitstate.is_object_id(body.get("base_commit")):
+            return line or None
+        if not gitstate.is_object_id(body.get("base_tree")):
             return None
-        prior = coverage_algebra.prior_review(reviews, current)
-        # A recorded anchor is found wherever it sits in the store, so store
-        # order alone does not end the walk; a revisit is a malformed cycle,
-        # and a line that cannot be followed to a commit is no line.
-        if prior is None or id(prior) in seen:
-            return None
-        seen.add(id(prior))
-        current = prior
-        line.append(current)
-    return line or None
+    return None
 
 
 # ---------------------------------------------------------------------------

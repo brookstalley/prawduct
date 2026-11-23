@@ -541,6 +541,28 @@ class TestReviewChainConsumersOnAnAnchoredPass:
         assert [f["id"] for f in chain] == ["rev-pass", "rev-chunk", "rev-cumulative"]
         assert critic_mode.boundary_review_on_chain(chain)
 
+    def test_a_pass_anchored_to_the_boundary_cumulative_drops_the_chunk_review(self):
+        """The accepted cost the other way round: a `chunk` review of T1, then
+        the boundary `cumulative` (from the merge-base to T1) raising a
+        blocker, then a pass anchored to the cumulative. The cumulative starts
+        from the merge-base, not from T1, so the walk never reaches the chunk
+        review: the chain names none of its chunks. The same reason accepts
+        it: it errs toward more review, and lineage cannot be told after a
+        sync. The control: a pass from before the field links by tree to both
+        reviews of T1, so the chunk review is on its chain and names its chunk."""
+        chunk = _review("rev-chunk", CHUNK, T0, T1)
+        chunk["body"]["chunks"] = ["03"]
+        cumulative = _review("rev-cumulative", CUMULATIVE, OTHER_BASE, T1,
+                             findings=[_blocker("R-1", "a blocker")])
+        pass_ = _review("rev-pass", VERIFY_MODE, T1, T2, verifies="rev-cumulative")
+        chain = critic_mode.review_chain([chunk, cumulative, pass_], pass_)
+        assert [f["id"] for f in chain] == ["rev-pass", "rev-cumulative"]
+        assert critic_mode.chain_named_chunks(chain) == []
+        del pass_["body"]["verifies"]
+        chain = critic_mode.review_chain([chunk, cumulative, pass_], pass_)
+        assert [f["id"] for f in chain] == ["rev-pass", "rev-chunk", "rev-cumulative"]
+        assert critic_mode.chain_named_chunks(chain) == ["03"]
+
 
 class TestTheDeferralAsksTheGatesCount:
     """The extension deferral says "reviewed with no open blocker … carry on",
