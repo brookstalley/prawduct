@@ -447,3 +447,9 @@ Both are filed as backlog items and built by delegates on their own branch off `
 
 **2026-11-23.** "Merge when ready" — PR #1212 (`fix/chunk-plan-order` → `develop`) and the `fix/round-budget-cadence`
 PR are each merged once their gates pass.
+
+**2026-11-23.** "yes pr and merge, and yes to 1220 call. Yes file remaining, and yes report to testament" — answering four asks:
+1. PRs `chore/testament-cache-blockers` (#1218) and `fix/verify-links-review-id` (#1220) → `develop` are created and merged once their gates pass, #1218 first; #1220 takes develop and re-runs its suite before its PR.
+2. #1220's link rule is confirmed: an anchored verify-resolutions pass links to its recorded anchor alone. The accepted cost is that, in one worktree, a pass anchored to a `chunk` re-review of an already cumulative-reviewed tree does not credit that cumulative. Lands in `coverage_algebra.linked_reviews` and `critic_mode.review_chain`'s docstring.
+3. #1218's remaining cacheability blockers are filed as one backlog item.
+4. Testament's reading of an absolute `git log --since=<stamp>` / `HEAD@{@<epoch>}` as a clock read is reported to the testament repo.
