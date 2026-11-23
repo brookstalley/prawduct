@@ -10,9 +10,7 @@ ledger holds reviews, never outcomes), #1052 (the notes transport), #1063 (opt-o
 **Owner rulings this design is built to (2026-11-22).** Disposition facts, all three actions
 (accept, file, fixed), travel between clones on the same footing as resolutions. Q1 (backfill):
 dispositions recorded before the change are sent. Q2 (budget sweeps): they travel like any ACCEPT
-(D10). No archive-wide backfill for already-merged branches (D7). Both ruled 2026-11-22. Q3 is answered by this document existing. *The
-`.prawduct/owner-rulings.md` on `develop` at `8b1847e2` does not yet hold the 2026-11-22 entry (its
-top entry is 2026-11-18). It must be committed before this design is cited as ruled.*
+(D10). No archive-wide backfill for already-merged branches (D7). Both ruled 2026-11-22. Q3 is answered by this document existing.
 
 ## Research (read against `develop` at `8b1847e2`; nothing below was run unless it says so)
 

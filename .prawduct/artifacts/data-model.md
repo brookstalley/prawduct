@@ -46,7 +46,7 @@ out where reality still lags.
    decided — `project-state.yaml`) are distinct from per-clone, gitignored *nags and caches*
    (`.advisories.json`, the evidence store, session state). A teammate's committed decision resolves
    an advisory for everyone; local nag state never pollutes the shared record. The evidence store
-   stays per clone, but its review, resolution and chunk-imported facts are shared *answers* too:
+   stays per clone, but its review, resolution, disposition and chunk-imported facts are shared *answers* too:
    they travel as notes on `refs/notes/prawduct` (Evidence Store, below), never as a committed file.
 
 ## Direction
@@ -109,18 +109,18 @@ by every worktree of a clone), so it is uncommitted by construction and shared a
 An absent file is the empty store.
 
 **Reach beyond the clone.** The kinds in `evidence.TRANSPORTED_KINDS` — `review`, `resolution`,
-`chunk-imported`, `chunk-retracted` — are also written, as their store lines with the actor's locator fields
+`disposition`, `chunk-imported`, `chunk-retracted` — are also written, as their store lines with the actor's locator fields
 reduced (the worktree's basename, or `.claude/worktrees/<name>` for a harness scratch tree; no
 session; never the path above it), into a note on
 `refs/notes/prawduct` on the fact's anchor commit (a review's `head_commit`, or its
-`dispatch_commit` for a dirty tree; a resolution on its verifying review's anchor; an import or
+`dispatch_commit` for a dirty tree; a resolution or a disposition on the anchor of the review it answers; an import or
 a retraction on the HEAD it was written at). `evidence ingest` appends note lines this store lacks, deduplicated by
 `(kind, id)`, bounded to the branch's commits from the merge base unless `--all`; a schema-ahead
 line is appended verbatim so the receiving clone blocks on it exactly as the writer's would.
 `evidence sync` fetches, merges (`cat_sort_uniq`), ingests and pushes the ref. A note is a copy
 and a locator: gates read only this store, and verdicts compose by the tree ids inside each fact,
-so a clone that lacks a fact's tree reads that interval as a gap. Every other kind stays in the
-clone that wrote it.
+so a clone that lacks a fact's tree reads that interval as a gap. The kinds that stay in the
+clone that wrote them are `guard-refusal`, `test-run` and `session-start`.
 
 | Field | Type | Purpose |
 |-------|------|---------|
