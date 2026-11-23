@@ -14,3 +14,8 @@ review. A write that died before the rename also left the file untracked, where 
 in the hook's untrack mirror, and in this repo's `.gitignore`. Its boundary disposition is to
 survive: the next write overwrites it, and unlinking it at a boundary could race another session's
 recorder between the write and the rename.
+
+## Consumer note
+The managed `.gitignore` section gains `.prawduct/.test-evidence.json.tmp`. A product whose `.gitignore`
+predates it sees the gitignore-contract-drift advisory count one more missing entry until the owner says go
+to reconcile it.
