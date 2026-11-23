@@ -14,8 +14,8 @@ the Stop hook and `critic-consolidate` in-process for `learning.*` (agents never
 hand-author JSONL; the one append validates the record and computes the envelope). It is per worktree and
 records that a review happened and what it raised, never a finding's outcome: a
 `resolution` or `disposition` fact in the evidence store holds that, and
-`prawduct-hook render-dispositions` shows it. Resolutions reach other clones on
-`refs/notes/prawduct` (`evidence sync`); dispositions stay in their clone.
+`prawduct-hook render-dispositions` shows it. Resolutions and dispositions reach
+other clones on `refs/notes/prawduct` (`evidence sync`).
 
 Every event shares the **envelope**; the kind-specific payload nests beneath a
 kind-named key (`review` for `review.*`):
