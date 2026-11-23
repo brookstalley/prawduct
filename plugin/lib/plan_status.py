@@ -110,7 +110,7 @@ so a chunk both ticked and reviewed reads ``done, imported`` with no fact cited.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterable, Literal
 
@@ -1254,6 +1254,19 @@ class ChunkProposal:
 
     chunks: "list[str]"
     notes: "tuple[str, ...]" = ()
+    #: Open chunks a path alone proposed while an earlier open chunk was left
+    #: out (the plan-order rule), as the plan prints them, in plan order.
+    withheld: "tuple[str, ...]" = ()
+    #: Every open chunk whose Deliverables cover a changed path, before either
+    #: certifying rule (one owner, plan order): the Stop-path deferral's
+    #: question, "does this work touch an open chunk?", is wider than which
+    #: chunks a review may name.
+    touched: "tuple[str, ...]" = ()
+    #: Per proposed chunk, what named it: ``{"paths": [<=3], "paths_more": n,
+    #: "commits": [<=3 12-char ids]}`` — the paths that proposed it and the
+    #: commits whose scoped subject did. Recorded at dispatch, because the route
+    #: costs a git walk to recompute.
+    evidence: "dict[str, dict]" = field(default_factory=dict)
 
 
 def propose_chunks(
@@ -1293,7 +1306,13 @@ def chunk_proposal(
     subject half alone. A path proposal is a NAME the dispatch prints for the
     builder to keep or narrow with ``--chunks`` before the fact is written — the
     ruling that took path credit from spans kept naming as it was — so it stays,
-    with its one-owner rule.
+    with its two certifying rules (:func:`_deliverable_chunks`): one owner, and
+    plan order. Under plan order a path proposes a chunk only while every open
+    chunk before it is proposed too, in every mode, and a chunk it holds back is
+    in ``withheld`` with a note; a chunk a scoped subject names is kept out of
+    order, so the subject walk runs first. ``touched`` is every open chunk the
+    work covers before either rule, and ``evidence`` what named each proposed
+    chunk.
 
     ``chunk`` mode: the open chunks whose Deliverables paths intersect
     ``diff_paths`` (repo-relative; a deliverable directory matches what is
@@ -1343,11 +1362,11 @@ def chunk_proposal(
         read = _read_at(repo_dir, head_tree)
     else:
         read = lambda _rel: None  # noqa: E731 — never a git argv; every fragment unreadable, naming fewer
-    by_path = _deliverable_chunks(
-        content, open_ids, _read_plan(content).chunks, (str(p) for p in diff_paths), read
-    )
-    touched = {c for c in open_ids if _norm(c) in by_path.chunks}
     notes: list[str] = []
+    # The subject walk runs first: a chunk a scoped subject names is kept
+    # whatever the plan order, and the plan-order rule must know which.
+    by_words: set[str] = set()
+    walk: "_BranchWalk | str | None" = None
     if mode in _WHOLE_PLAN_MODES and open_ids:
         walk = _walk_branch(Path(plan_path), repo_dir, since)
         if isinstance(walk, str):
@@ -1355,10 +1374,10 @@ def chunk_proposal(
                 f"no chunk named only by a commit subject is proposed: {walk}"
             )
         elif walk is not None:
-            touched |= {c for c in open_ids if _norm(c) in walk.scoped_named}
+            by_words = {c for c in open_ids if _norm(c) in walk.scoped_named}
             unscoped = [
                 c for c in open_ids
-                if c not in touched and _norm(c) in walk.all_named
+                if c not in by_words and _norm(c) in walk.all_named
             ]
             if unscoped:
                 notes.append(
@@ -1367,10 +1386,24 @@ def chunk_proposal(
                     f"(`<type>({walk.plan.scope}): …`), and an unscoped subject may be "
                     "another plan's; pass --chunks if they are this plan's work"
                 )
+    by_path = _deliverable_chunks(
+        content, open_ids, _read_plan(content).chunks, (str(p) for p in diff_paths), read,
+        kept_by_words=by_words,
+    )
+    proposed = by_words | {c for c in open_ids if _norm(c) in by_path.chunks}
+    withheld = [c for c in open_ids if _norm(c) in by_path.withheld]
+    for c in withheld:
+        path, gap = by_path.withheld[_norm(c)]
+        notes.append(
+            f"chunk {c} not proposed: this diff touches `{path}`, which only chunk {c}'s "
+            f"Deliverables cover, but chunk {gap} is earlier in the plan, still open and not "
+            f"in this review, so the touch cannot say it was {c}'s work. A scoped "
+            f"`(Chunk {c})` commit subject or `--chunks {c}` names it"
+        )
     # Whole-plan modes only: a `chunk` review mid-plan has every later, unbuilt
     # chunk open, and would note each one on every dispatch.
     for c in open_ids if mode in _WHOLE_PLAN_MODES else ():
-        if c in touched:
+        if c in proposed or c in withheld:
             continue
         bare = _bare_only(deliverable_paths(content, c), repo_dir)
         if bare:
@@ -1382,7 +1415,7 @@ def chunk_proposal(
             )
     # A shared path names no chunk; say so when it is why an open owner was left out.
     for path, owners in by_path.shared.items():
-        left_out = [c for c in owners if c in open_ids and c not in touched]
+        left_out = [c for c in owners if c in open_ids and c not in proposed]
         if left_out:
             notes.append(
                 f"`{path}` proposes none of chunk(s) {', '.join(owners)}: each lists it under "
@@ -1390,7 +1423,23 @@ def chunk_proposal(
                 "`(Chunk N)` subject or --chunks names "
                 f"{'it' if len(left_out) == 1 else 'them'}"
             )
-    return ChunkProposal([c for c in open_ids if c in touched], tuple(notes))
+    chunks = [c for c in open_ids if c in proposed]
+    commits = walk.scoped_commits if isinstance(walk, _BranchWalk) else {}
+    evidence = {}
+    for c in chunks:
+        paths = by_path.paths.get(_norm(c), [])
+        evidence[c] = {
+            "paths": paths[:3],
+            "paths_more": max(0, len(paths) - 3),
+            "commits": [sha[:12] for sha in commits.get(_norm(c), [])[:3]] if c in by_words else [],
+        }
+    return ChunkProposal(
+        chunks,
+        tuple(notes),
+        withheld=tuple(withheld),
+        touched=tuple(c for c in open_ids if _norm(c) in by_path.touched),
+        evidence=evidence,
+    )
 
 
 def _bare_only(deliverables: "list[str]", repo_dir: Path) -> "list[str]":
@@ -1506,12 +1555,21 @@ def _subject_chunks(subjects: "Iterable[str]", scope: "str | None", *, fallback:
 
 @dataclass(frozen=True)
 class _PathAnswer:
-    """:func:`_deliverable_chunks`' answer: the normalized ids credited, and
-    each touched path more than one chunk's Deliverables cover, with those
-    chunks (as the plan prints them), which the certifying rule credits to none."""
+    """:func:`_deliverable_chunks`' answer, every id normalized unless said.
+
+    ``chunks``: the ids of ``chunk_ids`` credited. ``shared``: each touched path
+    more than one chunk's Deliverables cover, with those chunks as the plan
+    prints them, which the certifying rule credits to none. ``withheld``: per
+    chunk the plan-order rule held back, the path that proposed it and the
+    earlier open chunk left out (as the plan prints it). ``touched``: every
+    chunk of ``chunk_ids`` a changed path covers, before either certifying rule.
+    ``paths``: per credited chunk, the changed paths that credited it, sorted."""
 
     chunks: "set[str]"
     shared: "dict[str, tuple[str, ...]]"
+    withheld: "dict[str, tuple[str, str]]" = field(default_factory=dict)
+    touched: "set[str]" = field(default_factory=set)
+    paths: "dict[str, list[str]]" = field(default_factory=dict)
 
 
 def _deliverable_chunks(
@@ -1522,6 +1580,7 @@ def _deliverable_chunks(
     read: "_ReadAt",
     *,
     certifying: bool = True,
+    kept_by_words: "Iterable[str]" = (),
 ) -> _PathAnswer:
     """The chunks of ``chunk_ids`` that touched ``paths`` attribute work to —
     the path half of the chunk-to-commit rule, the one home every reader of it
@@ -1530,25 +1589,58 @@ def _deliverable_chunks(
 
     A path is attributed by who OWNS it among all ``plan_chunks``: every chunk
     whose Deliverables cover it (the path itself, or a directory above it). The
-    certifying rule (``certifying``, for the proposal; a span takes no path
-    credit at all) credits a path only to its one owner: a path two chunks list cannot say whose work a
-    touch was, and crediting both certified the unbuilt one — such a chunk is
-    found by a scoped subject or a naming fact instead. The ``built`` tag,
-    which certifies nothing and arms a gate only early, passes
-    ``certifying=False`` and credits every owner."""
+    ``built`` tag, which certifies nothing and arms a gate only early, passes
+    ``certifying=False`` and credits every owner. The certifying rules (the
+    proposal; a span takes no path credit at all) are two, and this is the
+    home of both:
+
+    - **One owner.** A path two chunks list cannot say whose work a touch was,
+      and crediting both certified the unbuilt one, so it is credited to none.
+    - **Plan order.** ``chunk_ids`` are the open chunks in plan order. A chunk
+      credited by a path alone is kept only while every open chunk before it
+      is kept, by a path or by ``kept_by_words`` (normalized ids a scoped
+      subject names, which the caller walked first). Once one open chunk is
+      left out, every later path-only chunk is withheld: a later chunk's file
+      written early says what a commit changed, never that the chunk was
+      built. Words still name a chunk out of order, which is how a delegated
+      chunk landing first is credited."""
     changed = _work_paths(set(paths), read)
     deliverables = {c: deliverable_paths(content, c) for c in plan_chunks}
-    wanted = {_norm(c) for c in chunk_ids}
+    ordered = list(chunk_ids)
+    wanted = {_norm(c) for c in ordered}
     credited: set[str] = set()
+    owned: set[str] = set()
     shared: dict[str, tuple[str, ...]] = {}
+    by_chunk: dict[str, list[str]] = {}
     for path in sorted(changed):
         owners = tuple(c for c, d in deliverables.items() if _touches(d, {path}))
+        owned |= {_norm(c) for c in owners}
         if len(owners) > 1:
             shared[path] = owners
             if certifying:
                 continue
-        credited |= {_norm(c) for c in owners}
-    return _PathAnswer(credited & wanted, shared)
+        for c in owners:
+            credited.add(_norm(c))
+            by_chunk.setdefault(_norm(c), []).append(path)
+    withheld: dict[str, tuple[str, str]] = {}
+    if certifying:
+        words = {_norm(c) for c in kept_by_words}
+        gap: "str | None" = None
+        for c in ordered:
+            n = _norm(c)
+            if n in words:
+                continue
+            if n in credited and gap is None:
+                continue
+            if n in credited:
+                withheld[n] = (by_chunk[n][0], gap)
+                credited.discard(n)
+            elif gap is None:
+                gap = c
+    kept = credited & wanted
+    return _PathAnswer(
+        kept, shared, withheld, owned & wanted, {c: by_chunk[c] for c in kept},
+    )
 
 
 @dataclass(frozen=True)
@@ -1578,6 +1670,8 @@ class _BranchWalk:
     scoped_named: "set[str]"  # normalized ids a subject carrying the plan's scope names
     all_named: "set[str]"  # normalized ids any subject names
     changed: "set[str]"  # every path a commit on the branch touched
+    #: normalized id -> the commits (newest first) whose scope-carrying subject names it
+    scoped_commits: "dict[str, list[str]]" = field(default_factory=dict)
 
 
 def _walk_branch(
@@ -1619,12 +1713,17 @@ def _walk_branch(
         return commits
     subjects = [c.subject for c in commits]
     changed = set().union(*(c.files for c in commits)) if commits else set()
+    scoped_commits: dict[str, list[str]] = {}
+    for c in commits:
+        for n in _subject_chunks([c.subject], plan.scope):
+            scoped_commits.setdefault(n, []).append(c.sha)
     return _BranchWalk(
         content, plan, head,
         named=_subject_chunks(subjects, plan.scope, fallback=True),
-        scoped_named=_subject_chunks(subjects, plan.scope),
+        scoped_named=set(scoped_commits),
         all_named=_named_ids(subjects),
         changed=changed,
+        scoped_commits=scoped_commits,
     )
 
 

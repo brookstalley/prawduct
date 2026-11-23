@@ -1848,8 +1848,9 @@ def extension_deferral_owed(
        - **(1a) the chain certified them** (:func:`chain_certified_chunks`):
          every reviewed chunk is ``done`` by a fact on the chain, AND the work
          since the newest review's tree touches no OPEN chunk's Deliverables
-         (:func:`plan_status.propose_chunks` in ``chunk`` mode over those
-         paths is empty). A review closes its chunks the moment it records,
+         (``touched`` of :func:`plan_status.chunk_proposal` in ``chunk`` mode
+         over those paths is empty — every open chunk a path covers, before
+         the one-owner and plan-order rules narrow what a review may name). A review closes its chunks the moment it records,
          so no tick marks "the builder moved on"; the observable stands in for
          the stored one (``hook-surface.md``: observable beats stored).
          **Fail-open, accepted (coordinator, 2026-10-25):** a chunk whose
@@ -1901,9 +1902,12 @@ def extension_deferral_owed(
     reviewed = chain_certified_chunks(progress, chain)
     if reviewed is not None:
         pending = _paths_since_tree((newest.get("body") or {}).get("head_tree"), project_dir)
-        if pending is None or plan_status.propose_chunks(
+        # `touched`, not the proposal: the certifying rules (one owner, plan
+        # order) leave out chunks this work does touch, and reading their
+        # absence as "no open chunk touched" would defer a chunk nobody reviewed.
+        if pending is None or plan_status.chunk_proposal(
             Path(plan.plan_path), read, pending, "chunk", repo_dir=Path(project_dir)
-        ):
+        ).touched:
             return None
         label = ", ".join(reviewed)
     else:

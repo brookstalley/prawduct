@@ -227,6 +227,41 @@ class TestAFixIsToldFromTheNextChunkByItsDeliverables:
         assert mode == MODE_DEFERRED, why
         assert "chunk 1 was reviewed" in why, why
 
+    def test_1141_shared_module_leaves_a_later_chunk_open_and_its_work_infers_a_review(self, tmp_path):
+        """#1141-R3. Chunks 1 and 3 both list `src/app.py`, so the one-owner
+        rule credits a touch of it to neither, and the review that names chunk 1
+        leaves 3 open. Work that then touches the shared module may be 3's: the
+        deferral asks whether the work touches an open chunk at all
+        (`touched`), not whether a review could name one, or it would defer the
+        review of a chunk nobody reviewed. Red before #1141: the proposal over
+        the shared path was empty, so the work deferred."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=True,
+                            deliverables={1: "src/app.py", 3: "src/app.py"})
+        owed = critic_mode.extension_deferral_owed(
+            repo, repo / ".prawduct", work_unit.resolve(repo),
+            critic_mode.binding_progress(repo, work_unit.resolve(repo)),
+        )
+        assert owed is None, owed
+        mode, why = infer_mode(repo, None)
+        assert mode != MODE_DEFERRED, why
+
+    def test_work_on_a_chunk_ahead_of_an_open_one_is_not_deferred(self, tmp_path):
+        """Design D4. Chunk 1 is reviewed and done, 2 is open (it lists no
+        path), and the work touches only 3's path. The plan-order rule withholds
+        3 from a proposal while 2 is open, so a deferral reading the proposal
+        would read "no open chunk touched" and defer 3's review."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False,
+                            deliverables={3: "src/three.py"})
+        (repo / "src/app.py").write_text("x = 2\n")
+        (repo / "src/three.py").write_text("w = 1  # chunk 3, built ahead of 2\n")
+        _commit_all(repo, "the work")
+        mode, why = infer_mode(repo, None)
+        assert mode != MODE_DEFERRED, why
+        assert critic_mode.extension_deferral_owed(
+            repo, repo / ".prawduct", work_unit.resolve(repo),
+            critic_mode.binding_progress(repo, work_unit.resolve(repo)),
+        ) is None
+
     def test_a_chunk_with_no_path_deliverables_reads_as_a_fix_and_loses_nothing(self, tmp_path):
         """The accepted fail-open, with its DIRECTION asserted. No chunk here
         declares a path-shaped Deliverable, so chunk 2's own work (`src/two.py`)

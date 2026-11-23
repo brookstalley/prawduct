@@ -698,8 +698,16 @@ class TestProposeChunks:
             "01": "`src/c01.py`; any other `.prawduct/` write still refused",
             "02": "`plugin/lib/backlog/`",
         })
+        # 01 is done, so the plan-order rule (TestPlanOrder) leaves 02 free to
+        # be proposed by its path: this test pins the one-segment rule alone.
+        head = _commit(repo, "src/c01.py", "x\n", "feat(unit): c01 (Chunk 01)")
+        done01 = _facts(_review("R1", head, chunks=["01"]))
         diff = [".prawduct/changes/x.md", "plugin/lib/backlog/cli.py"]
-        assert plan_status.propose_chunks(plan, _facts(), diff, "chunk", repo_dir=repo) == ["02"]
+        assert plan_status.propose_chunks(plan, done01, diff, "chunk", repo_dir=repo) == ["02"]
+        # With 01 still open, 02's path is withheld rather than proposed; the
+        # `.prawduct/` touch still names nothing, so 01 is not proposed either.
+        open01 = plan_status.chunk_proposal(plan, _facts(), diff, "chunk", repo_dir=repo)
+        assert (open01.chunks, open01.withheld) == ([], ("02",))
 
     @pytest.mark.parametrize("mode", ["final", "cumulative"])
     def test_a_mid_plan_whole_plan_review_proposes_only_the_chunks_built(self, repo, mode):
@@ -840,21 +848,36 @@ class TestProposeChunks:
         that IS a root-level file is a repo-relative path and matches (control),
         and a chunk with one matchable path says nothing."""
         (repo / "README.md").write_text("x\n")
+        # The root-level-file chunk comes first, so the plan-order rule
+        # (TestPlanOrder) leaves its path proposal standing: this test pins the
+        # bare-name note alone.
         plan = _plan(repo, ("01", "02", "03"), deliverables={
-            "01": "`page.js` and `util.js`",
-            "02": "`README.md`",
+            "01": "`README.md`",
+            "02": "`page.js` and `util.js`",
             "03": "`page.js` and `src/c03.py`",
         })
         diff = ["src/page.js", "README.md"]
         proposal = plan_status.chunk_proposal(plan, _facts(), diff, "cumulative", repo_dir=repo)
-        assert proposal.chunks == ["02"]
+        assert proposal.chunks == ["01"]
         (note,) = proposal.notes
-        assert note.startswith("chunk 01 not proposed")
+        assert note.startswith("chunk 02 not proposed")
         assert "`page.js`, `util.js`" in note and "repo root" in note
         # A `chunk` review mid-plan has every unbuilt later chunk open; noting
         # each on every dispatch would be noise, so it says nothing.
         chunk_mode = plan_status.chunk_proposal(plan, _facts(), diff, "chunk", repo_dir=repo)
-        assert (chunk_mode.chunks, chunk_mode.notes) == (["02"], ())
+        assert (chunk_mode.chunks, chunk_mode.notes) == (["01"], ())
+        # The bare chunk first: it can never be path-proposed, so it stays open
+        # ahead of the root-file chunk, whose path is then withheld. Both say why.
+        ahead = _plan(repo, ("01", "02", "03"), deliverables={
+            "01": "`page.js` and `util.js`",
+            "02": "`README.md`",
+            "03": "`page.js` and `src/c03.py`",
+        })
+        withheld = plan_status.chunk_proposal(ahead, _facts(), diff, "cumulative", repo_dir=repo)
+        assert (withheld.chunks, withheld.withheld) == ([], ("02",))
+        assert [n.split(":", 1)[0] for n in withheld.notes] == [
+            "chunk 02 not proposed", "chunk 01 not proposed",
+        ]
 
     def test_a_plan_declaring_no_scope_counts_every_subject(self, repo):
         plan = _plan(repo, ("01", "02"))
@@ -862,6 +885,127 @@ class TestProposeChunks:
         _commit(repo, "a.txt", "x\n", "feat(other): land it (Chunk 02)")
         proposal = plan_status.chunk_proposal(plan, _facts(), ["a.txt"], "cumulative", repo_dir=repo)
         assert (proposal.chunks, proposal.notes) == (["02"], ())
+
+
+class TestPlanOrder:
+    """#1198 and #1141 route A: a path proposes a chunk only while every open
+    chunk before it is proposed too (design D1). A later chunk's file written
+    early is no certification of it, because a path says what a commit changed,
+    never whose work it was. Words still certify out of order (D2): a scoped
+    subject in a whole-plan mode, ``--chunks``, a span. Done and dropped chunks
+    are not open, so neither opens a gap."""
+
+    SIX = ("01", "02", "03", "04", "05", "06")
+
+    def _part_one(self, repo: Path, extra: str, deliverable06: str) -> Path:
+        plan = _plan(repo, self.SIX, deliverables={"06": deliverable06})
+        for cid in ("01", "02", "03", "04"):
+            _commit(repo, f"src/c{cid}.py", "x\n", f"feat(unit): c{cid} (Chunk {cid})")
+        _commit(repo, extra, "x\n", "docs(unit): the guide")
+        return plan
+
+    @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
+    def test_a_path_only_the_cumulative_final_lists_does_not_name_it_while_05_is_open(self, repo, mode):
+        plan = self._part_one(repo, "docs/guide.md", "`docs/guide.md`")
+        diff = ["src/c01.py", "src/c02.py", "src/c03.py", "src/c04.py", "docs/guide.md"]
+        proposal = plan_status.chunk_proposal(plan, _facts(), diff, mode, repo_dir=repo)
+        assert proposal.chunks == ["01", "02", "03", "04"]
+        assert proposal.withheld == ("06",)
+        (note,) = proposal.notes
+        assert note.startswith("chunk 06 not proposed")
+        assert "`docs/guide.md`" in note and "chunk 05" in note and "--chunks 06" in note
+
+    @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
+    def test_a_new_file_under_the_cumulative_finals_directory_does_not_name_it(self, repo, mode):
+        plan = self._part_one(repo, "docs/site/new.md", "`docs/site/`")
+        diff = ["src/c01.py", "src/c02.py", "src/c03.py", "src/c04.py", "docs/site/new.md"]
+        proposal = plan_status.chunk_proposal(plan, _facts(), diff, mode, repo_dir=repo)
+        assert (proposal.chunks, proposal.withheld) == (["01", "02", "03", "04"], ("06",))
+        assert any("`docs/site/new.md`" in n and "chunk 05" in n for n in proposal.notes)
+
+    @pytest.mark.parametrize("mode", ["chunk", "cumulative"])
+    def test_controls_no_touch_and_a_shared_path_withhold_nothing(self, repo, mode):
+        """Part one touching nothing 06 lists has nothing to withhold. A path 05
+        and 06 both list names neither (the one-owner rule), and the note is
+        the shared-path one, not a plan-order one."""
+        plan = self._part_one(repo, "notes.txt", "`docs/guide.md`")
+        diff = ["src/c01.py", "src/c02.py", "src/c03.py", "src/c04.py", "notes.txt"]
+        clean = plan_status.chunk_proposal(plan, _facts(), diff, mode, repo_dir=repo)
+        assert (clean.chunks, clean.withheld, clean.notes) == (["01", "02", "03", "04"], (), ())
+        shared = _plan(repo, self.SIX, deliverables={"05": "`docs/guide.md`", "06": "`docs/guide.md`"})
+        proposal = plan_status.chunk_proposal(
+            shared, _facts(), [*diff, "docs/guide.md"], mode, repo_dir=repo
+        )
+        assert (proposal.chunks, proposal.withheld) == (["01", "02", "03", "04"], ())
+        (note,) = proposal.notes
+        assert note.startswith("`docs/guide.md` proposes none of chunk(s) 05, 06")
+
+    def test_route_a_a_file_under_a_later_chunks_directory_is_withheld_in_chunk_mode(self, repo):
+        """#1141 route A. With 01 done by a fact, 02 is next: a file under 04's
+        directory alone names nothing, and with 02's own path names 02 only.
+        01 being done opens no gap, or 02 would be withheld too."""
+        head = _commit(repo, "src/c01.py", "x\n", "feat(unit): c01 (Chunk 01)")
+        plan = _plan(repo, ("01", "02", "03", "04", "05"), deliverables={"04": "`lib/c04/`"})
+        done01 = _facts(_review("R1", head, chunks=["01"]))
+        alone = plan_status.chunk_proposal(plan, done01, ["lib/c04/new.py"], "chunk", repo_dir=repo)
+        assert (alone.chunks, alone.withheld) == ([], ("04",))
+        with_own = plan_status.chunk_proposal(
+            plan, done01, ["src/c02.py", "lib/c04/new.py"], "chunk", repo_dir=repo
+        )
+        assert (with_own.chunks, with_own.withheld) == (["02"], ("04",))
+        (note,) = with_own.notes
+        assert "`lib/c04/new.py`" in note and "chunk 03" in note
+
+    @pytest.mark.parametrize("mode", ["final", "cumulative"])
+    def test_a_scoped_subject_still_names_a_chunk_ahead_of_an_open_one(self, repo, mode):
+        """D2's accommodation: a delegated chunk landing before an earlier one
+        is named by its scoped subject, whatever the order."""
+        plan = _plan(repo, self.SIX)
+        for cid in ("01", "02", "03", "04"):
+            _commit(repo, f"src/c{cid}.py", "x\n", f"feat(unit): c{cid} (Chunk {cid})")
+        _commit(repo, "src/c06.py", "x\n", "feat(unit): c06 (Chunk 06)")
+        diff = ["src/c01.py", "src/c02.py", "src/c03.py", "src/c04.py", "src/c06.py"]
+        proposal = plan_status.chunk_proposal(plan, _facts(), diff, mode, repo_dir=repo)
+        assert (proposal.chunks, proposal.withheld) == (["01", "02", "03", "04", "06"], ())
+
+    def test_a_dropped_chunk_opens_no_gap(self, repo):
+        plan = _plan(repo, self.SIX, deliverables={"06": "`docs/guide.md`"},
+                     extra_frontmatter="dropped:\n  - \"05: cut\"")
+        diff = ["src/c01.py", "src/c02.py", "src/c03.py", "src/c04.py", "docs/guide.md"]
+        proposal = plan_status.chunk_proposal(plan, _facts(), diff, "chunk", repo_dir=repo)
+        assert (proposal.chunks, proposal.withheld) == (["01", "02", "03", "04", "06"], ())
+
+    def test_touched_holds_every_open_chunk_the_work_covers_before_either_rule(self, repo):
+        """The Stop-path deferral asks "does this work touch an open chunk?",
+        a wider question than which chunks a review may name (D4). A withheld
+        chunk and a shared path's owners are both touched."""
+        head = _commit(repo, "src/c01.py", "x\n", "feat(unit): c01 (Chunk 01)")
+        plan = _plan(repo, ("01", "02", "03", "04"), deliverables={
+            "02": "`src/c02.py`; `lib/shared.py`", "04": "`lib/shared.py`; `lib/c04/`",
+        })
+        done01 = _facts(_review("R1", head, chunks=["01"]))
+        withheld = plan_status.chunk_proposal(plan, done01, ["lib/c04/x.py"], "chunk", repo_dir=repo)
+        assert (withheld.chunks, withheld.touched) == ([], ("04",))
+        shared = plan_status.chunk_proposal(plan, done01, ["lib/shared.py"], "chunk", repo_dir=repo)
+        assert (shared.chunks, shared.touched) == ([], ("02", "04"))
+
+    @pytest.mark.parametrize("mode", ["chunk", "cumulative"])
+    def test_the_proposal_records_what_named_each_chunk(self, repo, mode):
+        """D5's evidence: the paths (up to three, then a count) that proposed a
+        chunk, and in a whole-plan mode the commits whose scoped subject did."""
+        plan = _plan(repo, ("01", "02"), deliverables={"01": "`src/a/`", "02": "the docs"})
+        for name in ("1", "2", "3", "4"):
+            _commit(repo, f"src/a/{name}.py", "x\n", "feat(unit): part")
+        sha = _commit(repo, "notes.txt", "x\n", "docs(unit): the docs (Chunk 02)")
+        diff = [f"src/a/{n}.py" for n in ("1", "2", "3", "4")] + ["notes.txt"]
+        proposal = plan_status.chunk_proposal(plan, _facts(), diff, mode, repo_dir=repo)
+        assert proposal.evidence["01"] == {
+            "paths": ["src/a/1.py", "src/a/2.py", "src/a/3.py"], "paths_more": 1, "commits": [],
+        }
+        if mode == "cumulative":
+            assert proposal.evidence["02"] == {"paths": [], "paths_more": 0, "commits": [sha[:12]]}
+        else:
+            assert "02" not in proposal.evidence
 
 
 def _fragment(narrative: str = "", note: str = "") -> str:
@@ -892,6 +1036,12 @@ class TestAStubIsNoChunksWork:
         _git(repo, "commit", "-qm", "docs(unit): build plan")
         return plan
 
+    def _earlier_done(self, repo: Path) -> dict:
+        """01 and 02 done by a fact at the plan commit, so the change-record
+        chunk 03 is next and a path can propose it (the plan-order rule,
+        TestPlanOrder). These tests pin the stub rule, not plan order."""
+        return _facts(_review("R0", _git(repo, "rev-parse", "HEAD"), chunks=["01", "02"]))
+
     def test_right_after_plan_new_no_chunk_is_built(self, repo):
         plan = self._stubbed(repo)
         assert plan_status.built_report(plan, repo) == plan_status.BuiltReport(set())
@@ -909,49 +1059,67 @@ class TestAStubIsNoChunksWork:
 
     def test_a_commit_writing_the_fragment_builds_the_change_record(self, repo):
         plan = self._stubbed(repo)
+        done = self._earlier_done(repo)
         _commit(repo, self.FRAGMENT, _fragment("What changed.", "none: internal"),
                 "docs(unit): change record")
         assert plan_status.built_report(plan, repo).built == {"03"}
-        assert plan_status.propose_chunks(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+        assert plan_status.propose_chunks(plan, done, [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+        # With 01 and 02 open, the written fragment is withheld, not proposed.
+        early = plan_status.chunk_proposal(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo)
+        assert (early.chunks, early.withheld) == ([], ("03",))
 
     def test_the_fragment_is_read_at_the_tree_the_caller_judges(self, repo):
         """`built_report` reads committed work at the branch head, so an
         uncommitted edit builds nothing there; the proposal reads ``head_tree``
         when given (the dispatch's snapshot), else the working tree."""
         plan = self._stubbed(repo)
+        done = self._earlier_done(repo)
         stub_tree = _git(repo, "rev-parse", "HEAD^{tree}")
         (repo / self.FRAGMENT).write_text(_fragment("What changed."))
         assert plan_status.built_report(plan, repo).built == set()
-        assert plan_status.propose_chunks(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+        assert plan_status.propose_chunks(plan, done, [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
         assert plan_status.propose_chunks(
-            plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo, head_tree=stub_tree
+            plan, done, [self.FRAGMENT], "chunk", repo_dir=repo, head_tree=stub_tree
         ) == []
         _git(repo, "commit", "-qam", "docs(unit): change record")
         written_tree = _git(repo, "rev-parse", "HEAD^{tree}")
         (repo / self.FRAGMENT).write_text(_fragment())
         assert plan_status.built_report(plan, repo).built == {"03"}
         assert plan_status.propose_chunks(
-            plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo, head_tree=written_tree
+            plan, done, [self.FRAGMENT], "chunk", repo_dir=repo, head_tree=written_tree
         ) == ["03"]
+        # With 01 and 02 open, the fragment written at that tree is withheld.
+        early = plan_status.chunk_proposal(
+            plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo, head_tree=written_tree
+        )
+        assert (early.chunks, early.withheld) == ([], ("03",))
 
     def test_an_unreadable_fragment_is_no_work_and_an_unparseable_one_is(self, repo):
         """A deleted fragment cannot be read at the tree: naming fewer fails
         closed. Text that does not parse is not `plan new`'s, so it counts."""
         plan = self._stubbed(repo)
+        done = self._earlier_done(repo)
         (repo / self.FRAGMENT).unlink()
-        assert plan_status.propose_chunks(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo) == []
+        assert plan_status.propose_chunks(plan, done, [self.FRAGMENT], "chunk", repo_dir=repo) == []
         (repo / self.FRAGMENT).write_text("hand-written, no frontmatter\n")
-        assert plan_status.propose_chunks(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+        assert plan_status.propose_chunks(plan, done, [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+        # With 01 and 02 open, the counted text is withheld, not proposed.
+        early = plan_status.chunk_proposal(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo)
+        assert (early.chunks, early.withheld) == ([], ("03",))
 
     def test_a_head_tree_that_is_not_an_object_id_never_reaches_git(self, repo, monkeypatch):
         """Read as unreadable — naming fewer — rather than handed to `git show`
         as an option. Control: the same written fragment with no tree is read."""
         plan = self._stubbed(repo)
+        done = self._earlier_done(repo)
         (repo / self.FRAGMENT).write_text(_fragment("What changed."))
-        assert plan_status.propose_chunks(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+        assert plan_status.propose_chunks(plan, done, [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+        # With 01 and 02 open, the same read fragment is withheld, not proposed.
+        early = plan_status.chunk_proposal(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo)
+        assert (early.chunks, early.withheld) == ([], ("03",))
         propose = plan_status.propose_chunks  # the spy stubs the module's built_chunks only
         spy = _Spy(monkeypatch)
-        assert propose(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo, head_tree="--output=/tmp/x") == []
+        assert propose(plan, done, [self.FRAGMENT], "chunk", repo_dir=repo, head_tree="--output=/tmp/x") == []
         assert not [c for c in spy.calls if any("--output" in a for a in c)]
 
     def test_only_a_fragment_path_is_read_as_a_stub(self, repo):

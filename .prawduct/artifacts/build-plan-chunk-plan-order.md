@@ -64,7 +64,10 @@ last_validated: 2026-11-22
 
 **Inferred (not in the design):** D3's refusal emits a `critic.chunks-ambiguous` governance-ledger event, because the proportionality norm requires a new control to emit its yield, and the design names neither the yield nor an emission. The event carries the review mode, the proposed ids and the plan scope, and no paths.
 
-**Decisions made mid-build:** *(appended while building)*
+**Decisions made mid-build:**
+- Chunk 01: tests (f) and (g) live in `tests/test_review_interval_extension.py`, not `test_critic_mode_inference.py`, because that file's fixture builds plans with Deliverables paths (settled by: match the product's choices). (g) is green on develop as well: it pins mutant M5, as the design says. (f) went red on develop only once its shared path existed at review time. Before that, a missing-Deliverable finding kept chunk 1 open and the test never reached the deferral.
+- Chunk 01: beyond the design's six fixtures, six tests in `tests/test_critic_consolidate.py` (`_st8_repo` and the stub-dispatch control) proposed 03 or 04 with an earlier chunk open. They were renegotiated in the open: the ST8 work now touches the adjacent 01 and 02, and the stub-dispatch control asserts the withheld note. Each docstring says why.
+- Chunk 01: the change fragment is written now, not in 06, because `plan new`'s stub fails the live-fragment guard (`test_change_fragments.py`) once it is committed. 06 completes it.
 
 **Level:** High. The design reproduced both bugs on develop, prototyped the rule against every fixture shape, and named the six fixtures it changes. Two items were read and not run: the Stop-path deferral (D4) and the `critic-begin` dispatch order. Chunks 01 and 02 run both first.
 

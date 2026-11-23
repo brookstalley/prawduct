@@ -11313,9 +11313,11 @@ _ST8_PLAN = (
 
 def _st8_repo(tmp_path: Path, *, plan: "str | None" = _ST8_PLAN) -> Path:
     """A branch claimed by a three-chunk plan (no `## Status` block), with
-    uncommitted work touching chunks 01's and 03's Deliverables — so a `chunk`
-    dispatch proposes exactly 01 and 03. ``plan=None`` leaves the checkout
-    unbound (no plan at all)."""
+    uncommitted work touching chunks 01's and 02's Deliverables — so a `chunk`
+    dispatch proposes exactly 01 and 02. They are adjacent: work on 01 and 03
+    with 02 open would withhold 03 (the plan-order rule,
+    `test_plan_status.py::TestPlanOrder`), which these tests do not pin.
+    ``plan=None`` leaves the checkout unbound (no plan at all)."""
     repo = tmp_path / "r"
     _init_repo(repo)
     for name in ("one", "two", "three"):
@@ -11325,7 +11327,7 @@ def _st8_repo(tmp_path: Path, *, plan: "str | None" = _ST8_PLAN) -> Path:
         _commit_file(repo, ".prawduct/artifacts/build-plan-cs.md", plan, "plan")
     _git(repo, "checkout", "-b", "feat/cs", "--quiet")
     (repo / "src/one.py").write_text("one = 1\n")
-    (repo / "src/three.py").write_text("three = 1\n")
+    (repo / "src/two.py").write_text("two = 1\n")
     return repo
 
 
@@ -11342,18 +11344,18 @@ class TestTheReviewNamesItsChunks:
 
     def test_a_fact_names_two_chunks_and_the_ledger_event_the_first(self, tmp_path):
         repo = _st8_repo(tmp_path)
-        result = cc.begin_review(repo, "chunk", chunks=["01", "03"])
+        result = cc.begin_review(repo, "chunk", chunks=["01", "02"])
         assert result["status"] == "ok", result
         manifest = _st8_manifest(repo)
-        assert manifest["chunks"] == ["01", "03"]
-        assert manifest["chunks_proposed"] == ["01", "03"]
+        assert manifest["chunks"] == ["01", "02"]
+        assert manifest["chunks_proposed"] == ["01", "02"]
         assert "chunk" not in manifest
         _write_partial(repo, "reviewer", manifest["commit_reviewed"])
         done = _run_consolidate(repo)
         assert done.returncode == 0, done.stderr
         (fact,) = _store_facts(repo, "review")
         body = fact["body"]
-        assert (body["chunks"], body["chunks_proposed"]) == (["01", "03"], ["01", "03"])
+        assert (body["chunks"], body["chunks_proposed"]) == (["01", "02"], ["01", "02"])
         assert "chunk" not in body
         # The ledger event keeps its `chunk` field (its own schema, read by
         # `review-stats`), now taken from the manifest's `chunks`.
@@ -11368,7 +11370,7 @@ class TestTheReviewNamesItsChunks:
             repo_dir=repo,
         )
         assert {k: s.state for k, s in states.items()} == {
-            "01": "done", "02": "open", "03": "done"
+            "01": "done", "02": "done", "03": "open"
         }
 
     def test_omitted_flags_declare_the_proposal(self, tmp_path):
@@ -11376,19 +11378,19 @@ class TestTheReviewNamesItsChunks:
         result = _run_begin(repo, "--mode", "chunk")
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
-        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "02"]
         assert "chunk" not in manifest
         assert "WARNING: declared chunk" not in result.stderr
 
     def test_final_proposes_the_chunks_its_interval_built_not_every_open_one(self, tmp_path):
         """#1072: a `final` once proposed every open chunk, so a mid-plan keystone
-        review certified 02, which nothing in the interval touches and no commit
-        names. A mode sets depth, not reach: the proposal, and so the fact, is
-        what the interval built — here the uncommitted work on 01 and 03."""
+        review certified a chunk nothing in the interval touches and no commit
+        names (here 03). A mode sets depth, not reach: the proposal, and so the
+        fact, is what the interval built — here the uncommitted work on 01 and 02."""
         repo = _st8_repo(tmp_path)
         assert cc.begin_review(repo, "final")["status"] == "ok"
         manifest = _st8_manifest(repo)
-        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "02"]
 
     def test_a_declared_id_is_normalized_to_the_plan(self, tmp_path):
         """`--chunks 1` against a plan printing `01`: recorded as the plan prints it."""
@@ -11400,15 +11402,15 @@ class TestTheReviewNamesItsChunks:
 
     def test_a_declared_chunk_outside_the_proposal_warns_and_is_recorded(self, tmp_path):
         repo = _st8_repo(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk", "--chunks", "02")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "03")
         assert result.returncode == 0, result.stderr
-        assert "WARNING: declared chunk(s) 02 are not in the proposal" in result.stderr
+        assert "WARNING: declared chunk(s) 03 are not in the proposal" in result.stderr
         manifest = _st8_manifest(repo)
-        assert manifest["chunks"] == ["02"]
-        assert manifest["chunks_proposed"] == ["01", "03"]
+        assert manifest["chunks"] == ["03"]
+        assert manifest["chunks_proposed"] == ["01", "02"]
         # Control: declaring inside the proposal says nothing.
         _abandon(repo)
-        inside = _run_begin(repo, "--mode", "chunk", "--chunks", "03")
+        inside = _run_begin(repo, "--mode", "chunk", "--chunks", "02")
         assert inside.returncode == 0, inside.stderr
         assert "WARNING: declared chunk" not in inside.stderr
 
@@ -11511,7 +11513,14 @@ class TestTheDispatchProposalLeavesOutTheStubAndSaysWhyItNamedFewer:
         at_tree = cc._proposed_chunks(repo, plan, read, files, "chunk", None, None, stub_tree)
         assert at_tree == ([], ())
         # Control: with no tree, the working tree's written fragment is read.
-        assert cc._proposed_chunks(repo, plan, read, files, "chunk") == (["04"], ())
+        # 01 to 03 are open, so the plan-order rule withholds 04 rather than
+        # proposing it (`test_plan_status.py::TestPlanOrder`); the withheld
+        # note is what shows the fragment was read as work, since an unread one
+        # touches nothing and says nothing.
+        chunks, notes = cc._proposed_chunks(repo, plan, read, files, "chunk")
+        assert chunks == []
+        (note,) = notes
+        assert note.startswith("chunk 04 not proposed") and "`.prawduct/changes/cs.md`" in note
 
     def test_a_whole_plan_proposal_git_cannot_walk_says_so_in_the_dispatch_notes(
         self, tmp_path, monkeypatch
@@ -11540,29 +11549,27 @@ class TestRecordLintGradesTheChunksTheFactNames:
     grades are the chunks the review fact will certify — every one of them, not
     the plan's first open chunk."""
 
-    def _repo_touching_two_and_three(self, tmp_path: Path) -> Path:
-        repo = _st8_repo(tmp_path)
-        (repo / "src/one.py").write_text("one = 0\n")  # back to committed
-        (repo / "src/two.py").write_text("two = 1\n")
-        return repo
+    def _repo_touching_one_and_two(self, tmp_path: Path) -> Path:
+        # Two adjacent open chunks, so neither is withheld by plan order.
+        return _st8_repo(tmp_path)
 
     def test_no_declared_chunks_grades_the_whole_proposal(self, tmp_path):
-        repo = self._repo_touching_two_and_three(tmp_path)
+        repo = self._repo_touching_one_and_two(tmp_path)
         result = _run_begin(repo, "--mode", "chunk")
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
-        assert manifest["chunks"] == ["02", "03"]
+        assert manifest["chunks"] == ["01", "02"]
         lint = manifest["record_lint"]
-        assert lint["chunks_graded"] == ["02", "03"], lint
-        assert lint["chunk_graded"] == "02"
-        assert "record-lint graded chunk 02, 03 of" in result.stdout
+        assert lint["chunks_graded"] == ["01", "02"], lint
+        assert lint["chunk_graded"] == "01"
+        assert "record-lint graded chunk 01, 02 of" in result.stdout
 
     def test_an_explicit_chunk_grades_that_chunk(self, tmp_path):
-        repo = self._repo_touching_two_and_three(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk", "--chunks", "03")
+        repo = self._repo_touching_one_and_two(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "02")
         assert result.returncode == 0, result.stderr
         lint = _st8_manifest(repo)["record_lint"]
-        assert (lint["chunks_graded"], lint["chunk_graded"]) == (["03"], "03"), lint
+        assert (lint["chunks_graded"], lint["chunk_graded"]) == (["02"], "02"), lint
 
 
 class TestAVerifyPassProposesTheChunksItVerifies:
@@ -11606,6 +11613,60 @@ class TestAVerifyPassProposesTheChunksItVerifies:
             n.startswith("WARNING: declared chunk(s) 02 are not in the proposal") and "(01, 03)" in n
             for n in result["notes"]
         ), result["notes"]
+
+
+class TestPartOneOfAPlanLeavesItsLaterChunksOpen:
+    """#1198 (A2, R3). A six-chunk plan ships 01 to 04 as part one; part one
+    also writes `docs/guide.md`, which only the cumulative-final 06 lists. Its
+    boundary `cumulative` names 01 to 04 and withholds 06 while 05 is open, and
+    a `verify-resolutions` over that review inherits the narrowed set rather
+    than naming 06 again. 05 and 06 stay open for part two."""
+
+    _PLAN = (
+        "---\nartifact: build-plan\nscope: cs\nbranch: feat/cs\nbase: main\n---\n\n# Plan\n\n"
+        + "".join(
+            f"### Chunk 0{n}: c{n}\n\n- **Deliverables:** `src/c{n}.py`\n\n" for n in range(1, 6)
+        )
+        + "### Chunk 06: the docs\n\n- **Type:** cumulative-final\n- **Deliverables:** `docs/guide.md`\n"
+    )
+    _WARN = {"name": "Tighten", "goal": "Nothing Is Unintended", "severity": "warning",
+             "recommendation": "Tighten", "files": ["src/c1.py"]}
+
+    def test_the_boundary_review_and_its_verify_pass_leave_05_and_06_open(self, tmp_path):
+        from lib import plan_status
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
+        _commit_file(repo, ".prawduct/artifacts/build-plan-cs.md", self._PLAN, "plan")
+        _git(repo, "checkout", "-b", "feat/cs", "--quiet")
+        for n in range(1, 5):
+            _commit_file(repo, f"src/c{n}.py", "x = 1\n", f"feat(cs): c{n} (Chunk 0{n})")
+        _commit_file(repo, "docs/guide.md", "draft\n", "docs(cs): the guide, drafted early")
+
+        result = cc.begin_review(repo, "cumulative", force=True)
+        assert result["status"] == "ok", result
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "02", "03", "04"]
+        assert any(
+            n.startswith("chunk 06 not proposed") and "chunk 05" in n for n in result["notes"]
+        ), result["notes"]
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[self._WARN])
+        assert _run_consolidate(repo).returncode == 0
+
+        (repo / "src/c1.py").write_text("x = 2  # the warning, fixed\n")
+        verify = cc.begin_review(repo, "verify-resolutions")
+        assert verify["status"] == "ok", verify
+        assert _st8_manifest(repo)["chunks"] == ["01", "02", "03", "04"]
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+
+        states = plan_status.chunk_states(
+            repo / ".prawduct/artifacts/build-plan-cs.md", evidence.read_facts(repo), repo_dir=repo,
+        )
+        assert {k: s.state for k, s in states.items()} == {
+            "01": "done", "02": "done", "03": "done", "04": "done", "05": "open", "06": "open",
+        }
 
 
 class TestManifestChunkFields:
