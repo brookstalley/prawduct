@@ -1119,7 +1119,9 @@ class TestModeAdvisoryFollowsTheVerifiedReview:
     _CHUNK = TestModeAdvisoryAfterAVerifyPass._CHUNK
     _VERIFY = TestModeAdvisoryAfterAVerifyPass._VERIFY
 
-    def _stop_after(self, tmp_path, monkeypatch, capsys, own_mode, sibling_mode) -> str:
+    def _stop_after(
+        self, tmp_path, monkeypatch, capsys, own_mode, sibling_mode, verifies="rev-own"
+    ) -> str:
         repo = _session_repo(tmp_path)
         prawduct = repo / ".prawduct"
         (prawduct / "artifacts").mkdir(parents=True)
@@ -1146,7 +1148,7 @@ class TestModeAdvisoryFollowsTheVerifiedReview:
                 "body": body(sibling_mode, "2" * 40, t1),
             }) + "\n")
         appended = evidence.append_fact(
-            repo, "review", "rev-verify", body(self._VERIFY, t1, t2, verifies="rev-own")
+            repo, "review", "rev-verify", body(self._VERIFY, t1, t2, verifies=verifies)
         )
         assert appended["status"] == "appended", appended
         monkeypatch.setattr(
@@ -1171,6 +1173,22 @@ class TestModeAdvisoryFollowsTheVerifiedReview:
         note = next((line for line in err.splitlines() if self._NOTE in line), None)
         assert note is not None, err
         assert f"a verify-resolutions pass over a '{self._CHUNK}' review" in note, note
+
+    def test_a_pass_naming_a_review_not_yet_ingested_asks_for_no_final(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """The named review has not reached this clone: the NOTE says which
+        review is missing and how to bring it in, and asks for no `final`,
+        which might not be owed. The other two tests are its controls."""
+        err = self._stop_after(
+            tmp_path, monkeypatch, capsys, self._CHUNK, self._CHUNK, verifies="rev-elsewhere"
+        )
+        note = next((line for line in err.splitlines() if "rev-elsewhere" in line), None)
+        assert note is not None, err
+        assert note.startswith("NOTE: All 3 chunks done or dropped;"), note
+        assert "is not in this clone's evidence store yet" in note, note
+        assert "evidence sync" in note, note
+        assert self._NOTE not in err, err
 
 
 def _imported_history_session(

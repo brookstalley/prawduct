@@ -2942,11 +2942,13 @@ def _review_mode(fact: dict) -> str:
 
 def _review_verified_passes_stand_on(
     reviews: list[dict], fact: dict
-) -> "dict | None":
-    """The review whose goals ``fact`` stands for: ``fact`` itself unless it is
-    a ``verify-resolutions`` pass, else — walked back over every such pass —
-    the review the first of them resolves. ``None`` when the walk reaches no
-    review that is not a verify pass.
+) -> "tuple[dict | None, dict]":
+    """``(stands_for, last)``: the review whose goals ``fact`` stands for, and
+    the fact the walk stopped at. ``stands_for`` is ``fact`` itself unless it
+    is a ``verify-resolutions`` pass, else — walked back over every such pass —
+    the review the first of them resolves, or ``None`` when the walk reaches no
+    review that is not a verify pass; then ``last`` is the pass whose link
+    ended it, which the caller asks why (:func:`coverage_algebra.missing_anchor`).
 
     The walk follows the recorded LINK, not store position:
     ``coverage_algebra.prior_review`` is the one owner of "which review does
@@ -2960,16 +2962,18 @@ def _review_verified_passes_stand_on(
     ``reviews`` is the store's review facts in store order. A recorded anchor
     is found wherever it sits, so the walk stops at a fact it has already
     visited rather than trusting store order to end it: a store naming a cycle
-    reaches no review, which reads as ``None``.
+    reaches no review.
     """
     current: "dict | None" = fact
+    last = fact
     seen: "set[int]" = set()
     while current is not None and _review_mode(current) == _CRITIC_MODE_VERIFY_RESOLUTIONS:
         if id(current) in seen:
-            return None
+            return None, last
         seen.add(id(current))
+        last = current
         current = coverage_algebra.prior_review(reviews, current)
-    return current
+    return current, last
 
 
 def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
@@ -3013,7 +3017,10 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
        links reach no other review → unsatisfied. A verify pass runs Goals 1-3
        over a delta; the walk is how it inherits synthesis, and with nothing at
        the end of it there is no record that synthesis ran. Unlike case 4 this
-       session DID review, so "nothing to judge" does not apply.
+       session DID review, so "nothing to judge" does not apply. When the pass
+       that ends the walk names a review this store does not hold yet, the NOTE
+       names that review and asks for no ``final``: it may only be waiting to
+       be ingested, so synthesis is unknown here rather than missing.
     """
     binding = work_unit.resolve(project_dir)
     if binding.state == "broken":
@@ -3061,8 +3068,21 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     if not review_facts:
         return True, ""
     latest = review_facts[-1]
-    stands_for = _review_verified_passes_stand_on(reviews, latest)
+    stands_for, stopped_at = _review_verified_passes_stand_on(reviews, latest)
     if stands_for is None:
+        missing = coverage_algebra.missing_anchor(reviews, stopped_at)
+        if missing is not None:
+            # The pass names its review and that review has not reached this
+            # clone's store: whether synthesis ran is unknown, not absent, and
+            # asking for a `final` would spend a round that may not be owed.
+            return False, (
+                f"All {total} chunks done or dropped; last Critic review was "
+                f"'{_CRITIC_MODE_VERIFY_RESOLUTIONS}', and the review it verifies "
+                f"({missing}) is not in this clone's evidence store yet, so whether "
+                "end-of-cycle synthesis ran cannot be judged here. `prawduct-hook "
+                "evidence sync` fetches and ingests other clones' review facts; "
+                "this NOTE re-judges once that review arrives."
+            )
         return False, (
             f"All {total} chunks done or dropped; last Critic review was "
             f"'{_CRITIC_MODE_VERIFY_RESOLUTIONS}', and no review it verifies is "
