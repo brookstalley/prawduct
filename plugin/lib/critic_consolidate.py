@@ -3044,6 +3044,21 @@ def _refuse_over_budget(
         )
     )
     swept = dispositions.auto_accept(project_dir, budget["review_ids"], reason=reason)
+    # Each sweep ACCEPT travels to other clones like any other answer, attached
+    # to its review's note as it is recorded. One left with no note is still in
+    # the store, so it is said here, in the block critic-begin prints, rather
+    # than left for the reader to find.
+    unsent = swept.get("unsent", 0)
+    if not isinstance(unsent, int):
+        unsent = 0
+    swept = {**swept, "unsent": unsent}
+    if unsent:
+        notes = [
+            *notes,
+            f"{unsent} budget ACCEPT(s) were recorded but not attached to "
+            f"{evidence_notes.NOTES_REF}, so other clones do not see them yet; "
+            f"{evidence_notes.REPAIR_CLAUSE}",
+        ]
     # Rendered over the SWEPT ids, not over the scope: those are the findings
     # this refusal just answered, and the census is the answer's only trace
     # outside the store. Selecting differently from the sweep is how a builder
@@ -6143,7 +6158,8 @@ def answered_lint_results(store: "dict | None", scope: "str | None") -> dict:
 
         {"warning": {identity: sentence}, "blocking": {identity: sentence}}
 
-    **A WARNING is answered by the newest disposition being an accept or a
+    **A WARNING is answered by the winning disposition (the greatest
+    ``dispositions.answer_key``, the same in every clone) being an accept or a
     file** — the answers ``prior_dispositions`` hands a reviewer so it declines
     to re-raise. A ``fixed`` disposition answers nothing here: the lint still
     reporting the identical result is the evidence it was not fixed.
@@ -7556,10 +7572,11 @@ def _attach_note(project_dir: Path, envelope: object, anchor: "str | None") -> N
     outcome = evidence_notes.attach(project_dir, envelope, anchor)
     if outcome.get("status") == "error":
         print(
-            f"NOTE: critic-consolidate: {envelope.get('kind')} fact "
-            f"{envelope.get('id')!r} is recorded, but its git note was not "
-            f"written ({outcome.get('reason')}) — the fact stays in this clone's "
-            "store and does not travel to other clones.",
+            evidence_notes.unwritten_notice(
+                "critic-consolidate",
+                f"{envelope.get('kind')} fact {envelope.get('id')!r}",
+                outcome.get("reason"),
+            ),
             file=sys.stderr,
         )
 

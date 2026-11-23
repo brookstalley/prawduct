@@ -8,9 +8,8 @@ wrong, and both are queryable, so they are pinned here rather than left to prose
   — it is nobody's shared record, so mirroring outcomes into it would reach no
   one; and
 * a finding's outcome is a ``resolution`` or ``disposition`` fact in the evidence
-  store, where ``resolution`` travels between clones on ``refs/notes/prawduct``
-  and ``disposition`` stays in the clone that wrote it
-  (``evidence.TRANSPORTED_KINDS``).
+  store, and both travel between clones on ``refs/notes/prawduct`` with the
+  reviews they answer (``evidence.TRANSPORTED_KINDS``).
 
 The choice recorded in ``lib/ledger.py``'s docstring is to say so where the
 ledger is described, and to name the command that shows an outcome. Each test
@@ -93,13 +92,20 @@ class TestTheDocstringSaysWhereOutcomesLive:
         assert f"prawduct-hook {OUTCOME_COMMAND}" in para
         assert "evidence sync" in para
 
-    def test_its_transport_claim_matches_the_transported_kinds(self):
-        """The paragraph says resolutions travel and dispositions stay. If
-        ``TRANSPORTED_KINDS`` changes, so must the sentence."""
+    def test_it_says_both_outcome_kinds_travel_and_the_transported_kinds_agree(self):
+        """Renegotiated: the paragraph said resolutions travel and dispositions
+        stay in the clone that wrote them, and this test pinned that. Since
+        dispositions joined the transport, the paragraph says both outcome
+        kinds travel, and the set must hold both. If ``TRANSPORTED_KINDS``
+        drops either, the sentence is false again.
+
+        Still pinned: the paragraph names the set that decides it, and the old
+        sentence is gone rather than left beside the new one."""
         para = _docstring_paragraph()
-        assert "resolution" in evidence.TRANSPORTED_KINDS
-        assert "disposition" not in evidence.TRANSPORTED_KINDS
-        assert "``disposition`` facts stay in the clone that wrote them" in para
+        assert {"resolution", "disposition"} <= evidence.TRANSPORTED_KINDS
+        assert "Both outcome kinds reach other clones with the reviews they answer" in para
+        assert "evidence.TRANSPORTED_KINDS" in para
+        assert "stay in the clone that wrote them" not in para
 
 
 class TestTheNamedCommandExists:

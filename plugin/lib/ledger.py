@@ -46,11 +46,11 @@ other clone, CI job or teammate ever reads it. It records that a review
 happened and what it raised, and never how a finding ended. A finding's
 outcome is a fact in the evidence store: a ``resolution`` (a verify pass, or a
 waiver consolidation recorded) or a ``disposition`` (ACCEPT, FILE, or a fix
-that bought no round). ``resolution`` facts reach other clones with the
-reviews they discharge, on ``refs/notes/prawduct`` — attached at
-consolidation, sent by ``prawduct-hook evidence sync`` (which ``/prawduct:pr``
-runs after each push), taken in at session start. ``disposition`` facts stay
-in the clone that wrote them (``evidence.TRANSPORTED_KINDS``).
+that bought no round). Both outcome kinds reach other clones with the
+reviews they answer, on ``refs/notes/prawduct`` (``evidence.TRANSPORTED_KINDS``)
+— attached on the answered review's anchor as they are recorded, sent by
+``prawduct-hook evidence sync`` (which ``/prawduct:pr`` runs after each push),
+taken in at session start.
 ``prawduct-hook render-dispositions`` shows each finding's outcome, and
 ``review-stats`` reports outcomes by joining each review event to the store
 (``telemetry._read_dispositions``). No outcome kind is mirrored here (#606):

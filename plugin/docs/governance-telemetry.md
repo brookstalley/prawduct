@@ -14,8 +14,8 @@ the Stop hook and `critic-consolidate` in-process for `learning.*` (agents never
 hand-author JSONL; the one append validates the record and computes the envelope). It is per worktree and
 records that a review happened and what it raised, never a finding's outcome: a
 `resolution` or `disposition` fact in the evidence store holds that, and
-`prawduct-hook render-dispositions` shows it. Resolutions reach other clones on
-`refs/notes/prawduct` (`evidence sync`); dispositions stay in their clone.
+`prawduct-hook render-dispositions` shows it. Resolutions and dispositions reach
+other clones on `refs/notes/prawduct` (`evidence sync`).
 
 Every event shares the **envelope**; the kind-specific payload nests beneath a
 kind-named key (`review` for `review.*`):
@@ -402,9 +402,9 @@ on a session above the ceiling. Schema 10 added the key.
 What governance cost and what it caught, **per plugin version** (`major.minor`).
 It reads the clone-shared evidence store, not the ledger. Every fact there
 carries the plugin version that wrote it, and nothing is lost when a worktree is
-deleted. The store also holds the review and resolution facts ingested from other
-clones' notes (`refs/notes/prawduct`), so two clones of one product count those
-reviews in both. `review-stats` answers a different question: what a review costs, by
+deleted. The store also holds the review, resolution and disposition facts ingested
+from other clones' notes (`refs/notes/prawduct`), so two clones of one product count
+those reviews in both, and each finding's outcome once. `review-stats` answers a different question: what a review costs, by
 mode and model, in this worktree. Exit 0 with a report (an empty store is an
 answer); exit 1 on bad arguments or a store that cannot be read. `--since` and
 `--until` scope facts by their `ts`, and take the same bounds `review-stats`
