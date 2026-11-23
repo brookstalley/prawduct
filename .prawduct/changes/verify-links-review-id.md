@@ -4,6 +4,7 @@ type: fix
 scope: verify-links-review-id
 date: 2026-11-23
 title: a verify-resolutions fact names the review it verifies
+closes: [brookstalley/prawduct#1220]
 ---
 A `verify-resolutions` pass was linked to the review it verified only by tree: the newest review
 anywhere in the clone-wide store whose `head_tree` was the pass's `base_tree`. When two worktrees
