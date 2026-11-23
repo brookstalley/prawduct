@@ -43,7 +43,7 @@ def _governed_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "product"
     repo.mkdir()
     run = lambda *a: subprocess.run(  # noqa: E731
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],
+        ["git", *a],
         cwd=str(repo), capture_output=True, check=True, timeout=30,
     )
     run("init", "-q", "-b", "main")

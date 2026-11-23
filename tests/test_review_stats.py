@@ -37,12 +37,7 @@ CUMULATIVE_MODE = "cumulative (bundle review, ready for merge)"
 def _env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "CLAUDE_PROJECT_DIR": str(repo),
-    }
+    return scrubbed_env(home, CLAUDE_PROJECT_DIR=str(repo))
 
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -1232,6 +1227,7 @@ sys.path.insert(0, str(ROOT))
 from lib import dispositions as _dispositions  # noqa: E402
 from lib import evidence as _evidence  # noqa: E402
 from lib import stats as _stats  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 
 def _git_repo(tmp_path: Path) -> Path:

@@ -25,6 +25,7 @@ from lib.advisory_store import (
     read_store,
     run_sync_advisories,
 )
+from conftest import scrubbed_env
 
 HOOK = Path(__file__).resolve().parents[1] / "plugin" / "bin" / "prawduct-hook"
 
@@ -38,8 +39,7 @@ def _isolated_registry():
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
-         "-c", "commit.gpgsign=false", *args],
+        ["git", "-c", "commit.gpgsign=false", *args],
         cwd=str(repo), capture_output=True, text=True, check=True,
     ).stdout
 
@@ -164,8 +164,7 @@ class TestFollowingTheRemedy:
         proc = subprocess.run(
             [sys.executable, str(HOOK), *argv[1:]],
             cwd=str(repo), capture_output=True, text=True, timeout=60,
-            env={"PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-                 "HOME": str(tmp_path), "CLAUDE_PROJECT_DIR": str(repo)},
+            env=scrubbed_env(tmp_path, CLAUDE_PROJECT_DIR=str(repo)),
         )
         assert proc.returncode == 0, proc.stderr
         assert proc.stdout.startswith("bound: ")

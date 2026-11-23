@@ -25,7 +25,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import GIT_TEST_ENV  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -34,15 +34,7 @@ CHANGE_LOG = ".prawduct/change-log.md"
 
 
 def _git_env(repo: Path) -> dict[str, str]:
-    return {
-        **GIT_TEST_ENV,
-        "HOME": str(repo.parent / "_home"),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(repo.parent / "_home")
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:

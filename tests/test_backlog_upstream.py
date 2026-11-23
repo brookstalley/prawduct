@@ -221,11 +221,9 @@ class TestADevelopmentBuildNamesItsCommit:
     `found_in` stays the bare version (a machine-read field)."""
 
     def _git(self, root: Path, *args: str) -> str:
-        env = {**__import__("os").environ, "GIT_CONFIG_GLOBAL": "/dev/null",
-               "GIT_CONFIG_SYSTEM": "/dev/null"}
         return subprocess.run(
-            ["git", "-C", str(root), "-c", "user.email=t@e.com", "-c", "user.name=T", *args],
-            capture_output=True, text=True, check=True, env=env,
+            ["git", "-C", str(root), *args], cwd=str(root),
+            capture_output=True, text=True, check=True,
         ).stdout.strip()
 
     def _tree(self, tmp_path: Path) -> "tuple[Path, str]":
@@ -488,9 +486,9 @@ class TestIdentityResolvesFromTwoSignals:
         )
 
     def _git_repo(self, tmp_path, origin):
-        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        subprocess.run(["git", "init", "-q", str(tmp_path)], cwd=str(tmp_path), check=True)
         subprocess.run(
-            ["git", "-C", str(tmp_path), "remote", "add", "origin", origin], check=True
+            ["git", "-C", str(tmp_path), "remote", "add", "origin", origin], cwd=str(tmp_path), check=True
         )
 
     def _write_config(self, tmp_path, body):
@@ -552,11 +550,10 @@ class TestIdentityResolvesFromTwoSignals:
         (clone / "seed.txt").write_text("seed", encoding="utf-8")
         for args in (
             ["-C", str(clone), "add", "seed.txt"],
-            ["-C", str(clone), "-c", "user.email=t@example.com", "-c", "user.name=t",
-             "commit", "-qm", "seed"],
+            ["-C", str(clone), "commit", "-qm", "seed"],
             ["-C", str(clone), "worktree", "add", "-q", "-b", "wt", str(tmp_path / "wt")],
         ):
-            subprocess.run(["git", *args], check=True)
+            subprocess.run(["git", *args], cwd=str(tmp_path), check=True)
 
         assert upstream.resolve_self_identity(tmp_path / "wt") == ("acme/widget",)
 
@@ -665,10 +662,10 @@ class TestRepoNamesCompareTheWayGitHubDoes:
         (prawduct / "project-state.yaml").write_text(
             "backlog_service_repo: Acme/Widget\n", encoding="utf-8"
         )
-        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        subprocess.run(["git", "init", "-q", str(tmp_path)], cwd=str(tmp_path), check=True)
         subprocess.run(
             ["git", "-C", str(tmp_path), "remote", "add", "origin",
-             "https://github.com/ACME/widget.git"],
+             "https://github.com/ACME/widget.git"], cwd=str(tmp_path),
             check=True,
         )
 

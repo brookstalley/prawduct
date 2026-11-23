@@ -15,7 +15,6 @@ import json
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 _TESTS_DIR = Path(__file__).resolve().parent
@@ -30,6 +29,7 @@ from lib.backlog import cache, cachequery, cli, core, sync  # noqa: E402
 from lib.backlog import transport as tp  # noqa: E402
 from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub, own_tracker  # noqa: E402
+from conftest import suite_now  # noqa: E402
 
 OWNER, REPO = "octo", "repo"
 SCOPE = f"{OWNER}/{REPO}"
@@ -136,7 +136,7 @@ class TestGetEvictsTheGhost:
         cli.run(str(repo_dir), ["get", ghost, "--json"], transport=fake)
         capsys.readouterr()
 
-        served = cachequery.open_items(repo_dir, scope=SCOPE, now=datetime.now(timezone.utc))
+        served = cachequery.open_items(repo_dir, scope=SCOPE, now=suite_now())
         assert served["status"] == "ok", served
         assert ghost not in [i["id"] for i in served["data"]["items"]]
 

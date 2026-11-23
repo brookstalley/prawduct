@@ -39,8 +39,7 @@ def _isolated_registry():
 
 def git(cwd: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
-         "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
+        ["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
         cwd=str(cwd), capture_output=True, text=True, check=True,
     ).stdout
 
@@ -208,8 +207,7 @@ def git_at(cwd: Path, when: float, *args: str) -> str:
     """``git`` with both commit dates pinned to ``when`` (epoch seconds)."""
     stamp = f"@{int(when)} +0000"
     return subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
-         "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
+        ["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
         cwd=str(cwd), capture_output=True, text=True, check=True,
         env={**os.environ, "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp},
     ).stdout

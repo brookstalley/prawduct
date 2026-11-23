@@ -37,6 +37,7 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 
 sys.path.insert(0, str(ROOT))
 from lib import evidence  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +47,7 @@ from lib import evidence  # noqa: E402
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -605,7 +606,7 @@ class TestCaptureTree:
         (repo / "code.py").write_text("x = 3\n")
         _git(repo, "commit", "-q", "-am", "mine")
         merge = subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "other"],
+            ["git", "merge", "other"],
             cwd=str(repo), capture_output=True, text=True, timeout=15,
         )
         assert merge.returncode != 0, "fixture must actually conflict"
@@ -805,11 +806,7 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         timeout=25,
-        env={
-            "HOME": str(home),
-            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-            "CLAUDE_PROJECT_DIR": str(repo),
-        },
+        env=scrubbed_env(home, CLAUDE_PROJECT_DIR=str(repo)),
     )
 
 
@@ -826,12 +823,11 @@ class TestSeedReachesTheDurableRecord:
         result = subprocess.run(
             [sys.executable, str(HOOK), "critic-begin", "--mode", "chunk"],
             cwd=str(repo), capture_output=True, text=True, timeout=30,
-            env={
-                "HOME": str(tmp_path / "_home2"),
-                "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-                "CLAUDE_PROJECT_DIR": str(repo),
-                "CLAUDE_PLUGIN_ROOT": str(Path(HOOK).resolve().parent.parent),
-            },
+            env=scrubbed_env(
+                tmp_path / "_home2",
+                CLAUDE_PROJECT_DIR=str(repo),
+                CLAUDE_PLUGIN_ROOT=str(Path(HOOK).resolve().parent.parent),
+            ),
         )
         assert result.returncode == 0, result.stderr
         manifest = json.loads(
@@ -930,11 +926,7 @@ class TestEvidenceCli:
             capture_output=True,
             text=True,
             timeout=25,
-            env={
-                "HOME": str(home),
-                "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-                "CLAUDE_PROJECT_DIR": str(plain),
-            },
+            env=scrubbed_env(home, CLAUDE_PROJECT_DIR=str(plain)),
         )
         assert proc.returncode == 1
         assert "no git repository" in proc.stderr

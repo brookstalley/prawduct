@@ -34,7 +34,7 @@ def _repo(tmp_path: Path, threshold: str | None = "1") -> Path:
     if threshold is not None:
         state += f"evidence_store_threshold_mb: {threshold}\n"
     (repo / ".prawduct" / "project-state.yaml").write_text(state, encoding="utf-8")
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "init", "-q", str(repo)], cwd=str(tmp_path), check=True)
     return repo
 
 

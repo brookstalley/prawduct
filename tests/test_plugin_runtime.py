@@ -32,7 +32,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import SHAPED_REFLECTION
+from conftest import SHAPED_REFLECTION, scrubbed_env
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -56,7 +56,9 @@ def as_just_run(report: Path) -> Path:
     suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
     total = root.get("time") if root.tag == "testsuites" else None
     duration = float(total) if total else sum(float(s.get("time") or 0) for s in suites)
-    end = datetime.now(timezone.utc).timestamp() + duration + 0.05
+    # The report was written after every file the fixture wrote, so a start just after its
+    # own write time is after all of them; read from the file, not the clock.
+    end = report.stat().st_mtime + duration + 0.05
     os.utime(report, (end, end))
     return report
 
@@ -292,13 +294,12 @@ def run_plugin_hook(
     # keeps the plugin-lib import from writing .pyc into this repo during tests.
     home = mock_bin.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), command, *args],
         capture_output=True, text=True, env=env, timeout=90, input=stdin,
@@ -934,9 +935,12 @@ class TestPluginSubcommandsResolveViaLib:
         result = subprocess.run(
             [sys.executable, str(HOOK), "advisory", "list"],
             capture_output=True, text=True, timeout=90,
-            env={"HOME": str(tmp_path / "_home"), "CLAUDE_PROJECT_DIR": str(tmp_path),
-                 "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": "/usr/bin:/bin",
-                 "PYTHONDONTWRITEBYTECODE": "1"},
+            env=scrubbed_env(
+                tmp_path / "_home",
+                CLAUDE_PROJECT_DIR=str(tmp_path),
+                CLAUDE_PLUGIN_ROOT=str(ROOT),
+                PATH="/usr/bin:/bin",
+            ),
         )
         assert result.returncode == 0, result.stderr
         assert "advisory CLI unavailable" not in (result.stdout + result.stderr)
@@ -3736,10 +3740,12 @@ class TestJurisdictionSubcommand:
             [sys.executable, str(HOOK), "jurisdiction"],
             input="adopt the telemetry substrate for tracing",
             capture_output=True, text=True, timeout=90,
-            env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-                 "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                 "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-                 "PYTHONDONTWRITEBYTECODE": "1"},
+            env=scrubbed_env(
+                home,
+                CLAUDE_PROJECT_DIR=str(repo),
+                CLAUDE_PLUGIN_ROOT=str(ROOT),
+                PATH=os.environ.get("PATH", "/usr/bin:/bin"),
+            ),
         )
         assert result.returncode == 0, result.stderr
         assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout

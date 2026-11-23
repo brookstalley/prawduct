@@ -18,6 +18,7 @@ from lib.advisory_store import (
     make_codebase,
     run_all_probes,
 )
+from conftest import scrubbed_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOK = REPO_ROOT / "plugin" / "bin" / "prawduct-hook"
@@ -33,8 +34,7 @@ def _isolated_registry():
 
 def git(cwd: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
-         "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
+        ["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
         cwd=str(cwd), capture_output=True, text=True, check=True,
     ).stdout
 
@@ -104,7 +104,10 @@ class TestFires:
         (c,) = probe(clone)
         result = subprocess.run(
             [sys.executable, str(HOOK), *c.recommended_action.split()[1:]], cwd=str(clone),
-            capture_output=True, text=True, timeout=60, env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "h")},
+            capture_output=True, text=True, timeout=60, env=scrubbed_env(
+                tmp_path / "h",
+                PATH="/usr/bin:/bin",
+            ),
         )
         assert result.returncode == 0, result.stderr
         for line in c.evidence:

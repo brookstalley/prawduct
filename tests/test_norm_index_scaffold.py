@@ -284,6 +284,7 @@ class TestRepair:
 
 import json
 import subprocess
+from conftest import scrubbed_env  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -292,13 +293,12 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 def _run(project_dir: Path, *args: str) -> subprocess.CompletedProcess:
     home = project_dir.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        PATH="/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), "norm-index-scaffold", *args],
         capture_output=True, text=True, env=env, timeout=30,

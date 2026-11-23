@@ -393,7 +393,7 @@ def test_a_per_clone_exclude_does_not_satisfy_the_contract(tmp_path):
     assert drift["ignored_by_rule"] == []
 
 
-#: Every test using `global_excludes` lifts the suite's git isolation (`conftest.GIT_TEST_ENV`) on
+#: Every test using `global_excludes` lifts the suite's git isolation (`conftest.TEST_ENV`) on
 #: purpose, so its git children read a global config, and testament must not reuse the result.
 _READS_A_GLOBAL_GIT_CONFIG = pytest.mark.uncacheable(
     "its subject is a user-level git config: it lifts the suite's GIT_CONFIG_GLOBAL isolation "

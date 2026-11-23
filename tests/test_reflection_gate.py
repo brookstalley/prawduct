@@ -50,7 +50,7 @@ _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from conftest import SHAPED_REFLECTION  # noqa: E402 — one home for the shape
+from conftest import SHAPED_REFLECTION, TEST_NOW_EPOCH  # noqa: E402 — one home for the shape
 from lib import core as lib_core  # noqa: E402
 from lib import gates  # noqa: E402
 from lib import host as lib_host  # noqa: E402
@@ -84,7 +84,7 @@ _ID_SHAPES = (
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -218,14 +218,14 @@ class _Session:
 
     The span bounds its reflog walk by `.session-start`, and git stamps both
     reflog entries and commits with the committer date. Fixture history is
-    written at the real clock; the session's start and every git move it makes
+    written at the suite's clock; the session's start and every git move it makes
     sit minutes later, so no fixture step can land in the session's first
     second and be read as the session's own.
     """
 
-    def __init__(self, repo: Path):
+    def __init__(self, repo: Path, started: "int | None" = None):
         self.repo = repo
-        self.started = int(time.time()) + 600
+        self.started = TEST_NOW_EPOCH + 600 if started is None else started
         _mark_base(repo)
         (repo / ".prawduct" / ".session-start").write_text(
             time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.started))
@@ -238,7 +238,7 @@ class _Session:
         """``git`` with the clock at ``offset`` seconds after the session start."""
         env = dict(os.environ, GIT_COMMITTER_DATE=f"@{self.started + offset} +0000")
         return subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            ["git", *args],
             cwd=str(self.repo), capture_output=True, text=True, timeout=15,
             check=True, env=env,
         ).stdout.strip()
@@ -268,7 +268,7 @@ def _delegate_commits(
     env = dict(os.environ, GIT_COMMITTER_DATE=f"@{s.started + 30} +0000")
     for args in (["add", path], ["commit", "-q", "-m", "delegate's work"]):
         subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            ["git", *args],
             cwd=str(agent), check=True, capture_output=True, env=env,
         )
 
@@ -359,7 +359,7 @@ class TestMovesThisSessionDidNotAuthor:
         # git checks it before merging, so without one (a runner with no global
         # config) the merge refuses outright and there is nothing to conclude.
         merge = subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "-q", "other"],
+            ["git", "merge", "-q", "other"],
             cwd=str(repo), capture_output=True,
         )
         assert merge.returncode != 0, "fixture must conflict"
@@ -996,9 +996,9 @@ class TestAFileThisSessionWroteByAnyMeans:
     def test_a_rename_counts_by_its_inode_change(self, tmp_path):
         """``mv`` keeps a file's modification time, so a renamed file is read
         by when its inode last changed. The rename runs on the real clock, so
-        the call around it is placed there too."""
+        the session around it is placed there too."""
         repo = _repo(tmp_path)
-        s = _Session(repo)
+        s = _Session(repo, started=int(time.time()) + 600)
         old = repo / "code.py"
         idle = s.started - 700  # before the transcript begins: says nothing
         os.utime(old, (idle, idle))

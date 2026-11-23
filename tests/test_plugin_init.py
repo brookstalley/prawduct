@@ -30,6 +30,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import scrubbed_env
+
 
 def _writes_no_base_branch_key(text: str) -> bool:
     """No *uncommented* `base_branch:` key in the rendered state file.
@@ -100,13 +102,12 @@ class TestCoreResolution:
 def _env(target: Path) -> dict:
     home = target.parent / "_home"
     home.mkdir(exist_ok=True, parents=True)
-    return {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(target),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(target),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH="/usr/bin:/bin:/usr/sbin:/sbin",
+    )
 
 
 def run_init(target: Path, name: str, *flags: str) -> dict:
@@ -471,30 +472,13 @@ def test_an_unrecognized_token_refuses_before_scaffolding(tmp_path):
 
 
 def _git(repo: Path, *args: str) -> str:
-    home = repo.parent / "_home"
-    home.mkdir(exist_ok=True, parents=True)
     proc = subprocess.run(
         ["git", *args],
         cwd=str(repo), capture_output=True, text=True, timeout=30,
-        env={
-            "HOME": str(home),
-            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-            "GIT_CONFIG_GLOBAL": str(home / "gitconfig"),
-            "GIT_CONFIG_SYSTEM": str(home / "gitconfig-system"),
-            "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.com",
-            "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.com",
-        },
+        env=scrubbed_env(repo.parent / "_home", PATH="/usr/bin:/bin:/usr/sbin:/sbin"),
     )
     assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
     return proc.stdout.strip()
-
-
-#: Every test whose repository `_git` builds is declared uncacheable. `_git` hands git a
-#: scrubbed environment of its own on purpose (a global config file under the test's home,
-#: no pinned dates), so its commits read the wall clock and testament cannot vouch for them.
-_OWN_GIT_ENV = pytest.mark.uncacheable(
-    "its git helper sets its own global config and dates commits by the real clock"
-)
 
 
 def make_git_repo(root: Path, remote_default: str | None, *, dangling: bool = False) -> Path:
@@ -516,7 +500,6 @@ def make_git_repo(root: Path, remote_default: str | None, *, dangling: bool = Fa
     return root
 
 
-@_OWN_GIT_ENV
 @pytest.mark.parametrize("remote_default,expected", [
     ("develop", "develop"),   # the gitflow repo the knob exists for
     ("trunk", "trunk"),       # any non-main-family name, not a develop allowlist
@@ -547,7 +530,6 @@ def test_base_branch_written_only_for_a_non_main_family_remote_default(
         assert "base_branch: origin/" not in state
 
 
-@_OWN_GIT_ENV
 def test_the_written_knob_is_what_the_resolver_then_reads(tmp_path: Path):
     """End to end past the write: the scaffolded repo's gates must actually
     anchor on the recorded branch. The write is only worth having if the
@@ -563,7 +545,6 @@ def test_the_written_knob_is_what_the_resolver_then_reads(tmp_path: Path):
     assert base == "origin/develop"
 
 
-@_OWN_GIT_ENV
 def test_a_repo_with_no_origin_head_scaffolds_normally(tmp_path: Path):
     """Fresh ``init``, no remote — the overwhelmingly common new-product case.
     Detection must degrade to silence, not to a failed onboard."""
@@ -589,7 +570,6 @@ def test_a_non_git_directory_scaffolds_normally(tmp_path: Path):
     assert (target / ".prawduct" / "project-state.yaml").is_file()
 
 
-@_OWN_GIT_ENV
 def test_a_dangling_origin_head_is_not_recorded(tmp_path: Path):
     """``origin/HEAD`` can name a branch that was never fetched. Recording it
     would be worse than recording nothing: a configured-but-unresolvable
@@ -604,7 +584,6 @@ def test_a_dangling_origin_head_is_not_recorded(tmp_path: Path):
     )
 
 
-@_OWN_GIT_ENV
 def test_dry_run_previews_the_base_branch_without_writing(tmp_path: Path):
     """The operator's single confirmation is given against the preview, and this
     key changes what every gate measures — so it has to appear there."""
@@ -615,7 +594,6 @@ def test_dry_run_previews_the_base_branch_without_writing(tmp_path: Path):
     assert not (target / ".prawduct").exists(), "dry run wrote state"
 
 
-@_OWN_GIT_ENV
 def test_an_operator_set_base_branch_is_never_clobbered(tmp_path: Path):
     """Onboarding an existing repo that already recorded its own integration
     base: the remote's default is a guess, the operator's value is a decision."""
@@ -632,7 +610,6 @@ def test_an_operator_set_base_branch_is_never_clobbered(tmp_path: Path):
     assert result["base_branch"] == "release", "reported a branch the file does not hold"
 
 
-@_OWN_GIT_ENV
 def test_human_output_names_the_recorded_base_branch(tmp_path: Path):
     """--json is not the only reader: the skill runs the plain form too, and a
     silent change to the gates' anchor is exactly the kind of thing an operator
