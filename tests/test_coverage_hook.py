@@ -18,6 +18,7 @@ import subprocess
 
 import pytest
 from pathlib import Path
+from conftest import scrubbed_env
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -26,13 +27,12 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 def _run(command: str, project_dir: Path, *args: str) -> subprocess.CompletedProcess:
     home = project_dir.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        PATH="/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), command, *args],
         capture_output=True, text=True, env=env, timeout=30,
@@ -361,14 +361,13 @@ def _run_with_broken_staging(
     return subprocess.run(
         [sys.executable, str(HOOK), "coverage-status", *extra],
         capture_output=True, text=True, timeout=30,
-        env={
-            "HOME": str(home),
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "CLAUDE_PROJECT_DIR": str(tmp_path),
-            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-            "PYTHONPATH": str(broken),
-            "PYTHONDONTWRITEBYTECODE": "1",
-        },
+        env=scrubbed_env(
+            home,
+            CLAUDE_PLUGIN_ROOT=str(ROOT),
+            CLAUDE_PROJECT_DIR=str(tmp_path),
+            PATH="/usr/bin:/bin:/usr/sbin:/sbin",
+            PYTHONPATH=str(broken),
+        ),
     )
 
 

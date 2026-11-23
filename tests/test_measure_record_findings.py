@@ -105,7 +105,7 @@ def test_eras_split_on_actor_plugin(tmp_path):
 def test_a_worktree_of_one_clone_is_read_once(tmp_path):
     repo = _repo(tmp_path)
     _put(repo, "review", "rev-1", {"mode": CUMULATIVE, "findings": [_finding("R-1", [".prawduct/a.md"])]})
-    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "i"],
+    subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "i"],
                    cwd=str(repo), check=True, capture_output=True, timeout=15)
     wt = tmp_path / "wt"
     subprocess.run(["git", "worktree", "add", "-q", "-b", "b2", str(wt)], cwd=str(repo), check=True,

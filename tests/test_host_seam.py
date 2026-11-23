@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import copy_seam_files  # noqa: E402
+from conftest import copy_seam_files, scrubbed_env  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = REPO_ROOT / "plugin"
@@ -568,7 +568,7 @@ class TestResponses:
 
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo), capture_output=True, check=True, timeout=30,
     )
 
@@ -587,15 +587,12 @@ def _governed_repo(tmp_path: Path) -> Path:
 def _run(argv: list[str], repo: Path, tmp_path: Path, host_value: str | None, stdin: str = "{}"):
     home = tmp_path / "home"
     home.mkdir(exist_ok=True)
-    env = {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "HOME": str(home),
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "CLAUDE_PLUGIN_ROOT": str(PLUGIN),
-        "CLAUDE_PROJECT_DIR": str(repo),
-    }
+    env = scrubbed_env(
+        home,
+        PATH=os.environ.get("PATH", "/usr/bin:/bin"),
+        CLAUDE_PLUGIN_ROOT=str(PLUGIN),
+        CLAUDE_PROJECT_DIR=str(repo),
+    )
     if host_value is not None:
         env["PRAWDUCT_HOST"] = host_value
     return subprocess.run(
@@ -687,8 +684,7 @@ class TestUnknownHost:
         host seam failed to load, which would send the reader the wrong way."""
         gone = tmp_path / "gone"
         gone.mkdir()
-        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp_path),
-               "PYTHONDONTWRITEBYTECODE": "1"}
+        env = scrubbed_env(tmp_path, PATH=os.environ.get("PATH", "/usr/bin:/bin"))
         script = (
             f'cd "{gone}" && rmdir "{gone}" && '
             f'exec "{sys.executable}" "{PLUGIN / "hooks" / "digest.py"}"'

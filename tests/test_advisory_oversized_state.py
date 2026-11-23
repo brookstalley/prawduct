@@ -185,7 +185,7 @@ class TestTheFileNamedIsTheFileToEdit:
         # A work tree, because the plan measured is the one this checkout is
         # bound to, and a directory outside git binds nothing.
         repo = _repo(tmp_path)
-        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], cwd=str(tmp_path), check=True)
         _write(repo, ".prawduct/artifacts/build-plan.md",
                _FILLER + "\ndeliverables: one\n")
         cand = _by_type(repo, "oversized-build-plan")
@@ -198,7 +198,7 @@ class TestTheFileNamedIsTheFileToEdit:
         """The plan measured is this checkout's: one that claims another branch
         is that branch's to compact. The test above is the control."""
         repo = _repo(tmp_path)
-        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], cwd=str(tmp_path), check=True)
         _write(repo, ".prawduct/artifacts/build-plan.md",
                "---\nbranch: feat/other\n---\n" + _FILLER + "\ndeliverables: one\n")
         assert _by_type(repo, "oversized-build-plan") is None

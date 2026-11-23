@@ -3781,6 +3781,8 @@ def native_review_block(
     was paired with. Where the text lands is not in it: ``record`` derives the
     session-side path (``native_review.text_path``) and the prompt names only
     the wrapper's own."""
+    from . import clock  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
     args = f"{NATIVE_REVIEW_LEVEL} {base_commit}...{head_commit}"
     return {
         "skill": NATIVE_REVIEW_SKILL,
@@ -3790,7 +3792,9 @@ def native_review_block(
         "args": args,
         "model": reviewer_model,
         "prompt": native_review_prompt(review_id, worktree, args),
-        "dispatched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # The plugin's clock, which stamps the ledger event this rides to: the interval
+        # between the two is the native review's measured duration.
+        "dispatched_at": clock.now_iso(),
     }
 
 

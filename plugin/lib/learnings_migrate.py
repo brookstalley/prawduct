@@ -83,9 +83,9 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 
+from . import clock
 from . import learnings_files
 
 #: The two companion files the cutover deletes with the corpus. Their names are
@@ -1023,7 +1023,7 @@ def plan(
                 "--local."
             )
         else:
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            stamp = clock.now().strftime("%Y%m%dT%H%M%SZ")
             backup_dir = base / stamp
     else:
         refusals.extend(_undo_refusals(root))

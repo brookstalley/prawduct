@@ -133,11 +133,13 @@ def _product(tmp_path: Path, state_text: str | bytes, queue: str | bytes | None 
 
 
 def _run_hook(product: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(  # noqa: S603
-        [sys.executable, str(HOOK_PATH), *args],
-        capture_output=True,
-        text=True,
-        env={"CLAUDE_PROJECT_DIR": str(product), "PATH": "/usr/bin:/bin"},
+    from _hook_inproc import run_hook  # noqa: PLC0415
+
+    home = product.parent / "_home"
+    home.mkdir(exist_ok=True)
+    return run_hook(
+        *args, cwd=product.parent,
+        env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(product)},
     )
 
 

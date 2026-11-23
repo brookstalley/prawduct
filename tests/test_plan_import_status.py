@@ -62,7 +62,7 @@ _AFTER = "## Verification\n\nRun it.\n"
 
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(
-        ["git", "-c", "user.email=t@e.com", "-c", "user.name=T", *args],
+        ["git", *args],
         cwd=str(repo), capture_output=True, text=True, check=True, timeout=10,
     )
 

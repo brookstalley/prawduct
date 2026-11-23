@@ -52,7 +52,7 @@ def _seq(fact_id: str) -> int:
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -135,13 +135,12 @@ def _resolution_fact(
 
 
 def _hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), *args],
-        cwd=str(repo),
-        capture_output=True,
-        text=True,
-        timeout=30,
-        env={"PATH": "/usr/bin:/bin", "CLAUDE_PLUGIN_ROOT": str(ROOT)},
+    from _hook_inproc import run_hook  # noqa: PLC0415
+
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True)
+    return run_hook(
+        *args, cwd=str(repo), env={"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
     )
 
 

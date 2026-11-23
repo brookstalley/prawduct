@@ -1354,7 +1354,7 @@ class TestEveryCutRefusalIsWarnedAboutFirst:
         _write(project / ".gitignore", ".prawduct/releases/\n")
         for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "base"]):
             subprocess.run(
-                ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+                ["git", *args],
                 cwd=str(project), capture_output=True, check=True, timeout=15,
             )
         assert release_readiness.check_releasability(project, release="v1.4.0") == 0

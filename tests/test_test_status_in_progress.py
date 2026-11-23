@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
 from test_plugin_runtime import HOOK, ROOT, _git, _run_in  # noqa: E402
 
 from lib import gates, record_progress  # noqa: E402
+from conftest import scrubbed_env
 
 _GREEN = (
     '<testsuites><testsuite name="s" time="{time}">'
@@ -57,9 +58,12 @@ Path(sys.argv[1]).write_text(%r)
 def _env(repo: Path) -> dict:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-            "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "PYTHONDONTWRITEBYTECODE": "1"}
+    return scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(repo),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=os.environ.get("PATH", "/usr/bin:/bin"),
+    )
 
 
 def _popen(repo: Path, *args: str) -> subprocess.Popen:
@@ -158,6 +162,20 @@ class TestThreeStates:
         assert res.returncode == 1, res.stdout
         assert first.startswith("stale (interrupted):"), first
         assert "no longer running" in first
+
+    def test_the_void_is_dated_on_the_plugins_clock_and_its_recorder_on_the_real_one(self, running):
+        """The void's `timestamp` is sorted against the store's test-run facts and
+        `.session-start`, which the plugin's clock stamps, so it reads that clock. The
+        in-progress stamp is aged against the OS's process start, so it reads the wall clock."""
+        from conftest import suite_stamp
+
+        repo, _ = running
+        void = _evidence(repo)
+        assert void["timestamp"] == suite_stamp()
+        assert void["void"].startswith(f"record attempt at {suite_stamp()} ")
+        started = datetime.strptime(void["in_progress"]["started_at"], "%Y-%m-%dT%H:%M:%SZ")
+        age = time.time() - started.replace(tzinfo=timezone.utc).timestamp()
+        assert -5 <= age <= 120, void["in_progress"]
 
     def test_elapsed_and_the_estimate_are_shown(self, running):
         repo, _ = running

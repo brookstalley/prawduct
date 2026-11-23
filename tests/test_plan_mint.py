@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -25,7 +24,7 @@ if str(ROOT) not in sys.path:
 
 from lib import change_fragments, gitstate, plan_index, plan_mint, work_unit  # noqa: E402
 from lib.plan_mint import PlanMintRefused  # noqa: E402
-from conftest import GIT_TEST_ENV  # noqa: E402
+from conftest import scrubbed_env, suite_now  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -36,14 +35,7 @@ from conftest import GIT_TEST_ENV  # noqa: E402
 def _git_env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"  # outside the repo: macOS pyc caches land under HOME
     home.mkdir(exist_ok=True)
-    return {
-        **GIT_TEST_ENV,
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-    }
+    return scrubbed_env(home)
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -144,7 +136,8 @@ class TestNewMintsWhatTheReadersAccept:
         assert "branch: feature/1050-the-unit" in fm
         assert "base: main" in fm
         assert "working-branches: []" in fm
-        assert f"last_validated: {date.today().isoformat()}" in fm
+        # The local calendar's date of the suite's instant: the plan is dated where it was made.
+        assert f"last_validated: {suite_now().astimezone().date().isoformat()}" in fm
         # The template's example claim does not survive as a declaration, and its
         # body is what an author copying the template by hand would get.
         assert not any(line.startswith("scope: pantry") for line in fm)

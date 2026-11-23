@@ -7,8 +7,9 @@ ported runtime:
     with the sync cluster excised; hooks.json wires the briefing (clear) +
     Critic/reflection gate (stop) via ${CLAUDE_PLUGIN_ROOT}/bin/, and keeps the
     Chunk-1 banner.
-  * **Behavioral** — invoked as a subprocess with CLAUDE_PLUGIN_ROOT +
-    CLAUDE_PROJECT_DIR, the briefing renders, the Stop-hook Critic gate BLOCKS
+  * **Behavioral** — invoked with CLAUDE_PLUGIN_ROOT + CLAUDE_PROJECT_DIR (in-process
+    through `tests/_hook_inproc.py`, or as a child where a fake `git` on PATH is the
+    fixture), the briefing renders, the Stop-hook Critic gate BLOCKS
     (exit 2) when code changed against an active plan with no findings, the
     lib-backed subcommands resolve, and NOTHING is written outside .prawduct/
     (the design §2 invariant).
@@ -27,36 +28,52 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from conftest import SHAPED_REFLECTION
+from _hook_inproc import run_hook
+from conftest import SHAPED_REFLECTION, scrubbed_env, suite_now, suite_stamp
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 
 
-def as_just_run(report: Path) -> Path:
-    """Date a hand-written JUnit report as a run that STARTED just now — after
-    every file the fixture wrote — and ended its stated duration later.
+def as_just_run(report: Path, tree: "Path | None" = None) -> Path:
+    """Date a hand-written JUnit report as a run that STARTED a second after the
+    suite's current instant, after every file the fixture wrote, and ended its
+    stated duration later.
 
     The ingest bounds the tree by the run's start, read as the report's mtime
-    less its duration (#848, native finding at `report_predates_tree`). A report
-    written in the same instant as the fixture's files and claiming a run of a
-    second or more would have started before those files existed, so its stamp
-    is rightly withheld. Real runs start after their files; this makes the
-    fixture's report say so. The duration is read here independently of the
-    reader: the `<testsuites>` `time`, else the sum of the `<testsuite>` times."""
+    less its duration (#848, native finding at `report_predates_tree`), in two
+    ways: no file the suite reads may be newer than the start, and HEAD must not
+    have moved since it (`HEAD@{<start>}`, which git answers from the reflog's
+    dates, on the suite's clock). So the start is on the suite's clock: a commit
+    made on a clock moved past it (:func:`conftest.set_suite_clock`) is a HEAD
+    move the ingest can see, and one made before it is history the run read.
+    The fixture's files were written on the real clock, far later than that, so
+    each file and directory under ``tree`` (default: the report's own directory)
+    newer than the start is dated to the suite's instant, as written before the
+    run. The duration is read here independently of the reader: the
+    `<testsuites>` `time`, else the sum of the `<testsuite>` times."""
     import xml.etree.ElementTree as ET  # noqa: PLC0415
+
+    from lib import clock  # noqa: PLC0415
 
     root = ET.parse(report).getroot()
     suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
     total = root.get("time") if root.tag == "testsuites" else None
     duration = float(total) if total else sum(float(s.get("time") or 0) for s in suites)
-    end = datetime.now(timezone.utc).timestamp() + duration + 0.05
+    written = clock.now().timestamp()
+    start = written + 1
+    for folder, dirs, files in os.walk(tree or report.parent):
+        dirs[:] = [d for d in dirs if d != ".git"]
+        for path in [Path(folder), *(Path(folder) / name for name in files)]:
+            if path != report and path.lstat().st_mtime > written:
+                os.utime(path, (written, written), follow_symlinks=False)
+    end = start + duration + 0.05
     os.utime(report, (end, end))
     return report
 
@@ -292,13 +309,12 @@ def run_plugin_hook(
     # keeps the plugin-lib import from writing .pyc into this repo during tests.
     home = mock_bin.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), command, *args],
         capture_output=True, text=True, env=env, timeout=90, input=stdin,
@@ -306,8 +322,12 @@ def run_plugin_hook(
 
 
 def _make_session_start(prawduct: Path, offset_seconds: int = -60) -> None:
-    ts = datetime.now(timezone.utc) + timedelta(seconds=offset_seconds)
-    (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    # On the suite's one clock, text and mtime both: the hook reads the session start from the
+    # marker's mtime, and a real-clock stamp would sit months after every frozen git date.
+    marker = prawduct / ".session-start"
+    marker.write_text(suite_stamp(offset_seconds))
+    at = suite_now(offset_seconds).timestamp()
+    os.utime(marker, (at, at))
 
 
 class TestPluginClearBriefing:
@@ -931,9 +951,9 @@ class TestPluginSubcommandsResolveViaLib:
         # the advisory CLI resolves through the bundled lib (not the missing-lib
         # fallback message).
         self._repo(tmp_path)
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "advisory", "list"],
-            capture_output=True, text=True, timeout=90,
+        result = run_hook(
+            "advisory", "list",
+            cwd=tmp_path.parent,
             env={"HOME": str(tmp_path / "_home"), "CLAUDE_PROJECT_DIR": str(tmp_path),
                  "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": "/usr/bin:/bin",
                  "PYTHONDONTWRITEBYTECODE": "1"},
@@ -1085,9 +1105,11 @@ class TestWriteIsolationInvariant:
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    # Started FROM the fixture repo, not only aimed at it: testament vouches for a git child
+    # only when it starts in temp, so one started in this checkout is uncacheable, `-C` or not.
     return subprocess.run(
         ["git", "-C", str(repo), *args],
-        capture_output=True, text=True, timeout=30, check=True,
+        cwd=str(repo), capture_output=True, text=True, timeout=30, check=True,
         env={**os.environ,
              "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e",
              "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e"},
@@ -1095,14 +1117,19 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def _run_in(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """`prawduct-hook <args>` against ``repo``, in-process (`tests/_hook_inproc.py`), with the
+    project pinned by `CLAUDE_PROJECT_DIR`.
+
+    The cwd is ``repo``'s parent, a temp directory in no repository, so the project resolves
+    from the pin alone. Any cwd outside ``repo``'s repository does that; this one also keeps the
+    hook's own git calls off this checkout, whose live state a test must not read."""
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return subprocess.run(
-        [sys.executable, str(HOOK), *args],
-        capture_output=True, text=True, timeout=90,
+    return run_hook(
+        *args,
+        cwd=repo.parent,
         env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-             "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-             "PYTHONDONTWRITEBYTECODE": "1"},
+             "CLAUDE_PLUGIN_ROOT": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
     )
 
 
@@ -3315,7 +3342,7 @@ class TestUnanchoredFreshnessFailsClosed:
         _make_session_start(repo / ".prawduct", offset_seconds=-60)
         ev_path = repo / ".prawduct" / ".test-evidence.json"
         ev = json.loads(ev_path.read_text())
-        ev["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ev["timestamp"] = suite_stamp()
         ev["evidence_tree"] = "0" * 40  # a tree that cannot possibly validate
         ev_path.write_text(json.dumps(ev))
         assert _run_in(repo, "test-status").returncode == 0, \
@@ -3732,14 +3759,12 @@ class TestJurisdictionSubcommand:
         repo = self._seed(tmp_path)
         home = repo.parent / "_home"
         home.mkdir(exist_ok=True)
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "jurisdiction"],
+        result = run_hook(
+            "jurisdiction",
+            cwd=repo.parent,
             input="adopt the telemetry substrate for tracing",
-            capture_output=True, text=True, timeout=90,
             env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-                 "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                 "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-                 "PYTHONDONTWRITEBYTECODE": "1"},
+                 "CLAUDE_PLUGIN_ROOT": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
         )
         assert result.returncode == 0, result.stderr
         assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout

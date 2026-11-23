@@ -22,6 +22,7 @@ _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 sys.path.insert(0, str(_ROOT))
 
 from lib import contribution, evidence  # noqa: E402
+from conftest import suite_now, scrubbed_env  # noqa: E402
 
 SCHEMA = contribution.load_schema()
 #: A Wednesday. The week that ended three days ago (W41) has not settled yet;
@@ -301,7 +302,7 @@ class TestDigest:
 
 
 def _git(repo, *args):
-    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+    subprocess.run(["git", *args],
                    cwd=str(repo), check=True, capture_output=True, timeout=15)
 
 
@@ -319,7 +320,7 @@ def _repo_with_store(tmp_path, facts):
 def _last_week_stamp():
     """A stamp in a week that has settled whatever today is: two weeks back
     lands in a week that ended at least SETTLE_DAYS ago."""
-    return (datetime.now(timezone.utc) - timedelta(weeks=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (suite_now() - timedelta(weeks=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class TestPreviewCommand:
@@ -327,8 +328,11 @@ class TestPreviewCommand:
         return subprocess.run(
             [sys.executable, str(_ROOT / "bin" / "prawduct-hook"), "contribute", *args],
             cwd=str(repo), capture_output=True, text=True, timeout=60,
-            env={"CLAUDE_PROJECT_DIR": str(repo), "CLAUDE_PLUGIN_ROOT": str(_ROOT),
-                 "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin", "HOME": str(repo.parent)},
+            env=scrubbed_env(
+                repo.parent,
+                CLAUDE_PROJECT_DIR=str(repo),
+                CLAUDE_PLUGIN_ROOT=str(_ROOT),
+            ),
         )
 
     def test_the_preview_prints_the_exact_bytes_and_their_digest(self, tmp_path):

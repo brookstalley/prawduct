@@ -19,6 +19,7 @@ if str(_PLUGIN) not in sys.path:
     sys.path.insert(0, str(_PLUGIN))
 
 from lib import change_fragments, change_migrate, release_readiness  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 HOOK = _PLUGIN / "bin" / "prawduct-hook"
 PREAMBLE = "# Change Log\n\n<!-- Newest first. -->\n\n"
@@ -49,7 +50,7 @@ def _migrate(project: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(HOOK), "migrate-change-log", *args],
         cwd=str(project), capture_output=True, text=True, timeout=60,
-        env={"PATH": "/usr/bin:/bin", "CLAUDE_PROJECT_DIR": str(project), "HOME": str(project.parent)},
+        env=scrubbed_env(project.parent, PATH="/usr/bin:/bin", CLAUDE_PROJECT_DIR=str(project)),
     )
 
 
@@ -413,7 +414,7 @@ class TestCommand:
     def test_an_ignored_fragment_directory_is_refused_when_the_log_is_tracked(self, tmp_path):
         project = _project(tmp_path, MIXED)
         (project / ".gitignore").write_text(".prawduct/changes/\n")
-        git = ["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t"]
+        git = ["git", "-C", str(project), "-c", "user.name=t"]
         subprocess.run([*git, "init", "-q"], check=True)
         subprocess.run([*git, "add", "-A"], check=True)
         subprocess.run([*git, "commit", "-qm", "init"], check=True)
@@ -439,7 +440,7 @@ class TestCommand:
         assert keep.is_file()
         for fragment in (project / ".prawduct" / "changes").glob("*.md"):
             fragment.unlink()  # what the cut does to every shipped fragment
-        git = ["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t"]
+        git = ["git", "-C", str(project), "-c", "user.name=t"]
         subprocess.run([*git, "init", "-q"], check=True)
         subprocess.run([*git, "add", "-A"], check=True)
         tracked = subprocess.run([*git, "ls-files"], check=True, capture_output=True, text=True).stdout

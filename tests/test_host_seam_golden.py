@@ -47,7 +47,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from conftest import GIT_TEST_ENV, SHAPED_REFLECTION  # noqa: E402
+from conftest import SHAPED_REFLECTION, scrubbed_env  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = REPO_ROOT / "plugin"
@@ -71,7 +71,7 @@ _TASKS = [{"type": "workflow", "name": "review-changes", "id": "wf_abc123"}]
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo), capture_output=True, text=True, timeout=30, check=True,
         env=_sealed_env(repo.parent),
     ).stdout.strip()
@@ -80,16 +80,12 @@ def _git(repo: Path, *args: str) -> str:
 def _sealed_env(tmp: Path) -> dict[str, str]:
     home = tmp / "home"
     home.mkdir(exist_ok=True)
-    return {
-        **GIT_TEST_ENV,
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "HOME": str(home),
-        "LANG": "C.UTF-8",
-        "LC_ALL": "C.UTF-8",
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(
+        home,
+        PATH=os.environ.get("PATH", "/usr/bin:/bin"),
+        LANG="C.UTF-8",
+        LC_ALL="C.UTF-8",
+    )
 
 
 def _hook_env(tmp: Path, repo: Path | None, **extra: str) -> dict[str, str]:

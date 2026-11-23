@@ -43,7 +43,7 @@ def _prawduct(tmp_path: Path) -> Path:
 
 
 def _init_git_repo(path: Path, branch: str = "work") -> None:
-    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+    env = dict(os.environ)
 
     def run(*args: str) -> None:
         subprocess.run(["git", *args], cwd=str(path), env=env,
@@ -231,7 +231,7 @@ class TestBranchScopedPlanBriefing:
 
     @staticmethod
     def _git(repo: Path, *args: str) -> None:
-        env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+        env = dict(os.environ)
         subprocess.run(["git", *args], cwd=str(repo), env=env,
                        capture_output=True, text=True, check=True)
 
@@ -1268,7 +1268,7 @@ class TestAssembleSessionBriefingSections:
 
         def git(cwd, *args):
             subprocess.run(
-                ["git", "-c", "user.name=t", "-c", "user.email=t@e.com", "-c", "commit.gpgsign=false",
+                ["git", "-c", "commit.gpgsign=false",
                  "-c", "init.defaultBranch=main", *args],
                 cwd=str(cwd), check=True, capture_output=True,
             )

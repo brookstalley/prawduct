@@ -1099,7 +1099,9 @@ def _shared_ignore_matches(
 
         # A scratch repo must not inherit GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE
         # (set while a git hook runs): creating it would then act on THAT repo.
-        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        # Only the location is shed; the caller's identity and config isolation
+        # still apply to the scratch repo's git.
+        env = gitstate.env_without_repo_location()
         with tempfile.TemporaryDirectory(prefix="prawduct-gitignore-") as scratch:
             try:
                 subprocess.run(

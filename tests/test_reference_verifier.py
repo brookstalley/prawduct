@@ -42,10 +42,6 @@ def _load_verifier_module():
 
 def _git(cwd: Path, *args: str) -> None:
     env = os.environ.copy()
-    env.setdefault("GIT_AUTHOR_NAME", "test")
-    env.setdefault("GIT_AUTHOR_EMAIL", "test@example.com")
-    env.setdefault("GIT_COMMITTER_NAME", "test")
-    env.setdefault("GIT_COMMITTER_EMAIL", "test@example.com")
     subprocess.run(
         ["git", *args],
         cwd=str(cwd),

@@ -122,9 +122,10 @@ not look* is the whole reason these three announce themselves.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 
+from . import clock
 from .advisory_store import AdvisoryCandidate, Codebase, CouldNotLook, ProjectState, register_probe
 from .backlog.encode import parse_iso as encode_parse_iso
 from .backlog.legacy import BacklogItem, parse_backlog
@@ -827,7 +828,7 @@ def _resolve_citation(codebase: Codebase, scope: str, cited: str) -> dict | None
         codebase.root,
         scope=scope,
         id_raw=cited,
-        now=datetime.now(timezone.utc),
+        now=clock.now(),
         default_owner=default_owner,
     )
     if result.get("status") != "ok":
@@ -1116,7 +1117,7 @@ def probe_revisit_due(state: ProjectState, codebase: Codebase):
     of products to suit one repo's arrangement, and left four surfaces promising a
     mechanism that no longer existed.
     """
-    today = datetime.now(timezone.utc).date()
+    today = clock.now().date()
     scope = _live_scope(state)
     if scope is not None:
         try:
@@ -1182,7 +1183,7 @@ def _cached_revisits_due(codebase: Codebase, scope: str, today: date) -> list[st
     from .backlog import cachequery  # noqa: PLC0415 — lazy: only the post-cutover arm
     from .backlog.encode import parse_block  # noqa: PLC0415 — same
 
-    result = cachequery.open_items(codebase.root, scope=scope, now=datetime.now(timezone.utc))
+    result = cachequery.open_items(codebase.root, scope=scope, now=clock.now())
     if result.get("status") != "ok":
         err = result.get("error") or {}
         raise _CacheUnanswerable(err.get("code") or "unavailable", err.get("message") or "unknown reason")
@@ -1348,7 +1349,7 @@ def probe_stalled_transition(state: ProjectState, codebase: Codebase):
     A year with no fire means transitions here complete promptly and the check has
     no remaining yield.
     """
-    today = datetime.now(timezone.utc).date()
+    today = clock.now().date()
 
     def _stalled(scope, index, cited):
         age = _cited_stall_age(codebase, scope, index, cited, today=today)
@@ -1500,7 +1501,7 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
         if d is not None
     ]
     if engaged:
-        age = (datetime.now(timezone.utc).date() - max(engaged)).days
+        age = (clock.now().date() - max(engaged)).days
         if age <= SWEEP_WINDOW_DAYS:
             return []
     return [

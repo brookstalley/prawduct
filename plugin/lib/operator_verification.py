@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from . import clock
 from .core import (
     FLAG_UNREADABLE,
     atomic_write_text,
@@ -478,7 +479,7 @@ def mark_verified(
             "verifying an accepted entry would erase the override rationale. "
             "Edit the file by hand if the verification is now genuine."
         )
-    today = today or date.today()
+    today = today or clock.local_today()
     if not _set_status_line(entry, _STATUS_VERIFIED):
         return _mutation_refused(
             describe_status_defect(entry.vrf_id, entry.status_defect)
@@ -510,7 +511,7 @@ def mark_accepted(
             "Acceptance requires a non-empty rationale — the override "
             "is recorded in the queue file as the work-log entry."
         )
-    today = today or date.today()
+    today = today or clock.local_today()
     if not _set_status_line(entry, _STATUS_ACCEPTED):
         return _mutation_refused(
             describe_status_defect(entry.vrf_id, entry.status_defect)

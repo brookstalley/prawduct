@@ -7,7 +7,7 @@ integration (feature/probe_version stamping).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -21,6 +21,7 @@ from lib.advisory_store import (
     run_all_probes,
 )
 from lib import backlog_probes as bp
+from conftest import suite_now  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -99,7 +100,7 @@ class TestOverdueGroomingProbe:
 
     def test_recently_groomed_no_fire(self, tmp_path):
         _write_backlog(tmp_path, _backlog_with_open(bp.GROOMING_MIN_OPEN_ITEMS + 5))
-        recent = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        recent = (suite_now() - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         state = ProjectState({"backlog_last_groomed_at": recent})
         assert bp.probe_overdue_grooming(state, _cb(tmp_path)) == []
 

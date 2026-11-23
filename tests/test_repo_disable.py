@@ -21,6 +21,7 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from lib.repo_toggle import PLUGIN_ID, set_repo_disabled  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 PROJECT_FILE = ".claude/settings.json"
 LOCAL_FILE = ".claude/settings.local.json"
@@ -143,13 +144,12 @@ class TestSetRepoDisabledNeverClobbers:
 def _run(project_dir: Path, *args: str) -> subprocess.CompletedProcess:
     home = project_dir.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=os.environ.get("PATH", "/usr/bin:/bin"),
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), "repo-disable", *args],
         capture_output=True, text=True, env=env, timeout=20,

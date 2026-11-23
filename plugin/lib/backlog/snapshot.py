@@ -32,6 +32,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from .. import clock
 
 # The persisted-format version (Data Model §7): a mismatch means "discard and
 # re-derive" — the snapshot is a cache, so dropping an unreadable one is always
@@ -99,7 +100,7 @@ def write(path: Path, scope: str, counts: dict, *, now: datetime | None = None) 
     failure (#755; the pair moves together, as ``cache.record_sync_attempt``'s
     two columns do for the cache).
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or clock.now()
     fetched_at = _iso(now)
     data = _load(path)
     data["scopes"][scope] = {
@@ -128,7 +129,7 @@ def record_attempt(path: Path, scope: str, *, error: str, now: datetime | None =
     the never-once-succeeded case the briefing must call stuck, not warming.
     Same return shape as :func:`write`; never raises.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or clock.now()
     data = _load(path)
     entry = data["scopes"].get(scope)
     if not isinstance(entry, dict):
@@ -147,7 +148,7 @@ def refresh_health(path: Path, scope: str, *, now: datetime | None = None) -> di
     entry = _load(path)["scopes"].get(scope)
     if not isinstance(entry, dict) or "last_attempt_at" not in entry:
         return None
-    now = now or datetime.now(timezone.utc)
+    now = now or clock.now()
     return {
         "last_attempt_at": entry.get("last_attempt_at"),
         "last_error": entry.get("last_error"),
@@ -190,7 +191,7 @@ def read(path: Path, scope: str, *, now: datetime | None = None) -> dict | None:
     entry = _load(path)["scopes"].get(scope)
     if not isinstance(entry, dict) or "counts" not in entry:
         return None
-    now = now or datetime.now(timezone.utc)
+    now = now or clock.now()
     fetched_at = entry.get("fetched_at")
     age = _age_seconds(fetched_at, now)
     return {

@@ -91,9 +91,9 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
+from . import clock
 from . import gitstate, review_dispatch
 
 LEDGER_BASENAME = ".governance-ledger.jsonl"
@@ -214,7 +214,7 @@ def _append_event(
     event = {
         "schema_version": LEDGER_SCHEMA_VERSION,
         "event": event_kind,
-        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ts": clock.now_iso(),
         "duration_seconds": duration_seconds,
         "project": gitstate.project_label(project_dir),
         "scope": scope,

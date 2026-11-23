@@ -282,12 +282,10 @@ NOTES_PROBE = ("git", "for-each-ref", "--format=%(refname)", "refs/notes/")
 def _governed_branch_repo(tmp_path: Path, monkeypatch) -> Path:
     """A governed repo on `feature/unit`, one commit beyond `main`."""
     repo = _init_repo(tmp_path, monkeypatch)
-    for key in ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"):
-        monkeypatch.setenv(key, "/dev/null")
 
     def git(*args: str) -> None:
         subprocess.run(
-            ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", *args], cwd=repo, check=True,
+            ["git", *args], cwd=repo, check=True,
         )
 
     git("checkout", "-q", "-b", "main")
@@ -360,8 +358,7 @@ class TestSessionStartIngestCost:
         blind to the step's calls fails here rather than passing above."""
         repo = _governed_branch_repo(tmp_path, monkeypatch)
         subprocess.run(
-            ["git", "-c", "user.email=t@t.com", "-c", "user.name=t",
-             "notes", "--ref", "prawduct", "add", "-m", "{}", "HEAD"],
+            ["git", "notes", "--ref", "prawduct", "add", "-m", "{}", "HEAD"],
             cwd=repo, check=True,
         )
         hook = _load_hook()

@@ -42,9 +42,8 @@ from __future__ import annotations
 
 import shlex
 import sys
-import time
 
-from . import stranded_work
+from . import clock, stranded_work
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
 
 FEATURE = "branch-landing"
@@ -102,7 +101,7 @@ def probe_finished_branch_unlanded(state: ProjectState, codebase: Codebase):
             file=sys.stderr,
         )
         return None  # could not look — not "nothing to report" (#917)
-    now = time.time()
+    now = clock.now().timestamp()  # ages a commit date, which git and the plugin's clock share
     candidates: list[AdvisoryCandidate] = []
     for row in rows:
         plans = ", ".join(row.plans)

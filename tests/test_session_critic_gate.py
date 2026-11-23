@@ -36,7 +36,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import SHAPED_REFLECTION
+from conftest import SHAPED_REFLECTION, TEST_NOW_EPOCH, scrubbed_env
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
@@ -64,7 +64,7 @@ _ids = itertools.count(1)
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -753,13 +753,11 @@ class TestSessionBaseTreeMarker:
             text=True,
             cwd=str(repo),
             timeout=30,
-            env={
-                "CLAUDE_PROJECT_DIR": str(repo),
-                "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-                "HOME": str(repo.parent / "_home"),
-                "PYTHONDONTWRITEBYTECODE": "1",
-            },
+            env=scrubbed_env(
+                repo.parent / "_home",
+                CLAUDE_PROJECT_DIR=str(repo),
+                CLAUDE_PLUGIN_ROOT=str(ROOT),
+            ),
         )
 
     def test_clear_writes_head_tree_marker(self, tmp_path):
@@ -1236,7 +1234,7 @@ def _imported_history_session(
     _commit(repo, "b.py", "b = 1\n", "upstream work, made before the session")
     _git(repo, "checkout", "-q", "feature")
 
-    started = int(time.time()) + 600
+    started = TEST_NOW_EPOCH + 600
     _write_marker(repo)
     (repo / ".prawduct" / ".session-start").write_text(
         time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started))
@@ -1246,7 +1244,7 @@ def _imported_history_session(
 
     def _session_git(*args: str) -> None:
         subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            ["git", *args],
             cwd=str(repo), capture_output=True, text=True, timeout=15,
             check=True, env=env,
         )

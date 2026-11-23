@@ -35,8 +35,6 @@ TS = "2026-10-25T10:00:00Z"
 def _git(repo: Path, *args: str) -> str:
     env = {
         **os.environ,
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
         "GIT_TERMINAL_PROMPT": "0",
     }
     return subprocess.run(
@@ -1178,8 +1176,7 @@ class TestBuiltReportNamesWhyGitCouldNotAnswer:
         return subprocess.run(
             [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "plan", "status", *args],
             cwd=str(repo), capture_output=True, text=True, timeout=30,
-            env={**os.environ, "HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-                 "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+            env={**os.environ, "HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo)},
         )
 
     def test_a_declared_base_that_resolves_to_no_ref_is_unavailable(self, repo):
@@ -1482,8 +1479,7 @@ class TestAheadOf:
         proc = subprocess.run(
             [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "plan", "status", "--json"],
             cwd=str(repo), capture_output=True, text=True, timeout=30,
-            env={**os.environ, "HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-                 "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+            env={**os.environ, "HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo)},
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
         rows = {r["id"]: r for r in json.loads(proc.stdout)["chunks"]}
@@ -1572,8 +1568,7 @@ class TestOneRenderer:
         proc = subprocess.run(
             [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "plan", "status"],
             cwd=str(repo), capture_output=True, text=True, timeout=30,
-            env={**os.environ, "HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-                 "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+            env={**os.environ, "HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo)},
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
         # The table follows the summary and the lifecycle line (#1052); the

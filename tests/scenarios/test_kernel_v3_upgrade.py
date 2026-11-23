@@ -43,7 +43,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -57,7 +56,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2] / "plugin"
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from conftest import SHAPED_REFLECTION  # noqa: E402 — one home for the shape
+from conftest import SHAPED_REFLECTION, scrubbed_env, set_suite_clock, suite_now  # noqa: E402
 from lib.evidence import SCHEMA_VERSION  # noqa: E402
 from kernel_v3_harness import (  # noqa: E402
     HOOK,
@@ -99,12 +98,7 @@ def _stop(repo: Path) -> subprocess.CompletedProcess:
         text=True,
         timeout=30,
         input="{}",
-        env={
-            "CLAUDE_PROJECT_DIR": str(repo),
-            "PATH": "/usr/bin:/bin",
-            "HOME": str(repo.parent / "_home"),
-            "PYTHONDONTWRITEBYTECODE": "1",
-        },
+        env=scrubbed_env(repo.parent / "_home", CLAUDE_PROJECT_DIR=str(repo), PATH="/usr/bin:/bin"),
     )
 
 
@@ -156,7 +150,7 @@ def _v2_era_repo(tmp_path: Path) -> Path:
     _commit_all(repo, "feature work")
 
     head = _git(repo, "rev-parse", "HEAD")
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = suite_now().strftime("%Y-%m-%dT%H:%M:%SZ")
     (repo / ".prawduct" / ".critic-findings.json").write_text(json.dumps({
         "timestamp": now,
         "mode": "cumulative (bundle review, ready for merge)",
@@ -332,12 +326,11 @@ class TestWorktreeComposition:
 # ---------------------------------------------------------------------------
 
 
-# Session 1 commits after its wall-clock `.session-start`, and session 2's boundary reads that
-# commit as session 1's work (the span walk and the handoff's `git log --since`); under the
-# suite's fixed commit date it would read as made before session 1 began.
-@pytest.mark.real_git_clock
+# Session 1 commits after its `.session-start`, and session 2's boundary reads that commit as
+# session 1's work (the span walk and the handoff's `git log --since`). Session 2 starts a
+# minute later on the suite's clock, so the two sessions and their commits are ordered.
 class TestSequentialSessions:
-    def test_session_1_reviews_session_2_passes_with_no_stale_warning(self, tmp_path):
+    def test_session_1_reviews_session_2_passes_with_no_stale_warning(self, tmp_path, monkeypatch):
         # The v2 defect class: freshness was mtime-vs-.session-start, so any
         # later session called a perfectly good review "stale". v3: the fact
         # names the trees it reviewed, and trees don't age.
@@ -347,6 +340,7 @@ class TestSequentialSessions:
         _run_review(repo, "chunk")
         _commit_all(repo, "chunk 1")
 
+        set_suite_clock(monkeypatch, 60)
         _session_start(repo)  # session 2 — .session-start now postdates the fact
         result = _gate(repo)
         assert result.returncode == 0, result.stderr
@@ -354,7 +348,7 @@ class TestSequentialSessions:
         assert "1 review fact(s)" in result.stdout
         assert "stale" not in (result.stdout + result.stderr).lower()
 
-    def test_cross_session_composition_and_clean_session_end(self, tmp_path):
+    def test_cross_session_composition_and_clean_session_end(self, tmp_path, monkeypatch):
         # Session 2 does its own chunk on top of session 1's: its Stop gate
         # passes pre-commit on its OWN fact (base-tree marker → working
         # tree), and after the commit the PR gate composes BOTH sessions'
@@ -367,6 +361,7 @@ class TestSequentialSessions:
         _run_review(repo, "chunk")
         _commit_all(repo, "chunk 1")
 
+        set_suite_clock(monkeypatch, 60)
         _session_start(repo)  # session 2
         _write_edit(repo, "more.py", "z = 1\n")
         _run_review(repo, "chunk")
@@ -384,3 +379,27 @@ class TestSequentialSessions:
         assert result.returncode == 0, result.stderr
         assert "2 review fact(s)" in result.stdout
         assert "stale" not in (result.stdout + result.stderr).lower()
+
+    def test_session_2s_unreviewed_commit_is_its_own_work(self, tmp_path, monkeypatch):
+        # The two tests above pass whether or not session 2's span walk sees its commits: a gate
+        # that finds no session work also says nothing. This one fails then. A commit made at
+        # session 2's start instant, on the clock git and the plugin share, is session 2's work,
+        # and it was never reviewed, so the Stop hook asks for a review.
+        repo = _scratch_repo(tmp_path)
+        _write_active_build_plan(repo)
+        _session_start(repo)
+        _write_edit(repo, "feature.py", "y = 1\n")
+        _run_review(repo, "chunk")
+        _commit_all(repo, "chunk 1")
+
+        set_suite_clock(monkeypatch, 60)
+        _session_start(repo)  # session 2
+        _write_edit(repo, "more.py", "z = 1\n")
+        _write_reflection(repo)
+        _commit_all(repo, "chunk 2, never reviewed")
+
+        stopped = _stop(repo)
+        assert "CRITIC REVIEW" in stopped.stderr, (
+            "session 2's committed, unreviewed edit must read as its work.\n"
+            f"rc={stopped.returncode} stdout={stopped.stdout!r} stderr={stopped.stderr!r}"
+        )

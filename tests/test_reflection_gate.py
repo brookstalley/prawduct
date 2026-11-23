@@ -50,7 +50,7 @@ _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from conftest import SHAPED_REFLECTION  # noqa: E402 — one home for the shape
+from conftest import SHAPED_REFLECTION, TEST_NOW_EPOCH  # noqa: E402 — one home for the shape
 from lib import core as lib_core  # noqa: E402
 from lib import gates  # noqa: E402
 from lib import host as lib_host  # noqa: E402
@@ -84,7 +84,7 @@ _ID_SHAPES = (
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -218,14 +218,14 @@ class _Session:
 
     The span bounds its reflog walk by `.session-start`, and git stamps both
     reflog entries and commits with the committer date. Fixture history is
-    written at the real clock; the session's start and every git move it makes
+    written at the suite's clock; the session's start and every git move it makes
     sit minutes later, so no fixture step can land in the session's first
     second and be read as the session's own.
     """
 
-    def __init__(self, repo: Path):
+    def __init__(self, repo: Path, started: "int | None" = None):
         self.repo = repo
-        self.started = int(time.time()) + 600
+        self.started = TEST_NOW_EPOCH + 600 if started is None else started
         _mark_base(repo)
         (repo / ".prawduct" / ".session-start").write_text(
             time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.started))
@@ -238,7 +238,7 @@ class _Session:
         """``git`` with the clock at ``offset`` seconds after the session start."""
         env = dict(os.environ, GIT_COMMITTER_DATE=f"@{self.started + offset} +0000")
         return subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            ["git", *args],
             cwd=str(self.repo), capture_output=True, text=True, timeout=15,
             check=True, env=env,
         ).stdout.strip()
@@ -268,7 +268,7 @@ def _delegate_commits(
     env = dict(os.environ, GIT_COMMITTER_DATE=f"@{s.started + 30} +0000")
     for args in (["add", path], ["commit", "-q", "-m", "delegate's work"]):
         subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            ["git", *args],
             cwd=str(agent), check=True, capture_output=True, env=env,
         )
 
@@ -359,7 +359,7 @@ class TestMovesThisSessionDidNotAuthor:
         # git checks it before merging, so without one (a runner with no global
         # config) the merge refuses outright and there is nothing to conclude.
         merge = subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "-q", "other"],
+            ["git", "merge", "-q", "other"],
             cwd=str(repo), capture_output=True,
         )
         assert merge.returncode != 0, "fixture must conflict"
@@ -900,9 +900,15 @@ def _tool_call(s: "_Session", start: int, end: int, name: str, args: dict) -> "l
 
 def _write_at(s: "_Session", path: Path, text: str, at: int) -> None:
     """``path`` written with its modification time ``at`` seconds into the
-    session. The fixture clock runs ahead of the real one (:class:`_Session`),
-    so the real write time is before the transcript begins and says nothing;
-    the modification time is what a write during the session would leave."""
+    session: what a write during the session would leave.
+
+    The session sits on the suite's clock (:class:`_Session`), far behind the
+    real one, so a write left undated lands after every call and every commit
+    the fixture makes. A write after a commit cannot be its author, so an
+    undated write never claims a commit for this session; a test that means a
+    write to count dates it here. Its inode change time cannot be dated and
+    always reads as after the session, which is why the rename test places its
+    session on the real clock instead."""
     path.write_text(text)
     os.utime(path, (s.started + at, s.started + at))
 
@@ -956,6 +962,23 @@ class TestAFileThisSessionWroteByAnyMeans:
         assert rc == 2
         assert BLOCKER in err
 
+    def test_an_undated_write_never_claims_a_commit(self, tmp_path):
+        """What `_write_at` says of a write left on the real clock: inside a call by the
+        transcript's reckoning or not, it lands after the commit, so it is not the commit's
+        author. The dated write of the same file inside the call is the bash case above."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        # A call still running when the transcript ends, so the real write moment is inside
+        # it by the transcript's reckoning: only the write's being after the commit is left
+        # to keep it from claiming the commit.
+        transcript = _transcripts(tmp_path, s, [(10, 20), (300, None)])
+        (repo / "code.py").write_text("x = 2\n")
+        assert (repo / "code.py").stat().st_mtime > s.started + 3600, "precondition: real clock"
+        s.git_at(200, "commit", "-q", "-am", "committed from a terminal")
+        span = gates.session_work_span(repo, transcript_path=transcript)
+        assert span["changed"] == []
+        assert [d["paths"] for d in span["dropped"]] == [["code.py"]]
+
     def test_a_file_written_while_this_session_was_idle_is_still_dropped(self, tmp_path):
         """The control, and #1071's protection: the same terminal commit of a
         file last written between this session's calls is the other one's."""
@@ -996,9 +1019,9 @@ class TestAFileThisSessionWroteByAnyMeans:
     def test_a_rename_counts_by_its_inode_change(self, tmp_path):
         """``mv`` keeps a file's modification time, so a renamed file is read
         by when its inode last changed. The rename runs on the real clock, so
-        the call around it is placed there too."""
+        the session around it is placed there too."""
         repo = _repo(tmp_path)
-        s = _Session(repo)
+        s = _Session(repo, started=int(time.time()) + 600)
         old = repo / "code.py"
         idle = s.started - 700  # before the transcript begins: says nothing
         os.utime(old, (idle, idle))

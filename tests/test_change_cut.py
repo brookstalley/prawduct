@@ -22,6 +22,7 @@ if str(_PLUGIN) not in sys.path:
     sys.path.insert(0, str(_PLUGIN))
 
 from lib import change_cut, change_log, change_log_archive, core, release_readiness  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 HOOK = _PLUGIN / "bin" / "prawduct-hook"
 DIGEST = "plugin/CHANGELOG.md"
@@ -111,7 +112,7 @@ def _cut(project: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(HOOK), "cut-change-log", *args],
         cwd=str(project), capture_output=True, text=True, timeout=60,
-        env={"PATH": "/usr/bin:/bin", "CLAUDE_PROJECT_DIR": str(project), "HOME": str(project.parent)},
+        env=scrubbed_env(project.parent, PATH="/usr/bin:/bin", CLAUDE_PROJECT_DIR=str(project)),
     )
 
 
@@ -126,7 +127,7 @@ def _preview(stdout: str) -> str:
 def _git_commit_all(project: Path) -> None:
     for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "base"]):
         subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            ["git", *args],
             cwd=str(project), capture_output=True, check=True, timeout=15,
         )
 
@@ -758,7 +759,7 @@ def test_two_branches_adding_fragments_merge_without_a_union_driver(tmp_path):
 
     def git(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            ["git", *args],
             cwd=str(repo), capture_output=True, text=True, timeout=15,
         )
 
@@ -971,16 +972,22 @@ class TestPrawductGolden:
 
 def test_the_default_release_date_is_the_operators_local_date(monkeypatch):
     """An evening cut west of UTC is dated the day it was cut, not tomorrow."""
-    from datetime import datetime as real_datetime
+    import time
 
-    class _Evening(real_datetime):
-        @classmethod
-        def now(cls, tz=None):
-            utc_instant = real_datetime(2026, 10, 26, 3, 30)  # 03:30 UTC
-            return utc_instant if tz is not None else real_datetime(2026, 10, 25, 20, 30)  # 20:30 local
+    from lib import clock
 
-    monkeypatch.setattr(change_cut, "datetime", _Evening)
-    assert change_cut._today(None) == "2026-10-25"
+    if not hasattr(time, "tzset"):
+        pytest.skip("no tzset on this platform")
+    monkeypatch.setenv("TZ", "America/Los_Angeles")
+    time.tzset()
+    try:
+        # 03:30 UTC on the 26th, which is 20:30 on the 25th in Los Angeles.
+        monkeypatch.setenv(clock.FROZEN_ENV, "@1792985400 +0000")
+        assert clock.now().date().isoformat() == "2026-10-26"
+        assert change_cut._today(None) == "2026-10-25"
+    finally:
+        monkeypatch.undo()
+        time.tzset()
 
 
 

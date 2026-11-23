@@ -30,9 +30,9 @@ import math
 import statistics
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 
+from . import clock
 from . import dispositions, evidence, gitstate
 from .review_dispatch import fact_interval_seconds
 from .timewindow import in_window, is_usable_bound
@@ -623,7 +623,7 @@ def stats_cmd(project_dir: Path, argv: list[str]) -> int:
     report = {
         "schema_version": REPORT_SCHEMA_VERSION,
         "project": gitstate.project_label(project_dir),
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": clock.now_iso(),
         "window": {"since": since, "until": until},
         # Facts a newer plugin wrote are not counted, and the report says how many.
         "schema_ahead": len(read.get("schema_ahead") or []),
