@@ -914,6 +914,10 @@ class TestPlanOrder:
         (note,) = proposal.notes
         assert note.startswith("chunk 06 not proposed")
         assert "`docs/guide.md`" in note and "chunk 05" in note and "--chunks 06" in note
+        # The remedy is the one this mode's proposal reads. A `chunk` review
+        # walks no commit subjects, so a scoped subject would never bring 06
+        # back into it (native review, Chunk 07 round).
+        assert ("`(Chunk 06)` commit subject" in note) is (mode != "chunk"), note
 
     @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
     def test_a_new_file_under_the_cumulative_finals_directory_does_not_name_it(self, repo, mode):
@@ -1306,11 +1310,39 @@ class TestRoute:
                       chunks_evidence={"02": {"paths": ["src/c02.py"], "paths_more": 2, "commits": []}})
         assert self._reason(repo, fact) == "named by its proposal: path `src/c02.py` (+2 more)"
 
-    def test_named_by_its_proposal_says_the_commit(self, repo):
+    def test_named_by_a_scoped_subject_is_the_builders_words(self, repo):
+        """Renegotiated in the Chunk 07 review round (R-1). A whole-plan
+        proposal's scoped `(Chunk 02)` subject was reported as "named by its
+        proposal" with route `proposal`, so both readers questioned the
+        builder's own words as if the code had named it. Design D2 lists a
+        scoped subject among the builder's words, so its route is `subject`."""
         head = _commit(repo, "notes.txt", "x\n", "feat(unit): it (Chunk 02)")
         fact = _named("R1", head, ["02"], chunks_proposed=["02"], chunks_declared=False,
                       chunks_evidence={"02": {"paths": [], "paths_more": 0, "commits": [head[:12]]}})
-        assert self._reason(repo, fact) == f"named by its proposal: commit {head[:12]}'s subject"
+        plan = _plan(repo, ("01", "02", "03"))
+        st = plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)["02"]
+        assert st.reason == f"named by commit {head[:12]}'s scoped subject"
+        assert st.route == "subject" and st.named_by_builder
+
+    def test_a_subject_wins_over_a_path_that_also_proposed_it(self, repo):
+        """The proposal records commits only for a chunk the subject walk
+        kept, so a chunk with both was named by the builder; read path-first,
+        it was not."""
+        head = _commit(repo, "src/c02.py", "x\n", "feat(unit): it (Chunk 02)")
+        fact = _named("R1", head, ["02"], chunks_proposed=["02"], chunks_declared=False,
+                      chunks_evidence={"02": {"paths": ["src/c02.py"], "paths_more": 0,
+                                              "commits": [head[:12]]}})
+        plan = _plan(repo, ("01", "02", "03"))
+        assert plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)["02"].route == "subject"
+
+    def test_a_path_proposal_is_not_the_builders_words(self, repo):
+        """The control for the two above: the same fact with only a path."""
+        head = _commit(repo, "src/c02.py", "x\n", "work")
+        fact = _named("R1", head, ["02"], chunks_proposed=["02"], chunks_declared=False,
+                      chunks_evidence={"02": {"paths": ["src/c02.py"], "paths_more": 0, "commits": []}})
+        plan = _plan(repo, ("01", "02", "03"))
+        st = plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)["02"]
+        assert st.route == "proposal" and not st.named_by_builder
 
     def test_named_by_chunks_inside_the_proposal(self, repo):
         head = _commit(repo, "src/c02.py", "x\n", "work")
@@ -1327,6 +1359,15 @@ class TestRoute:
         `chunks_declared` naming outside its proposal was declared."""
         head = _commit(repo, "src/c02.py", "x\n", "work")
         fact = _named("R1", head, ["02"], chunks_proposed=["01"])
+        assert self._reason(repo, fact) == "named by --chunks, outside the proposal (01)"
+
+    def test_outside_the_proposal_is_declared_whatever_the_flag_says(self, repo):
+        """An inconsistent store (`chunks_declared: False` naming outside its
+        own proposal) still names outside it, and a proposal never does. Read
+        through the flag, the row said "named by its proposal" of a chunk the
+        proposal does not contain."""
+        head = _commit(repo, "src/c02.py", "x\n", "work")
+        fact = _named("R1", head, ["02"], chunks_proposed=["01"], chunks_declared=False)
         assert self._reason(repo, fact) == "named by --chunks, outside the proposal (01)"
 
     def test_inside_the_proposal_on_an_older_fact_is_not_recorded(self, repo):
@@ -1390,6 +1431,20 @@ class TestAheadOf:
         states = self._states(repo, _named("R1", head, ["03"], chunks_proposed=["03"], chunks_declared=True))
         line = plan_status.ahead_of_line("03", states["03"])
         assert line.startswith("done ahead of open chunk 01 (named by --chunks) — expected when chunks")
+
+    def test_by_scoped_subject_says_out_of_order_is_expected(self, repo):
+        """R-1's second reader. A delegated chunk landed by its scoped subject
+        is the shape D2 sanctions."""
+        head = _commit(repo, "notes.txt", "x\n", "feat(unit): it (Chunk 03)")
+        states = self._states(repo, _named(
+            "R1", head, ["03"], chunks_proposed=["03"], chunks_declared=False,
+            chunks_evidence={"03": {"paths": [], "paths_more": 0, "commits": [head[:12]]}},
+        ))
+        line = plan_status.ahead_of_line("03", states["03"])
+        assert line.startswith(
+            "done ahead of open chunk 01 (by its scoped subject) — expected when chunks"
+        ), line
+
 
     # By span: `test_critic_consolidate.py::TestTheFactRecordsHowEachChunkWasNamed`,
     # where a real consolidation writes the spanning edge.
@@ -1535,3 +1590,20 @@ class TestOneRenderer:
         assert len(cli) == 6 and cli[2].split()[-1] == "built", cli  # every row shape reached
         assert cli == handoff, json.dumps({"cli": cli, "handoff": handoff}, indent=1)
 
+
+class TestNamedByBuilderHasOneAnswer:
+    """R-4 of the Chunk 07 review: which routes are the builder's words lived
+    as string literals in two modules, and the copies drifted once. The set is
+    `BUILDER_ROUTES`, and every route kind is classified there or outside it
+    on purpose."""
+
+    def test_every_route_kind_is_classified(self):
+        import typing
+
+        kinds = set(typing.get_args(plan_status.Route))
+        assert kinds == {"proposal", "subject", "declared", "span", "unrecorded"}
+        assert plan_status.BUILDER_ROUTES == {"declared", "subject", "span"}
+        for kind in kinds:
+            st = plan_status.ChunkState("done", route=kind)
+            assert st.named_by_builder is (kind in plan_status.BUILDER_ROUTES)
+        assert not plan_status.ChunkState("open").named_by_builder

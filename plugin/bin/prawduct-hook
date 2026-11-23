@@ -8393,7 +8393,8 @@ _PLAN_HELP = (
     "       prawduct-hook plan import-status <path> [--apply] [--remove-block] [--json]\n"
     "         (ticked Status boxes -> chunk-imported facts; a preview without --apply)\n"
     "       prawduct-hook plan retract <chunk> --reason R [--fact ID | --all] [--plan <path>] [--json]\n"
-    "         (withdraw a fact's certification of a chunk; --fact omitted: the one certifying it)\n"
+    "         (withdraw a fact's certification of a chunk; --fact omitted: the one certifying it;\n"
+    "          --all: every fact certifying it)\n"
     "       prawduct-hook plan check-claims [--json]"
 )
 

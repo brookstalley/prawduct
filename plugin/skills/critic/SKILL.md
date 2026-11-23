@@ -49,7 +49,7 @@ The data plane is deterministic (kernel v3): `prawduct-hook critic-begin` derive
    | **2** | scope widened past the demotion threshold (`verify-resolutions` only) | re-dispatch in **the mode the refusal names**, recording `mode_chosen_by: "fallback-scope-widened"` |
    | **6** | evidence store unusable (`verify-resolutions` only) | **report stderr — it names the repair — and stop; never demote** |
    | **7** | test evidence stale or red (`verify-resolutions` only) | **report stdout and stop; never demote** — its printed remedy, then this mode again |
-   | **8** | chunks ambiguous (`chunk` only) | re-dispatch with stdout's `--chunks` line for the work you built; **never pass both to get past it** |
+   | **8** | chunks ambiguous (`chunk` only) | re-dispatch with stdout's `--chunks` line naming the chunk you built; **never pass both to get past it** |
    | **1** on `verify-resolutions` | no usable prior review (stderr says why) | re-dispatch in **the mode the refusal names**, recording `mode_chosen_by: "fallback-no-prior-findings"` |
    | **1** otherwise | dispatch failed | report the stderr reason and stop — **unless it names a mode** (see the property below), in which case re-dispatch there |
 

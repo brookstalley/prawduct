@@ -307,7 +307,10 @@ class TestRefusals:
 
 def test_the_help_names_the_op(capsys):
     assert _hook.cmd_plan(Path("."), ["--help"]) == 0
-    assert "plan retract <chunk> --reason R" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "plan retract <chunk> --reason R" in out
+    # The usage explains `--all` as well as `--fact` (native review, Chunk 07 round).
+    assert "--all: every fact certifying it" in out
 
 
 class TestRetractAll:

@@ -35,7 +35,8 @@ reviewed (#1141-R3).
 A `chunk` review is one chunk's review, and plan order cannot tell two adjacent chunks apart. So a
 `chunk` dispatch with `--chunks` omitted, whose proposal names more than one chunk, now exits 8
 (`chunks-ambiguous`) before anything is written. The message names the paths that proposed each
-chunk and the two `--chunks` lines to re-run with. Each refusal records one `guard-refusal` fact,
+chunk, a `--chunks` re-run line for each proposed chunk, and one naming them all. The builder picks
+the line naming the chunk they built, because the earliest may be the one they did not build. Each refusal records one `guard-refusal` fact,
 the one sink every pre-dispatch refusal uses. The manifest and the review fact also record
 `chunks_declared` (whether `--chunks` was passed) and `chunks_evidence` (the paths and commits that
 named each proposed chunk). Nothing reads them for state; they carry the route a `done` row will
@@ -44,15 +45,17 @@ print. The critic skill's exit table gains the row for 8.
 ### Chunk 03: legible rows and the out-of-order flag
 
 Every row a review fact certified now says how that fact came to name the chunk, read from the fact
-alone. The proposal's path or commit, `--chunks` (in or outside the proposal), a span, or that the
-fact predates the record. `plan status` also flags a review-done chunk with an open chunk before it
+alone. The proposal's path, a commit's scoped subject, `--chunks` (in or outside the proposal), a
+span, or that the fact predates the record. A verify pass carries how the review it verifies named
+the chunk. `plan status` also flags a review-done chunk with an open chunk before it
 (`ahead_of`, also a key in `plan status --json`). The flag is worded by route: out of order is
 expected when the builder's own words named the chunk, and otherwise the flag names the retraction
 to run if the work is not built. The `/clear` handoff prints the same table. When the Stop-path
 deferral holds, its message now names a done chunk that the pending work touches, together with the
 fact that certified it (`plan_status.done_chunks_touched`). Only the code's own naming is questioned:
-it stays silent for a chunk certified by the builder's words (`--chunks`, or a span's scoped
-subject), and for the one chunk the newest review named. That is where a wrong certification is
+it stays silent for a chunk certified by the builder's words (`--chunks`, a scoped subject, or a
+span), and for the one chunk the newest review named. Which routes are the builder's words has one
+answer, `ChunkState.named_by_builder`, which the flag and the deferral both read. That is where a wrong certification is
 met first.
 
 ### Chunk 04: `plan retract <chunk> --all`
@@ -74,7 +77,8 @@ A bug report about `plan status` or chunk state now carries what decides the row
 build, the report's Found-in label also carries the plugin tree's commit
 (`prawduct v3.9.1-dev (plugin, build <commit>)`). A version plus a commit is enough to rule version
 skew in or out. A released version keeps its bare label, and the report's machine-read `found_in`
-stays the bare version.
+stays the bare version. The dedup key leaves the build out, so a retry after a commit still finds
+the first filing. An approval that no longer matches on a `-dev` build says the build may be why.
 
 ### Chunk 06: methodology and descriptions
 

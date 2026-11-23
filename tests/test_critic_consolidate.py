@@ -11640,7 +11640,14 @@ class TestAChunkDispatchProposingTwoChunksIsRefused:
         assert "chunk review refused" in result.stdout
         assert "chunk 01: `src/one.py`" in result.stdout
         assert "chunk 02: `src/two.py`" in result.stdout
-        assert "`--chunks 01`" in result.stdout and "`--chunks 01,02`" in result.stdout
+        # One re-run line per proposed chunk, not the earliest labelled "the
+        # chunk you built" (R-3 of the Chunk 07 review): the refusal exists for
+        # the builder who built the later one and touched the earlier one's
+        # path in passing, and the earliest is the unbuilt chunk then.
+        lines = result.stdout.splitlines()
+        assert "    `--chunks 01`" in lines and "    `--chunks 02`" in lines, result.stdout
+        assert "for the chunk you built" not in result.stdout
+        assert "`--chunks 01,02`" in result.stdout
         assert not (repo / PARTIALS_REL / "manifest.json").exists()
         assert not (repo / MARKER_REL).exists()
         assert leftover.read_text() == "{}\n"
@@ -11766,6 +11773,74 @@ class TestTheFactRecordsHowEachChunkWasNamed:
         retracted = _store_facts(repo, plan_status.RETRACTED_KIND)
         assert [f["body"]["fact_id"] for f in retracted] == ["rev-name-a", "rev-name-b", span_fact["id"]]
         assert plan_status.chunk_states(plan, evidence.read_facts(repo), repo_dir=repo)["03"].state == "open"
+
+    def test_a_subject_named_chunk_reads_as_the_builders_words(self, tmp_path):
+        """R-1 of the Chunk 07 review, at the layer it was reported: a real
+        boundary `cumulative` that names 03 by its scoped subject while 02 is
+        open. Its route was `proposal`, so the flag used the unexpected
+        wording and the Stop-path deferral questioned it."""
+        from lib import plan_status
+
+        repo = _st8_repo(tmp_path)
+        (repo / "src/two.py").write_text("two = 0\n")  # 02 stays unbuilt
+        _git(repo, "commit", "-qam", "feat(cs): one")
+        _commit_file(repo, "notes.txt", "x\n", "docs(cs): three, by its delegate (Chunk 03)")
+        assert cc.begin_review(repo, "cumulative", force=True)["status"] == "ok"
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        states = plan_status.chunk_states(
+            repo / ".prawduct/artifacts/build-plan-cs.md", evidence.read_facts(repo), repo_dir=repo,
+        )
+        assert (states["03"].state, states["03"].route, states["03"].ahead_of) == (
+            "done", "subject", "02",
+        )
+        assert states["03"].named_by_builder
+        assert states["01"].route == "proposal" and not states["01"].named_by_builder
+        assert plan_status.ahead_of_line("03", states["03"]).startswith(
+            "done ahead of open chunk 02 (by its scoped subject) — expected"
+        )
+
+    def test_a_verify_pass_carries_how_its_review_named_the_chunk(self, tmp_path):
+        """Native review, Chunk 07 round. A verify pass names a chunk because
+        the review it verifies did, so it carries that review's
+        `chunks_declared` and evidence. Without them, a chunk declared with
+        `--chunks 03` read as a proposal once the pass certified it."""
+        from lib import plan_status
+
+        repo = _st8_repo(tmp_path)
+        assert cc.begin_review(repo, "chunk", chunks=["03"])["status"] == "ok"
+        assert _st8_manifest(repo)["chunks_declared"] is True
+        warn = {"name": "Tighten", "goal": "Nothing Is Unintended", "severity": "warning",
+                "recommendation": "Tighten", "files": ["src/one.py"]}
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"], findings=[warn])
+        assert _run_consolidate(repo).returncode == 0
+
+        (repo / "src/one.py").write_text("one = 2  # the warning, fixed\n")
+        assert cc.begin_review(repo, "verify-resolutions")["status"] == "ok"
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == ["03"] and manifest["chunks_declared"] is True, manifest
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        verify_fact = _store_facts(repo, "review")[-1]
+        assert verify_fact["body"]["chunks_declared"] is True
+        kind, _text = plan_status._route(verify_fact["body"], "03", {})
+        assert kind == "declared"
+
+    def test_a_verify_pass_over_a_path_proposal_stays_a_proposal(self, tmp_path):
+        """The control: inherited, not invented. A verified review the code
+        named passes on `False` and its path evidence."""
+        repo = _st8_repo(tmp_path)
+        _git(repo, "commit", "-qam", "feat(cs): one and two")
+        assert cc.begin_review(repo, "cumulative", force=True)["status"] == "ok"
+        warn = {"name": "Tighten", "goal": "Nothing Is Unintended", "severity": "warning",
+                "recommendation": "Tighten", "files": ["src/one.py"]}
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"], findings=[warn])
+        assert _run_consolidate(repo).returncode == 0
+        (repo / "src/one.py").write_text("one = 2  # the warning, fixed\n")
+        assert cc.begin_review(repo, "verify-resolutions")["status"] == "ok"
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks_declared"] is False
+        assert manifest["chunks_evidence"]["01"]["paths"] == ["src/one.py"]
 
     def test_a_declared_set_is_recorded_as_declared(self, tmp_path):
         repo = _st8_repo(tmp_path)

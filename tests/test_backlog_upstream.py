@@ -294,6 +294,30 @@ class TestADevelopmentBuildNamesItsCommit:
         assert "prawduct v3.9.1-dev (plugin, build 0123456789ab)" in payload["body"]
         assert "found_in: 3.9.1-dev\n" in payload["body"]
 
+    def test_the_dedup_key_does_not_move_with_the_build(self):
+        """Native review, Chunk 07 round. A development build's label changes
+        with every commit, and a retry after one is the same report: keyed on
+        the build, the dedup scan missed the first filing and opened a second
+        issue. The body still carries the build; only the key leaves it out."""
+        def key(payload):
+            return encode.parse_block(payload["body"]).get("source-key")
+
+        a = _payload(found_in="3.9.1-dev", build="0123456789ab")
+        b = _payload(found_in="3.9.1-dev", build="ba9876543210+dirty")
+        assert a["body"] != b["body"]
+        assert key(a) == key(b) == key(_payload(found_in="3.9.1-dev"))
+        # The control: a different report is still a different key.
+        assert key(_payload(found_in="3.9.1-dev", build="0123456789ab", body=_BODY + " More.")) != key(a)
+
+    def test_a_dev_build_mismatch_names_the_build_as_a_cause(self):
+        digest = "sha256:" + "ab" * 32
+        dev = upstream.check_approval(
+            "sha256:beef", digest, preference=upstream.PREF_ASK_USER, dev_build=True
+        )
+        released = upstream.check_approval("sha256:beef", digest, preference=upstream.PREF_ASK_USER)
+        assert dev.code == released.code == "approval-mismatch"
+        assert "plugin's build" in dev.message and "plugin's build" not in released.message
+
     def test_the_preview_reads_the_running_plugins_build(self, tmp_path, monkeypatch):
         """The one recipe sources it (`render_preview`), so preview and send
         cannot disagree about it."""
@@ -1372,10 +1396,11 @@ class TestTheSendPathFiles:
         envelope = json.loads(capsys.readouterr().out)
         filed = fake.list_issues(*upstream.PINNED_TARGET.split("/"), state="all")[0]
 
-        key = upstream.source_key(
-            title=_EXPECTED_TITLE,
-            body=envelope["data"]["payload"]["body"].split("\n\n```prawduct")[0],
-        )
+        # Read off the stamped marker, the key `find_filed` matches. It is not
+        # recomputed from the filed body: on a development build the key leaves
+        # out the build the body carries (the dedup key must not move with it).
+        key = encode.parse_block(filed["body"]).get("source-key")
+        assert key and key == encode.parse_block(envelope["data"]["payload"]["body"]).get("source-key")
         assert upstream.find_filed(
             fake, target=upstream.PINNED_TARGET, key=key
         )["number"] == filed["number"]

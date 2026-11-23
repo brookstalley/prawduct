@@ -1643,17 +1643,24 @@ _BOUNDARY_CUMULATIVE_FINAL_WHY = (
 )
 
 
-def chain_named_chunks(chain: list[dict]) -> list[str]:
-    """The chunk ids the NEWEST fact on ``chain`` that names any names, as it
-    spells them — so a chunk-less ``verify-resolutions`` pass inherits the
-    chunk review it verifies. ``[]`` when no fact on the chain names a chunk.
-    The one inheritance rule, read by :func:`chain_certified_chunks` and by
-    ``critic_consolidate``'s ``verify-resolutions`` proposal."""
+def chain_naming_fact(chain: list[dict]) -> "dict | None":
+    """The NEWEST fact on ``chain`` that names any chunk, else ``None`` — the
+    fact a chunk-less ``verify-resolutions`` pass inherits its chunks, and how
+    they were named, from."""
     for fact in chain:
-        ids = plan_status.fact_chunks(fact.get("body") or {})
-        if ids:
-            return ids
-    return []
+        if plan_status.fact_chunks(fact.get("body") or {}):
+            return fact
+    return None
+
+
+def chain_named_chunks(chain: list[dict]) -> list[str]:
+    """The chunk ids :func:`chain_naming_fact` names, as it spells them — so a
+    chunk-less ``verify-resolutions`` pass inherits the chunk review it
+    verifies. ``[]`` when no fact on the chain names a chunk. The one
+    inheritance rule, read by :func:`chain_certified_chunks` and by
+    ``critic_consolidate``'s ``verify-resolutions`` proposal."""
+    fact = chain_naming_fact(chain)
+    return plan_status.fact_chunks(fact.get("body") or {}) if fact else []
 
 
 def chain_certified_chunks(progress: PlanProgress, chain: list[dict]) -> "tuple | None":
@@ -1960,8 +1967,11 @@ def _done_chunks_touched_clause(
     if not pending or not progress.states:
         return ""
     # Only the code's own naming is questioned: a chunk certified by the
-    # builder's words (`--chunks`, or a span's scoped subject) is theirs, and a
-    # later chunk editing its file is ordinary. A fix to the one chunk a review
+    # builder's words (`ChunkState.named_by_builder`) is theirs, and a later
+    # chunk editing its file is ordinary. The newest review's chunks are not
+    # all exempt: when it named several by a path proposal, the one a path
+    # merely touched is exactly the wrong certification this clause exists
+    # for (#1141's sequence, design control (i)). A fix to the one chunk a review
     # just named is the deferral's ordinary case too. What remains is a chunk a
     # proposal named, or one whose route predates the record: that is how a
     # later chunk was certified by a path it merely touched (#1141).
@@ -1972,7 +1982,7 @@ def _done_chunks_touched_clause(
             Path(plan.plan_path), progress.states, pending, repo_dir=Path(project_dir),
         )
         if buildplan_refs._normalize_chunk_id(c) not in own
-        and getattr(progress.states.get(c), "route", None) not in ("declared", "span")
+        and not (progress.states.get(c) is not None and progress.states[c].named_by_builder)
     ]
     if not hits:
         return ""

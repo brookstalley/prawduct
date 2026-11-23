@@ -128,6 +128,20 @@ if TYPE_CHECKING:
 
 State = Literal["open", "done", "dropped"]
 
+#: How a review fact came to name a chunk (:func:`_route`). ``subject`` is a
+#: whole-plan proposal's scoped ``(Chunk N)`` commit subject, and ``proposal``
+#: is a path (or a proposal that did not record which).
+Route = Literal["proposal", "subject", "declared", "span", "unrecorded"]
+
+#: The routes that are the builder's own words: ``--chunks``, a scoped commit
+#: subject, a span's scoped subject. A chunk certified by one of these was
+#: named on purpose, so the out-of-order flag expects it and the Stop-path
+#: deferral does not question it. What remains (``proposal``, ``unrecorded``)
+#: is the code's own naming, which is how a path a chunk merely touched once
+#: certified it (#1141). The one answer to "was this the builder's naming?":
+#: every reader asks :attr:`ChunkState.named_by_builder`.
+BUILDER_ROUTES: "frozenset[Route]" = frozenset({"declared", "subject", "span"})
+
 #: Frontmatter key declaring chunks the plan will not build.
 DROPPED_KEY = "dropped"
 
@@ -172,9 +186,9 @@ class ChunkState:
     (:func:`_route`: the proposal's path or commit, ``--chunks``, a span, or
     that the fact predates the record), derived from the fact alone, with no
     git. ``None`` for a plain open chunk and a done one from an import or a
-    box. ``route`` is that route's kind (``proposal`` | ``declared`` |
-    ``span`` | ``unrecorded``), the one value the out-of-order line's wording
-    turns on.
+    box. ``route`` is that route's kind (:data:`Route`), and
+    :attr:`named_by_builder` is the one reading of it the out-of-order line
+    and the Stop-path deferral turn on.
 
     ``ahead_of`` is, for a chunk ``done`` by a review fact, the earliest open
     chunk before it in plan order, else ``None``. Advice: out of order is
@@ -192,8 +206,14 @@ class ChunkState:
     imported: bool = False
     reason: str | None = None
     synthetic: bool = False
-    route: str | None = None
+    route: "Route | None" = None
     ahead_of: str | None = None
+
+    @property
+    def named_by_builder(self) -> bool:
+        """Whether a review certified this chunk by the builder's own words
+        (:data:`BUILDER_ROUTES`)."""
+        return self.route in BUILDER_ROUTES
 
 
 # ---------------------------------------------------------------------------
@@ -815,14 +835,20 @@ def _extended_reviews(reviews: "list[dict]", fact: dict) -> "list[dict] | None":
 # ---------------------------------------------------------------------------
 
 
-def _route(body: dict, norm_id: str, by_norm: "dict[str, str]") -> "tuple[str, str]":
+def _route(body: dict, norm_id: str, by_norm: "dict[str, str]") -> "tuple[Route, str]":
     """How a review fact came to name a chunk, as ``(kind, text)`` for the
     ``done`` row: read off the fact alone (``chunks_declared``,
     ``chunks_proposed``, ``chunks_evidence``), never recomputed with git.
 
     A proposal never names outside itself, so a chunk outside
-    ``chunks_proposed`` was declared even on a fact from before
-    ``chunks_declared`` was recorded; inside it, such a fact cannot say which."""
+    ``chunks_proposed`` was declared whatever ``chunks_declared`` says: on a
+    fact from before that field, and on an inconsistent store holding
+    ``False`` there. Inside it, a fact without the field cannot say which.
+
+    A chunk whose evidence records a commit was named by that commit's scoped
+    subject (``subject``), the builder's words, even where a path also
+    proposed it: the proposal records commits only for chunks the subject walk
+    kept (:func:`chunk_proposal`)."""
     def shown(ids: object) -> str:
         return ", ".join(by_norm.get(_norm(c), str(c)) for c in ids or []) or "none"
 
@@ -830,7 +856,7 @@ def _route(body: dict, norm_id: str, by_norm: "dict[str, str]") -> "tuple[str, s
         return "unrecorded", "named; route not recorded (fact predates chunks_proposed)"
     proposed = {_norm(c) for c in body.get("chunks_proposed") or []}
     declared = body.get("chunks_declared")
-    if norm_id not in proposed and declared is not False:
+    if norm_id not in proposed:
         return "declared", (
             f"named by --chunks, outside the proposal ({shown(body.get('chunks_proposed'))})"
         )
@@ -848,11 +874,11 @@ def _route(body: dict, norm_id: str, by_norm: "dict[str, str]") -> "tuple[str, s
     paths = [p for p in entry.get("paths") or [] if isinstance(p, str)] if isinstance(entry.get("paths"), list) else []
     commits = [c for c in entry.get("commits") or [] if isinstance(c, str)] if isinstance(entry.get("commits"), list) else []
     more = entry.get("paths_more")
+    if commits:
+        return "subject", f"named by commit {commits[0]}'s scoped subject"
     if paths:
         extra = f" (+{more} more)" if isinstance(more, int) and not isinstance(more, bool) and more > 0 else ""
         return "proposal", f"named by its proposal: path `{paths[0]}`{extra}"
-    if commits:
-        return "proposal", f"named by its proposal: commit {commits[0]}'s subject"
     return "proposal", "named by its proposal; what proposed it is not recorded"
 
 
@@ -1061,14 +1087,16 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
 
 def ahead_of_line(chunk_id: str, st: ChunkState) -> "str | None":
     """The advice printed under a ``done`` row with an open chunk before it,
-    worded by its route: a builder's own words (``--chunks``, a span's scoped
-    subject) make out of order expected, a proposal or an unrecorded route
-    does not. ``None`` when the row is in order."""
+    worded by its route: the builder's own words
+    (:attr:`ChunkState.named_by_builder`) make out of order expected, a path
+    proposal or an unrecorded route does not. ``None`` when the row is in order."""
     if st.ahead_of is None:
         return None
     retract = f"`prawduct-hook plan retract {chunk_id} --all --reason …`"
-    if st.route in ("declared", "span"):
-        how = "named by --chunks" if st.route == "declared" else "by span"
+    if st.named_by_builder:
+        how = {"declared": "named by --chunks", "subject": "by its scoped subject"}.get(
+            st.route or "", "by span"
+        )
         return (
             f"done ahead of open chunk {st.ahead_of} ({how}) — expected when chunks are built "
             f"out of order; if {chunk_id}'s work is not built, {retract}"
@@ -1449,6 +1477,12 @@ class ChunkProposal:
     #: commits whose scoped subject did. Recorded at dispatch, because the route
     #: costs a git walk to recompute.
     evidence: "dict[str, dict]" = field(default_factory=dict)
+    #: Whether the builder's words named these chunks, for the fact's
+    #: ``chunks_declared`` when the dispatch passed no ``--chunks``. ``False``
+    #: for a proposal this function derives. A ``verify-resolutions`` pass's
+    #: proposal is the review it verifies, so it carries that fact's value,
+    #: ``None`` included (critic_consolidate's verify proposal).
+    declared: "bool | None" = False
 
 
 def propose_chunks(
@@ -1580,8 +1614,14 @@ def chunk_proposal(
         notes.append(
             f"chunk {c} not proposed: this diff touches `{path}`, which only chunk {c}'s "
             f"Deliverables cover, but chunk {gap} is earlier in the plan, still open and not "
-            f"in this review, so the touch cannot say it was {c}'s work. A scoped "
-            f"`(Chunk {c})` commit subject or `--chunks {c}` names it"
+            f"in this review, so the touch cannot say it was {c}'s work. "
+            + (
+                f"A scoped `(Chunk {c})` commit subject or `--chunks {c}` names it"
+                if mode in _WHOLE_PLAN_MODES
+                # A `chunk` review walks no commit subjects, so only the
+                # declaration reaches its proposal.
+                else f"`--chunks {c}` names it"
+            )
         )
     # Whole-plan modes only: a `chunk` review mid-plan has every later, unbuilt
     # chunk open, and would note each one on every dispatch.

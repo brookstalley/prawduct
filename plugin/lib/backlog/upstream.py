@@ -460,7 +460,13 @@ def build_payload(
         return None
     rendered_title = render_title(component, title)
     report = render_report(component=component, found_in=found_in, body=body, build=build)
-    key = source_key(title=rendered_title, body=report)
+    # Keyed WITHOUT the build. A development build's label changes with every
+    # commit or plugin edit, and a retry after one is the same report: keyed on
+    # it, the dedup scan missed the first filing and opened a second issue.
+    key = source_key(
+        title=rendered_title,
+        body=render_report(component=component, found_in=found_in, body=body) if build else report,
+    )
     marker = marker_block(found_in=found_in, key=key)
     return {
         "repo": target,
@@ -762,7 +768,9 @@ def check_own_target(
     )
 
 
-def check_approval(approve: str, digest: str, *, preference: str) -> Refusal | None:
+def check_approval(
+    approve: str, digest: str, *, preference: str, dev_build: bool = False
+) -> Refusal | None:
     """§5 check 4 — the approval token must be the digest of the bytes about to go.
 
     This is what makes "sent == previewed" a property of the bytes rather than of
@@ -778,6 +786,11 @@ def check_approval(approve: str, digest: str, *, preference: str) -> Refusal | N
     and a waiver that ran first would make ``approve=""`` file under standing
     consent. The CLI additionally rejects an empty ``--approve`` as a malformed
     flag, which is a better message for that caller and not a second rule.
+
+    ``dev_build``: the payload carries the plugin's build, which a commit or a
+    plugin edit since the preview also changes. The refusal still stands, since
+    the approval covered other bytes, but it says so, or it reads as the
+    operator's mistake.
     """
     if not approve.strip():
         return Refusal(
@@ -795,7 +808,12 @@ def check_approval(approve: str, digest: str, *, preference: str) -> Refusal | N
         "approval-mismatch",
         "the approval token does not match the payload about to be sent — re-run the "
         "preview, review the bytes it prints, and approve that digest; an approval "
-        "given for other bytes never authorizes these",
+        "given for other bytes never authorizes these"
+        + (
+            ". On a development build the payload carries the plugin's build, so a "
+            "commit or a plugin edit since the preview changes these bytes too"
+            if dev_build else ""
+        ),
         {"approved": approve.strip(), "payload_digest": digest},
     )
 
@@ -938,7 +956,9 @@ def send(
         check_preference(preference),
         check_target(requested_repo),
         check_not_self(resolve_self_identity(project_dir)),
-        check_approval(approve, digest, preference=preference),
+        check_approval(
+            approve, digest, preference=preference, dev_build="-dev" in plugin_version()
+        ),
     ):
         if refusal is not None:
             return refuse(refusal)

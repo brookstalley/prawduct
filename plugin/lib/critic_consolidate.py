@@ -3406,6 +3406,27 @@ def _dispatch_proposal(
         named = {
             buildplan_refs._normalize_chunk_id(c) for c in critic_mode.chain_named_chunks(chain)
         }
+        # How the verified review named them rides along. The pass names them
+        # only because that review did, and the route a `done` row prints is
+        # read off the certifying fact, which is this pass once it resolves a
+        # blocker. Without it a chunk the builder declared read as a proposal.
+        naming = (critic_mode.chain_naming_fact(chain) or {}).get("body") or {}
+        inherited_declared = (
+            naming.get("chunks_declared")
+            if isinstance(naming.get("chunks_declared"), bool) else None
+        )
+        if isinstance(naming.get("chunks_proposed"), list) and any(
+            buildplan_refs._normalize_chunk_id(c) not in {
+                buildplan_refs._normalize_chunk_id(p) for p in naming["chunks_proposed"]
+            }
+            for c in plan_status.fact_chunks(naming)
+        ):
+            # A chunk outside that review's own proposal was declared, whatever
+            # its fact recorded (`plan_status._route`'s first rule).
+            inherited_declared = True
+        naming_evidence = (
+            naming.get("chunks_evidence") if isinstance(naming.get("chunks_evidence"), dict) else {}
+        )
         from . import plan_index  # noqa: PLC0415 — lazy, as above
 
         try:
@@ -3418,10 +3439,22 @@ def _dispatch_proposal(
             n for (fid, n) in plan_status.retractions(store, scope) if fid in chain_ids
         }
         roster = plan_status.chunk_states(Path(plan_path), {"facts": []}, repo_dir=Path(project_dir))
-        return plan_status.ChunkProposal([
+        chunks = [
             k for k, s in roster.items()
             if not s.synthetic and buildplan_refs._normalize_chunk_id(k) in named
-        ])
+        ]
+        evidence_by_norm = {
+            buildplan_refs._normalize_chunk_id(k): v for k, v in naming_evidence.items()
+            if _valid_chunk_evidence(k, v)
+        }
+        return plan_status.ChunkProposal(
+            chunks,
+            evidence={
+                k: dict(evidence_by_norm[buildplan_refs._normalize_chunk_id(k)])
+                for k in chunks if buildplan_refs._normalize_chunk_id(k) in evidence_by_norm
+            },
+            declared=inherited_declared,
+        )
     return plan_status.chunk_proposal(
         Path(plan_path), store, list(files_changed), mode_token, repo_dir=Path(project_dir),
         since=base_commit if gitstate.is_object_id(base_commit) else None,
@@ -3431,7 +3464,13 @@ def _dispatch_proposal(
 
 def _chunks_ambiguous_reason(proposal) -> str:
     """The `chunks-ambiguous` refusal's text: per proposed chunk the paths that
-    proposed it (three, then a count), and the two dispatches to re-run."""
+    proposed it (three, then a count), then a re-run line per chunk and one for
+    them all.
+
+    One line per chunk, not the earliest: the refusal exists for the builder
+    who built a later chunk and touched an earlier one's path in passing, and
+    offering the earliest as "the chunk you built" would certify the unbuilt one
+    (#1141). The builder picks the line naming the chunk they built."""
     lines = [
         f"this `chunk` review's diff proposes {len(proposal.chunks)} chunks "
         f"({', '.join(proposal.chunks)}), and a `chunk` review is one chunk's review:"
@@ -3441,7 +3480,9 @@ def _chunks_ambiguous_reason(proposal) -> str:
         paths = ", ".join(f"`{p}`" for p in ev.get("paths") or []) or "(no path recorded)"
         more = f" +{ev['paths_more']} more" if ev.get("paths_more") else ""
         lines.append(f"  chunk {c}: {paths}{more}")
-    lines.append(f"  re-run with `--chunks {proposal.chunks[0]}` for the chunk you built, or")
+    lines.append("  re-run with the line naming the chunk you built:")
+    for c in proposal.chunks:
+        lines.append(f"    `--chunks {c}`")
     lines.append(
         f"  with `--chunks {','.join(proposal.chunks)}` if this review is all of their work"
     )
@@ -4634,12 +4675,15 @@ def begin_review(
     )
     chunks_proposed, proposal_notes = proposal.chunks, proposal.notes
     notes.extend(proposal_notes)
-    chunks_declared = declared_chunks is not None
+    # `--chunks` is the builder's words. Without it, a derived proposal is the
+    # code's naming, and a verify pass's is the verified review's, whose own
+    # answer it carries (`ChunkProposal.declared`).
+    chunks_declared = True if declared_chunks is not None else proposal.declared
     # Refused before the manifest, the marker or the archive of leftovers is
     # written, so a refusal leaves nothing behind. Narrowing to the earliest
     # chunk instead would name the wrong one when the builder works out of
     # order and the diff touches an earlier chunk's path in passing.
-    if mode_token == "chunk" and not chunks_declared and len(chunks_proposed) > 1:
+    if mode_token == "chunk" and declared_chunks is None and len(chunks_proposed) > 1:
         _record_guard_refusal(
             project_dir, "critic-dispatch-chunks-ambiguous",
             {"mode": mode_token, "chunks_proposed": list(chunks_proposed), "scope": scope,

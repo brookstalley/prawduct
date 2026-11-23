@@ -19,6 +19,8 @@ import sys
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from lib import critic_consolidate as cc
 from lib import critic_mode, work_unit
 from lib.critic_mode import MODE_DEFERRED, infer_mode
@@ -296,6 +298,39 @@ class TestAFixIsToldFromTheNextChunkByItsDeliverables:
         owed = self._owed(repo)
         assert owed is not None, owed
         assert "plan retract" not in owed[1], owed
+
+    @pytest.mark.parametrize(("route", "questioned"), [
+        ("declared", False), ("subject", False), ("span", False),
+        ("proposal", True), ("unrecorded", True),
+    ])
+    def test_only_the_codes_own_naming_is_questioned(self, monkeypatch, route, questioned):
+        """D8's exclusion, one row per route kind (R-2 and R-1 of the Chunk 07
+        review). Chunk 07 added `span` and pinned only `declared`; dropping
+        `span` left the suite green. A scoped subject was not excluded at all.
+        Two chunks reviewed, so the one-chunk `own` exemption cannot be what
+        silences the clause."""
+        from lib import plan_status
+        from lib.plan_status import ChunkState
+
+        monkeypatch.setattr(
+            plan_status, "done_chunks_touched", lambda *_a, **_k: [("03", "rev-named")]
+        )
+        states = {
+            "01": ChunkState("done", fact_id="rev-named", route="declared"),
+            "02": ChunkState("open"),
+            "03": ChunkState("done", fact_id="rev-named", route=route),
+        }
+        progress = critic_mode.PlanProgress(
+            total=3, complete=2, current_id="02", open_ids=("02",), states=states, finished=False,
+        )
+        plan = type("Binding", (), {"plan_path": Path("plan.md")})
+        clause = critic_mode._done_chunks_touched_clause(
+            plan, progress, {"src/three.py"}, ("01", "03"), Path("."),
+        )
+        if questioned:
+            assert "plan retract 03 --all" in clause and "`rev-named`" in clause, clause
+        else:
+            assert clause == "", clause
 
     def test_a_later_chunk_editing_a_chunk_the_builder_named_says_nothing(self, tmp_path):
         """Dogfooded on #1141's own branch: chunk 1 certified by `--chunks 1`,
@@ -651,7 +686,11 @@ class TestOnlyASuppliedChunkIdIsCredited:
         monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "ok", "facts": facts})
         monkeypatch.setattr(gates, "covered_frontier", lambda _p, **_k: {"commit": "abcdef1234567890"})
         monkeypatch.setattr(critic_mode, "_paths_since_tree", lambda _t, _p: set())
-        monkeypatch.setattr(plan_status, "propose_chunks", lambda *_a, **_k: [])
+        # The deferral asks `chunk_proposal(...).touched`, so that is what is
+        # stubbed: work touching no open chunk's Deliverables.
+        monkeypatch.setattr(
+            plan_status, "chunk_proposal", lambda *_a, **_k: plan_status.ChunkProposal([])
+        )
         plan = type("Binding", (), {"plan_path": Path("plan.md"), "chosen_by": "binding",
                                     "is_legacy": legacy})
         open_ids = tuple(k for k, s in states.items() if s.state == "open")
