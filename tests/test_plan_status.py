@@ -1344,6 +1344,16 @@ class TestRoute:
         assert "chunks_proposed" not in fact["body"]
         assert self._reason(repo, fact) == "named; route not recorded (fact predates chunks_proposed)"
 
+    def test_a_malformed_evidence_entry_never_raises(self, repo):
+        """`chunk_states` never raises; a hand-edited store can hold an entry
+        the dispatch's validator would refuse."""
+        head = _commit(repo, "src/c02.py", "x\n", "work")
+        for bad in ("nope", {"paths": "src/c02.py"}, {"paths": [3], "commits": None},
+                    {"paths": ["a.py"], "paths_more": "two"}):
+            fact = _named("R1", head, ["02"], chunks_proposed=["02"], chunks_declared=False,
+                          chunks_evidence={"02": bad})
+            assert self._reason(repo, fact).startswith("named by its proposal")
+
     def test_a_bare_chunk_fact_predates_the_proposal(self, repo):
         head = _commit(repo, "src/c02.py", "x\n", "work")
         fact = _review("R1", head, chunk="02")

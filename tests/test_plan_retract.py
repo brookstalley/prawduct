@@ -310,6 +310,134 @@ def test_the_help_names_the_op(capsys):
     assert "plan retract <chunk> --reason R" in capsys.readouterr().out
 
 
+class TestRetractAll:
+    """`plan retract <chunk> --all` (#1198-R7 to R9, design D7): every fact
+    certifying the chunk is withdrawn, one pair each, and a re-run converges.
+    The span half is pinned where a real consolidation writes the spanning
+    edge: `test_critic_consolidate.py::TestTheFactRecordsHowEachChunkWasNamed`."""
+
+    def test_every_naming_fact_is_withdrawn_and_the_chunk_ends_open(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _review(repo, "R1", ["01", "02"])
+        _review(repo, "R2", ["02"])
+        rc, out, err = _run(repo, capsys, "02", "--all", "--reason", "never built")
+        assert rc == 0, err
+        assert "retracted R1's certification of chunk 02" in out
+        assert "retracted R2's certification of chunk 02" in out
+        assert "chunk 02 now reads: open" in out
+        assert [f["body"]["fact_id"] for f in _retractions(repo)] == ["R1", "R2"]
+        assert _states(repo)["01"] == ("done", "R1")  # R1's other chunk stands
+
+    def test_a_rerun_writes_nothing(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _review(repo, "R1", ["02"])
+        assert _run(repo, capsys, "02", "--all", "--reason", "x")[0] == 0
+        rc, out, err = _run(repo, capsys, "02", "--all", "--reason", "x")
+        assert rc == 0, err
+        assert "already retracted" in out
+        assert len(_retractions(repo)) == 1
+
+    def test_all_with_fact_is_a_usage_error(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _review(repo, "R1", ["02"])
+        rc, _out, err = _run(repo, capsys, "02", "--all", "--fact", "R1", "--reason", "x")
+        assert rc == 2 and "takes no --fact" in err
+        assert _retractions(repo) == []
+
+    def test_a_ticked_box_refuses_before_any_write(self, tmp_path, capsys):
+        plan = _PLAN.replace("## Build Chunks", "## Status\n\n- [ ] Chunk 01: one\n- [x] Chunk 02: two\n\n## Build Chunks")
+        repo = _repo(tmp_path, plan)
+        _review(repo, "R1", ["02"])
+        rc, out, err = _run(repo, capsys, "02", "--all", "--reason", "x")
+        assert rc == 1 and "box-import" in out + err
+        assert _retractions(repo) == []
+
+    def test_without_all_the_still_done_line_names_it(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _review(repo, "R1", ["02"])
+        _review(repo, "R2", ["02"])
+        rc, out, _err = _run(repo, capsys, "02", "--fact", "R1", "--reason", "wrong")
+        assert rc == 0
+        assert "or withdraw every certification with `plan retract 02 --all --reason …`" in out
+
+    def _blocked(self, repo: Path, fact_id: str, chunks: list[str]) -> None:
+        """A review naming ``chunks`` with an unresolved blocker: it certifies
+        nothing today, and certifies once the blocker resolves."""
+        head = _git(repo, "rev-parse", "HEAD")
+        body = {
+            "scope": "unit", "mode": "final", "chunks": chunks, "head_commit": head,
+            "dispatch_commit": head,
+            "findings": [{"fid": "R-1", "severity": "blocking", "goal": "g", "title": "t"}],
+            "counts": {"blocking": 1, "warning": 0, "note": 0},
+        }
+        assert evidence.append_fact(repo, "review", fact_id, body)["status"] == "appended"
+
+    def test_a_blocked_fact_naming_the_chunk_is_withdrawn_too(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _review(repo, "R1", ["02"])
+        self._blocked(repo, "R2", ["02"])
+        assert _states(repo)["02"] == ("done", "R1")
+        assert _run(repo, capsys, "02", "--all", "--reason", "x")[0] == 0
+        assert [f["body"]["fact_id"] for f in _retractions(repo)] == ["R1", "R2"]
+
+    def test_all_after_a_single_retract_still_withdraws_the_blocked_fact(self, tmp_path, capsys):
+        """The single retract leaves the chunk `already` withdrawn, with a
+        blocked fact still able to certify it: `--all` takes that one too."""
+        repo = _repo(tmp_path)
+        _review(repo, "R1", ["02"])
+        self._blocked(repo, "R2", ["02"])
+        assert _run(repo, capsys, "02", "--reason", "x")[0] == 0
+        rc, out, err = _run(repo, capsys, "02", "--all", "--reason", "x")
+        assert rc == 0, err
+        assert "retracted R2's certification of chunk 02" in out
+        assert [f["body"]["fact_id"] for f in _retractions(repo)] == ["R1", "R2"]
+
+    def test_the_json_envelope(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _review(repo, "R1", ["01", "02"])
+        _review(repo, "R2", ["02"])
+        rc, out, err = _run(repo, capsys, "02", "--all", "--reason", "x", "--json")
+        assert rc == 0, err
+        data = json.loads(out)
+        assert (data["status"], data["action"], data["chunk"], data["state"]) == (
+            "ok", "retracted", "02", "open",
+        )
+        assert [p["fact_id"] for p in data["pairs"]] == ["R1", "R2"]
+        assert all(p["retraction_id"].startswith("chunk-retracted-") for p in data["pairs"])
+        rc, out, err = _run(repo, capsys, "02", "--all", "--reason", "x", "--json")
+        assert rc == 0, err
+        again = json.loads(out)
+        assert (again["action"], again["pairs"], again["state"]) == ("already-retracted", [], "open")
+
+    def test_a_failed_append_partway_says_what_was_written_and_a_rerun_converges(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        repo = _repo(tmp_path)
+        _review(repo, "R1", ["02"])
+        # Blocked: once R1 is withdrawn nothing certifies 02 now, so the re-run
+        # must look past `already` to finish the job.
+        self._blocked(repo, "R2", ["02"])
+        real = evidence.append_fact
+        calls = {"n": 0}
+
+        def fail_second(project_dir, kind, fact_id, body):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                return {"status": "error", "reason": "disk full"}
+            return real(project_dir, kind, fact_id, body)
+
+        monkeypatch.setattr(evidence, "append_fact", fail_second)
+        rc, out, err = _run(repo, capsys, "02", "--all", "--reason", "x")
+        assert rc == 1
+        assert "fact-append-failed" in out + err and "1 of 2 written" in out + err
+        assert "written: R1" in err
+        monkeypatch.setattr(evidence, "append_fact", real)
+        rc, out, err = _run(repo, capsys, "02", "--all", "--reason", "x")
+        assert rc == 0, err
+        assert [f["body"]["fact_id"] for f in _retractions(repo)] == ["R1", "R2"]
+        assert _states(repo)["02"] == ("open", None)
+
+
 class TestNoProposalRestoresARetraction:
     """A retraction withdraws a certification; a later dispatch that copies a
     chunk set forward without asking about it would restore it. Each route a

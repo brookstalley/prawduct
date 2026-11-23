@@ -49,9 +49,21 @@ fact predates the record. `plan status` also flags a review-done chunk with an o
 (`ahead_of`, also a key in `plan status --json`). The flag is worded by route: out of order is
 expected when the builder's own words named the chunk, and otherwise the flag names the retraction
 to run if the work is not built. The `/clear` handoff prints the same table. When the Stop-path
-deferral holds, its message now names a done chunk that the pending work touches, other than the one
-just reviewed, together with the fact that certified it (`plan_status.done_chunks_touched`). That is
-where a wrong certification is met first.
+deferral holds, its message now names a done chunk that the pending work touches, together with the
+fact that certified it (`plan_status.done_chunks_touched`). It stays silent for the one chunk the newest
+review named and for one the builder named with `--chunks`. That is where a wrong certification is
+met first.
+
+### Chunk 04: `plan retract <chunk> --all`
+
+`plan retract` withdrew one fact's certification at a time, and a chunk certified by several
+facts, or by a span that surfaces once the naming facts are withdrawn, took one run per fact.
+`--all` now withdraws every certification in one command, one `chunk-retracted` fact per pair. That
+is each fact naming the chunk, including a blocked one that would certify once its blocker
+resolves, and then any span a withdrawal uncovers. `plan_status.retraction_plan` plans the pairs
+and only reads; the CLI writes behind it. A write that fails partway says what was written and
+exits 1, and a re-run converges, because every written pair answers `already`. `--all` with
+`--fact` is a usage error. Without `--all`, the "still reads done" line names it.
 
 ## Consumer note
 A review no longer certifies a later chunk just because its diff touched that chunk's files while
@@ -60,3 +72,4 @@ a chunk you built ahead of an earlier one, give its commits a scoped subject
 (`<type>(<scope>): … (Chunk N)`) or pass `--chunks N`. A `chunk` review whose diff proposes two
 chunks now stops with exit 8 and asks you to name the one you built with `--chunks`.
 `plan status` now says how each done chunk became done, and flags one with an open chunk before it.
+`plan retract <chunk> --all --reason …` withdraws every certification of a chunk at once.

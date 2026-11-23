@@ -280,6 +280,23 @@ class TestAFixIsToldFromTheNextChunkByItsDeliverables:
         assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
         assert "plan retract" not in owed[1]
 
+    def test_a_chunk_the_builder_named_is_not_questioned(self, tmp_path):
+        """D8's other exclusion: the same two-chunk review, named by the
+        builder with `--chunks 1,3`, so 3's route is their own words. Work on 3
+        then defers with no clause: a declared certification is not second-
+        guessed. The 1141 sequence below is the same shape with the route
+        unrecorded, and does print it."""
+        repo, _ = _scenario(
+            tmp_path, MID, [WARNING], commit_fix=False, chunks="1,3",
+            deliverables={1: "src/app.py", 3: "src/three.py"}, seed={"src/three.py": "w = 0\n"},
+        )
+        (repo / "src/app.py").write_text("x = 2\n")
+        (repo / "src/three.py").write_text("w = 1\n")
+        _commit_all(repo, "chunk 3's work")
+        owed = self._owed(repo)
+        assert owed is not None, owed
+        assert "plan retract" not in owed[1], owed
+
     def test_the_1141_sequence_names_the_wrong_certification_then_retracting_it_reviews_it(self, tmp_path):
         """#1141 (A2, R8, R9) end to end. A pre-#1141 fact named 1 and 3, so 3
         reads done though nobody built it. 3's work then reads as a fix and
@@ -315,7 +332,7 @@ class TestAFixIsToldFromTheNextChunkByItsDeliverables:
         assert f"`{fact_id}`" in owed[1]
 
         retract = subprocess.run(
-            [sys.executable, str(HOOK), "plan", "retract", "3", "--reason", "never built"],
+            [sys.executable, str(HOOK), "plan", "retract", "3", "--all", "--reason", "never built"],
             cwd=str(repo), capture_output=True, text=True,
             env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )

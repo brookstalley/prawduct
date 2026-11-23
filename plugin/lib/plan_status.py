@@ -839,13 +839,19 @@ def _route(body: dict, norm_id: str, by_norm: "dict[str, str]") -> "tuple[str, s
         return "unrecorded", (
             "named; whether by --chunks or the proposal is not recorded (fact predates #1141)"
         )
+    # Read defensively: `chunk_states` never raises, and a hand-edited store
+    # can hold what the dispatch's validator would have refused.
     evidence_map = body.get("chunks_evidence") if isinstance(body.get("chunks_evidence"), dict) else {}
-    entry = next((v for k, v in evidence_map.items() if _norm(k) == norm_id), None) or {}
-    if entry.get("paths"):
-        more = f" (+{entry['paths_more']} more)" if entry.get("paths_more") else ""
-        return "proposal", f"named by its proposal: path `{entry['paths'][0]}`{more}"
-    if entry.get("commits"):
-        return "proposal", f"named by its proposal: commit {entry['commits'][0]}'s subject"
+    entry = next((v for k, v in evidence_map.items() if _norm(k) == norm_id), None)
+    entry = entry if isinstance(entry, dict) else {}
+    paths = [p for p in entry.get("paths") or [] if isinstance(p, str)] if isinstance(entry.get("paths"), list) else []
+    commits = [c for c in entry.get("commits") or [] if isinstance(c, str)] if isinstance(entry.get("commits"), list) else []
+    more = entry.get("paths_more")
+    if paths:
+        extra = f" (+{more} more)" if isinstance(more, int) and not isinstance(more, bool) and more > 0 else ""
+        return "proposal", f"named by its proposal: path `{paths[0]}`{extra}"
+    if commits:
+        return "proposal", f"named by its proposal: commit {commits[0]}'s subject"
     return "proposal", "named by its proposal; what proposed it is not recorded"
 
 
@@ -1215,6 +1221,82 @@ def retraction_target(
             plan.scope, key, fact_id,
         )
     return RetractionTarget("ok", "", plan.scope, key, fact_id)
+
+
+def retraction_plan(
+    plan_path: Path, facts: object, chunk: str, *, repo_dir: Path
+) -> "list[RetractionTarget] | RetractionTarget":
+    """Every pair ``plan retract <chunk> --all`` writes, in the order to write
+    them — the answer, not a walker — or the one :class:`RetractionTarget`
+    that refuses (or says ``already``). It only reads, so nothing is half
+    written by the planning.
+
+    1. :func:`retraction_target` with no fact, once, for its refusals: a ticked
+       box refuses first. Its ``already`` (withdrawn, nothing certifying now)
+       is the answer only when steps 2 and 3 find nothing left to withdraw.
+    2. Every ``review`` and ``chunk-imported`` fact of the plan's scope that
+       names the chunk and is not yet withdrawn for it. Each must answer
+       ``ok``. A blocked fact naming it is taken too, since it certifies once
+       its blocker resolves.
+    3. Then, with those pairs added to an in-memory copy of the store, while
+       the chunk still reads ``done`` (by a span, since every naming fact is
+       withdrawn), that fact is added and the states re-read. The loop is
+       bounded by the store's review facts and stops on a repeated fact or a
+       refusal.
+    """
+    first = retraction_target(plan_path, facts, chunk, None, repo_dir=repo_dir)
+    # `already` and `not-certified` describe the chunk NOW; a blocked fact that
+    # names it still certifies once its blocker resolves, so step 2 runs for
+    # both, and `first` is the answer only when it finds nothing.
+    if first.status not in ("ok", "already", "not-certified"):
+        return first
+    scope, key = first.scope, first.chunk
+    store = _store(facts)
+    withdrawn = {fid for (fid, n) in retractions(store, scope) if n == _norm(key)}
+    planned: list[RetractionTarget] = []
+    for kind in ("review", IMPORTED_KIND):
+        for fact in evidence.facts_of_kind(store, kind):
+            body = fact.get("body") or {}
+            fid = fact.get("id")
+            if body.get("scope") != scope or not isinstance(fid, str) or fid in withdrawn:
+                continue
+            names = (
+                fact_chunks(body) if kind == "review"
+                else ([str(body["chunk"])] if body.get("chunk") is not None else [])
+            )
+            if _norm(key) not in {_norm(c) for c in names} or fid in {t.fact_id for t in planned}:
+                continue
+            target = retraction_target(plan_path, facts, key, fid, repo_dir=repo_dir)
+            if target.status == "already":
+                continue
+            if target.status != "ok":
+                return target
+            planned.append(target)
+
+    def with_planned() -> dict:
+        synthetic = [
+            {"schema": evidence.SCHEMA_VERSION, "kind": RETRACTED_KIND, "id": f"planned-{i}",
+             "ts": "", "actor": {},
+             "body": {"scope": scope, "chunk": key, "fact_id": t.fact_id, "reason": "planned"}}
+            for i, t in enumerate(planned)
+        ]
+        return {**store, "facts": [*(store.get("facts") or []), *synthetic]}
+
+    bound = len(evidence.facts_of_kind(store, "review")) + 1
+    for _ in range(bound):
+        augmented = with_planned()
+        state = chunk_states(plan_path, augmented, repo_dir=repo_dir).get(key)
+        if state is None or state.state != "done" or not state.fact_id:
+            break
+        if state.fact_id in {t.fact_id for t in planned}:
+            break
+        target = retraction_target(plan_path, augmented, key, state.fact_id, repo_dir=repo_dir)
+        if target.status != "ok":
+            return target
+        planned.append(target)
+    if not planned:
+        return first
+    return planned
 
 
 def is_finished(

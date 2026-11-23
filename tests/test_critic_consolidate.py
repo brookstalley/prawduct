@@ -11728,6 +11728,45 @@ class TestTheFactRecordsHowEachChunkWasNamed:
             "done ahead of open chunk 02 (by span) — expected when chunks are built out of order"
         )
 
+    def test_retract_all_withdraws_every_naming_fact_and_the_span_it_uncovers(self, tmp_path):
+        """#1198-R7 and A3, design D7. Two naming facts and a span all certify
+        03. `--all` withdraws all three, one pair each, the span last (it
+        surfaces only once the naming facts are withdrawn), and 03 ends open.
+        Mutant M8 (stop after the naming facts) leaves the span certifying."""
+        from lib import plan_status
+
+        repo = _st8_repo(tmp_path)
+        (repo / "src/two.py").write_text("two = 0\n")
+        (repo / "src/three.py").write_text("three = 1\n")
+        _git(repo, "commit", "-qam", "feat(cs): one, and three by its delegate (Chunk 03)")
+        assert cc.begin_review(repo, "cumulative", chunks=["01"], force=True)["status"] == "ok"
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        (span_fact,) = _store_facts(repo, "review")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        for fid in ("rev-name-a", "rev-name-b"):
+            body = {"scope": "cs", "mode": "final", "chunks": ["03"], "chunks_proposed": ["03"],
+                    "head_commit": head, "dispatch_commit": head, "findings": [],
+                    "counts": {"blocking": 0, "warning": 0, "note": 0}}
+            assert evidence.append_fact(repo, "review", fid, body)["status"] == "appended"
+        plan = repo / ".prawduct/artifacts/build-plan-cs.md"
+        assert plan_status.chunk_states(plan, evidence.read_facts(repo), repo_dir=repo)["03"].state == "done"
+
+        proc = subprocess.run(
+            [sys.executable, str(HOOK), "plan", "retract", "03", "--all", "--reason", "never built"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        import re
+
+        withdrawn = re.findall(r"retracted (\S+)'s certification of chunk 03", proc.stdout)
+        assert withdrawn == ["rev-name-a", "rev-name-b", span_fact["id"]], proc.stdout
+        assert "chunk 03 now reads: open" in proc.stdout
+        retracted = _store_facts(repo, plan_status.RETRACTED_KIND)
+        assert [f["body"]["fact_id"] for f in retracted] == ["rev-name-a", "rev-name-b", span_fact["id"]]
+        assert plan_status.chunk_states(plan, evidence.read_facts(repo), repo_dir=repo)["03"].state == "open"
+
     def test_a_declared_set_is_recorded_as_declared(self, tmp_path):
         repo = _st8_repo(tmp_path)
         assert cc.begin_review(repo, "chunk", chunks=["01"])["status"] == "ok"
