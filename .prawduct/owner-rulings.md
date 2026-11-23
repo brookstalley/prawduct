@@ -413,6 +413,10 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
    and `fix/round-budget-cadence`'s boundary review (R-2 of rev-20261123T135555Z-05b709ab) found that a mid-plan
    `final` was then charged. The implementation follows the approved words: a chunk's first full review in any
    mode, and the first whole-plan review that names no new chunk.
+   **2026-11-23, later:** the boundary half changed after that review's round 4
+   (rev-20261123T142904Z-0bd6c78e). "The first branch-wide review" is the scope's first `cumulative`, the first
+   review in the boundary stage, whatever it names. The no-new-chunk test gave the slot to a chunk's second
+   `final` and denied it to a `cumulative-final` chunk's boundary review.
 3. `develop`'s two unpushed commits (a04758d4, 792d8c06, the delegate-ceiling whole-tree guards) ship as a PR after
    `fix/chunk-plan-order`'s.
    **2026-11-23, later:** "That's fine one PR works." `fix/chunk-plan-order` was cut after those two commits
