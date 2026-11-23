@@ -113,14 +113,21 @@ class TestTheLinkFollowsTheRecordedAnchor:
             "rev-old", "rev-new",
         ]
 
-    def test_a_review_between_the_anchor_and_the_pass_is_not_linked(self):
-        """An earlier review of the same tree stays on the chain (a second
-        review of an unchanged tree must not hide the first); one recorded
-        after the anchor is not what the pass started from."""
+    def test_an_anchored_pass_links_to_its_anchor_alone(self):
+        """Neither a review of the same tree recorded before the anchor nor one
+        recorded after it is linked: store order cannot say whose they are."""
         reviews = [_review("rev-first", CHUNK, T0, T1)] + _two_reviews_of_one_tree()
-        assert [f["id"] for f in ca.linked_reviews(reviews, reviews[-1])] == [
-            "rev-first", "rev-old",
-        ]
+        assert [f["id"] for f in ca.linked_reviews(reviews, reviews[-1])] == ["rev-old"]
+
+    def test_the_link_does_not_depend_on_store_order(self):
+        """A sibling's review of the tree recorded BEFORE the anchor, or ingested
+        ahead of the pass, is linked no more than one recorded after it."""
+        sibling = _review("rev-sibling", CUMULATIVE, OTHER_BASE, T1, worktree="/sibling")
+        anchor = _review("rev-anchor", CHUNK, T0, T1)
+        pass_ = _review("rev-pass", VERIFY_MODE, T1, T2, verifies="rev-anchor")
+        for order in ([sibling, anchor, pass_], [anchor, sibling, pass_], [sibling, pass_, anchor]):
+            ids = [f["id"] for f in ca.linked_reviews(order, pass_)]
+            assert ids == ["rev-anchor"], [f["id"] for f in order]
 
     def test_an_anchor_the_store_does_not_hold_links_to_nothing(self):
         """Not yet ingested from the clone that recorded it: the tree's newest
@@ -332,10 +339,79 @@ class TestTheChainsFollowTheAnchor:
         chain = critic_mode.review_chain([unrelated, p1, p2], p2)
         assert [f["id"] for f in chain] == ["rev-p2", "rev-p1"]
 
+    def test_the_chain_and_the_stop_hook_agree_whatever_the_order(self, tmp_path):
+        """Another worktree's `cumulative` of T1 recorded BEFORE this worktree's
+        `chunk` of T1, and the pass verifies the chunk. The Stop hook judges
+        the chunk and asks for a final; the chain must not credit the sibling's
+        cumulative as this branch's boundary review."""
+        repo = _finished_plan_repo(tmp_path)
+        sibling = _review("rev-sibling", CUMULATIVE, OTHER_BASE, T1, worktree="/sibling")
+        anchor = _review("rev-anchor", CHUNK, T0, T1)
+        pass_ = _review("rev-pass", VERIFY_MODE, T1, T2, verifies="rev-anchor")
+        _append(repo, sibling, here=False)
+        _append(repo, anchor, here=True)
+        _append(repo, pass_, here=True)
+        ok, reason = gates._critic_session_satisfies_gate(repo)
+        assert not ok and f"over a '{CHUNK}' review" in reason, reason
+        facts = evidence.read_facts(repo)["facts"]
+        newest = next(f for f in facts if f["id"] == "rev-pass")
+        chain = critic_mode.review_chain(facts, newest)
+        assert [f["id"] for f in chain] == ["rev-pass", "rev-anchor"]
+        assert not critic_mode.boundary_review_on_chain(chain)
+
     def test_the_extended_line_ends_on_a_cycle(self):
         p1 = _review("rev-p1", VERIFY_MODE, T2, T1, verifies="rev-p2")
         p2 = _review("rev-p2", VERIFY_MODE, T1, T2, verifies="rev-p1")
         assert plan_status._extended_reviews([p1, p2], p2) is None
+
+
+class TestReviewChainConsumersOnAnAnchoredPass:
+    """What each reader of ``critic_mode.review_chain`` sees once an anchored
+    pass links to its anchor alone: another review of the anchor's tree,
+    recorded before the anchor, is no longer on the pass's chain. Each test is
+    one consumer, on the shape where the old rule and this one differ."""
+
+    def _chain(self, earlier_mode, *, earlier_chunks=None, earlier_findings=None,
+               anchor_mode=CHUNK, anchor_chunks=None):
+        earlier = _review("rev-earlier", earlier_mode, OTHER_BASE, T1,
+                          findings=earlier_findings)
+        anchor = _review("rev-anchor", anchor_mode, T0, T1)
+        if earlier_chunks is not None:
+            earlier["body"]["chunks"] = earlier_chunks
+        if anchor_chunks is not None:
+            anchor["body"]["chunks"] = anchor_chunks
+        pass_ = _review("rev-pass", VERIFY_MODE, T1, T2, verifies="rev-anchor")
+        facts = [earlier, anchor, pass_]
+        return facts, critic_mode.review_chain(facts, pass_)
+
+    def test_chunk_inheritance_takes_the_anchors_chunks(self):
+        """`chain_named_chunks` (the verify proposal and `chain_certified_chunks`)
+        reads the first naming fact on the chain. With the earlier review on
+        it, that was the earlier review's chunk, ahead of the anchor's own."""
+        _facts, chain = self._chain(CHUNK, earlier_chunks=["02"], anchor_chunks=["01"])
+        assert critic_mode.chain_named_chunks(chain) == ["01"]
+
+    def test_boundary_credit_needs_the_cumulative_on_the_walk(self):
+        """`boundary_review_on_chain` (`review_owed_after`,
+        `boundary_cumulative_still_owed`): a `cumulative` of the anchor's tree
+        recorded before the anchor is not credited, as the Stop hook (which
+        judges the anchor) never credited it either."""
+        _facts, chain = self._chain(CUMULATIVE)
+        assert not critic_mode.boundary_review_on_chain(chain)
+
+    def test_open_blocker_on_chain_reads_the_walk_only(self):
+        """`_open_blocker_on_chain` (the deferral) no longer sees a blocker on
+        the earlier review of the anchor's tree. The gate's composition still
+        counts it: it stands at a node the gate's path stands on."""
+        facts, chain = self._chain(
+            CHUNK, earlier_findings=[_blocker("F-1", "the earlier review's blocker")]
+        )
+        assert not critic_mode._open_blocker_on_chain(facts, chain)
+        verdict = ca.coverage_verdict(
+            [dict(f, body=dict(f["body"], files_changed=[], files_reviewed=[])) for f in facts],
+            T0, T2, lambda a, b: None,  # no free edges: the reviews make the path
+        )
+        assert verdict["status"] == "blocked", verdict
 
 
 # ---------------------------------------------------------------------------

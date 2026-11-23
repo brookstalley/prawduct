@@ -1760,9 +1760,11 @@ def review_chain(facts: list[dict], newest: dict) -> list[dict]:
     review at its ``base_tree`` recorded before it: EVERY one of them is
     included, not only the newest, because a second review of an unchanged
     tree must not hide the first, and the walk steps back through the newest.
-    A verify pass that named its anchor steps to that review, with the reviews
-    of the same tree recorded before it. Walked to the end, because a chain can
-    be several passes long. The walk ends where the review a fact links to is already on the
+    A verify pass that named its anchor links to that review alone, so the
+    walk steps to it and goes on from there; another review of the same tree,
+    possibly another worktree's, is on the chain only if the walk from the
+    anchor reaches it. Walked to the end, because a chain can be several passes
+    long. The walk ends where the review a fact links to is already on the
     chain: an anchor is found by id wherever it sits in the store, so store
     order no longer ends a malformed cycle, and stepping on to some other
     review at that tree would credit one nothing links to.

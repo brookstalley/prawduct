@@ -442,16 +442,16 @@ def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
     is its ``base_tree`` — oldest first, so ``[-1]`` is the one it links to
     (:func:`prior_review`).
 
-    **A verify-resolutions pass that recorded its anchor links by it.** Its
-    body's :data:`VERIFIES_KEY` names the review the dispatch anchored to, and
-    the tree cannot: two worktrees of one clone can review the same tree, and
-    the newest of those need not be the one this pass verified. Then the anchor
-    is ``[-1]``, preceded by the reviews at the same tree recorded before both
-    it and the pass (an earlier review of that tree is still on the chain), and
-    a review recorded between the anchor and the pass is not linked. A claim
-    that does not resolve links to nothing (:func:`_resolve_claim` says why
-    that, and not the tree, is the safe reading). A fact without the key — one
-    written before it, or any other mode — links by tree as below.
+    **A verify-resolutions pass that recorded its anchor links to that review
+    alone.** Its body's :data:`VERIFIES_KEY` names the review the dispatch
+    anchored to, and the tree cannot: two worktrees of one clone can review the
+    same tree, in either order, and a fact's ``actor`` is trimmed when it
+    travels, so no store-order or worktree filter can say which other reviews
+    of that tree were this lineage's. The rest of the chain is reached by
+    walking on from the anchor. A claim that does not resolve links to nothing
+    (:func:`_resolve_claim` says why that, and not the tree, is the safe
+    reading). A fact without the key — one written before it, or any other
+    mode — links by tree as below.
 
     One rule for every reader that follows the link, because three copies of it
     had already drifted (identity by ``id()`` vs by fact id; every review at
@@ -476,17 +476,13 @@ def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
     if not isinstance(base, str) or not base:
         return []
     claimed, anchor, _missing = _resolve_claim(reviews, fact)
-    if claimed and anchor is None:
-        return []
+    if claimed:
+        return [anchor] if anchor is not None else []
     here = _store_position(reviews, fact)
-    if anchor is not None:
-        here = min(here, _store_position(reviews, anchor))
-    earlier = [
+    return [
         f for f in reviews[:here]
-        if f is not fact and f is not anchor
-        and (f.get("body") or {}).get("head_tree") == base
+        if f is not fact and (f.get("body") or {}).get("head_tree") == base
     ]
-    return (earlier + [anchor]) if anchor is not None else earlier
 
 
 def prior_review(reviews: list[dict], fact: dict) -> "dict | None":

@@ -20,7 +20,12 @@ field. The Stop hook's walk (`gates._critic_session_satisfies_gate`), the review
 `critic_consolidate.carried_blocking` all go through it. A `verifies` naming a review the store
 does not hold, for example one not yet ingested from the clone that recorded it, links to no
 review rather than the tree's newest. The same goes for a named review whose `head_tree` is not
-the pass's `base_tree`, and for a pass with no usable `base_tree`, anchored or not. When the
+the pass's `base_tree`, and for a pass with no usable `base_tree`, anchored or not. A pass that
+names its review links to that review alone: another review of the same tree, from either
+worktree and in any store order, is on the pass's chain only if the walk from the named review
+reaches it. So the chain credits no boundary review, inherits no chunk and sees no blocker that
+the walk does not reach; the gate's own composition still counts every blocker at those trees.
+When the
 Stop hook's walk ends at a pass whose review has not been ingested, the NOTE names that review
 and points at `prawduct-hook evidence sync` instead of asking for a `final`. The walks that loop
 over the link now stop at a fact they have already visited, since an anchor found by id no
