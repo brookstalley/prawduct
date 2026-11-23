@@ -255,7 +255,7 @@ def _compare(facts: list[dict], tally: _Tally) -> list[str]:
         # The chain is also asked of a copy of a stored fact: the envelope a
         # consolidation just appended, or an anchor from another read.
         for start in (fact, json.loads(json.dumps(fact))):
-            old, new = _old_review_chain(facts, start), critic_mode.review_chain(facts, start)
+            old, new = _old_review_chain(facts, start), critic_mode.review_chain(facts, start, bound=None)
             if _identity(old) != _identity(new):
                 diffs.append(f"chain from {fact['id']}: {_ids(old)} != {_ids(new)}")
         chain = _old_review_chain(facts, fact)
