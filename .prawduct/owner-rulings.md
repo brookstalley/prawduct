@@ -399,6 +399,11 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
 
 **2026-11-19.** "Yes merge" — PR #1209 (`integration/backlog-roi-wave2-2026-11-18` → `develop`, backlog ROI wave 2) is merged.
 
+**2026-11-23.** "Yes to both git and areas, it will help understand where time is going. Subagents are fine for implementing" — answering whether to act on testament's two pieces of run advice:
+1. The test suite's git subprocesses are made cacheable: an autouse fixture isolates git config and fixes git dates for the children tests spawn (testament advice `cache`, first site `gitstate.git_common_dir`).
+2. The suite declares areas in `.testament.toml`, so runs report and time by area.
+Both are filed as backlog items and built by delegates on their own branch off `develop`, separate from `fix/dispositions-travel`.
+
 **2026-11-23.** "Yes to all of your recommendations" — answering four asks together:
 1. The `chunk-plan-order` boundary `cumulative` is bought past the exhausted round budget with `--force`, as a
    one-off round. Six `chunk` reviews (Chunks 01 to 06) had spent the budget before Chunk 07 was reviewed. The

@@ -734,6 +734,44 @@ class TestOneWinnerInEveryOrder:
         ])
         assert _held(repo)["winner"] == "disp:rev-1:R-1:1"
 
+    def test_a_seq_too_long_to_be_a_count_reads_as_zero_and_never_raises(self, tmp_path):
+        """Ids from fetched notes are only checked to be non-empty strings, so
+        one garbled or hostile line can carry a digit run past the interpreter's
+        int-string conversion limit (4300 digits), where ``int()`` raises. That
+        line must read like any unparseable id, in the key, the index and the
+        census, or it breaks every reader in every clone that ingests it."""
+        huge = "disp:rev-1:R-1:" + "9" * 5000
+        assert len(huge.rsplit(":", 1)[1]) > sys.get_int_max_str_digits()
+        answer = _envelope(KIND_DISPOSITION, huge, _answer("R-1", "accept", reason="huge"),
+                           "2026-11-09T00:00:00Z")
+        assert dispositions.answer_key(answer) == (0, huge)
+        # Tagged, it is no different.
+        tagged = _envelope(KIND_DISPOSITION, huge + ":0123456789ab",
+                           _answer("R-1", "accept", reason="huge tagged"),
+                           "2026-11-09T00:00:00Z")
+        assert dispositions.answer_key(tagged) == (0, huge + ":0123456789ab")
+        # The bound is 18 digits, inside a 64-bit integer: the longest run that
+        # still reads, and the shortest that does not.
+        longest, too_long = "disp:rev-1:R-1:" + "9" * 18, "disp:rev-1:R-1:1" + "0" * 18
+        assert dispositions.answer_key(_envelope(
+            KIND_DISPOSITION, longest, _answer("R-1", "accept"), "2026-11-09T00:00:00Z",
+        )) == (10 ** 18 - 1, longest)
+        assert dispositions.answer_key(_envelope(
+            KIND_DISPOSITION, too_long, _answer("R-1", "accept"), "2026-11-09T00:00:00Z",
+        )) == (0, too_long)
+
+        repo = _make_repo(tmp_path)
+        _append_all(repo, [
+            self._facts()[0], answer, tagged,
+            _envelope(KIND_DISPOSITION, "disp:rev-1:R-1:1",
+                      _answer("R-1", "file", backlog_id="X-1"), "2026-11-01T00:00:00Z"),
+        ])
+        held = _held(repo)
+        assert held["winner"] == "disp:rev-1:R-1:1"
+        assert held["census"]["status"] == "ok", held["census"]
+        rows = {row["fid"]: row for row in held["census"]["reviews"][0]["rows"]}
+        assert rows["R-1"]["state"] == dispositions.STATE_FILED
+
     def test_two_answers_at_one_seq_keep_both_and_agree_on_a_winner(self, tmp_path):
         """Two clones answer one finding without seeing each other, then each
         receives the other's line. Both answers survive in both stores, and
@@ -889,6 +927,27 @@ class TestTheWriterAttaches:
         assert result["note"]["status"] == "skipped"
         assert "not a commit id" in result["note"]["reason"]
 
+    def test_a_skipped_note_is_said_too_and_the_cli_exits_zero(self, tmp_path, capsys):
+        """A skip leaves the answer with no note as surely as a failed append,
+        so the agent is told the same thing. The control is an anchored
+        review, whose answer travels and prints nothing."""
+        anchored, _anchor = self._anchored(tmp_path)
+        assert dispositions.disposition_cmd(anchored, ["rev-1", "R-1", "--accept", "ok"]) == 0
+        assert "NOTE: disposition:" not in capsys.readouterr().err
+
+        repo = _make_repo(tmp_path, "unanchored")
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+        assert dispositions.disposition_cmd(repo, ["rev-1", "R-1", "--accept", "ok"]) == 0
+        err = capsys.readouterr().err
+        notes = [line for line in err.splitlines() if line.startswith("NOTE: disposition:")]
+        assert len(notes) == 1, err
+        assert "not a commit id" in notes[0]
+
+    def test_the_sweep_counts_skipped_notes_as_unsent(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning"), ("R-2", "note")])
+        assert dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")["unsent"] == 2
+
     def test_it_hands_attach_the_stored_envelope_and_the_review_anchor(
         self, tmp_path, monkeypatch
     ):
@@ -958,7 +1017,8 @@ class TestTheWriterAttaches:
         assert len(notes) == 1, out.err
         assert repr(fact_id) in notes[0]
         assert "(git notes append failed (boom))" in notes[0]
-        assert "the next `evidence sync` attaches it" in notes[0]
+        assert "other clones do not see it yet" in notes[0]
+        assert evidence_notes.REPAIR_CLAUSE in notes[0]
 
     def test_the_sweep_counts_its_unsent_records(self, tmp_path, monkeypatch):
         self._failing(monkeypatch)
@@ -1815,12 +1875,11 @@ class TestAutoAccept:
         _review_fact(repo, "rev-1", [("R-1", "warning"), ("R-2", "note")])
 
         swept = dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
-        # ``unsent`` counts the sweep's records whose git note failed. A note
-        # that was written, or skipped because the kind does not travel, is
-        # not one.
+        # ``unsent`` counts the sweep's records left with no git note. This
+        # review records no anchor, so neither answer has a note to ride.
         assert swept == {
             "status": "swept", "accepted": 2, "skipped_blocking": 0, "failed": [],
-            "unsent": 0,
+            "unsent": 2,
         }
         rows = {
             row["fid"]: row

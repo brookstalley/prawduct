@@ -3045,9 +3045,9 @@ def _refuse_over_budget(
     )
     swept = dispositions.auto_accept(project_dir, budget["review_ids"], reason=reason)
     # Each sweep ACCEPT travels to other clones like any other answer, attached
-    # to its review's note as it is recorded. One whose attach failed is still
-    # in the store and goes out at the next `evidence sync`, so it is said here,
-    # in the block critic-begin prints, rather than left for the reader to find.
+    # to its review's note as it is recorded. One left with no note is still in
+    # the store, so it is said here, in the block critic-begin prints, rather
+    # than left for the reader to find.
     unsent = swept.get("unsent", 0)
     if not isinstance(unsent, int):
         unsent = 0
@@ -3057,7 +3057,7 @@ def _refuse_over_budget(
             *notes,
             f"{unsent} budget ACCEPT(s) were recorded but not attached to "
             f"{evidence_notes.NOTES_REF}, so other clones do not see them yet; "
-            "`prawduct-hook evidence sync` attaches them before it pushes",
+            f"{evidence_notes.REPAIR_CLAUSE}",
         ]
     # Rendered over the SWEPT ids, not over the scope: those are the findings
     # this refusal just answered, and the census is the answer's only trace
@@ -6158,7 +6158,8 @@ def answered_lint_results(store: "dict | None", scope: "str | None") -> dict:
 
         {"warning": {identity: sentence}, "blocking": {identity: sentence}}
 
-    **A WARNING is answered by the newest disposition being an accept or a
+    **A WARNING is answered by the winning disposition (the greatest
+    ``dispositions.answer_key``, the same in every clone) being an accept or a
     file** — the answers ``prior_dispositions`` hands a reviewer so it declines
     to re-raise. A ``fixed`` disposition answers nothing here: the lint still
     reporting the identical result is the evidence it was not fixed.

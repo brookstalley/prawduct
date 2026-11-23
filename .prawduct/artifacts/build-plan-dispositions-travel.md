@@ -28,9 +28,10 @@ governed_by:
       - "written in Python, never specific to Python → conforms"
       - "guides and reviews, never implements → conforms"
       - "goals and verification bind, method is advice → conforms; departures are recorded under Decisions made mid-build"
+      - "every fact has one home → conforms; a disposition's home is still the store and its note is a copy, and the NOTE for a fact with no note has one home, `evidence_notes.unwritten_notice`"
   - artifact: security-model
     dispositions:
-      - "untrusted governance state is data → conforms; an ingested disposition reaches the census, the briefing and the prior-dispositions block, and no gate (D9, pinned by T7)"
+      - "untrusted governance state is data → conforms; an ingested disposition reaches the census, the prior-dispositions block, record-lint's WARNING re-raise suppression, the sweep's skip set and the stats rates, and no gate (D8, D9, pinned by T7)"
       - "destructive operation needs operation-level approval → inapplicable because nothing is deleted or rewritten"
       - "product content leaves only through pinned, approved surfaces → conforms; `evidence sync` pushes only to the product's own push remote, which the norm does not govern as cross-owner, and the outbound entry names the four newly published fields (design § Security model)"
 ---

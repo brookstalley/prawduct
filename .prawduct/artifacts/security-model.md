@@ -99,10 +99,14 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
   **Inbound (2026-10-25, builder-drafted, for the owner's veto):** the same site is the one
   place governance content ENTERS a clone — `evidence ingest` (and session start) appends any
   well-formed line found on a fetched `refs/notes/<remote>/prawduct` to the store the coverage
-  gates read. An ingested disposition reaches the census, the briefing and the reviewer's
-  prior-dispositions block, and no gate: no gate reads a disposition, so one forged or carried
-  from another clone can change how a finding is reported and what a reviewer is told was
-  answered, but cannot clear a blocking finding. `[DECISION: trust the product's own remote for inbound facts at the level it is
+  gates read. An ingested disposition reaches every reader of the store's dispositions: the
+  census (and through it `render-dispositions`, the briefing and the PR census), the reviewer's
+  prior-dispositions block, record-lint's re-raise suppression (an ACCEPT or FILE demotes a
+  WARNING lint result to an observation), the budget sweep's skip set, and the acted-on rates in
+  `stats`. No gate reads one: a BLOCKING lint result is answered only by a `waived` resolution.
+  So a disposition forged or carried from another clone can change how a finding is reported,
+  what a reviewer is told was answered, and whether a WARNING lint result is raised again, but
+  cannot clear a blocking finding. `[DECISION: trust the product's own remote for inbound facts at the level it is
   already trusted for code — no signature or provenance check at ingest | the Critic gate
   was never adversarially secure: anyone with push access can run `critic-consolidate` over
   fabricated partials in their own clone and push the branch, so a forged note line widens

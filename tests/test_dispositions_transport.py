@@ -55,6 +55,8 @@ SCOPE = "unit"
 #: before dispositions travelled filters on.
 OLD_TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported", "chunk-retracted"})
 DIVERGED = "disposition(s) share an id with a different answer recorded here"
+REMEDY = ("re-answer each with `prawduct-hook disposition` using a different "
+          "action or reason than this clone shows")
 
 
 # ---------------------------------------------------------------------------
@@ -496,10 +498,15 @@ class TestALegacyIdCollisionIsReported:
         return anchor
 
     def test_ingest_counts_one_collision_once(self, a, b):
+        """The count, the finding it names, and the remedy. The remedy used to
+        read "re-answer the finding to converge", which an identical re-answer
+        cannot follow (``record`` refuses it as unchanged), so it now says the
+        new answer must differ from the one this clone shows."""
         anchor = self._collide(a, b)
         result = _sync(b, push=False)
-        assert (f"1 {DIVERGED} under the untagged legacy id; re-answer the finding to converge"
+        assert (f"1 {DIVERGED} under the untagged legacy id (rev-1 R-1); to converge"
                 in result["reason"]), result
+        assert REMEDY in result["reason"], result
         # The premise of "once": A's line is on two refs, as two blobs.
         local = _git(b, "notes", "--ref", NOTES_REF, "list", anchor)
         tracking = _git(b, "notes", "--ref", TRACKING_REF, "list", anchor)
@@ -508,6 +515,62 @@ class TestALegacyIdCollisionIsReported:
         assert _winner(b, "R-1")["body"]["reason"] == "B's answer"
         again = _fetch_and_ingest(b)
         assert f"1 {DIVERGED}" in again["reason"], again
+
+    def test_the_notice_names_each_finding_and_caps_the_list(self, a, b):
+        """One collision per finding, on more findings than the notice names:
+        each named one is ``<review_id> <fid>``, sorted, and the rest are
+        counted rather than dropped."""
+        fids = [f"R-{n}" for n in range(1, 8)]
+        anchor = _review(a, "rev-1", [_finding(fid, "warning") for fid in fids])
+        _sync(a)
+        _sync(b, push=False)
+        for fid in fids:
+            _raw_disposition(a, f"disp:rev-1:{fid}:1", fid, reason="A's answer")
+            mine = _raw_disposition(b, f"disp:rev-1:{fid}:1", fid, reason="B's answer")
+            assert evidence_notes.attach(b, mine, anchor)["status"] == "attached"
+        _sync(a)
+        reason = _sync(b, push=False)["reason"]
+        assert (f"7 {DIVERGED} under the untagged legacy id "
+                "(rev-1 R-1, rev-1 R-2, rev-1 R-3, rev-1 R-4, rev-1 R-5 and 2 more); "
+                "to converge") in reason, reason
+
+    @pytest.mark.parametrize("answerer", ["a", "b"])
+    def test_a_different_re_answer_clears_the_notice_on_every_later_hop(self, a, b, answerer):
+        """The remedy, followed. Whichever clone re-answers, its new answer
+        mints a higher seq and wins in both, so the legacy lines that still
+        disagree no longer decide anything: each later ingest and sync, in
+        either clone, stops reporting them. Each hop is checked, because the
+        colliding lines stay on the notes forever."""
+        self._collide(a, b)
+        assert DIVERGED in _sync(b)["reason"]  # B now pushes its own legacy line too
+        assert DIVERGED in _sync(a)["reason"]  # and A, receiving it, reports as well
+
+        clone = a if answerer == "a" else b
+        # An identical answer is refused as unchanged, as the remedy warns,
+        # and changes nothing.
+        own = _winner(clone, "R-1")["body"]["reason"]
+        same = dispositions.record(clone, "rev-1", "R-1", dispositions.ACCEPT, reason=own)
+        assert same["status"] == "unchanged", same
+        _record(clone, "R-1", dispositions.ACCEPT, reason="converged")
+
+        for repo in (clone, b if clone == a else a, clone):
+            reason = _sync(repo)["reason"] or ""
+            assert DIVERGED not in reason, (repo.name, reason)
+        for repo in (a, b):
+            reason = _fetch_and_ingest(repo)["reason"] or ""
+            assert DIVERGED not in reason, (repo.name, reason)
+            reason = _sync(repo)["reason"] or ""
+            assert DIVERGED not in reason, (repo.name, reason)
+            assert _winner(repo, "R-1")["body"]["reason"] == "converged", repo.name
+
+    def test_an_unanswered_collision_still_reports_on_every_later_hop(self, a, b):
+        """The control for the test above: with no new answer, the colliding
+        line is still the finding's winner, so every sync keeps saying so."""
+        self._collide(a, b)
+        for repo in (b, a, b, a):
+            reason = _sync(repo)["reason"] or ""
+            assert f"1 {DIVERGED} under the untagged legacy id (rev-1 R-1)" in reason, (
+                repo.name, reason)
 
     def test_the_same_answer_under_one_id_is_no_collision(self, a, b):
         self._collide(a, b, same_body=True)

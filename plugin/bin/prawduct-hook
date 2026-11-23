@@ -8906,8 +8906,8 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
     ``refs/notes/prawduct`` (pushed by ``/prawduct:pr``; another clone takes
     it in with ``evidence sync``, or at session start on this branch);
     removing the block is therefore the advice the kept-block line gives. The flag stays opt-in — a flag removal is not additive — and
-    a fact whose note could not be written is named in a NOTE, since that one
-    stays in this clone. Refusals (exit 1, ``refused:
+    a fact whose note could not be written is named in a NOTE, since other
+    clones do not see that one until an ``evidence sync`` attaches it. Refusals (exit 1, ``refused:
     <code>``): ``archived-plan``, ``no-scope``, ``store-unreadable``,
     ``status-block-ambiguous``, ``status-block-undelimited``,
     ``status-block-trailing-comment``, ``fact-append-failed``,

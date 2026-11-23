@@ -54,17 +54,30 @@ NOTES_REF = "refs/notes/prawduct"
 _USAGE = "Usage: prawduct-hook evidence ingest [--all] [--json]"
 
 
+#: The :func:`attach` outcomes that leave a just-written fact with no note:
+#: a failed append, and a skip (no anchor, or one that is not a full id).
+UNSENT_STATUSES = frozenset({"error", "skipped"})
+
+#: What a reader can do about a fact with no note. :func:`reconcile`, which
+#: ``evidence sync`` runs before it pushes, repairs only what :func:`unattached`
+#: finds, which is bounded to the checked-out branch's commits and needs an
+#: anchor, so whether one fact will be repaired depends on where it hangs.
+#: ``evidence status`` prints that count, so the clause points there rather
+#: than promising a repair.
+REPAIR_CLAUSE = (
+    "`prawduct-hook evidence status` counts the ones the next `evidence sync` "
+    "can still attach"
+)
+
+
 def unwritten_notice(source: str, what: str, reason: object) -> str:
-    """The one wording of the NOTE a writer prints when :func:`attach` could
-    not write a fact's note. ``source`` is the command, ``what`` names the
-    fact. The fact is not lost to other clones: :func:`reconcile`, which
-    ``evidence sync`` runs before it pushes, attaches what the checked-out
-    branch's span still lacks. So the notice names that repair, bounded as
-    :func:`unattached` bounds it, rather than saying the fact never travels."""
+    """The one wording of the NOTE a writer prints when :func:`attach` left a
+    fact it just recorded with no note (an outcome in
+    :data:`UNSENT_STATUSES`). ``source`` is the command, ``what`` names the
+    fact."""
     return (
         f"NOTE: {source}: {what} is recorded, but its git note was not written "
-        f"({reason}) — it is in this clone's store, and while its branch is in "
-        "flight the next `evidence sync` attaches it so it reaches other clones."
+        f"({reason}), so other clones do not see it yet; {REPAIR_CLAUSE}."
     )
 
 
@@ -484,8 +497,9 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
     Only :data:`evidence.TRANSPORTED_KINDS` are taken from a note; a schema-ahead
     record is taken whatever its kind, so the newer writer's block fires here.
     A disposition whose id this store already holds with a different body is
-    not appended (dedupe is by ``(kind, id)``) and is counted in ``reason``,
-    because only a new answer can make the two clones agree.
+    not appended (dedupe is by ``(kind, id)``) and, while that id is still its
+    finding's winner, is counted and named in ``reason``, because only a new
+    answer can make the two clones agree (:func:`_collision_notice`).
     """
     refs = notes_refs(project_dir)
     if refs is None:
@@ -555,11 +569,9 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
             held_answers[record["id"]] = record["body"]
         arrived.append(record)
         appended += 1
-    if diverged:
-        skipped.append(
-            f"{len(diverged)} disposition(s) share an id with a different answer "
-            "recorded here under the untagged legacy id; re-answer the finding to converge"
-        )
+    notice = _collision_notice(diverged, [*known.get("facts", []), *arrived])
+    if notice is not None:
+        skipped.append(notice)
     result = _result(
         "ok", appended=appended, seen=len(records), commits=annotated,
         reason="; ".join(skipped) or None,
@@ -567,6 +579,44 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
     if appended:
         result["cache"] = _derive_cache(project_dir, [*known.get("facts", []), *arrived])
     return result
+
+
+#: Findings a collision notice names before it counts the rest.
+_COLLISIONS_NAMED = 5
+
+
+def _collision_notice(diverged: "set[str]", facts: "list[dict]") -> "str | None":
+    """What ``ingest`` says about disposition ids held here with a different
+    answer than an incoming line under the same id, or ``None`` when nothing
+    is left to say.
+
+    The incoming lines are immutable, so they arrive again on every ingest and
+    sync. A collision is counted only while the colliding id is still its
+    finding's winner over ``facts`` (the store plus what this ingest
+    appended): once either clone records a different answer, that answer
+    mints a higher seq, wins in every clone, and the collision decides
+    nothing, so the notice stops. An identical re-answer is refused as
+    unchanged, which is why the remedy asks for a different one."""
+    if not diverged:
+        return None
+    from . import dispositions  # noqa: PLC0415 — lazy; it imports this module
+
+    standing = sorted(
+        key for key, fact in dispositions.disposition_index({"facts": facts}).items()
+        if fact.get("id") in diverged
+    )
+    if not standing:
+        return None
+    named = ", ".join(f"{review_id} {fid}" for review_id, fid in standing[:_COLLISIONS_NAMED])
+    if len(standing) > _COLLISIONS_NAMED:
+        named += f" and {len(standing) - _COLLISIONS_NAMED} more"
+    return (
+        f"{len(standing)} disposition(s) share an id with a different answer recorded "
+        f"here under the untagged legacy id ({named}); to converge, re-answer each with "
+        "`prawduct-hook disposition` using a different action or reason than this clone "
+        "shows, since an identical answer is refused as unchanged, and the new answer "
+        "outranks both in every clone"
+    )
 
 
 def cache_line(result: dict) -> "str | None":

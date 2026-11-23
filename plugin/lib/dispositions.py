@@ -195,13 +195,26 @@ def _id_prefix(review_id: str, fid: str) -> str:
     return f"disp:{review_id}:{fid}:"
 
 
+#: The longest digit run :func:`_id_seq` reads as a sequence. A sequence counts
+#: one finding's answers, so no real one comes near 18 digits (a quintillion
+#: answers), and 18 keeps it inside a 64-bit integer. The bound exists because
+#: ids from fetched notes are only checked to be non-empty strings, and past
+#: the interpreter's int-string conversion limit (4300 digits by default)
+#: ``int()`` raises: one garbled line would break every reader in every clone
+#: that ingests it.
+_MAX_SEQ_DIGITS = 18
+
+
 def _id_seq(fact_id: object, prefix: str) -> int:
     """The sequence ``fact_id`` carries after ``prefix``, up to the next
-    ``:``, or 0 when the id does not have that shape."""
+    ``:``, or 0 when the id does not have that shape, including a digit run
+    longer than :data:`_MAX_SEQ_DIGITS`."""
     if not isinstance(fact_id, str) or not fact_id.startswith(prefix):
         return 0
     head = fact_id[len(prefix):].split(":", 1)[0]
-    return int(head) if head.isascii() and head.isdecimal() else 0
+    if len(head) > _MAX_SEQ_DIGITS or not (head.isascii() and head.isdecimal()):
+        return 0
+    return int(head)
 
 
 def answer_key(fact: dict) -> "tuple[int, str]":
@@ -656,8 +669,11 @@ def record(
     seq = max((answer_key(f)[0] for f in history), default=0) + 1
     while seq in held_seqs:
         seq += 1
-    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
-    tag = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+    # json.dumps escapes every non-ASCII character, so these bytes are ASCII
+    # and identical in every clone that hashes the same body.
+    tag = hashlib.sha256(
+        json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:12]
     fact_id = f"{prefix}{seq}:{tag}"
     result = evidence.append_fact(project_dir, KIND, fact_id, body)
     if result["status"] != "appended":
@@ -704,9 +720,9 @@ def auto_accept(
     Returns ``{"status": "swept", "accepted", "skipped_blocking", "failed":
     [{"review_id", "fid", "reason"}], "unsent"}`` or ``{"status": "error",
     "reason"}`` when the store cannot be read. ``unsent`` counts the accepted
-    records whose git note could not be written (``note.status == "error"``):
-    each is in this clone's store and does not yet reach other clones. Never
-    raises.
+    records left with no git note (``note.status`` in
+    ``evidence_notes.UNSENT_STATUSES``): each is in this clone's store and does
+    not yet reach other clones. Never raises.
     """
     store = evidence.read_facts(project_dir)
     if store["status"] == "error":
@@ -755,7 +771,7 @@ def auto_accept(
                 )
             else:
                 accepted += 1
-                if (result.get("note") or {}).get("status") == "error":
+                if (result.get("note") or {}).get("status") in evidence_notes.UNSENT_STATUSES:
                     unsent += 1
     return {
         "status": "swept",
@@ -1281,7 +1297,7 @@ def disposition_cmd(project_dir: Path, argv: list[str]) -> int:
     if result.get("superseded"):
         print(f"  supersedes {result['superseded']}")
     note = result.get("note") or {}
-    if note.get("status") == "error":
+    if note.get("status") in evidence_notes.UNSENT_STATUSES:
         # The record stands, so the exit stays 0; what failed is only the
         # fact's reach to other clones, and the agent running this reads it.
         print(
