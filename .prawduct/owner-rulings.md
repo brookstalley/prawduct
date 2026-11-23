@@ -399,6 +399,10 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
 
 **2026-11-19.** "Yes merge" — PR #1209 (`integration/backlog-roi-wave2-2026-11-18` → `develop`, backlog ROI wave 2) is merged.
 
+**2026-11-23.** "Yes backlog, and yes pr and merge" — answering two asks:
+1. "verify-resolutions facts record the id of the review they verify" is filed as a backlog item, separate from `fix/stop-final-nudge`.
+2. PR `fix/stop-final-nudge` → `develop` is created and merged once its gates pass, and `../prawduct-live` is advanced to the new `origin/develop`.
+
 **2026-11-23.** "Yes it's fine to push" — the testament-cache-areas review notes (rev-20261123T164037Z-5f10b40c, rev-20261123T175253Z-0e03ed11) go to the public remote through `evidence sync`, even though they quote small internals of the private testament repo (a module and function name, one CLI line).
 
 **2026-11-23.** "Yes please do. Also see why we got stop hook noise there" — PR `chore/testament-cache-areas` → `develop` (#1215, #1216) is created and merged once its gates pass. The Stop hook's output at that turn's close is investigated.
