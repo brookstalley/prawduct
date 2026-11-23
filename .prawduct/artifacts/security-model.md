@@ -87,15 +87,22 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
   behind that explicit flag, never from the briefing or a hook; and `lib/evidence_sync.py`,
   behind `prawduct-hook evidence sync` (2026-10-25): `git fetch` and `git push` of
   `refs/notes/prawduct` to the product's own push remote. It does carry product content — the
-  store's review, resolution, chunk-imported and chunk-retracted facts (a retraction's reason too), findings text and file paths included,
+  store's review, resolution, disposition, chunk-imported and chunk-retracted facts (a retraction's reason too), findings text and file paths included,
   though never the writer's machine path or session: the note line carries the worktree's basename
   (or `.claude/worktrees/<name>` for a harness scratch tree) only —
   but only to the remote the branch already goes to, and only inside `/prawduct:pr create|update`
-  or when a person or the agent runs it (never from a hook; no `gh`).
+  or when a person or the agent runs it (never from a hook; no `gh`). Since dispositions joined
+  the transport (2026-11-23, #1207) the remote also holds four fields that never left the clone
+  before: free-text accept reasons, owner-ruling text, backlog ids, and the path lists of free
+  fixes. Anyone who can fetch the product's remote can read them, which on a public remote is
+  anyone.
   **Inbound (2026-10-25, builder-drafted, for the owner's veto):** the same site is the one
   place governance content ENTERS a clone — `evidence ingest` (and session start) appends any
   well-formed line found on a fetched `refs/notes/<remote>/prawduct` to the store the coverage
-  gates read. `[DECISION: trust the product's own remote for inbound facts at the level it is
+  gates read. An ingested disposition reaches the census, the briefing and the reviewer's
+  prior-dispositions block, and no gate: no gate reads a disposition, so one forged or carried
+  from another clone can change how a finding is reported and what a reviewer is told was
+  answered, but cannot clear a blocking finding. `[DECISION: trust the product's own remote for inbound facts at the level it is
   already trusted for code — no signature or provenance check at ingest | the Critic gate
   was never adversarially secure: anyone with push access can run `critic-consolidate` over
   fabricated partials in their own clone and push the branch, so a forged note line widens
