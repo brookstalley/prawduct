@@ -86,7 +86,8 @@ rather than restating them (`REVIEW_ROUND_BUDGET_DEFAULT`, `FULL_ROUND_MODES`), 
 either lands here without anyone remembering to update prose. **It does not read the plugin's
 counting PREDICATE, and that is the load-bearing limit of this section**: `analyse` pools a scope's
 whole history, while `_round_budget_verdict` counts only the rounds `count_branch_rounds` admits —
-within the branch's lineage span, or, where that span is empty, within the current worktree. Those
+within the branch's lineage span, or, where that span is empty, within the current worktree — and,
+from 2026-11-23, not each chunk's first `chunk` review or the scope's first boundary review. Those
 bounds are narrower than "the whole history", so the reach below is an upper bound for that reason
 as well as the one stated after it. The bound itself changed in v3.6.1-dev (#776), one commit
 behind this reading, which is the concrete form of the risk: parameters track, predicates do not.

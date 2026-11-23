@@ -2829,8 +2829,8 @@ def _round_budget_verdict(
 ) -> dict:
     """Has this body of work already spent its full-round budget?
 
-    Returns ``{"status": "within", "spent", "budget", "review_ids", "bound"}``,
-    ``{"status": "exhausted", "spent", "budget", "review_ids", "bound"}``,
+    Returns ``{"status": "within", "spent", "budget", "cadence_ids", "review_ids", "bound"}``,
+    ``{"status": "exhausted", "spent", "budget", "cadence_ids", "review_ids", "bound"}``,
     ``{"status": "disabled"}`` when the repo set the budget to ``null``, or
     ``{"status": "unavailable", "reason"}``.
 
@@ -2902,14 +2902,20 @@ def _round_budget_verdict(
         if f.get("kind") == "review"
     }
     in_scope = branch["review_ids"]
+    cadence = _cadence_round_ids(in_scope, body_of)
     spent = sum(
         1 for rid in in_scope
         if mode_token_of(body_of[rid].get("mode")) in FULL_ROUND_MODES
+        and rid not in cadence
     )
     return {
         "status": "exhausted" if spent >= budget else "within",
         "spent": spent,
         "budget": budget,
+        # The rounds the plan's own cadence bought, which `spent` leaves out.
+        # Returned so the refusal can say what it did NOT count: "6 rounds"
+        # read against a 7-chunk plan is otherwise a loop that never happened.
+        "cadence_ids": [rid for rid in in_scope if rid in cadence],
         # WHICH bound produced the count. The two answer different questions and
         # returned indistinguishable verdicts, so the control's own falsification
         # query — "did it ever refuse a round that turned out to be needed?" —
@@ -2921,6 +2927,46 @@ def _round_budget_verdict(
         # of them or the census it renders is not a census.
         "review_ids": in_scope,
     }
+
+
+def _cadence_round_ids(review_ids: "list[str]", body_of: dict) -> "set[str]":
+    """The full rounds a build plan's own cadence buys, which the budget does
+    not charge (owner ruling 2026-11-23, answering R-9(a) of the plan that
+    shipped the budget).
+
+    That is each chunk's first ``chunk`` review, and the scope's first boundary
+    review (``final`` or ``cumulative``). The budget exists to end a review LOOP
+    (re-reviewing one body of work), and those reviews are the plan's
+    planned steps, not a loop. Charged, they exhausted any plan of more chunks
+    than the budget on cadence alone, refusing the boundary review the
+    methodology says is never skipped, with `--force` its only route.
+
+    Walked in ``review_ids`` order, the store's append order. A ``chunk``
+    review is cadence when it names a chunk no earlier ``chunk`` review in the
+    set named. One naming no chunk claims nothing and is charged: no plan step
+    can be shown to have bought it. Every later round, of either kind, is
+    charged as before.
+    """
+    from . import buildplan_refs, plan_status  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    cadence: "set[str]" = set()
+    reviewed: "set[str]" = set()
+    boundary_seen = False
+    for rid in review_ids:
+        body = body_of.get(rid) or {}
+        mode = mode_token_of(body.get("mode"))
+        if mode == "chunk":
+            named = {
+                buildplan_refs._normalize_chunk_id(c)
+                for c in plan_status.fact_chunks(body)
+            }
+            if named - reviewed:
+                cadence.add(rid)
+            reviewed |= named
+        elif mode in plan_status._WHOLE_PLAN_MODES and not boundary_seen:
+            cadence.add(rid)
+            boundary_seen = True
+    return cadence
 
 
 def _refuse_over_budget(
@@ -2959,9 +3005,12 @@ def _refuse_over_budget(
         else "in this worktree (the branch span holds no commits, so lineage "
              "could not bound the count)"
     )
+    cadence = len(budget.get("cadence_ids") or [])
     reason = (
         f"round budget exhausted — this work bought {budget['spent']} full "
-        f"review round(s) {counted} against a budget of {budget['budget']}"
+        f"review round(s) {counted} against a budget of {budget['budget']}, "
+        f"not counting the {cadence} its plan's cadence bought (each chunk's "
+        "first chunk review, and the first boundary review)"
     )
     swept = dispositions.auto_accept(project_dir, budget["review_ids"], reason=reason)
     # Rendered over the SWEPT ids, not over the scope: those are the findings
@@ -2982,6 +3031,9 @@ def _refuse_over_budget(
             "mode": mode_token,
             "spent": budget["spent"],
             "budget": budget["budget"],
+            # Present from the cadence allowance on. A record without it
+            # predates the allowance, and its `spent` counted cadence rounds.
+            "cadence": cadence,
             "auto_accepted": swept.get("accepted"),
             "blocking_left": swept.get("skipped_blocking"),
             "scope": scope,
@@ -3693,7 +3745,8 @@ def begin_review(
     outstanding takes the same answer, for the same reason.
 
     ``{"status": "budget-exhausted", ...}`` — the CLI exits 4 — when this
-    BODY OF WORK has already bought its declared full-round budget. The unit is
+    BODY OF WORK has already bought its declared full-round budget, past the
+    rounds its plan's cadence buys (:func:`_cadence_round_ids`). The unit is
     the build-plan scope, which a branch is only sometimes: see
     :func:`_round_budget_verdict` for what bounds the count when lineage cannot. The
     outstanding non-blocking findings are auto-accepted and a census is rendered
@@ -4485,6 +4538,10 @@ def begin_review(
     # outstanding finding for asking a question the gate answers for nothing,
     # and free dispatches are commonest on exactly the long branches that
     # exhaust a budget (62 of 492 facts, by the exit-3 leg's own measurement).
+    #
+    # A plan's cadence is not charged: each chunk's first `chunk` review and
+    # the first boundary review are the plan's steps, not a loop
+    # (`_cadence_round_ids`).
     #
     # Only full rounds are counted AND only a full round is refused. A
     # `verify-resolutions` pass is how a BLOCKING finding clears, so refusing

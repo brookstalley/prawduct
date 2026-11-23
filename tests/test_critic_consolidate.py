@@ -9596,9 +9596,17 @@ class TestWideningBoundCountsTheCostSubset:
 
 
 CUMULATIVE_VERBOSE = cc.MODE_TOKEN_TO_VERBOSE["cumulative"]
+CHUNK_VERBOSE = cc.MODE_TOKEN_TO_VERBOSE["chunk"]
+
+#: A full round that the cadence allowance cannot claim. A `chunk` review naming
+#: no chunk buys no plan step, so every one is charged, where a `cumulative`
+#: is charged only after the scope's first. The policy tests below seed this so
+#: "N rounds seeded" still means "N rounds spent"; `TestRoundBudgetCadence`
+#: pins the allowance itself.
+LOOP_ROUND_VERBOSE = CHUNK_VERBOSE
 
 
-def _budget_repo(tmp_path: Path, rounds: int, *, mode: str = CUMULATIVE_VERBOSE,
+def _budget_repo(tmp_path: Path, rounds: int, *, mode: str = LOOP_ROUND_VERBOSE,
                  budget: "str | None" = None, findings=None,
                  branch_commit=("src/app.py", "x = 2\n", "work")) -> "tuple[Path, str]":
     """A feature branch off `main` carrying ``rounds`` recorded review facts.
@@ -9636,6 +9644,7 @@ class TestRoundBudgetCounting:
         verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
         assert verdict == {
             "status": "within", "spent": 5, "budget": 6,
+            "cadence_ids": [],
             "review_ids": [f"rev-round-{i}" for i in range(5)],
             # WHICH bound counted. Two bounds returning indistinguishable
             # verdicts left the control's own retirement query unable to tell a
@@ -9700,7 +9709,7 @@ class TestRoundBudgetCounting:
                 repo, "review", f"rev-other-{i}",
                 {
                     "base_tree": "a" * 40, "head_tree": "b" * 40,
-                    "mode": CUMULATIVE_VERBOSE, "head_commit": head,
+                    "mode": LOOP_ROUND_VERBOSE, "head_commit": head,
                     "scope": "some-other-plan", "findings": [],
                 },
             )
@@ -9738,7 +9747,7 @@ def _trunk_repo(tmp_path: Path, *, budget: "str | None" = None) -> "tuple[Path, 
 
 
 def _seed_round(project_dir: Path, fact_id: str, head_commit: str, scope: str,
-                mode: str = CUMULATIVE_VERBOSE) -> None:
+                mode: str = LOOP_ROUND_VERBOSE) -> None:
     """One full review round, appended AS `project_dir` — which is what puts
     that path in `actor.worktree`, the discriminator under test."""
     evidence.append_fact(
@@ -9943,7 +9952,7 @@ class TestRoundBudgetOnTheTrunkShape:
                 repo, "review", f"rev-trunk-{i}",
                 {
                     "base_tree": "a" * 40, "head_tree": "b" * 40,
-                    "mode": CUMULATIVE_VERBOSE, "head_commit": head,
+                    "mode": LOOP_ROUND_VERBOSE, "head_commit": head,
                     "scope": "budgeted", "findings": list(findings),
                 },
             )
@@ -10000,6 +10009,122 @@ class TestRoundBudgetOnTheTrunkShape:
         assert verdict["spent"] == 0
         assert verdict["review_ids"] == []
 
+
+
+def _seed_chunk_review(repo: Path, fact_id: str, head: str, chunks, *,
+                       mode: str = CHUNK_VERBOSE) -> None:
+    evidence.append_fact(
+        repo, "review", fact_id,
+        {
+            "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": mode,
+            "head_commit": head, "scope": "budgeted", "findings": [],
+            "chunks": list(chunks),
+        },
+    )
+
+
+class TestRoundBudgetCadence:
+    """A plan's cadence is not a review loop (owner ruling 2026-11-23, R-9(a)).
+
+    Each chunk's first `chunk` review and the scope's first boundary review are
+    the plan's own steps. Charged, a 7-chunk plan with one clean review per
+    chunk spent a budget of 6 on Chunks 01 to 06, and `critic-begin` refused
+    the boundary review the methodology says is never skipped. That is the
+    shape `chunk-plan-order` hit, pinned first.
+    """
+
+    def test_a_long_plans_cadence_reaches_its_boundary_review(self, tmp_path):
+        repo, head = _budget_repo(tmp_path, 0)
+        for n in range(1, 7):
+            _seed_chunk_review(repo, f"rev-c{n:02d}", head, [f"{n:02d}"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "within", verdict
+        assert verdict["spent"] == 0
+        assert verdict["cadence_ids"] == [f"rev-c{n:02d}" for n in range(1, 7)]
+        # The same six reviews, counted as before this ruling, are exactly the
+        # ceiling: the premise that this fixture is the refused shape.
+        assert len(verdict["review_ids"]) == verdict["budget"]
+
+    def test_the_boundary_review_is_actually_dispatched(self, tmp_path):
+        """The gate, not the count, with a control one ruling away: the same
+        repo with the six reviews re-reviewing ONE chunk is a loop, and it
+        is refused."""
+        repo, head = _budget_repo(tmp_path, 0)
+        for n in range(1, 7):
+            _seed_chunk_review(repo, f"rev-c{n:02d}", head, [f"{n:02d}"])
+        allowed = _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted")
+        assert allowed.returncode != 4, (allowed.stdout, allowed.stderr)
+
+        looped, lhead = _budget_repo(tmp_path / "loop", 0)
+        for n in range(6):
+            _seed_chunk_review(looped, f"rev-again-{n}", lhead, ["01"])
+        _seed_chunk_review(looped, "rev-again-6", lhead, ["01"])
+        refused = _run_begin(looped, "--mode", "cumulative", "--scope", "budgeted")
+        assert refused.returncode == 4, (refused.stdout, refused.stderr)
+        assert "not counting the 1 its plan's cadence bought" in refused.stdout, refused.stdout
+
+    def test_a_chunks_second_review_is_charged(self, tmp_path):
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-first", head, ["01"])
+        _seed_chunk_review(repo, "rev-again", head, ["01"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-first"]
+        assert verdict["spent"] == 1
+
+    def test_chunk_ids_are_compared_normalized(self, tmp_path):
+        """`1` and `01` are one chunk. Compared raw, a builder re-reviewing
+        Chunk 01 as `--chunks 1` would be handed a second free round."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-first", head, ["01"])
+        _seed_chunk_review(repo, "rev-again", head, ["1"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["spent"] == 1, verdict
+
+    def test_a_review_adding_one_new_chunk_is_cadence(self, tmp_path):
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-01", head, ["01"])
+        _seed_chunk_review(repo, "rev-01-02", head, ["01", "02"])
+        _seed_chunk_review(repo, "rev-02-again", head, ["02"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-01", "rev-01-02"]
+        assert verdict["spent"] == 1
+
+    def test_a_chunk_review_naming_no_chunk_is_charged(self, tmp_path):
+        """No plan step can be shown to have bought it, so it is a loop round.
+        This is also what keeps `LOOP_ROUND_VERBOSE` honest for the fixtures."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-unnamed", head, [])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == [] and verdict["spent"] == 1
+
+    @pytest.mark.parametrize("second", ["final", "cumulative"])
+    def test_only_the_first_boundary_review_is_cadence(self, tmp_path, second):
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-final", head, [], mode=cc.MODE_TOKEN_TO_VERBOSE["final"])
+        _seed_chunk_review(repo, "rev-again", head, [], mode=cc.MODE_TOKEN_TO_VERBOSE[second])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-final"]
+        assert verdict["spent"] == 1
+
+    def test_a_boundary_review_naming_chunks_does_not_spend_a_chunks_allowance(self, tmp_path):
+        """The two allowances are separate: a `cumulative` that names Chunk 01
+        is the boundary step, and Chunk 01's own first `chunk` review is still
+        its cadence."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-cum", head, ["01"], mode=CUMULATIVE_VERBOSE)
+        _seed_chunk_review(repo, "rev-c01", head, ["01"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-cum", "rev-c01"]
+        assert verdict["spent"] == 0
+
+    def test_verify_passes_neither_claim_nor_spend_an_allowance(self, tmp_path):
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-verify", head, ["01"],
+                           mode=cc.MODE_TOKEN_TO_VERBOSE["verify-resolutions"])
+        _seed_chunk_review(repo, "rev-c01", head, ["01"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-c01"]
+        assert verdict["spent"] == 0
 
 
 class TestRoundBudgetConfigFallsSoft:
@@ -10254,6 +10379,9 @@ class TestGuardRefusalsReachTheirOwnQuery:
         out = self._list(repo)
         assert "guard=critic-dispatch-round-budget" in out
         assert "rounds=6/1" in out, out
+        # The rounds the plan's cadence bought, beside the ones it charged: a
+        # `rounds=` read against a long plan is otherwise a loop that never ran.
+        assert "cadence=0" in out, out
         assert "accepted=6" in out, out
         assert "blocking-left=6" in out, out
         # The bound reaches the QUERY, not just the record. `evidence list`

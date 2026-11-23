@@ -324,10 +324,10 @@ findings are ACCEPTs, and saying so takes a clause each.
 
 **The round budget is the backstop, and it is on.** `review_round_budget`
 (`.prawduct/project-state.yaml`, 6 by default, `null` disables) caps the **full** rounds one body of
-work may buy. At the ceiling `critic-begin` exits 4, auto-ACCEPTs the outstanding non-blocking
+work may buy past its plan's cadence. At the ceiling `critic-begin` exits 4, auto-ACCEPTs the outstanding non-blocking
 findings with the budget as their reason, and renders the census. It never counts or refuses a
 `verify-resolutions` pass, and never sweeps a BLOCKING finding — so **it can end a review loop and
-can never open a gate**. `--force` buys one anyway; needing that every time means the number is wrong.
+can never open a gate**. `--force` buys one anyway.
 
 **Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over the bundle, or its delta since an earlier boundary review — either contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` answers `deferred` (commit first); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta. **A short plan gets this sequencing without the declaration**, on every chunk: mid-chunk `/prawduct:critic` answers `deferred` rather than `final`, and the boundary review that follows the last commit is the plan's whole review record. The eligibility is re-asked at every inference and every Stop against the branch's actual paths, so a later chunk that lands on a risk surface owes its review like any other.
 

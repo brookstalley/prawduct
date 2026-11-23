@@ -967,6 +967,7 @@ Fail-direction is deliberate and per-purpose:
 
   **`critic-begin` 4 — round budget exhausted.** This build-plan SCOPE has already bought the full
   rounds `review_round_budget` allows (`.prawduct/project-state.yaml`, default 6, `null` disables).
+  The plan's cadence is not counted: each chunk's first `chunk` review and the first boundary review.
   A distinct code rather than folded into 3: both refuse a dispatch, but a 3 says the *gate* does not
   want this round and a 4 says the *loop* has run out while the gate may still be unsatisfied, and
   the caller's next move differs — a 3 is "you are done", a 4 is "you are done buying rounds, and any
