@@ -55,6 +55,14 @@ The outbound security entry is amended in the same chunk that starts sending (G5
   tests are unchanged; only the chunk that carries them moved.
 - Chunks are reviewed once, by Chunk 03's `cumulative`, because the three are built in parallel and
   integrated before any review could see one alone.
+- At integration: four writers' NOTE (`disposition`, `critic-consolidate`, `plan import-status`,
+  `plan retract`) said a fact whose note failed "does not travel to other clones". That is false:
+  `reconcile` attaches it at the next `evidence sync` while its branch is in flight. The sentence
+  now has one owner, `evidence_notes.unwritten_notice`. D6's ingest reason names "the untagged
+  legacy id" rather than an issue number.
+- `_refuse_over_budget` also adds a `notes` line when `unsent` is non-zero. `critic-begin` prints
+  `notes`, and nothing renders a bare `swept["unsent"]`, so without the line the count would have
+  no reader.
 
 **Level:** High — design reviewed and ruled; nothing fast-moving.
 
