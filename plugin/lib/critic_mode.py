@@ -1764,20 +1764,26 @@ def review_chain(facts: list[dict], newest: dict) -> list[dict]:
     walk steps to it and goes on from there; another review of the same tree,
     possibly another worktree's, is on the chain only if the walk from the
     anchor reaches it. Walked to the end, because a chain can be several passes
-    long. The walk ends where the review a fact links to is already on the
-    chain: an anchor is found by id wherever it sits in the store, so store
-    order does not end a malformed cycle, and stepping on to some other
-    review at that tree would credit one nothing links to.
+    long. The steps and the walk's end are ``coverage_algebra.walk_links``'
+    (with ``siblings``): the walk ends where the review a fact links to is
+    already on the chain, the other reviews at a tree included, because an
+    anchor is found by id wherever it sits in the store, so store order does
+    not end a malformed cycle, and stepping on to some other review at that
+    tree would credit one nothing links to.
 
     One line is walked, through the newest link at each step; the other
     reviews at a tree are added but not walked themselves. Nothing bounds the
     walk at the branch's merge-base, so walking every member would follow
     already-merged work further back and credit its reviews to this branch.
 
-    **Accepted cost:** a pass anchored to a ``chunk`` re-review of a tree does
-    not reach an earlier ``cumulative`` of that tree, even one this worktree
-    recorded, so the chain inherits none of its chunks, credits no boundary
-    review and asks for a second cumulative — erring toward more review,
+    **Accepted cost, in both directions:** a pass anchored to one review of a
+    tree does not reach another review of that tree recorded before it, even
+    one this worktree recorded, unless the walk from the anchor does. Anchored
+    to a ``chunk`` re-review, it misses an earlier ``cumulative``: the chain
+    credits no boundary review and a second cumulative is asked for. Anchored
+    to a boundary ``cumulative`` (which starts from the merge-base, not from
+    that tree), it misses an earlier ``chunk`` review: the chain names fewer
+    chunks and certifies none of that review's. Both err toward more review,
     because telling this worktree's earlier review from a sibling's needs
     lineage, and a fact travelling between clones loses the ``actor`` fields
     that would say it (``evidence_notes.sent_envelope`` drops the session and
@@ -1786,21 +1792,7 @@ def review_chain(facts: list[dict], newest: dict) -> list[dict]:
     # Append order is recording order (the store is append-only); `ts` has
     # one-second resolution, so it cannot order two reviews in the same second.
     reviews = [f for f in facts if f.get("kind") == "review"]
-    chain: list[dict] = []
-    seen: set[str] = set()
-    current: "dict | None" = newest
-    while current is not None and current.get("id") not in seen:
-        seen.add(current.get("id"))
-        chain.append(current)
-        linked = coverage_algebra.linked_reviews(reviews, current)
-        if not linked or linked[-1].get("id") in seen:
-            break
-        for other in linked[:-1]:
-            if other.get("id") not in seen:
-                seen.add(other.get("id"))
-                chain.append(other)
-        current = linked[-1]
-    return chain
+    return list(coverage_algebra.walk_links(reviews, newest, siblings=True))
 
 
 def _gate_counts_an_open_blocker(

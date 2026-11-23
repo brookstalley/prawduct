@@ -2959,21 +2959,17 @@ def _review_verified_passes_stand_on(
     ("what ran before the pass") and differ from it whenever another review
     was recorded between the reviewed one and its verification; the tree alone
     differs from it whenever another worktree reviewed the same tree.
-    ``reviews`` is the store's review facts in store order. A recorded anchor
-    is found wherever it sits, so the walk stops at a fact it has already
-    visited rather than trusting store order to end it: a store naming a cycle
-    reaches no review.
+    ``reviews`` is the store's review facts in store order. The steps and the
+    walk's end are ``coverage_algebra.walk_links``': a recorded anchor is found
+    wherever it sits, so a store naming a cycle of passes ends the walk at a
+    revisit, and that reaches no review.
     """
-    current: "dict | None" = fact
     last = fact
-    seen: "set[int]" = set()
-    while current is not None and _review_mode(current) == _CRITIC_MODE_VERIFY_RESOLUTIONS:
-        if id(current) in seen:
-            return None, last
-        seen.add(id(current))
+    for current in coverage_algebra.walk_links(reviews, fact):
+        if _review_mode(current) != _CRITIC_MODE_VERIFY_RESOLUTIONS:
+            return current, last
         last = current
-        current = coverage_algebra.prior_review(reviews, current)
-    return current, last
+    return None, last
 
 
 def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
