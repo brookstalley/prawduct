@@ -1285,9 +1285,9 @@ def disposition_cmd(project_dir: Path, argv: list[str]) -> int:
         # The record stands, so the exit stays 0; what failed is only the
         # fact's reach to other clones, and the agent running this reads it.
         print(
-            f"NOTE: disposition: disposition fact {result['id']!r} is recorded, "
-            f"but its git note was not written ({note.get('reason')}) — the fact "
-            "stays in this clone's store and does not travel to other clones.",
+            evidence_notes.unwritten_notice(
+                "disposition", f"disposition fact {result['id']!r}", note.get("reason")
+            ),
             file=sys.stderr,
         )
     if result["severity"] == "blocking":

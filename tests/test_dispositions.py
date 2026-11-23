@@ -66,6 +66,11 @@ def _make_repo(base: Path, name: str = "repo") -> Path:
     repo = base / name
     repo.mkdir()
     _git(repo, "init", "-q")
+    # `record` attaches each answer to a git note, and `git notes append`
+    # commits to the notes ref through the production code's plain `git`,
+    # so the repo needs an identity a runner's environment may not supply.
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
     (repo / "code.py").write_text("x = 1\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "c1")
@@ -855,19 +860,8 @@ class TestTheWriterAttaches:
         assert _git(repo, "rev-parse", "HEAD") != anchor
         return repo, anchor
 
-    def test_with_no_remote_and_no_ref_it_records_and_writes_a_local_note(
-        self, tmp_path, monkeypatch
-    ):
-        # Dispositions join the transported set in another change; admitting
-        # the kind here drives the real `attach` through this writer's call.
-        monkeypatch.setattr(
-            evidence, "TRANSPORTED_KINDS", evidence.TRANSPORTED_KINDS | {KIND_DISPOSITION}
-        )
+    def test_with_no_remote_and_no_ref_it_records_and_writes_a_local_note(self, tmp_path):
         repo, anchor = self._anchored(tmp_path)
-        # `git notes append` commits to the notes ref, so it needs an identity
-        # the runner's environment may not supply.
-        _git(repo, "config", "user.email", "t@t")
-        _git(repo, "config", "user.name", "t")
         assert _git(repo, "remote") == ""
         assert _note_on(repo, anchor) is None
 
@@ -879,19 +873,15 @@ class TestTheWriterAttaches:
         assert _note_on(repo, _git(repo, "rev-parse", "HEAD")) is None
 
     def test_unpatched_the_result_carries_the_note_and_nothing_fails(self, tmp_path):
-        """Nothing injected: the production `attach` runs. Whether it writes or
-        skips depends on whether the kind is in the transported set, which
-        another change owns; either way the record stands and says which."""
+        """Nothing injected: the production `attach` runs against the real
+        transported set, which holds the kind, so the note is written."""
+        assert KIND_DISPOSITION in evidence.TRANSPORTED_KINDS
         repo, _anchor = self._anchored(tmp_path)
         result = dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="ok")
         assert result["status"] == "recorded", result
-        assert set(result["note"]) == {"status", "reason"}
-        assert result["note"]["status"] in ("skipped", "attached")
+        assert result["note"] == {"status": "attached", "reason": None}
 
-    def test_a_review_with_no_anchor_skips_the_note(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            evidence, "TRANSPORTED_KINDS", evidence.TRANSPORTED_KINDS | {KIND_DISPOSITION}
-        )
+    def test_a_review_with_no_anchor_skips_the_note(self, tmp_path):
         repo = _make_repo(tmp_path)
         _review_fact(repo, "rev-1", [("R-1", "warning")])
         result = dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="ok")
@@ -968,7 +958,7 @@ class TestTheWriterAttaches:
         assert len(notes) == 1, out.err
         assert repr(fact_id) in notes[0]
         assert "(git notes append failed (boom))" in notes[0]
-        assert "does not travel to other clones" in notes[0]
+        assert "the next `evidence sync` attaches it" in notes[0]
 
     def test_the_sweep_counts_its_unsent_records(self, tmp_path, monkeypatch):
         self._failing(monkeypatch)

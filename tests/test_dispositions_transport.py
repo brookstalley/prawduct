@@ -52,7 +52,7 @@ NOTES_REF = "refs/notes/prawduct"
 TRACKING_REF = "refs/notes/origin/prawduct"
 SCOPE = "unit"
 #: The transported set before dispositions joined it: what a plugin from
-#: before #1207 filters on.
+#: before dispositions travelled filters on.
 OLD_TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported", "chunk-retracted"})
 DIVERGED = "disposition(s) share an id with a different answer recorded here"
 
@@ -498,7 +498,7 @@ class TestALegacyIdCollisionIsReported:
     def test_ingest_counts_one_collision_once(self, a, b):
         anchor = self._collide(a, b)
         result = _sync(b, push=False)
-        assert (f"1 {DIVERGED} before #1207; re-answer the finding to converge"
+        assert (f"1 {DIVERGED} under the untagged legacy id; re-answer the finding to converge"
                 in result["reason"]), result
         # The premise of "once": A's line is on two refs, as two blobs.
         local = _git(b, "notes", "--ref", NOTES_REF, "list", anchor)

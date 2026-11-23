@@ -7571,10 +7571,11 @@ def _attach_note(project_dir: Path, envelope: object, anchor: "str | None") -> N
     outcome = evidence_notes.attach(project_dir, envelope, anchor)
     if outcome.get("status") == "error":
         print(
-            f"NOTE: critic-consolidate: {envelope.get('kind')} fact "
-            f"{envelope.get('id')!r} is recorded, but its git note was not "
-            f"written ({outcome.get('reason')}) — the fact stays in this clone's "
-            "store and does not travel to other clones.",
+            evidence_notes.unwritten_notice(
+                "critic-consolidate",
+                f"{envelope.get('kind')} fact {envelope.get('id')!r}",
+                outcome.get("reason"),
+            ),
             file=sys.stderr,
         )
 

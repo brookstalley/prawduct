@@ -54,6 +54,20 @@ NOTES_REF = "refs/notes/prawduct"
 _USAGE = "Usage: prawduct-hook evidence ingest [--all] [--json]"
 
 
+def unwritten_notice(source: str, what: str, reason: object) -> str:
+    """The one wording of the NOTE a writer prints when :func:`attach` could
+    not write a fact's note. ``source`` is the command, ``what`` names the
+    fact. The fact is not lost to other clones: :func:`reconcile`, which
+    ``evidence sync`` runs before it pushes, attaches what the checked-out
+    branch's span still lacks. So the notice names that repair, bounded as
+    :func:`unattached` bounds it, rather than saying the fact never travels."""
+    return (
+        f"NOTE: {source}: {what} is recorded, but its git note was not written "
+        f"({reason}) — it is in this clone's store, and while its branch is in "
+        "flight the next `evidence sync` attaches it so it reaches other clones."
+    )
+
+
 def attach(project_dir: Path, envelope: object, anchor: "str | None") -> dict:
     """Append ``envelope``'s store line to the note on ``anchor``, unless that
     note already holds it.
@@ -544,7 +558,7 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
     if diverged:
         skipped.append(
             f"{len(diverged)} disposition(s) share an id with a different answer "
-            "recorded here before #1207; re-answer the finding to converge"
+            "recorded here under the untagged legacy id; re-answer the finding to converge"
         )
     result = _result(
         "ok", appended=appended, seen=len(records), commits=annotated,
