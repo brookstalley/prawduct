@@ -28,6 +28,57 @@ _PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(_PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_ROOT))
 
+#: The environment every git child of this suite runs under, set once at import (below) so that a
+#: git the PRODUCTION code spawns inherits it as surely as one a test spawns.
+#:
+#: Two reasons, one set of variables. A git child that reads the machine's system or global
+#: config, its global attributes or ignore file, or the wall clock is a test whose result depends
+#: on the machine and the moment it ran; testament refuses to reuse such a result, and a suite
+#: that is half git is half uncached (its run advice, 2026-11-23). And the pool's runners have no
+#: global git config at all, while a developer's machine has one, so the same test saw a
+#: different git on each: this makes every machine the runner's.
+#:
+#: - `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL`, `GIT_ATTR_NOSYSTEM`: no system or global config
+#:   and no system attributes.
+#: - `XDG_CONFIG_HOME`: an empty directory, so the default global ignore and attributes files
+#:   (`~/.config/git/ignore`, `.../attributes`) that `GIT_CONFIG_GLOBAL` does not reach are not
+#:   read either. A test that wants one sets its own (`test_gitignore_contract_semantics.py`).
+#: - `GIT_AUTHOR_DATE`, `GIT_COMMITTER_DATE`: fixed, so a commit reads no clock and the same
+#:   commit has the same SHA on every run. The instant is in the PAST, so every commit a test
+#:   makes without its own date predates every wall-clock stamp it writes. The gates read that
+#:   relation: the session work span is `git log --since=<session start>`, and a HEAD move after a
+#:   run is found in the reflog, which is dated by the committer date. So a test whose subject is
+#:   a commit made AFTER a stamp dates that commit itself (`test_stop_abandoned_critic.py`,
+#:   `test_test_report_scope.py`), as one whose history must precede its session already did
+#:   (`test_reflection_gate.py`'s `_Session` pins its start ten minutes ahead). No single fixed
+#:   date serves both: a future one turned 41 tests of the second kind red. Not epoch 0, which
+#:   reads as "no timestamp" to a truthiness check. Every commit made under it carries the SAME
+#:   date, as commits made within one second already did: a test about commit-time ORDER sets
+#:   its own dates.
+#: - `GIT_ALLOW_PROTOCOL=file`: a clone or fetch reaches only local repositories.
+#: - The author and committer identity, which the global config used to supply on a developer's
+#:   machine: a test making a commit needs one, and the runner never had one to give.
+#:
+#: A helper that hands git a SCRUBBED environment (`env={"PATH": ..., "HOME": ...}`, not
+#: `{**os.environ, ...}`) does not inherit these, so it spreads :data:`GIT_TEST_ENV` in itself.
+GIT_FIXED_DATE = "@1767225600 +0000"  # 2026-01-01T00:00:00Z
+_GIT_XDG_CONFIG_HOME = Path(tempfile.gettempdir()) / "prawduct-tests-empty-xdg-config"
+GIT_TEST_ENV = {
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_ATTR_NOSYSTEM": "1",
+    "XDG_CONFIG_HOME": str(_GIT_XDG_CONFIG_HOME),
+    "GIT_AUTHOR_DATE": GIT_FIXED_DATE,
+    "GIT_COMMITTER_DATE": GIT_FIXED_DATE,
+    "GIT_ALLOW_PROTOCOL": "file",
+    "GIT_AUTHOR_NAME": "Prawduct Tests",
+    "GIT_AUTHOR_EMAIL": "tests@prawduct.invalid",
+    "GIT_COMMITTER_NAME": "Prawduct Tests",
+    "GIT_COMMITTER_EMAIL": "tests@prawduct.invalid",
+}
+_GIT_XDG_CONFIG_HOME.mkdir(exist_ok=True)
+os.environ.update(GIT_TEST_ENV)
+
 # What an entry point loads from its OWN plugin tree before any `lib/` is chosen: the
 # host seam and its loader. A test that runs a copy of an entry point from a hand-built
 # plugin tree copies these beside it, as every real plugin tree carries them.

@@ -47,7 +47,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from conftest import SHAPED_REFLECTION  # noqa: E402
+from conftest import GIT_TEST_ENV, SHAPED_REFLECTION  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = REPO_ROOT / "plugin"
@@ -81,6 +81,7 @@ def _sealed_env(tmp: Path) -> dict[str, str]:
     home = tmp / "home"
     home.mkdir(exist_ok=True)
     return {
+        **GIT_TEST_ENV,
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "HOME": str(home),
         "LANG": "C.UTF-8",

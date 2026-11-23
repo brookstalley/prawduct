@@ -22,9 +22,11 @@ observable end-to-end inside `cmd_stop`.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -209,7 +211,14 @@ def _dispatched_real_repo(
         # On a feature branch, so the committed bundle has a base to review
         # against — a committed bundle is cumulative's scope, not chunk's.
         subprocess.run([*git, "checkout", "-q", "-b", "feature"], cwd=str(repo), check=True, timeout=15)
-        subprocess.run([*git, "commit", "-q", "-am", "c2"], cwd=str(repo), check=True, timeout=15)
+        # Dated by the real clock: the session work span is the commits made after
+        # `.session-start`, which `_active_plan_repo` stamps a minute before now, and
+        # the suite's fixed commit date (`conftest.GIT_TEST_ENV`) predates it.
+        now = f"@{int(time.time())} +0000"
+        subprocess.run(
+            [*git, "commit", "-q", "-am", "c2"], cwd=str(repo), check=True, timeout=15,
+            env={**os.environ, "GIT_AUTHOR_DATE": now, "GIT_COMMITTER_DATE": now},
+        )
 
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)

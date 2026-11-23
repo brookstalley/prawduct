@@ -29,6 +29,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from lib import buildplan_refs, coverage_algebra, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
 from lib import evidence, plan_mint, work_unit  # noqa: E402
+from conftest import GIT_TEST_ENV  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +43,7 @@ def _git_env(repo: Path) -> dict[str, str]:
     seeded inside the test repo and show up as untracked files when the
     helper later runs ``git status --untracked-files=all``."""
     return {
+        **GIT_TEST_ENV,
         "HOME": str(repo.parent / "_home"),
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "GIT_CONFIG_GLOBAL": "/dev/null",

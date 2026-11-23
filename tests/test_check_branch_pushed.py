@@ -28,10 +28,12 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 
 sys.path.insert(0, str(ROOT))
 from lib import gates, gitstate  # noqa: E402
+from conftest import GIT_TEST_ENV  # noqa: E402
 
 
 def _git_env(repo: Path) -> dict[str, str]:
     return {
+        **GIT_TEST_ENV,
         "HOME": str(repo.parent / "_home"),
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -224,6 +226,7 @@ def test_an_unreadable_repository_takes_the_third_outcome_and_says_nothing_was_c
     outside = tmp_path / "not-a-repo"
     outside.mkdir()
     env = {
+        **GIT_TEST_ENV,
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "HOME": str(tmp_path / "_home"),
         "GIT_CONFIG_GLOBAL": "/dev/null",
