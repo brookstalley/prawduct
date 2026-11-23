@@ -50,8 +50,9 @@ fact predates the record. `plan status` also flags a review-done chunk with an o
 expected when the builder's own words named the chunk, and otherwise the flag names the retraction
 to run if the work is not built. The `/clear` handoff prints the same table. When the Stop-path
 deferral holds, its message now names a done chunk that the pending work touches, together with the
-fact that certified it (`plan_status.done_chunks_touched`). It stays silent for the one chunk the newest
-review named and for one the builder named with `--chunks`. That is where a wrong certification is
+fact that certified it (`plan_status.done_chunks_touched`). Only the code's own naming is questioned:
+it stays silent for a chunk certified by the builder's words (`--chunks`, or a span's scoped
+subject), and for the one chunk the newest review named. That is where a wrong certification is
 met first.
 
 ### Chunk 04: `plan retract <chunk> --all`

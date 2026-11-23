@@ -1959,20 +1959,20 @@ def _done_chunks_touched_clause(
     :func:`plan_status.done_chunks_touched`'s."""
     if not pending or not progress.states:
         return ""
-    # A fix to the chunk just reviewed is the deferral's ordinary case, so the
-    # one chunk a review named is never questioned, nor one the builder named
-    # with `--chunks`. A chunk a several-chunk proposal named is: that is how a
+    # Only the code's own naming is questioned: a chunk certified by the
+    # builder's words (`--chunks`, or a span's scoped subject) is theirs, and a
+    # later chunk editing its file is ordinary. A fix to the one chunk a review
+    # just named is the deferral's ordinary case too. What remains is a chunk a
+    # proposal named, or one whose route predates the record: that is how a
     # later chunk was certified by a path it merely touched (#1141).
     named = list(reviewed or ())
-    own = {
-        buildplan_refs._normalize_chunk_id(c) for c in named
-        if len(named) == 1 or getattr(progress.states.get(c), "route", None) == "declared"
-    }
+    own = {buildplan_refs._normalize_chunk_id(c) for c in named} if len(named) == 1 else set()
     hits = [
         (c, fid) for c, fid in plan_status.done_chunks_touched(
             Path(plan.plan_path), progress.states, pending, repo_dir=Path(project_dir),
         )
         if buildplan_refs._normalize_chunk_id(c) not in own
+        and getattr(progress.states.get(c), "route", None) not in ("declared", "span")
     ]
     if not hits:
         return ""

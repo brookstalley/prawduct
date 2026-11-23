@@ -297,6 +297,27 @@ class TestAFixIsToldFromTheNextChunkByItsDeliverables:
         assert owed is not None, owed
         assert "plan retract" not in owed[1], owed
 
+    def test_a_later_chunk_editing_a_chunk_the_builder_named_says_nothing(self, tmp_path):
+        """Dogfooded on #1141's own branch: chunk 1 certified by `--chunks 1`,
+        chunk 3 reviewed with `--chunks 3`, then a fix touching a file chunk 1
+        lists. Chunk 1's certification is the builder's own words, and a later
+        chunk editing its file is ordinary, so no retraction is suggested."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False,
+                            deliverables={1: "src/app.py", 2: "src/app.py"})
+        # A second review, of chunk 2 (shared with 1), so 1 is done by a review
+        # the newest one is not.
+        (repo / "src/app.py").write_text("x = 3\n")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "2")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[WARNING])
+        assert _run_consolidate(repo).returncode == 0
+        _commit_all(repo, "chunk 2, reviewed")
+        (repo / "src/app.py").write_text("x = 4  # chunk 2's fix\n")
+        owed = self._owed(repo)
+        assert owed is not None, "the fix to chunk 2 defers"
+        assert "plan retract" not in owed[1], owed
+
     def test_the_1141_sequence_names_the_wrong_certification_then_retracting_it_reviews_it(self, tmp_path):
         """#1141 (A2, R8, R9) end to end. A pre-#1141 fact named 1 and 3, so 3
         reads done though nobody built it. 3's work then reads as a fix and
