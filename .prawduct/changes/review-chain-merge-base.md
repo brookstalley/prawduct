@@ -21,10 +21,22 @@ range: a fast-forwarded earlier branch leaves its last review anchored there. Th
 covers a base merged into the branch, which moves the merge base past this branch's earlier
 reviews. Those reviews stay on the chain, while the earlier branch's reviews behind them do not.
 The review the walk starts from is always on the chain; the bound only limits how far back the
-walk goes. The bound is resolved once by `critic_mode.chain_bound`, and every caller passes it:
-the boundary `cumulative` check, the extension deferral, the verify proposal and the review
-close. `review_chain` takes it as a required argument, so no caller can walk unbounded by
-forgetting it.
+walk goes.
+
+The tree half is waived when the newest review itself stands at the merge-base tree. That is the
+state once this branch's work has landed: on a trunk branch after a push, or on a branch whose
+PR merged with a merge commit, the merge base is the branch's tip, and its boundary `cumulative`
+and the verify pass after it stand at that tree. Without the waiver they fell off the chain, and
+the Stop gate asked for a second `cumulative`. The newest review's tree is what tells the two
+cases apart. Whether HEAD has moved past the merge base cannot: a first review of uncommitted
+work on a branch just cut from a fast-forwarded base has HEAD still at the merge base, yet
+stands at a tree past it. Nor can the branch a review was recorded on, since consecutive work on
+one trunk branch records every review under the same name.
+
+Production callers walk the chain through one function, `critic_mode.branch_review_chain`, which
+pairs the walk with the bound `critic_mode.chain_bound` resolves: the boundary `cumulative`
+check, the extension deferral, the verify proposal and the review close. `review_chain` keeps
+the bound as a required argument for tests and for the walk itself.
 
 When no merge base places a bound (no base branch, the moving `HEAD~1` fallback, or a branch range
 git cannot list), the walk stays unbounded, as before. The stricter reading, the newest review
@@ -35,11 +47,15 @@ the commit it anchors on) leaves that review off the chain even if its tree stil
 errs toward more review.
 
 Tests build the earlier-branch shape, fast-forwarded and merged with a merge commit, on a real
-repository, and ask for this branch's boundary review. They pin each half of the bound, the
-base-merged-in case, this branch's own `cumulative` staying on the chain, an anchored pass whose
-anchor is outside the bound, the unresolvable states, and every caller passing the bound.
+repository, and ask for this branch's boundary review, before and after this branch commits
+anything. They also build this branch's work landing, by a push on trunk and by a merge commit,
+and ask that its boundary review still stands. They pin each half of the bound, the waiver and
+the two rules it was chosen over, the base-merged-in case, an anchored pass whose anchor is
+outside the bound, the unresolvable states, every caller passing the bound, and that no
+production code walks the chain except through `branch_review_chain`.
 
 ## Consumer note
 A branch cut right after another branch merged no longer inherits that branch's `cumulative`.
 Its own boundary review is now asked for, and a verify pass no longer names the merged branch's
-chunks.
+chunks. A branch's own boundary review still counts after its work lands, by a push on trunk or
+a merge commit, so the Stop gate does not ask for a second one.
