@@ -42,6 +42,7 @@ from lib.advisory_store import (  # noqa: E402
     run_all_probes,
 )
 from lib.migrate_plugin import INSTALL_REFERENCE, transform_settings  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 _HOOK = _PLUGIN_ROOT / "bin" / "prawduct-hook"
 _LOUD = "PRAWDUCT GOVERNANCE IS NOT ACTIVE"
@@ -73,11 +74,11 @@ def _manifest(world, content) -> Path:
 
 
 def _run_hook(world, *, shell="/bin/sh", path=None, config=True, project=None):
-    env = {
-        "PATH": path if path is not None else f"{world['bin']}:/usr/bin:/bin",
-        "HOME": str(world["home"]),
-        "CLAUDE_PROJECT_DIR": str(project or world["repo"]),
-    }
+    env = scrubbed_env(
+        world["home"],
+        PATH=path if path is not None else f"{world['bin']}:/usr/bin:/bin",
+        CLAUDE_PROJECT_DIR=str(project or world["repo"]),
+    )
     if config:
         env["CLAUDE_CONFIG_DIR"] = str(world["config"])
     proc = subprocess.run(
@@ -462,15 +463,15 @@ def test_init_product_adds_it_to_settings_that_carry_only_the_reference(tmp_path
 
 
 def _cli(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(_HOOK), "install-tripwire", *args],
-        capture_output=True,
-        text=True,
-        env={
-            "PATH": "/usr/bin:/bin",
-            "CLAUDE_PLUGIN_ROOT": str(_PLUGIN_ROOT),
-            "CLAUDE_PROJECT_DIR": str(root),
-        },
+    from _hook_inproc import run_hook  # noqa: PLC0415
+
+    home = root.parent / "_home"
+    home.mkdir(exist_ok=True)
+    return run_hook(
+        "install-tripwire", *args,
+        cwd=root.parent,
+        env={"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(_PLUGIN_ROOT),
+             "CLAUDE_PROJECT_DIR": str(root)},
     )
 
 

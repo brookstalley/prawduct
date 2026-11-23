@@ -40,8 +40,6 @@ MODES = ("chunk", "final", "cumulative", "verify-resolutions")
 def _git(repo: Path, *args: str) -> str:
     env = {
         **os.environ,
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
         "GIT_TERMINAL_PROMPT": "0",
     }
     return subprocess.run(

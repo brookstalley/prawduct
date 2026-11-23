@@ -13,8 +13,9 @@ measured 2026-11-23, the uncacheable share fell from 49.3% to about 35% of the s
 
 Tests whose commits are compared with a real-clock session stamp opt out with
 `@pytest.mark.real_git_clock`, which also marks them `uncacheable`. A fixed git date made their
-session span empty, so five of them passed without running the path they test. This is a stopgap
-until #1218 gives git and production code one test clock. `.testament.toml` declares 13 areas, so
+session span empty, so five of them passed without running the path they test. That was a stopgap:
+the `testament-cache-blockers` change (#1218) gives git and production code one test clock and
+removes the marker. `.testament.toml` declares 13 areas, so
 a run reports, times and selects tests by subsystem (`testament areas check --strict` passes).
 
 ## Consumer note

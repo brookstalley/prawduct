@@ -223,7 +223,7 @@ class TestPrepare:
         other = tmp_path / "other"
         other.mkdir()
         _git(other, "init", "--quiet", "-b", "worktree-agent-ffffffffffff")
-        _git(other, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "--quiet", "--allow-empty", "-m", "x")
+        _git(other, "commit", "--quiet", "--allow-empty", "-m", "x")
         rc, message = native_review.prepare(other.resolve(), branch_repo, result["id"])
         assert rc == 1 and "same repository" in message
 

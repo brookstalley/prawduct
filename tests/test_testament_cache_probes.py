@@ -25,8 +25,7 @@ def _isolated_registry():
 
 def git(cwd: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
-         "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
+        ["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
         cwd=str(cwd), capture_output=True, text=True, check=True,
     ).stdout.strip()
 

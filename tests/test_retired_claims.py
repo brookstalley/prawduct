@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -40,6 +39,7 @@ from lib import record_lint, retired_claims  # noqa: E402
 from lib.backlog import core as backlog_core  # noqa: E402
 from lib.backlog import sync  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
+from conftest import suite_now  # noqa: E402
 
 CHECK = "retired-claim-survives"
 OWNER, REPO = "octo", "repo"
@@ -65,7 +65,7 @@ Descriptive surroundings.
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -463,7 +463,7 @@ def _file_issue(fake: FakeGitHub, title: str, body: str) -> str:
 
 def _rebuild(fake: FakeGitHub, repo: Path) -> None:
     result = sync.full_rebuild(
-        fake, project_dir=repo, owner=OWNER, repo=REPO, now=datetime.now(timezone.utc)
+        fake, project_dir=repo, owner=OWNER, repo=REPO, now=suite_now()
     )
     assert result["status"] == "ok", result
 

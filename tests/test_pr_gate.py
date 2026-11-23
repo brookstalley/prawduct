@@ -33,11 +33,7 @@ from lib import evidence, pr_gate  # noqa: E402
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    env = dict(
-        os.environ,
-        GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-        GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t",
-    )
+    env = dict(os.environ)
     return subprocess.run(
         ["git", *args], cwd=str(repo), capture_output=True, text=True, env=env, timeout=30
     )
@@ -834,8 +830,7 @@ class TestCredentialShape:
         def plumb(*args: bytes, stdin: bytes | None = None) -> bytes:
             proc = subprocess.run(
                 [b"git", *args], cwd=repo, input=stdin, capture_output=True, check=True,
-                env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-                         GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"),
+                env=dict(os.environ),
             )
             return proc.stdout
 

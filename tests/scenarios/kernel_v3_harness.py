@@ -16,17 +16,20 @@ import sys
 import subprocess
 from pathlib import Path
 
+from conftest import pre_session_git_env, scrubbed_env
+
 ROOT = Path(__file__).resolve().parent.parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 
-def _git(repo: Path, *args: str) -> str:
+def _git(repo: Path, *args: str, env: "dict[str, str] | None" = None) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
         timeout=15,
+        env=env,
     )
     assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
     return proc.stdout.strip()
@@ -40,13 +43,9 @@ def _hook(repo: Path, *args: str, stdin: str | None = None) -> subprocess.Comple
         text=True,
         timeout=30,
         input=stdin,
-        env={
-            "CLAUDE_PROJECT_DIR": str(repo),
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-            "HOME": str(repo.parent / "_home"),
-            "PYTHONDONTWRITEBYTECODE": "1",
-        },
+        env=scrubbed_env(
+            repo.parent / "_home", CLAUDE_PROJECT_DIR=str(repo), CLAUDE_PLUGIN_ROOT=str(ROOT),
+        ),
     )
 
 
@@ -66,9 +65,11 @@ def _scratch_repo(tmp_path: Path) -> Path:
     )
     (repo / "code.py").write_text("x = 1\n")
     _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "c1")
+    # The repo's history predates any session a scenario starts: a session's work span
+    # walks the HEAD reflog back to an entry older than its start, and gives up without one.
+    _git(repo, "commit", "-q", "-m", "c1", env=pre_session_git_env())
     (repo / ".prawduct").mkdir()
-    _git(repo, "checkout", "-q", "-b", "feature")
+    _git(repo, "checkout", "-q", "-b", "feature", env=pre_session_git_env())
     return repo
 
 

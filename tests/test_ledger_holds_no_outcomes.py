@@ -29,6 +29,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from lib import core, evidence, evidence_notes, ledger  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 HOOK = _ROOT / "bin" / "prawduct-hook"
 LEDGER_REL = f".prawduct/{ledger.LEDGER_BASENAME}"
@@ -112,7 +113,7 @@ class TestTheNamedCommandExists:
     def test_render_dispositions_is_dispatched(self, tmp_path):
         """The command the descriptions name is a real subcommand: a bad flag
         reaches its own usage line (exit 2), where an unknown command does not."""
-        env = {"PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin", "HOME": str(tmp_path)}
+        env = scrubbed_env(tmp_path)
         subprocess.run(["git", "init", "-q", str(tmp_path / "repo")], check=True, env=env)
         repo = tmp_path / "repo"
 

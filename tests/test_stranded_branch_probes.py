@@ -14,11 +14,11 @@ import shlex
 import stat
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
 
+from conftest import TEST_NOW_EPOCH
 from lib import probe_families
 from lib import stranded_branch_probes as sbp
 from lib.advisory_store import (
@@ -39,8 +39,7 @@ def _isolated_registry():
 
 def git(cwd: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
-         "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
+        ["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
         cwd=str(cwd), capture_output=True, text=True, check=True,
     ).stdout
 
@@ -208,8 +207,7 @@ def git_at(cwd: Path, when: float, *args: str) -> str:
     """``git`` with both commit dates pinned to ``when`` (epoch seconds)."""
     stamp = f"@{int(when)} +0000"
     return subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
-         "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
+        ["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
         cwd=str(cwd), capture_output=True, text=True, check=True,
         env={**os.environ, "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp},
     ).stdout
@@ -221,7 +219,8 @@ def finished_branch(repo: Path, branch: str, *, age_days: float = 3, push: bool 
     name = f"{branch.replace('/', '-')}.txt"
     (repo / name).write_text(name)
     git(repo, "add", name)
-    git_at(repo, time.time() - age_days * DAY, "commit", "-q", "-m", name)
+    # The suite's clock, which dates git's commits and the plugin's ages of them alike.
+    git_at(repo, TEST_NOW_EPOCH - age_days * DAY, "commit", "-q", "-m", name)
     if push:
         git(repo, "push", "-q", "origin", branch)
     git(repo, "switch", "-q", "main")

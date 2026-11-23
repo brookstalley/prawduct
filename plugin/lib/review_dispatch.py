@@ -71,8 +71,15 @@ from __future__ import annotations
 
 import json
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
+
+try:
+    from . import clock
+except ImportError:
+    # Imported standalone by `tools/` scripts with `plugin/lib` on sys.path; the clock is
+    # stdlib-only, so it imports the same way.
+    import clock  # type: ignore[no-redef]
 
 #: One marker file per consuming event kind — see the module docstring on
 #: concurrency. The mapping IS the design: two kinds cannot contend because they
@@ -229,7 +236,7 @@ def begin(prawduct_dir: Path, event_kind: str, head: str | None) -> dict:
     never been, and must not become, a reason for one kind to touch another's.
     """
     record = {
-        "dispatched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "dispatched_at": clock.now_iso(),
         "head": head,
     }
     prawduct_dir.mkdir(parents=True, exist_ok=True)

@@ -37,6 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 sys.path.insert(0, str(ROOT))
 from lib import coverage, evidence, gates  # noqa: E402
+from conftest import suite_now  # noqa: E402
 
 _ids = itertools.count(1)
 
@@ -48,7 +49,7 @@ _ids = itertools.count(1)
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -188,7 +189,7 @@ def _stale_origin_repo(
     _commit(repo, "code.py", "x = 1\n", "c1")
     origin = tmp_path / "origin.git"
     subprocess.run(
-        ["git", "init", "--bare", "-q", str(origin)],
+        ["git", "init", "--bare", "-q", str(origin)], cwd=str(tmp_path),
         check=True,
         capture_output=True,
         text=True,
@@ -259,9 +260,9 @@ def _fact(
 
 def _clock_started(seconds_ago: float) -> str:
     """A dispatch stamp ``seconds_ago`` before now, in the marker's format."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import timedelta
 
-    started = datetime.now(timezone.utc) - timedelta(seconds=seconds_ago)
+    started = suite_now() - timedelta(seconds=seconds_ago)
     return started.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

@@ -30,9 +30,10 @@ through ``cachequery``, which is the same discipline one layer over.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
+from .. import clock
 from . import encode, snapshot
 from .core import (
     error,
@@ -231,7 +232,7 @@ def pick(
     """
     from . import cachequery, sync  # noqa: PLC0415 — lazy: only `pick` drives the store
 
-    now = now or datetime.now(timezone.utc)
+    now = now or clock.now()
     scope = f"{owner}/{repo}"
     warnings: list[str] = []
 

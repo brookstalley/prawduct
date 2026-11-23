@@ -26,9 +26,10 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
+from .. import clock
 from . import cache, encode
 from .core import error, failure_text, from_transport_error, log_diag, ok
 from .encode import parse_iso
@@ -98,7 +99,7 @@ def _record_attempt(project_dir: Path, scope: str, failure: str | None) -> None:
             cache.record_sync_attempt(
                 conn,
                 scope,
-                attempted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                attempted_at=clock.now().isoformat(timespec="seconds"),
                 failure=failure,
             )
         finally:
@@ -229,7 +230,7 @@ def _full_rebuild(
     fetch has succeeded, so a transport failure part-way through leaves the
     previous contents in place rather than a truncated store that reads as a
     shrunken backlog."""
-    stamp = (now or datetime.now(timezone.utc)).isoformat()
+    stamp = (now or clock.now()).isoformat()
 
     issues = all_issues(transport, owner, repo, state="all", labels=None)
     if isinstance(issues, dict):
@@ -330,7 +331,7 @@ def absorb_issue(
     the cost is one branch, and the failure it prevents is a row that answers the
     open-item walk forever.
     """
-    stamp = (now or datetime.now(timezone.utc)).isoformat()
+    stamp = (now or clock.now()).isoformat()
 
     absent = _mirror_absent(project_dir)
     if absent is not None:
@@ -373,7 +374,7 @@ def evict_gone(project_dir: Path, *, owner: str, repo: str, number: int) -> dict
     if isinstance(conn, dict):
         return conn
     try:
-        stamp = datetime.now(timezone.utc).isoformat()
+        stamp = clock.now().isoformat()
         return cache.absorb_rows(
             conn, [], fetched_at=stamp, evict=[f"{owner}/{repo}#{number}"]
         )
@@ -500,7 +501,7 @@ def _incremental_sync(
     Descending would move it behind the read cursor instead, and it would be
     skipped by exactly the pages already read.
     """
-    stamp = (now or datetime.now(timezone.utc)).isoformat()
+    stamp = (now or clock.now()).isoformat()
     scope = f"{owner}/{repo}"
 
     conn = cache.open_store(project_dir, create=True)

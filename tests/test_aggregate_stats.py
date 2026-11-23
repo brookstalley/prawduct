@@ -24,6 +24,7 @@ _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 sys.path.insert(0, str(_ROOT))
 
 from lib import aggregate, contribution, evidence  # noqa: E402
+from conftest import scrubbed_env, suite_now  # noqa: E402
 
 SCHEMA = contribution.load_schema()
 #: A Wednesday; ISO 2026-W40 and every week before it have settled.
@@ -66,7 +67,7 @@ def _reviews(n, *, ts=W40, plugin="3.7.1", seconds=300):
 
 
 def _git(repo, *args):
-    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+    subprocess.run(["git", *args],
                    cwd=str(repo), check=True, capture_output=True, timeout=15)
 
 
@@ -361,13 +362,12 @@ class TestCommand:
 
 def test_the_hook_dispatches_the_command(tmp_path):
     """The wiring, end to end: the hook runs the lib body on a real store."""
-    stamp = (datetime.now(timezone.utc) - timedelta(weeks=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stamp = (suite_now() - timedelta(weeks=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
     repo = _repo(tmp_path, "a", _reviews(5, ts=stamp))
     result = subprocess.run(
         [sys.executable, str(_ROOT / "bin" / "prawduct-hook"), "aggregate-stats", str(repo), "--json"],
         cwd=str(tmp_path), capture_output=True, text=True, timeout=60,
-        env={"CLAUDE_PLUGIN_ROOT": str(_ROOT), "HOME": str(tmp_path),
-             "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"},
+        env=scrubbed_env(tmp_path, CLAUDE_PLUGIN_ROOT=str(_ROOT)),
     )
     assert result.returncode == 0, result.stderr
     report = json.loads(result.stdout)

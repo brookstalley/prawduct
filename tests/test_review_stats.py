@@ -22,12 +22,12 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 import subprocess
 from pathlib import Path
 
+from _hook_inproc import run_hook
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
-HOOK = ROOT / "bin" / "prawduct-hook"
 LEDGER_REL = ".prawduct/.governance-ledger.jsonl"
 CHUNK_MODE = "chunk (lighter pass, not ready for push)"
 FINAL_MODE = "final (full review, ready for push)"
@@ -37,19 +37,12 @@ CUMULATIVE_MODE = "cumulative (bundle review, ready for merge)"
 def _env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "CLAUDE_PROJECT_DIR": str(repo),
-    }
+    return scrubbed_env(home, CLAUDE_PROJECT_DIR=str(repo))
 
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), "review-stats", *args],
-        cwd=str(repo), capture_output=True, text=True, env=_env(repo), timeout=30,
-    )
+    """`prawduct-hook review-stats <args>` from ``repo``, in-process (`tests/_hook_inproc.py`)."""
+    return run_hook("review-stats", *args, cwd=repo, env=_env(repo))
 
 
 def _event(
@@ -1232,6 +1225,7 @@ sys.path.insert(0, str(ROOT))
 from lib import dispositions as _dispositions  # noqa: E402
 from lib import evidence as _evidence  # noqa: E402
 from lib import stats as _stats  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 
 def _git_repo(tmp_path: Path) -> Path:

@@ -460,6 +460,23 @@ class TestRecord:
         # No fact_id: the native row must never join the Critic's dispositions.
         assert "fact_id" not in review
 
+    def test_the_recorded_interval_is_measured_on_the_suites_one_clock(self, branch_repo, monkeypatch):
+        """The dispatch stamp, the event's `ts` and the recorded duration share one clock, so
+        the interval a reader measures from the event is the run's span and agrees with
+        `duration_seconds`. With the dispatch stamp on another clock the interval is
+        negative, which reads as "not measured"."""
+        from conftest import set_suite_clock
+        from lib import review_dispatch
+
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        set_suite_clock(monkeypatch, 90)
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert review_dispatch.event_interval_seconds(event) == 90.0
+        assert event["duration_seconds"] == 90.0
+
     def test_record_is_idempotent(self, branch_repo, monkeypatch):
         result = _paired(branch_repo, monkeypatch)
         pd = branch_repo / ".prawduct"

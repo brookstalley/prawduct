@@ -37,6 +37,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 sys.path.insert(0, str(ROOT))
+from _hook_inproc import run_hook  # noqa: E402
 from lib import critic_consolidate as cc  # noqa: E402
 from lib import dispositions as _dispositions_mod  # noqa: E402
 from lib import coverage_algebra as ca_mod  # noqa: E402
@@ -67,15 +68,7 @@ CUMULATIVE_MODE = "cumulative (bundle review, ready for merge)"
 def _git_env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        **GIT_TEST_ENV,
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(home)
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -102,12 +95,15 @@ def _commit_file(repo: Path, rel: str, content: str, msg: str) -> str:
     return _git(repo, "rev-parse", "HEAD").stdout.strip()
 
 
-def _run_consolidate(repo: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), "critic-consolidate"],
-        cwd=str(repo), capture_output=True, text=True,
-        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+def _hook_in(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """`prawduct-hook <args>` from ``repo``, in-process (`tests/_hook_inproc.py`)."""
+    return run_hook(
+        *args, cwd=repo, env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
     )
+
+
+def _run_consolidate(repo: Path) -> subprocess.CompletedProcess:
+    return _hook_in(repo, "critic-consolidate")
 
 
 def _partials_dir(repo: Path) -> Path:
@@ -159,11 +155,7 @@ def _write_manifest(repo: Path, head: str, *, roster=None, **overrides) -> None:
 
 
 def _run_begin(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), "critic-begin", *args],
-        cwd=str(repo), capture_output=True, text=True,
-        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
-    )
+    return _hook_in(repo, "critic-begin", *args)
 
 
 def _abandon(repo: Path) -> subprocess.CompletedProcess:
@@ -175,10 +167,10 @@ def _abandon(repo: Path) -> subprocess.CompletedProcess:
     unguarded concurrent dispatch is allowed. Going through `critic-end` is what
     a caller genuinely does, so the setup models the lifecycle instead of a path
     the guard now refuses."""
-    return subprocess.run(
-        [sys.executable, str(HOOK), "critic-end"],
-        cwd=str(repo), capture_output=True, text=True,
-        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+    return run_hook(
+        "critic-end",
+        cwd=str(repo),
+        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
     )
 
 
@@ -207,7 +199,7 @@ FAKE_REVIEW_ID = "rev-test-0001"
 #: `fact_to_cache_record` reads its waivers from the store, so it takes one.
 _NO_FACTS = {"facts": []}
 
-from conftest import GIT_TEST_ENV, V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home for the shape
+from conftest import V2_MANIFEST as _V2_MANIFEST, scrubbed_env  # noqa: E402 — one home for the shape
 
 
 def _review_id(repo: Path) -> str:
@@ -3665,12 +3657,12 @@ class TestConsolidateIntegration:
         _set_marker(repo)
         _write_manifest(repo, head)
         _full_roster_partials(repo, head)
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "subagent-stop"],
+        result = run_hook(
+            "subagent-stop",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
             input=json.dumps({"cwd": str(repo),
                               "agent_type": "prawduct:critic-reviewer"}),
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )
         assert result.returncode == 0, result.stderr
         events = [json.loads(line) for line in
@@ -4112,10 +4104,11 @@ class TestConsolidateIntegration:
 
 
 def _run_validate_partial(repo: Path, path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), "validate-partial", str(path)],
-        cwd=str(repo), capture_output=True, text=True,
-        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+    return run_hook(
+        "validate-partial",
+        str(path),
+        cwd=str(repo),
+        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
     )
 
 
@@ -4327,10 +4320,11 @@ class TestValidatePartialVerb:
         elsewhere = tmp_path / "other"
         _init_repo(elsewhere)
         _commit_file(elsewhere, "README.md", "x\n", "init")
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "validate-partial", str(path)],
-            cwd=str(elsewhere), capture_output=True, text=True,
-            env={**_git_env(elsewhere), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        result = run_hook(
+            "validate-partial",
+            str(path),
+            cwd=str(elsewhere),
+            env={**_git_env(elsewhere), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "ok"
@@ -4345,10 +4339,10 @@ class TestValidatePartialVerb:
 
     def test_a_missing_path_is_a_usage_error(self, tmp_path):
         repo, _ = self._case(tmp_path, "valid")
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "validate-partial"], cwd=str(repo),
-            capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        result = run_hook(
+            "validate-partial",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert result.returncode == 2
 
@@ -4866,10 +4860,10 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         self._commit(repo)
         assert gates.branch_coverage_verdict(repo)["status"] == "covered"
         assert gates.session_review_verdict(repo)["status"] == "covered"
-        gate = subprocess.run(
-            [sys.executable, str(HOOK), "check-cumulative-critic"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        gate = run_hook(
+            "check-cumulative-critic",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert gate.returncode == 0, f"stdout={gate.stdout!r} stderr={gate.stderr!r}"
 
@@ -4932,11 +4926,11 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         self._run_on(repo, manifest["head_tree"], ["t1", "t2"])
         _write_partial(repo, "reviewer", manifest["commit_reviewed"],
                        findings=[self._blocker(("t1", "t2"))])
-        hook = subprocess.run(
-            [sys.executable, str(HOOK), "subagent-stop"],
+        hook = run_hook(
+            "subagent-stop",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
             input=json.dumps({"cwd": str(repo), "agent_type": "prawduct:critic-reviewer"}),
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )
         assert hook.returncode == 0, hook.stderr
         assert self._waivers(repo) == []
@@ -5174,10 +5168,11 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
                      "rationale": "accepted by the reviewer"},
         }]}
         assert stats.finding_outcome(judged)(("rev-other", "R-1")) == "waived"
-        report = subprocess.run(
-            [sys.executable, str(HOOK), "review-stats", "--json"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        report = run_hook(
+            "review-stats",
+            "--json",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert report.returncode == 0, report.stderr
         by_outcome = json.loads(report.stdout)["overall"]["dispositions"]["by_outcome"]
@@ -5204,10 +5199,13 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         from test_plugin_runtime import as_just_run  # noqa: PLC0415
 
         as_just_run(report)  # the run starts after the worktree it reads
-        recorded = subprocess.run(
-            [sys.executable, str(HOOK), "test-evidence", "record", "--from-junit", str(report)],
-            cwd=str(base_wt), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        recorded = run_hook(
+            "test-evidence",
+            "record",
+            "--from-junit",
+            str(report),
+            cwd=str(base_wt),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         (run,) = evidence.facts_of_kind(evidence.read_facts(repo), "test-run")
         assert run["body"]["tree"] == base_tree, recorded.stderr
@@ -5724,10 +5722,11 @@ class TestStageReachesEveryReader:
                   if '"review.critic"' in ln]
         assert len(events) == 1 and events[0]["review"]["stage"] == "inner"
 
-        stats = subprocess.run(
-            [sys.executable, str(HOOK), "review-stats", "--json"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        stats = run_hook(
+            "review-stats",
+            "--json",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert stats.returncode == 0, stats.stderr
         by_stage = {e["stage"]: e for e in json.loads(stats.stdout)["by_stage"]}
@@ -5764,14 +5763,21 @@ class TestStageReachesEveryReader:
         ]
 
         env = {**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
-        filed = subprocess.run(
-            [sys.executable, str(HOOK), "disposition", fact["id"], finding["fid"], "--file", "#1"],
-            cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+        filed = run_hook(
+            "disposition",
+            fact["id"],
+            finding["fid"],
+            "--file",
+            "#1",
+            cwd=str(repo),
+            env=env,
         )
         assert filed.returncode == 0, filed.stderr
-        stats = subprocess.run(
-            [sys.executable, str(HOOK), "review-stats", "--json"],
-            cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+        stats = run_hook(
+            "review-stats",
+            "--json",
+            cwd=str(repo),
+            env=env,
         )
         assert stats.returncode == 0, stats.stderr
         block = json.loads(stats.stdout)["overall"]["dispositions"]
@@ -6279,10 +6285,10 @@ class TestBeginMarksFindingsSuperseded:
         """
         repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
         assert _run_begin(repo, "--mode", "chunk").returncode == 0  # B dispatched…
-        subprocess.run(  # …and abandoned without consolidating
-            [sys.executable, str(HOOK), "critic-end"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        run_hook(
+            "critic-end",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
@@ -7273,11 +7279,13 @@ class TestWorktreeVisibility:
         _commit_file(repo_b, "b.py", "y = 1\n", "b")
         (repo_b / ".prawduct").mkdir()  # onboarded, so we reach the refuse
         (repo_b / "b.py").write_text("y = 2\n")
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "critic-begin", "--mode", "chunk"],
-            cwd=str(repo_a), capture_output=True, text=True,
+        result = run_hook(
+            "critic-begin",
+            "--mode",
+            "chunk",
+            cwd=str(repo_a),
             env={**_git_env(repo_a), "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                 "CLAUDE_PROJECT_DIR": str(repo_b)}, timeout=30,
+        "CLAUDE_PROJECT_DIR": str(repo_b)},
         )
         assert result.returncode == 1
         assert "refusing" in result.stderr
@@ -9461,10 +9469,11 @@ class TestABlockerTheGateRoutedAroundIsNotOpen:
             assert "`prawduct-hook check-cumulative-critic` gives the gate's count" in line, line
 
     def _census(self, repo: Path) -> dict:
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "render-dispositions", "--json"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        result = run_hook(
+            "render-dispositions",
+            "--json",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert result.returncode == 0, result.stderr
         return json.loads(result.stdout)["summary"]
@@ -9529,10 +9538,11 @@ class TestTheEmptySpanFallbackIsBounded:
         assert line is not None and "1 review round(s)" in line, line
         assert ": 0 open blocking," in line, line
 
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "render-dispositions", "--json"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        result = run_hook(
+            "render-dispositions",
+            "--json",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert result.returncode == 0, result.stderr
         report = json.loads(result.stdout)
@@ -10030,7 +10040,6 @@ class TestRoundBudgetOnTheTrunkShape:
         assert verdict["review_ids"] == []
 
 
-
 def _seed_chunk_review(repo: Path, fact_id: str, head: str, chunks, *,
                        mode: str = CHUNK_VERBOSE) -> None:
     evidence.append_fact(
@@ -10473,10 +10482,13 @@ class TestGuardRefusalsReachTheirOwnQuery:
     so recording a field the lister drops only looks like emission."""
 
     def _list(self, repo: Path) -> str:
-        proc = subprocess.run(
-            [sys.executable, str(HOOK), "evidence", "list", "--kind", "guard-refusal"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        proc = run_hook(
+            "evidence",
+            "list",
+            "--kind",
+            "guard-refusal",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert proc.returncode == 0, proc.stderr
         return proc.stdout
@@ -11197,11 +11209,7 @@ class TestOneFixOrderEverywhere:
 
 
 def _run_consolidate_args(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), "critic-consolidate", *args],
-        cwd=str(repo), capture_output=True, text=True,
-        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
-    )
+    return _hook_in(repo, "critic-consolidate", *args)
 
 
 class TestTreeUnchangedDuringReview:
@@ -12000,10 +12008,15 @@ class TestTheFactRecordsHowEachChunkWasNamed:
         plan = repo / ".prawduct/artifacts/build-plan-cs.md"
         assert plan_status.chunk_states(plan, evidence.read_facts(repo), repo_dir=repo)["03"].state == "done"
 
-        proc = subprocess.run(
-            [sys.executable, str(HOOK), "plan", "retract", "03", "--all", "--reason", "never built"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        proc = run_hook(
+            "plan",
+            "retract",
+            "03",
+            "--all",
+            "--reason",
+            "never built",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
         import re

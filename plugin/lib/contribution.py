@@ -52,6 +52,7 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from . import clock
 from . import evidence, stats
 from .core import (
     DEV_VERSION_MARKER,
@@ -646,7 +647,7 @@ def briefing_line(project_dir: Path, now: "datetime | None" = None) -> "str | No
     if read["status"] == "error" or sent is None:
         stuck = read.get("reason") if read["status"] == "error" else reason
         return f"Stats: contribution is stuck — {stuck}. Nothing is sent until that is fixed"
-    pending = pending_reports(read["facts"], now or datetime.now(timezone.utc), sent, load_schema())
+    pending = pending_reports(read["facts"], now or clock.now(), sent, load_schema())
     if not pending:
         return None
     if state == PREF_ASK:
@@ -714,7 +715,7 @@ def contribute_cmd(project_dir: Path, argv: list[str], now: "datetime | None" = 
         print(f"contribute: {reason}", file=sys.stderr)
         return 1
     schema = load_schema()
-    pending = pending_reports(read["facts"], now or datetime.now(timezone.utc), sent, schema)
+    pending = pending_reports(read["facts"], now or clock.now(), sent, schema)
     for item in pending:
         problems = validate(item["report"], schema)
         if problems:

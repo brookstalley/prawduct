@@ -36,6 +36,7 @@ from pathlib import Path
 import pytest
 
 from lib import advisory_store, briefing, core, critic_marker, operator_verification
+from conftest import scrubbed_env
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -238,13 +239,12 @@ def _run_clear(project_dir: Path) -> subprocess.CompletedProcess:
     _write_mock_git(mock_bin)
     home = project_dir.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), "clear", "--session-start"],
         capture_output=True, text=True, env=env, timeout=20,

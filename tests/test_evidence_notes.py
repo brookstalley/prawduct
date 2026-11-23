@@ -55,8 +55,6 @@ def _sterile_git(monkeypatch, tmp_path):
     home = tmp_path / "_home"
     home.mkdir(exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-    monkeypatch.setenv("GIT_CONFIG_SYSTEM", "/dev/null")
     monkeypatch.setenv("GIT_TERMINAL_PROMPT", "0")
     monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
     monkeypatch.delenv("PRAWDUCT_ALLOW_EPHEMERAL_WRITES", raising=False)

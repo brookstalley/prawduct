@@ -25,12 +25,12 @@ from __future__ import annotations
 import json
 import sys
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
-from conftest import SHAPED_REFLECTION
+from conftest import SHAPED_REFLECTION, scrubbed_env, suite_now
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -95,13 +95,12 @@ def _run_stop(
     _write_mock_git(mock_bin, status=status, symbolic_ref=symbolic_ref)
     home = project_dir.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), "stop"],
         capture_output=True, text=True, env=env, timeout=20,
@@ -126,7 +125,7 @@ def _active_plan_repo(tmp_path: Path, *, chunk_type: str) -> Path:
     )
     (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (prawduct / ".session-git-baseline").write_text("")
-    ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+    ts = suite_now() - timedelta(seconds=60)
     (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
     return prawduct
 
@@ -321,7 +320,7 @@ def _fact_finished_plan_repo(tmp_path: Path) -> "tuple[Path, str]":
         "## Status\n- [ ] Chunk 01: A\n- [ ] Chunk 02: B\n\n"
         "## Build Chunks\n\n### Chunk 01: A\n\n### Chunk 02: B\n"
     )
-    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+    env = dict(os.environ)
     for args in (
         ("init", "-q", "-b", "main"),
         ("config", "user.email", "t@example.com"),
@@ -680,7 +679,7 @@ class TestGateReadsTheBranchsPlanNotThePointer:
         )
         (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
-        ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+        ts = suite_now() - timedelta(seconds=60)
         (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
         return prawduct
 
@@ -821,7 +820,7 @@ class TestGateReadsTheBranchsPlanNotThePointer:
         )
         (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
-        ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+        ts = suite_now() - timedelta(seconds=60)
         (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
 
         result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="fix/mine")
@@ -860,7 +859,7 @@ def _bound_plan_repo(tmp_path: Path, *, ticked: tuple[bool, ...], claims: str = 
     )
     (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (prawduct / ".session-git-baseline").write_text("")
-    ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+    ts = suite_now() - timedelta(seconds=60)
     (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
     return prawduct
 
@@ -957,7 +956,7 @@ class TestTheCarveoutReadsTheFirstOpenChunk:
         )
         (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
-        ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+        ts = suite_now() - timedelta(seconds=60)
         (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
         if reviewed:
             result = evidence.append_fact(tmp_path, "review", "rev-chunk-01", {
