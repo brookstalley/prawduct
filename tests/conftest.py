@@ -8,8 +8,10 @@ run in parallel across workers.
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -27,6 +29,95 @@ import pytest
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(_PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_ROOT))
+
+#: The environment every git child of this suite runs under, set once at import (below) so that a
+#: git the PRODUCTION code spawns inherits it as surely as one a test spawns.
+#:
+#: Two reasons, one set of variables. A git child that reads the machine's system or global
+#: config, its global attributes or ignore file, or the wall clock is a test whose result depends
+#: on the machine and the moment it ran; testament refuses to reuse such a result, and a suite
+#: that is half git is half uncached (its run advice, 2026-11-23). And the pool's runners have no
+#: global git config at all, while a developer's machine has one, so the same test saw a
+#: different git on each: this makes every machine the runner's.
+#:
+#: - `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL`, `GIT_ATTR_NOSYSTEM`: no system or global config
+#:   and no system attributes.
+#: - `XDG_CONFIG_HOME`: an empty directory, so the default global ignore and attributes files
+#:   (`~/.config/git/ignore`, `.../attributes`) that `GIT_CONFIG_GLOBAL` does not reach are not
+#:   read either. A test that wants one sets its own (`test_gitignore_contract_semantics.py`).
+#:   It is a fresh `mkdtemp` per process, never a fixed path: testament vouches for any config
+#:   directory under temp as the test's own without looking inside it, so a `git/ignore` that a
+#:   past run, another checkout or another user left at a shared path would change every later
+#:   run's git unseen. testament keys no environment value, so the path changing costs no cache
+#:   hit; each pytest process (an xdist worker included) makes its own and removes it at exit.
+#: - `GIT_AUTHOR_DATE`, `GIT_COMMITTER_DATE`: fixed, so a commit reads no clock and the same
+#:   commit has the same SHA on every run. The instant is in the PAST, so every commit a test
+#:   makes without its own date predates every wall-clock stamp it writes. The gates read that
+#:   relation: the session work span is `git log --since=<session start>` and a reflog walk
+#:   bounded by it, the handoff lists `git log --since=<session start>`, and a HEAD move after a
+#:   test run is found at `HEAD@{<run start>}`; git dates every reflog entry by the committer
+#:   date. Under the fixed date a commit made AFTER such a stamp reads as made before it, so the
+#:   span is empty and an assertion that the work "does not block" passes without the committed
+#:   path ever running. A test whose subject is that relation is marked `real_git_clock`
+#:   (:func:`_real_git_clock`), which gives its git children the wall clock back; a test whose
+#:   history must PRECEDE its session dates the session instead (`test_reflection_gate.py`'s
+#:   `_Session` pins its start ten minutes ahead). No single fixed date serves both: a future one
+#:   turned 41 tests of the second kind red. Not epoch 0, which reads as "no timestamp" to a
+#:   truthiness check. Every commit made under it carries the SAME date, as commits made within
+#:   one second already did: a test about commit-time ORDER sets its own dates.
+#: - `GIT_ALLOW_PROTOCOL=file`: a clone or fetch reaches only local repositories.
+#: - The author and committer identity, which the global config used to supply on a developer's
+#:   machine: a test making a commit needs one, and the runner never had one to give.
+#:
+#: A helper that hands git a SCRUBBED environment (`env={"PATH": ..., "HOME": ...}`, not
+#: `{**os.environ, ...}`) does not inherit these, so it spreads :data:`GIT_TEST_ENV` in itself.
+GIT_FIXED_DATE = "@1767225600 +0000"  # 2026-01-01T00:00:00Z
+_GIT_XDG_CONFIG_HOME = Path(tempfile.mkdtemp(prefix="prawduct-tests-empty-xdg-config-"))
+atexit.register(shutil.rmtree, _GIT_XDG_CONFIG_HOME, ignore_errors=True)
+GIT_TEST_ENV = {
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_ATTR_NOSYSTEM": "1",
+    "XDG_CONFIG_HOME": str(_GIT_XDG_CONFIG_HOME),
+    "GIT_AUTHOR_DATE": GIT_FIXED_DATE,
+    "GIT_COMMITTER_DATE": GIT_FIXED_DATE,
+    "GIT_ALLOW_PROTOCOL": "file",
+    "GIT_AUTHOR_NAME": "Prawduct Tests",
+    "GIT_AUTHOR_EMAIL": "tests@prawduct.invalid",
+    "GIT_COMMITTER_NAME": "Prawduct Tests",
+    "GIT_COMMITTER_EMAIL": "tests@prawduct.invalid",
+}
+os.environ.update(GIT_TEST_ENV)
+
+#: The variables :data:`GIT_TEST_ENV` pins that a `real_git_clock` test gives back to the clock.
+GIT_DATE_VARS = ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE")
+#: What a `real_git_clock` test is declared to testament as, in one wording.
+REAL_GIT_CLOCK_WHY = "commits are compared with a real-clock session stamp"
+
+
+def pre_session_git_env() -> dict[str, str]:
+    """The environment for a git command whose move must PRECEDE a wall-clock stamp, in a
+    `real_git_clock` test: the suite's fixed date, which is in the past.
+
+    The session walk needs history older than `.session-start` to know it read the whole
+    session (it gives up otherwise), and the reflog keeps whole seconds, so a fixture's own
+    commit made at the wall clock lands in the stamp's second or after it. Dating that history
+    by :data:`GIT_FIXED_DATE` keeps it before the session the way every unmarked test's is."""
+    return {**os.environ, **{name: GIT_FIXED_DATE for name in GIT_DATE_VARS}}
+
+
+def require_real_git_clock() -> None:
+    """Fail unless this test's git children read the wall clock (`real_git_clock`).
+
+    For a helper or test that makes a commit whose subject is being AFTER a wall-clock stamp: a
+    caller that forgot the marker would otherwise go green on an empty span, which is the
+    failure the marker exists for. Checks both places a git child takes its dates from."""
+    pinned = sorted({n for n in GIT_DATE_VARS if n in os.environ or n in GIT_TEST_ENV})
+    if pinned:
+        raise AssertionError(
+            f"{', '.join(pinned)} still pinned: this commit must be dated after a wall-clock "
+            "stamp, so the test needs @pytest.mark.real_git_clock (tests/conftest.py)"
+        )
 
 # What an entry point loads from its OWN plugin tree before any `lib/` is chosen: the
 # host seam and its loader. A test that runs a copy of an entry point from a hand-built
@@ -67,10 +158,15 @@ def pytest_make_parametrize_id(config, val, argname):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip `non_root` tests under root, then auto-assign xdist_group marks by test directory.
+    """Skip `non_root` tests under root, declare `real_git_clock` tests uncacheable, then
+    auto-assign xdist_group marks by test directory.
 
     `@pytest.mark.non_root` marks a test whose fixture removes its own access (`chmod(0o000)`):
     root walks through the mode, so the refusal the test asserts never happens (#860).
+
+    `@pytest.mark.real_git_clock` (:func:`_real_git_clock`) gets `uncacheable` with
+    :data:`REAL_GIT_CLOCK_WHY` here, so the one marker carries both halves and no test can take
+    the wall clock without saying so to testament.
 
     Auto-assign xdist_group marks by test directory.
 
@@ -84,6 +180,8 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if is_root and item.get_closest_marker("non_root"):
             item.add_marker(pytest.mark.skip(reason="permission fixture does not discriminate under root"))
+        if item.get_closest_marker("real_git_clock") and not item.get_closest_marker("uncacheable"):
+            item.add_marker(pytest.mark.uncacheable(REAL_GIT_CLOCK_WHY))
         if item.get_closest_marker("xdist_group"):
             continue  # Respect explicit marks
         try:
@@ -365,6 +463,34 @@ def _unpin_project_dir():
     finally:
         if saved is not None:
             os.environ["CLAUDE_PROJECT_DIR"] = saved
+
+
+@pytest.fixture(autouse=True)
+def _real_git_clock(request, monkeypatch):
+    """Give a `@pytest.mark.real_git_clock` test's git children the wall clock back.
+
+    The suite pins every commit's dates (:data:`GIT_TEST_ENV`) in the past, and git dates
+    reflog entries by the committer date, so a commit a test makes after writing a
+    wall-clock `.session-start` stamp (or after a test run it dates by the clock) reads as made
+    BEFORE it: the gates' session walk stops at the first reflog entry, `git log --since` lists
+    nothing, `HEAD@{<run start>}` is HEAD, and the committed-work path never runs. The marker is
+    for a test whose subject is that relation. It removes :data:`GIT_DATE_VARS` from the
+    environment AND from :data:`GIT_TEST_ENV` itself, because a helper that hands git a
+    scrubbed environment spreads that dict at call time. A copy a module made at import still
+    holds the pin, so a marked test's git never runs under one; :func:`require_real_git_clock`
+    is how a commit that depends on this checks it. Its results are never reused
+    (:func:`pytest_collection_modifyitems` declares it `uncacheable`): they depend on the
+    moment they ran.
+
+    Function-scoped and autouse, so it is in place before any fixture the test requests; a
+    wider-scoped fixture's commits are made before it and keep the fixed date, which is right
+    for history that must precede the session.
+    """
+    if request.node.get_closest_marker("real_git_clock") is None:
+        return
+    for name in GIT_DATE_VARS:
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delitem(GIT_TEST_ENV, name, raising=False)
 
 
 @pytest.fixture(autouse=True)

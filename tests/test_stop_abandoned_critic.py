@@ -28,7 +28,14 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from conftest import SHAPED_REFLECTION, V2_MANIFEST
+import pytest
+
+from conftest import (
+    SHAPED_REFLECTION,
+    V2_MANIFEST,
+    pre_session_git_env,
+    require_real_git_clock,
+)
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -182,7 +189,8 @@ def _dispatched_real_repo(
 
     ``commit_edit`` records the session base tree (as ``cmd_clear`` does) and
     COMMITS the session's edit before dispatch, so the porcelain is clean and
-    only the session work span still holds the work.
+    only the session work span still holds the work. Its caller is marked
+    ``real_git_clock``: the span is the commits made after ``.session-start``.
 
     Real git rather than the mock: the dispatch manifest and the gate's own tree
     capture have to agree on real tree SHAs, so a faked HEAD makes the self-heal
@@ -196,7 +204,13 @@ def _dispatched_real_repo(
     (repo / "src").mkdir()
     (repo / "src" / "app.py").write_text("x = 1\n")
     subprocess.run([*git, "add", "-A"], cwd=str(repo), check=True, timeout=15)
-    subprocess.run([*git, "commit", "-q", "-m", "c1"], cwd=str(repo), check=True, timeout=15)
+    # History from before the session, dated so even under `real_git_clock`: the span's
+    # reflog walk must reach an entry older than `.session-start`, or it cannot vouch for
+    # the session and keeps the whole base-tree span instead of the commits it authored.
+    subprocess.run(
+        [*git, "commit", "-q", "-m", "c1"], cwd=str(repo), check=True, timeout=15,
+        env=pre_session_git_env(),
+    )
     prawduct = _active_plan_repo(repo)
     if commit_edit:
         base_tree = subprocess.run(
@@ -209,7 +223,13 @@ def _dispatched_real_repo(
         # On a feature branch, so the committed bundle has a base to review
         # against — a committed bundle is cumulative's scope, not chunk's.
         subprocess.run([*git, "checkout", "-q", "-b", "feature"], cwd=str(repo), check=True, timeout=15)
-        subprocess.run([*git, "commit", "-q", "-am", "c2"], cwd=str(repo), check=True, timeout=15)
+        # The session work span is the commits made after `.session-start`, which
+        # `_active_plan_repo` stamps a minute before now; under the suite's fixed
+        # commit date this commit would read as made before it.
+        require_real_git_clock()
+        subprocess.run(
+            [*git, "commit", "-q", "-am", "c2"], cwd=str(repo), check=True, timeout=15,
+        )
 
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
@@ -389,6 +409,7 @@ class TestChunk05ConsolidateOrBlock:
             "session-end-backstop"
         ]
 
+    @pytest.mark.real_git_clock
     def test_committed_session_still_self_heals(self, tmp_path):
         """The backstop fires on the session work span the composition gate
         reads (R-5), not on porcelain: a session that COMMITTED its work with a

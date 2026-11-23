@@ -33,6 +33,7 @@ from lib import critic_marker as cm  # noqa: E402
 # Reuse the proven plugin-runtime subprocess harness (same tests/ dir → importable
 # under pytest's prepend import mode).
 from test_plugin_runtime import run_plugin_hook  # noqa: E402
+from conftest import GIT_TEST_ENV  # noqa: E402
 
 
 def _prawduct(tmp_path: Path) -> Path:
@@ -263,6 +264,7 @@ def _real_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     env = {
+        **GIT_TEST_ENV,
         "HOME": str(tmp_path / "_home"),
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -289,6 +291,7 @@ def _run_real(command: str, repo: Path, *args: str):
 
     root = Path(__file__).resolve().parent.parent / "plugin"
     env = {
+        **GIT_TEST_ENV,
         "HOME": str(repo.parent / "_home"),
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "GIT_CONFIG_GLOBAL": "/dev/null",

@@ -1012,6 +1012,14 @@ def _git(repo: Path, *args: str) -> str:
     return proc.stdout.strip()
 
 
+#: Every test whose repository `_git` builds is declared uncacheable. `_git` hands git a
+#: scrubbed environment of its own on purpose (a global config file under the test's home,
+#: no pinned dates), so its commits read the wall clock and testament cannot vouch for them.
+_OWN_GIT_ENV = pytest.mark.uncacheable(
+    "its git helper sets its own global config and dates commits by the real clock"
+)
+
+
 def gitify(root: Path, remote_default: str | None) -> Path:
     """Make ``root`` a git repo whose ``origin/HEAD`` names ``remote_default``."""
     _git(root, "init", "-q", ".")
@@ -1024,6 +1032,7 @@ def gitify(root: Path, remote_default: str | None) -> Path:
     return root
 
 
+@_OWN_GIT_ENV
 @pytest.mark.parametrize("remote_default,expected", [
     ("develop", "develop"),   # the gitflow consumer the knob exists for
     ("integration", "integration"),  # any non-main-family name, not an allowlist
@@ -1065,6 +1074,7 @@ def test_a_repo_with_no_origin_head_migrates_normally(tmp_path: Path):
     ).read_text()
 
 
+@_OWN_GIT_ENV
 def test_dry_run_previews_base_branch_and_writes_nothing(tmp_path: Path):
     """The preview is what the operator's single confirmation is given against,
     and this key changes what every diff-base gate measures."""
@@ -1078,6 +1088,7 @@ def test_dry_run_previews_base_branch_and_writes_nothing(tmp_path: Path):
     assert (repo / ".prawduct" / "project-state.yaml").read_bytes() == before
 
 
+@_OWN_GIT_ENV
 def test_an_operator_set_base_branch_survives_the_cutover(tmp_path: Path):
     """Product-authored state is preserved verbatim — and this scalar is a
     decision, not framework residue: the remote's default is only a guess at it."""
@@ -1093,6 +1104,7 @@ def test_an_operator_set_base_branch_survives_the_cutover(tmp_path: Path):
     assert result["base_branch"] is None, "reported a write that did not happen"
 
 
+@_OWN_GIT_ENV
 def test_the_base_branch_append_preserves_crlf_line_endings(tmp_path: Path):
     """Two appenders now write to this file in one run. The second one is
     exactly where the CRLF flattening got in the first time — a hand-written
@@ -1109,6 +1121,7 @@ def test_the_base_branch_append_preserves_crlf_line_endings(tmp_path: Path):
     assert raw.count(b"\n") == raw.count(b"\r\n"), "a bare LF appeared in a CRLF file"
 
 
+@_OWN_GIT_ENV
 def test_an_unreadable_state_file_blocks_the_base_branch_append_too(tmp_path: Path):
     """Never append to a file we could not read: the alternative is writing over
     content we cannot see. The same guard `record_distribution` carries — shared,
@@ -1146,6 +1159,7 @@ def test_the_cutover_owns_no_second_notion_of_a_main_family_branch(tmp_path: Pat
     assert coverage.MAIN_FAMILY == frozenset({"main", "master"})
 
 
+@_OWN_GIT_ENV
 def test_human_output_names_the_recorded_base_branch(tmp_path: Path):
     """The plain (non-JSON) form is what an operator reads before confirming."""
     repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
