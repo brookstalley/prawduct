@@ -10119,13 +10119,41 @@ class TestRoundBudgetCadence:
         verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
         assert verdict["cadence_ids"] == [] and verdict["spent"] == 1
 
-    @pytest.mark.parametrize("second", ["final", "cumulative"])
-    def test_only_the_first_boundary_review_is_cadence(self, tmp_path, second):
+    def test_the_first_cumulative_is_the_boundary_review(self, tmp_path):
+        """Renegotiated in round 4 (R-1, R-3, native): the boundary review is
+        the first review in the boundary stage (`STAGE_OF_MODE`), not the first
+        whole-plan review that names nothing new. A second `cumulative` is a
+        re-review and charged."""
         repo, head = _budget_repo(tmp_path, 0)
-        _seed_chunk_review(repo, "rev-final", head, [], mode=cc.MODE_TOKEN_TO_VERBOSE["final"])
-        _seed_chunk_review(repo, "rev-again", head, [], mode=cc.MODE_TOKEN_TO_VERBOSE[second])
+        _seed_chunk_review(repo, "rev-cum", head, [], mode=CUMULATIVE_VERBOSE)
+        _seed_chunk_review(repo, "rev-cum-again", head, [], mode=CUMULATIVE_VERBOSE)
         verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
-        assert verdict["cadence_ids"] == ["rev-final"]
+        assert verdict["cadence_ids"] == ["rev-cum"]
+        assert verdict["spent"] == 1
+
+    def test_a_final_is_never_the_boundary_review(self, tmp_path):
+        """A `final` naming nothing new took the boundary slot, and the real
+        boundary `cumulative` after it was charged, which is the refusal this
+        branch exists to end."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-final-01", head, ["01"], mode=cc.MODE_TOKEN_TO_VERBOSE["final"])
+        _seed_chunk_review(repo, "rev-final-01-again", head, ["01"], mode=cc.MODE_TOKEN_TO_VERBOSE["final"])
+        _seed_chunk_review(repo, "rev-cum", head, ["01"], mode=CUMULATIVE_VERBOSE)
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-final-01", "rev-cum"]
+        assert verdict["spent"] == 1
+
+    def test_a_boundary_cumulative_naming_an_open_chunk_still_takes_the_slot(self, tmp_path):
+        """A `cumulative-final` plan's last chunk is reviewed by the boundary
+        `cumulative` itself, which names that chunk for the first time. Keyed on
+        "names nothing new", it never took the boundary slot, and the next
+        `cumulative` (a loop) was free."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-c01", head, ["01"])
+        _seed_chunk_review(repo, "rev-cum", head, ["01", "02"], mode=CUMULATIVE_VERBOSE)
+        _seed_chunk_review(repo, "rev-cum-again", head, ["01", "02"], mode=CUMULATIVE_VERBOSE)
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-c01", "rev-cum"]
         assert verdict["spent"] == 1
 
     def test_a_chunks_first_review_is_its_step_whatever_its_mode(self, tmp_path):
@@ -10160,6 +10188,7 @@ class TestRoundBudgetCadence:
         ({"mode": CUMULATIVE_VERBOSE, "chunks": []}, False),     # the first boundary review
         ({"mode": CHUNK_VERBOSE, "chunks": ["01"]}, True),       # the looping chunk again
         ({"mode": CHUNK_VERBOSE, "chunks": []}, True),           # names nothing: unseen
+        ({"mode": cc.MODE_TOKEN_TO_VERBOSE["final"], "chunks": []}, True),  # not the boundary stage
     ])
     def test_at_the_ceiling_a_cadence_dispatch_still_runs(self, tmp_path, incoming, refused):
         """Native review of this branch: the ceiling caps rounds PAST the
@@ -10174,9 +10203,10 @@ class TestRoundBudgetCadence:
         assert verdict["incoming_is_cadence"] is (not refused)
 
     def test_critic_begin_lets_a_new_chunks_first_review_through_the_ceiling(self, tmp_path):
-        """The gate, with a control in the same repo: `--chunks 02` dispatches,
-        while `--chunks 01` (the looping chunk) is refused and the refusal says
-        to name a first review with `--chunks`."""
+        """The gate, with a control in the same repo: `--chunks 01` (the
+        looping chunk) is refused, and chunk 02's first review dispatches with
+        `--chunks` omitted, the skill's default. Round 4 (R-2): the check ran
+        before the proposal, saw no chunk, and refused it."""
         repo, _ = _budget_repo(tmp_path, 0)
         # `--chunks` is read against the bound plan, so there has to be one.
         head = _commit_file(
@@ -10191,9 +10221,12 @@ class TestRoundBudgetCadence:
             _seed_chunk_review(repo, f"rev-01-{n}", head, ["01"])
         looping = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted", "--chunks", "01")
         assert looping.returncode == 4, (looping.stdout, looping.stderr)
-        assert "name it with `--chunks <id>`" in looping.stdout, looping.stdout
-        fresh = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted", "--chunks", "02")
+        (repo / "src" / "app.py").write_text("x = 2\n")  # back to HEAD: no 01 work
+        (repo / "src" / "two.py").write_text("two = 1\n")
+        fresh = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted")
         assert fresh.returncode == 0, (fresh.stdout, fresh.stderr)
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["chunks"] == ["02"] and manifest["chunks_declared"] is False, manifest
 
 
     def test_verify_passes_neither_claim_nor_spend_an_allowance(self, tmp_path):

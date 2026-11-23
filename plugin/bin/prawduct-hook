@@ -2369,13 +2369,6 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             )
         if result.get("census"):
             print(f"\n{result['census']}\n")
-        # The one cadence step the check cannot see: a chunk's first review
-        # dispatched without `--chunks`, whose chunk is known only once the
-        # proposal is drawn, after this refusal.
-        print(
-            "  If this is a chunk's first review, name it with `--chunks <id>`: a chunk's "
-            "first review is the plan's step, not a loop round, and is not refused."
-        )
         print(
             "  To buy another round anyway: `/prawduct:critic <mode> --force`. "
             "Prefer raising or clearing `review_round_budget` in "
