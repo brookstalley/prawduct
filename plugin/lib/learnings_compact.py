@@ -194,7 +194,7 @@ def build_worksheet(project_dir: Path) -> dict:
         row["related"] = [rid for _o, rid in sorted(hits, reverse=True)[:RELATED_MAX]]
     return {
         "schema": SCHEMA,
-        "generated_at": clock.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": clock.now_iso(),
         "limits": {
             "rule_line_max": learnings_files.RULE_LINE_MAX,
             "core_cap_kb": learnings_files.CORE_CAP_KB,

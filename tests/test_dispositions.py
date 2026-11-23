@@ -135,13 +135,12 @@ def _resolution_fact(
 
 
 def _hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), *args],
-        cwd=str(repo),
-        capture_output=True,
-        text=True,
-        timeout=30,
-        env={"PATH": "/usr/bin:/bin", "CLAUDE_PLUGIN_ROOT": str(ROOT)},
+    from _hook_inproc import run_hook  # noqa: PLC0415
+
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True)
+    return run_hook(
+        *args, cwd=str(repo), env={"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
     )
 
 

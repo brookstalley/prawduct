@@ -57,9 +57,10 @@ import re
 import sys
 import time
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
-from . import evidence, gitstate, host
+from . import clock, evidence, gitstate, host
 
 #: Any signal this recent means an agent is plausibly working there now.
 ACTIVE_WITHIN_SECONDS = 30 * 60
@@ -232,6 +233,28 @@ def _mtime_signal(path: Path, source: str) -> Signal | None:
         return None
 
 
+def _session_start_signal(path: Path) -> Signal | None:
+    """When the ``.session-start`` marker at ``path`` was written, on the filesystem's clock
+    like every other signal here.
+
+    The marker is dated by the plugin's clock (its text, and ``clock.date_file`` sets its
+    mtime to match), the other signals by the filesystem's. Outside the test suite those are
+    one clock and the stamp is the moment. Under a frozen plugin clock the stamp is carried
+    across by the two clocks' present offset, so a session opened a moment ago reads as a
+    moment ago rather than as old as the frozen instant. A marker whose text is not a stamp
+    is dated by its mtime alone."""
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return _mtime_signal(path, "session-start")
+    try:
+        stamped = datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return _mtime_signal(path, "session-start")
+    offset = time.time() - clock.now().timestamp()
+    return Signal("session-start", stamped.timestamp() + offset)
+
+
 def _git(cwd: Path, *args: str, strip: bool = True) -> str | None:
     """stdout of one git call through the shared runner, or None if git could
     not answer. ``GIT_OPTIONAL_LOCKS=0`` so a read never refreshes another
@@ -299,7 +322,7 @@ def _scan_worktree(record: dict, *, current: Path, roots: list[Path], now: float
     row.last_activity = newest([
         transcript_signal(path, roots),
         reflog,
-        _mtime_signal(path / ".prawduct" / ".session-start", "session-start"),
+        _session_start_signal(path / ".prawduct" / ".session-start"),
         edit,
     ])
     row.state = classify(row.last_activity, now)
@@ -416,7 +439,9 @@ def unlanded_branches(
     )
     if heads is None:
         return [], "could not list local branches"
-    now = time.time() if now is None else now
+    # On the plugin's clock: the commit dates this ages are git's, and the plugin's clock
+    # is the one git's agrees with (the test suite pins the two to one instant).
+    now = clock.now().timestamp() if now is None else now
     candidates: list[tuple[str, str, float]] = []
     for line in heads.splitlines():
         try:
@@ -539,7 +564,7 @@ def scan(
         report.branches = rows
         if problem:
             report.problems.append(problem)
-        report.unlanded, problem = unlanded_branches(project_dir, records=records, now=now)
+        report.unlanded, problem = unlanded_branches(project_dir, records=records)
         if problem:
             report.problems.append(problem)
         elif check_prs and report.unlanded:
@@ -605,7 +630,10 @@ def _pull_request_text(row: UnlandedRow) -> str:
     return "pull request not checked"
 
 
-def render_table(report: Report, now: float) -> str:
+def render_table(report: Report, now: float, *, commit_now: float | None = None) -> str:
+    """The human table. ``now`` ages the worktrees' signals, which the filesystem dates;
+    ``commit_now`` (default: the plugin's clock) ages the branches' commits, which git dates."""
+    commit_now = clock.now().timestamp() if commit_now is None else commit_now
     lines = ["WORKTREES (state · last agent activity · uncommitted files · branch · path)"]
     if not report.worktrees_checked:
         lines.append("  could not list worktrees (git failed here)")
@@ -623,13 +651,13 @@ def render_table(report: Report, now: float) -> str:
         lines.append("LOCAL BRANCHES CHECKED OUT NOWHERE, WITH COMMITS NO REMOTE HAS")
         for b in report.branches:
             count = "?" if b.unique_commits is None else str(b.unique_commits)
-            lines.append(f"  {b.name}  {count} commit(s)  last {age_text(now - b.last_commit)}")
+            lines.append(f"  {b.name}  {count} commit(s)  last {age_text(commit_now - b.last_commit)}")
     elif report.worktrees_checked:
         lines.append("BRANCHES: none stranded.")
     if report.unlanded:
         lines.append("FINISHED BRANCHES NOT MERGED (pushed; every build plan claiming them finished)")
         for u in report.unlanded:
-            lines.append(f"  {u.name}  last {age_text(now - u.last_commit)}  "
+            lines.append(f"  {u.name}  last {age_text(commit_now - u.last_commit)}  "
                          f"{_pull_request_text(u)}  plan: {', '.join(u.plans)}")
         if any(u.pr_check == "unchecked" for u in report.unlanded):
             lines.append("  `prawduct-hook worktrees --prs` asks GitHub whether each ever had a "

@@ -136,7 +136,8 @@ class TestNewMintsWhatTheReadersAccept:
         assert "branch: feature/1050-the-unit" in fm
         assert "base: main" in fm
         assert "working-branches: []" in fm
-        assert f"last_validated: {suite_now().date().isoformat()}" in fm
+        # The local calendar's date of the suite's instant: the plan is dated where it was made.
+        assert f"last_validated: {suite_now().astimezone().date().isoformat()}" in fm
         # The template's example claim does not survive as a declaration, and its
         # body is what an author copying the template by hand would get.
         assert not any(line.startswith("scope: pantry") for line in fm)

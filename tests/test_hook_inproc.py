@@ -141,10 +141,11 @@ def seen(monkeypatch, tmp_path):
     real_hint = host.project_dir_hint
 
     def probe():
-        from lib import buildplan_refs, critic_marker  # noqa: PLC0415
+        from lib import buildplan_refs, critic_marker, record_progress  # noqa: PLC0415
 
         record.update(
             argv=list(sys.argv), cwd=os.getcwd(), pid=os.getpid(), env=dict(os.environ),
+            recorder_pid=record_progress.stamp("probe", "2026-01-01T12:00:00Z")["pid"],
             ref_cache=dict(buildplan_refs._GIT_REF_NAMES_CACHE),
             roster_error=critic_marker.LAST_ROSTER_ERROR,
         )
@@ -162,7 +163,9 @@ class TestWhatTheCallRunsUnder:
         result = run_hook("resolve-base", cwd=tmp_path)
         assert seen["argv"] == [str(HOOK), "resolve-base"]
         assert Path(seen["cwd"]).resolve() == tmp_path.resolve()
-        assert seen["pid"] == EXITED_PID
+        # The recorder's stamp names a gone process; the process itself keeps its pid.
+        assert seen["recorder_pid"] == EXITED_PID
+        assert seen["pid"] == os.getpid()
         assert (list(sys.argv), os.getcwd(), os.getpid()) == before
         assert result.args == [str(HOOK), "resolve-base"]
 
@@ -247,6 +250,14 @@ class TestWhatTheCallReturns:
         assert calls == [1]
         assert "NOTE: flushed" in result.stderr
 
+    def test_stderr_escapes_what_it_cannot_encode_as_the_interpreters_does(self):
+        """Before `main` reconfigures the streams (the hook module's own load, an exit
+        message after it), the call's stderr is the runner's, so it must escape as the
+        interpreter's stderr does rather than raise."""
+        with _hook_inproc._captured_fds("") as captured:
+            print("path-\udcff", file=sys.stderr)
+        assert captured["stderr"] == b"path-\\udcff\n"
+
     def test_the_calls_pid_names_no_process(self):
         """What the recorder's liveness probe asks first. End to end, a recorder stamp a call
         leaves reads `stale (interrupted)` (`test_plugin_runtime.py`'s
@@ -261,8 +272,12 @@ class TestWhatTheCallReturns:
     "with the in-process call"
 )
 class TestAChildAgrees:
-    @pytest.mark.parametrize("args", [("version",), ("no-such-command",), ("resolve-base",)])
-    def test_a_real_child_and_the_in_process_call_answer_alike(self, tmp_path, args):
+    @pytest.mark.parametrize(("args", "pin"), [
+        (("version",), None), (("no-such-command",), None), (("resolve-base",), None),
+        # A path that is not UTF-8 reaches stderr as a surrogate, which both escape.
+        (("contribute",), "not-utf8-\udcff"),
+    ], ids=["version", "unknown", "resolve-base", "surrogate-on-stderr"])
+    def test_a_real_child_and_the_in_process_call_answer_alike(self, tmp_path, args, pin):
         repo = tmp_path / "repo"
         repo.mkdir()
         subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
@@ -271,6 +286,8 @@ class TestAChildAgrees:
         subprocess.run(["git", "commit", "-q", "-m", "c"], cwd=repo, check=True)
         env = {"HOME": str(tmp_path / "home"), "CLAUDE_PLUGIN_ROOT": str(PLUGIN_ROOT),
                "PYTHONDONTWRITEBYTECODE": "1"}
+        if pin is not None:
+            env["CLAUDE_PROJECT_DIR"] = str(tmp_path / pin)
         child = subprocess.run(
             [sys.executable, str(HOOK), *args], cwd=repo, capture_output=True, text=True,
             env={**{k: v for k, v in os.environ.items()
@@ -280,4 +297,105 @@ class TestAChildAgrees:
         inproc = run_hook(*args, cwd=repo, env=env)
         assert (inproc.returncode, inproc.stdout, inproc.stderr) == (
             child.returncode, child.stdout, child.stderr
+        )
+        if pin is not None:
+            assert "not-utf8-\\udcff" in child.stderr, "precondition: the surrogate reached stderr"
+
+
+# --- no hook child is started with a hand-built environment ---------------------------------
+#
+# `conftest.TEST_ENV` (git's isolation, the test identity and the suite's one clock) reaches a
+# child through the environment it is given: the process's own (`os.environ`, or `run_hook`'s
+# overlay on it) or `conftest.scrubbed_env`. A child of the hook given an environment written out
+# key by key gets none of it, so the git it runs reads the machine's global config and the hook
+# stamps the wall clock beside commits dated on the suite's. The shape is found by what it is,
+# whatever the helper is called: a subprocess call whose argv names the hook and whose `env` is
+# a dict built only from literal keys, directly or through a name assigned in the same function.
+
+_SUBPROCESS_CALLS = {"run", "Popen", "check_output", "check_call", "call"}
+_NAMES_THE_HOOK = re.compile(r"HOOK|prawduct-hook")
+
+
+def _built_from_scratch(node: ast.AST) -> bool:
+    """A dict display with no `**` spread, or `dict(...)` with keywords only."""
+    if isinstance(node, ast.Dict):
+        return all(key is not None for key in node.keys)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
+        return not node.args and all(kw.arg is not None for kw in node.keywords)
+    return False
+
+
+def _hand_built_hook_children(source: str, filename: str) -> list[str]:
+    found = []
+    tree = ast.parse(source, filename)
+    for scope in ast.walk(tree):
+        if not isinstance(scope, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        assigned = {
+            node.targets[0].id: node.value
+            for node in ast.walk(scope)
+            if isinstance(node, ast.Assign) and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        }
+        for call in ast.walk(scope):
+            if not isinstance(call, ast.Call) or not call.args:
+                continue
+            func = call.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+            argv = call.args[0]
+            if isinstance(argv, ast.Name):
+                argv = assigned.get(argv.id, argv)
+            if name not in _SUBPROCESS_CALLS or not _NAMES_THE_HOOK.search(ast.unparse(argv)):
+                continue
+            env = next((kw.value for kw in call.keywords if kw.arg == "env"), None)
+            if isinstance(env, ast.Name):
+                env = assigned.get(env.id)
+            if env is not None and _built_from_scratch(env):
+                found.append(f"{filename}:{call.lineno}")
+    return sorted(set(found))
+
+
+_A_HAND_BUILT_HOOK_CHILD = '''
+import subprocess, sys
+def _cli(root):
+    return subprocess.run([sys.executable, str(_HOOK), "install-tripwire"],
+                          env={"PATH": "/usr/bin:/bin", "CLAUDE_PROJECT_DIR": str(root)})
+def _named(root):
+    env = dict(PATH="/usr/bin:/bin")
+    return subprocess.Popen([sys.executable, str(HOOK_PATH), "stop"], env=env)
+def _argv_by_name(root):
+    cmd = [sys.executable, str(REPO_ROOT / "bin" / "prawduct-hook"), "x"]
+    return subprocess.run(cmd, env={"PATH": "/usr/bin:/bin"})
+'''
+
+_HOOK_CHILDREN_THAT_INHERIT = '''
+import os, subprocess, sys
+def _ok(root, home):
+    subprocess.run([sys.executable, str(HOOK), "x"], env=scrubbed_env(home, A="1"))
+    subprocess.run([sys.executable, str(HOOK), "x"], env={**os.environ, "A": "1"})
+    subprocess.run([sys.executable, str(HOOK), "x"], env={**_git_env(root), "A": "1"})
+    subprocess.run(["git", "status"], env={"PATH": "/usr/bin"})  # not the hook
+'''
+
+
+class TestNoHookChildIsStartedWithAHandBuiltEnvironment:
+    def test_the_scan_flags_the_shape_and_passes_what_inherits(self):
+        assert _hand_built_hook_children(_A_HAND_BUILT_HOOK_CHILD, "fixture.py") == [
+            "fixture.py:11", "fixture.py:4", "fixture.py:8",
+        ]
+        assert _hand_built_hook_children(_HOOK_CHILDREN_THAT_INHERIT, "fixture.py") == []
+
+    def test_no_test_starts_one(self):
+        tests_dir = Path(__file__).resolve().parent
+        found: list[str] = []
+        hook_children = 0
+        for path in sorted(tests_dir.rglob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            rel = str(path.relative_to(tests_dir))
+            found += _hand_built_hook_children(source, rel)
+            hook_children += len(re.findall(r"str\(_?HOOK(?:_PATH)?\)", source))
+        assert hook_children > 50, "the scan must have reached the suite's hook children"
+        assert found == [], (
+            "build the child's environment with conftest.scrubbed_env, or call run_hook:\n  "
+            + "\n  ".join(found)
         )

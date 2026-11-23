@@ -623,7 +623,7 @@ def stats_cmd(project_dir: Path, argv: list[str]) -> int:
     report = {
         "schema_version": REPORT_SCHEMA_VERSION,
         "project": gitstate.project_label(project_dir),
-        "generated_at": clock.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": clock.now_iso(),
         "window": {"since": since, "until": until},
         # Facts a newer plugin wrote are not counted, and the report says how many.
         "schema_ahead": len(read.get("schema_ahead") or []),

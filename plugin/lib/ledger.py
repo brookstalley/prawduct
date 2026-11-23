@@ -214,7 +214,7 @@ def _append_event(
     event = {
         "schema_version": LEDGER_SCHEMA_VERSION,
         "event": event_kind,
-        "ts": clock.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ts": clock.now_iso(),
         "duration_seconds": duration_seconds,
         "project": gitstate.project_label(project_dir),
         "scope": scope,

@@ -573,10 +573,6 @@ def make_codebase(product_dir) -> Codebase:
 # =============================================================================
 
 
-def _utcnow_iso() -> str:
-    return clock.now().strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _valid_prerequisites(declared) -> list[tuple[str, str]]:
     """The well-formed ``(dependent_key, because)`` pairs in a probe's declaration.
 
@@ -744,7 +740,7 @@ def reconcile(
     Pure function — does not touch disk. Existing-entry order is preserved and
     new advisories append, for a deterministic store.
     """
-    now = now or _utcnow_iso()
+    now = now or clock.now_iso()
     cand_by_id: dict[str, AdvisoryCandidate] = {}
     for cand in candidates:
         advisory_id = compute_id(cand.feature, cand.type, cand.probe_version, cand.evidence)
@@ -897,7 +893,7 @@ def apply_retention(store: dict, *, now: str | None = None) -> dict:
     disk. Order within each state band is preserved; only over-cap and expired
     entries are removed. Idempotent.
     """
-    now = now or _utcnow_iso()
+    now = now or clock.now_iso()
     now_dt = _parse_iso(now)
     compacted = [_compact_advisory(a) for a in store.get("advisories", []) if isinstance(a, dict)]
     kept = [a for a in compacted if not _resolved_expired(a, now_dt)]
@@ -918,7 +914,7 @@ def run_sync_advisories(product_dir, *, now: str | None = None, sync_version: st
     underlying reads/writes/probes all degrade safely.
     """
     product = Path(product_dir)
-    now = now or _utcnow_iso()
+    now = now or clock.now_iso()
     state = load_project_state(product)
     codebase = make_codebase(product)
     # Run whatever probes the composition root registered before calling in. The
@@ -977,7 +973,7 @@ def dismiss(product_dir, advisory_id: str, reason: str | None = None, *, now: st
     to the load-bearing dismissal fact (spec §3.4). Returns
     ``{status: "ok"|"not_found"}``.
     """
-    now = now or _utcnow_iso()
+    now = now or clock.now_iso()
 
     def _apply(advisory: dict) -> None:
         advisory["state"] = "dismissed"
@@ -1018,7 +1014,7 @@ def resolve(product_dir, advisory_id: str, *, resolved_by: str = "action", now: 
     feedback shortcut. The next sync's :func:`apply_retention` shrinks the entry
     to compact form. Returns ``{status: "ok"|"not_found"}``.
     """
-    now = now or _utcnow_iso()
+    now = now or clock.now_iso()
 
     def _apply(advisory: dict) -> None:
         advisory["state"] = "resolved"

@@ -52,6 +52,7 @@ import shlex
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import clock
 from .core import atomic_write_text
 
 #: The per-clone, gitignored home of every native text and sidecar, under
@@ -508,11 +509,15 @@ HEAD_WATCH_SECONDS = 3600
 
 
 def _seconds_since(stamp) -> "float | None":
+    """Seconds from ``stamp`` (the sidecar's ``dispatched_at``) to now, on the plugin's
+    clock: the clock ``critic-begin`` stamped it by and the ledger event's ``ts`` reads,
+    so the duration recorded here and the interval a reader measures from the event
+    are the same span."""
     try:
         then = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     except (TypeError, ValueError):
         return None
-    return round((datetime.now(timezone.utc) - then).total_seconds(), 1)
+    return round((clock.now() - then).total_seconds(), 1)
 
 
 def _tree_moved(project_dir: Path, sidecar: dict) -> "bool | None":

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import TEST_NOW_EPOCH
 from lib import stranded_work as sw
 from lib.stranded_work import ACTIVE, IDLE, MISSING, RECENT, UNKNOWN, Signal
 
@@ -291,6 +292,31 @@ class TestWorktrees:
         assert row.state == ACTIVE
         assert row.last_activity.source == "file-edit"
 
+    def test_a_session_the_hook_just_opened_makes_it_active(self, clone, tmp_path):
+        """`.session-start` is dated by the plugin's clock, which the suite holds far from the
+        filesystem's; a session the hook opened a moment ago still reads as a moment ago."""
+        from _hook_inproc import PLUGIN_ROOT, run_hook
+
+        wt = tmp_path / "wt"
+        git(clone, "worktree", "add", "-q", "-b", "side", str(wt))
+        (wt / ".prawduct").mkdir()
+        res = run_hook("clear", "--session-start", cwd=wt,
+                       env={"CLAUDE_PROJECT_DIR": str(wt), "CLAUDE_PLUGIN_ROOT": str(PLUGIN_ROOT)})
+        assert res.returncode == 0, res.stderr
+        marker = wt / ".prawduct" / ".session-start"
+        assert marker.stat().st_mtime == TEST_NOW_EPOCH, "precondition: the marker is on the suite clock"
+        # Every other signal is a month old, so the marker alone can make the tree active.
+        old = time.time() - 30 * DAY
+        reflog = Path(git(wt, "rev-parse", "--absolute-git-dir").strip()) / "logs" / "HEAD"
+        for p in [reflog, wt / ".prawduct", *(p for p in wt.rglob("*") if p != marker)]:
+            os.utime(p, (old, old), follow_symlinks=False)
+
+        row = next(w for w in _scan(clone).worktrees if Path(w.path) == wt.resolve())
+
+        assert (row.state, row.last_activity.source) == (ACTIVE, "session-start")
+        # Control: the same marker read by its mtime alone is as old as the frozen instant.
+        assert sw.classify(sw._mtime_signal(marker, "session-start"), time.time()) == IDLE
+
     def test_a_fresh_commit_on_a_clean_tree_is_seen_through_the_reflog(self, clone, tmp_path):
         # Clean tree, no transcript, no governed session: the commit is the only
         # trace an agent left, and only the reflog carries it.
@@ -565,7 +591,8 @@ def _finished(repo: Path, branch: str, *, age_days: float = 3) -> None:
     name = f"{branch.replace('/', '-')}.txt"
     (repo / name).write_text(name)
     git(repo, "add", name)
-    stamp = f"@{int(time.time() - age_days * DAY)} +0000"
+    # The suite's clock, which dates git's commits and the plugin's ages of them alike.
+    stamp = f"@{int(TEST_NOW_EPOCH - age_days * DAY)} +0000"
     subprocess.run(
         ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", name],
         cwd=str(repo), check=True, capture_output=True,
@@ -641,6 +668,8 @@ class TestUnlandedBranches:
         assert sw.worktrees_cmd(clone, []) == 0
         section = _section(capsys.readouterr().out)
         assert "fix/x" in section and "build-plan-fix-x.md" in section
+        # The commit is aged on the clock git dated it by, not the filesystem's.
+        assert "  fix/x  last 3d ago  " in section, section
         assert "pull request not checked" in section
         assert "--prs" in section, "the table names how to ask"
         assert fake_gh.calls() == [], "the default table makes no network call"
