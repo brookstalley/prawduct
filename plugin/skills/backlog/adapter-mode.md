@@ -287,6 +287,12 @@ active plan as the skill says, and surface overlapping candidates first) and **s
 present an early-stage item as buildable). `--include-working` adds back the items someone is on,
 each naming its branch, for when you deliberately want to see contested work.
 
+**A candidate may carry `base_history`** (`history:` in human output): commits on the base branch
+already name it, so legs of the item may have shipped while its issue stayed open. Show that note
+with the candidate and say to check what is left before building; it hides and restages nothing.
+It appears only when `--repo` is this checkout's own `origin`; a `warning:` that the history was
+not checked means no candidate was compared, not that none matched.
+
 `pick` takes nothing. Recording that you are on an item is
 `update <id> --working-branch owner/repo@branch`, after the branch is pushed — a separate,
 deliberate act, so a `pick` that only wanted to *look* never marks anything.

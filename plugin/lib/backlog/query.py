@@ -42,7 +42,7 @@ from .core import (
     log_diag,
     ok,
 )
-from .transport import Transport, TransportError, paginate
+from .transport import Transport, TransportError, git_log_naming, paginate, resolve_base_ref
 
 # The structured facets ``list`` accepts as label filters (each an AND term).
 # ``tag`` rides the same mechanism because a tag *is* a namespaced label — the
@@ -299,7 +299,108 @@ def pick(
         candidate["why"] = _why(candidate, blockers)
         candidates.append(candidate)
 
+    _annotate_base_history(candidates, project_dir=project_dir, scope=scope, warnings=warnings)
     return ok({"candidates": candidates, "count": len(candidates)}, warnings)
+
+
+#: At most this many candidates are checked against the base's history, one
+#: ``git log`` each. ``limit`` is the caller's and unbounded; the check is advice.
+_HISTORY_CHECK_CAP = 10
+#: ``git log --max-count`` for one candidate: enough to say "many", never a full walk.
+_HISTORY_MAX_COMMITS = 20
+#: Short shas named in the note; the count says how many more there are.
+_HISTORY_SHAS_LISTED = 5
+
+
+def _history_pattern(scope: str, number: int) -> str:
+    """POSIX ERE matching ``#<number>`` as a whole reference, not a prefix of one.
+
+    ``\\b`` is a GNU extension, so the boundary is spelled out: the number must not
+    be followed by a digit (``#12`` is not ``#123`` or ``#1204``) and must not be
+    preceded by a word character (``other/repo#12`` is another repo's issue), with
+    one exception, this tracker's own qualified form ``owner/repo#12``. Issues and
+    pull requests share one number space, so a ``#12`` naming a PR is not a
+    different thing from the item.
+    """
+    qualified = scope.replace(".", "\\.")
+    return rf"((^|[^[:alnum:]_.-])#{number}|{qualified}#{number})([^0-9]|$)"
+
+
+def _annotate_base_history(
+    candidates: list[dict], *, project_dir: Path, scope: str, warnings: list[str]
+) -> None:
+    """Flag each candidate that commits on the base branch already name.
+
+    The issue's labels and body are records; the code history is the other record,
+    and nothing at pick time looked at it, so a builder was dispatched on an item
+    whose legs had shipped. This is **advice only**: no candidate is hidden or
+    restaged, and one with commits gains a ``base_history`` key (``base``,
+    ``count``, ``shas``, ``note``) that the human formatter prints and the skill
+    tells the model to surface.
+
+    **Only this checkout's own tracker is checked.** An item id is
+    ``<tracker>#<n>``; a commit message's ``#<n>`` names an item in the repo the
+    commit lives in. When ``--repo`` is a separate ``backlog_service_repo``, those
+    numbers belong to a different number space and a match would be a coincidence
+    dressed as evidence, so a scope that is not the checkout's ``origin`` is
+    skipped, as is a checkout with no readable ``origin`` (its tracker cannot be
+    known). Neither is an error, so neither speaks.
+
+    **Fails soft and says so once.** An unresolvable base or a failed ``git log``
+    leaves the candidates unannotated and adds one warning (stderr in human mode);
+    the first failure ends the pass, since a broken git repeats for every
+    candidate. Cost: one ``git log`` per candidate, capped, each timed out.
+    """
+    if not candidates:
+        return
+    from . import upstream  # noqa: PLC0415 — lazy: only the annotation reads the remote
+
+    origin = upstream.origin_repo(project_dir)
+    if origin is None or origin.lower() != scope.lower():
+        return
+    base, reason = resolve_base_ref(project_dir)
+    if base is None:
+        warnings.append(
+            f"base-branch history not checked ({reason}); "
+            "no candidate was compared against the commits that may already name it"
+        )
+        return
+    for cand in candidates[:_HISTORY_CHECK_CAP]:
+        number = _number_of(cand["id"], scope=scope)
+        if number is None:
+            continue  # unreachable after the filter in `pick`; never guess a number
+        try:
+            shas = git_log_naming(
+                project_dir,
+                base,
+                _history_pattern(scope, number),
+                max_count=_HISTORY_MAX_COMMITS,
+            )
+        except TransportError as exc:
+            warnings.append(
+                f"base-branch history not checked ({exc.message}); "
+                "candidates are not annotated"
+            )
+            return
+        if not shas:
+            continue
+        count = f"{len(shas)}+" if len(shas) >= _HISTORY_MAX_COMMITS else str(len(shas))
+        listed = ", ".join(shas[:_HISTORY_SHAS_LISTED])
+        more = f", and {len(shas) - _HISTORY_SHAS_LISTED} more" if len(shas) > _HISTORY_SHAS_LISTED else ""
+        cand["base_history"] = {
+            "base": base,
+            "count": len(shas),
+            "shas": shas[:_HISTORY_SHAS_LISTED],
+            "note": (
+                f"{count} commit(s) on {base} already name this item: {listed}{more}; "
+                "check what is left before building"
+            ),
+        }
+    if len(candidates) > _HISTORY_CHECK_CAP:
+        warnings.append(
+            f"base-branch history checked for the first {_HISTORY_CHECK_CAP} of "
+            f"{len(candidates)} candidates only"
+        )
 
 
 def _number_of(canonical: str, *, scope: str) -> int | None:

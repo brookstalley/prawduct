@@ -31,6 +31,7 @@ import os
 import re
 import subprocess
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import NamedTuple
 
 # --- Secret scrub (the SEC-1 backstop) ---------------------------------------
@@ -1053,6 +1054,74 @@ def _extract_retry_after(stderr_lower: str) -> int | None:
 
 def _looks_like_network(stderr_lower: str) -> bool:
     return any(signal in stderr_lower for signal in _NETWORK_SIGNALS)
+
+
+# --- Local git history reads (the `pick` annotation) --------------------------
+#
+# Local, read-only, and not network egress -- but it is a subprocess, and this
+# module owns every one under ``lib/backlog/`` (the egress-discipline invariant
+# is checkable only while that stays true), so the two git reads `pick` needs
+# live here rather than in ``query``.
+
+#: Wall-clock bound on one local ``git`` read. A history walk over a large base is
+#: the slow case; it must never hold a ``pick`` hostage.
+GIT_READ_TIMEOUT_S = 10.0
+
+
+def resolve_base_ref(project_dir) -> tuple[str | None, str]:
+    """The checkout's integration base as ``(ref, ref)``, or ``(None, reason)``.
+
+    Delegates to the one resolver every gate already shares (a configured
+    ``base_branch:``, else ``origin/HEAD`` outside the main family, else the
+    ``main`` candidates), so ``pick`` and the gates cannot name different bases.
+    Never raises: a git that cannot be run is reported as an unresolved base.
+    """
+    from .. import coverage  # noqa: PLC0415 — lazy: only the pick annotation pays for it
+
+    try:
+        return coverage.repo_base_branch(Path(project_dir))
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return None, f"git could not be run ({type(exc).__name__})"
+
+
+def git_log_naming(
+    project_dir, ref: str, pattern: str, *, max_count: int, timeout: float = GIT_READ_TIMEOUT_S
+) -> list[str]:
+    """Short shas of the commits on ``ref`` whose message matches ``pattern``.
+
+    One ``git log -E --grep`` call, newest first, at most ``max_count`` commits.
+    ``pattern`` is a POSIX extended regex (``-E``: a ``\\b`` word boundary is a GNU
+    extension that git's default regex flavour does not promise). Raises
+    ``TransportError`` (``unavailable``) on a non-zero exit, a timeout or an
+    unrunnable ``git`` -- the caller decides what a failed read costs.
+    """
+    if ref.startswith("-"):
+        raise TransportError("unavailable", f"refusing base ref {ref!r}: it reads as an option")
+    argv = [
+        "git", "log", "-E", "--format=%h", f"--max-count={max_count}",
+        f"--grep={pattern}", ref, "--",
+    ]
+    try:
+        proc = subprocess.run(  # noqa: S603 — list-form, no shell (project preference)
+            argv,
+            cwd=str(project_dir),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            encoding="utf-8",
+            errors="surrogateescape",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise TransportError("unavailable", f"'git log' timed out after {timeout:g}s")
+    except OSError as exc:
+        raise TransportError("unavailable", f"'git log' could not be run ({type(exc).__name__})")
+    if proc.returncode != 0:
+        detail = scrub_secrets(proc.stderr).strip().splitlines()
+        raise TransportError(
+            "unavailable",
+            f"'git log' exited {proc.returncode}" + (f": {detail[0]}" if detail else ""),
+        )
+    return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
 # --- Detached process spawn (the D6 briefing-refresh warm) -------------------
