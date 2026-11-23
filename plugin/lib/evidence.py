@@ -142,10 +142,19 @@ OBSERVATIONAL_KINDS = frozenset(
 #: verdict composes; ``chunk-imported`` and ``chunk-retracted`` ride too because
 #: ``plan_status.chunk_states`` reads them, and one made in one clone is
 #: otherwise invisible to every other — an unseen retraction leaves those clones
-#: certifying the chunk it withdrew. Every other kind is about the clone that wrote it (a
-#: suite run, a session boundary, a guard firing, a builder's disposition) and
-#: stays in that clone's store.
-TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported", "chunk-retracted"})
+#: certifying the chunk it withdrew. ``disposition`` rides because a finding's
+#: answer (ACCEPT, FILE, a free fix) is about the finding, not the clone: left
+#: behind, every other clone reports the finding unanswered, re-raises it to its
+#: reviewers and sweeps it again. No gate reads one, so carrying it lifts none.
+#:
+#: The kinds left out each describe the clone that wrote them, and stay in its
+#: store: a ``guard-refusal`` is a control firing here, and its yield question
+#: is asked per clone (:func:`append_guard_refusal`); a ``test-run`` is a suite
+#: result about the machine and environment that ran it; a ``session-start`` is
+#: a session boundary of this clone, the denominator of its per-session rates.
+TRANSPORTED_KINDS = frozenset(
+    {"review", "resolution", "disposition", "chunk-imported", "chunk-retracted"}
+)
 
 
 def review_anchor(body: object) -> "str | None":
