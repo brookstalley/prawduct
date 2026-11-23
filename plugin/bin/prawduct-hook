@@ -2241,6 +2241,10 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     anything is derived, so no manifest and no marker; run the suite and
     re-dispatch the same mode (`--force` dispatches anyway; one inert
     `guard-refusal` fact is appended; absent evidence does not refuse);
+    exit 8 = a `chunk` dispatch with `--chunks` omitted whose proposal names
+    more than one chunk — refused before anything is written, the paths that
+    proposed each chunk and the two `--chunks` re-runs on stdout, and one inert
+    `guard-refusal` fact appended;
     exit 1 = any other
     dispatch failure (reason on stderr). The scheme these cite is prawduct's own API contract — its
     Error Model section, in the framework repo rather than in yours.
@@ -2457,6 +2461,15 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             "`/prawduct:critic verify-resolutions --force`."
         )
         return 7
+    if result.get("kind") == consolidate.CHUNKS_AMBIGUOUS_KIND:
+        # Exit 8, not 1: the skill's exit-1 row says "report and stop", and the
+        # remedy here is one re-dispatch naming the chunk the builder built.
+        # Stdout, because like a 3 or a 7 it is a normal outcome the caller
+        # acts on. Nothing was written: no manifest, no marker, no archive.
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
+        print(f"PRAWDUCT: chunk review refused — {result['reason']}")
+        return 8
     if result["status"] != "ok":
         # Notes first, then the reason: a failed dispatch still learned things
         # about the tree, and the reason is what the reader acts on. Most error
@@ -8386,8 +8399,9 @@ _PLAN_HELP = (
     "         (<path> omitted: the plan this checkout is bound to)\n"
     "       prawduct-hook plan import-status <path> [--apply] [--remove-block] [--json]\n"
     "         (ticked Status boxes -> chunk-imported facts; a preview without --apply)\n"
-    "       prawduct-hook plan retract <chunk> --reason R [--fact ID] [--plan <path>] [--json]\n"
-    "         (withdraw a fact's certification of a chunk; --fact omitted: the one certifying it)\n"
+    "       prawduct-hook plan retract <chunk> --reason R [--fact ID | --all] [--plan <path>] [--json]\n"
+    "         (withdraw a fact's certification of a chunk; --fact omitted: the one certifying it;\n"
+    "          --all: every fact certifying it)\n"
     "       prawduct-hook plan check-claims [--json]"
 )
 
@@ -8588,6 +8602,9 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
             "imported": s.imported,
             "built": chunk_id in built,
             "reason": s.reason,
+            # The earliest open chunk before a review-done one (#1198), else
+            # null. Advice; no gate reads it.
+            "ahead_of": s.ahead_of,
         }
         for chunk_id, s in states.items()
     ]
@@ -9221,7 +9238,7 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
 
 
 def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
-    """``plan retract <chunk> --reason R [--fact ID] [--plan <path>] [--json]``.
+    """``plan retract <chunk> --reason R [--fact ID | --all] [--plan <path>] [--json]``.
 
     Withdraws one fact's certification of one chunk by appending a
     ``chunk-retracted`` fact (``{scope, chunk, fact_id, reason,
@@ -9239,9 +9256,16 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
     codes ``retraction_target`` returns, and ``fact-append-failed``; 2 usage
     or a path that is not a build plan. After writing it prints what the chunk
     reads now — another fact may still certify it.
+
+    ``--all`` withdraws EVERY fact certifying the chunk — each naming fact, and
+    the span a withdrawal uncovers — as ``plan_status.retraction_plan``
+    answers, one ``chunk-retracted`` fact per pair, in order. With ``--fact``
+    it is a usage error (2). A write failing partway prints what was written
+    and exits 1 (``fact-append-failed``); a re-run converges, since every pair
+    already written answers ``already``.
     """
     parsed = _parse_plan_args(
-        "retract", argv, frozenset({"--fact", "--reason", "--plan"}), frozenset({"--json"})
+        "retract", argv, frozenset({"--fact", "--reason", "--plan"}), frozenset({"--json", "--all"})
     )
     if isinstance(parsed, int):
         return parsed
@@ -9256,6 +9280,10 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
               file=sys.stderr)
         return 2
     as_json = "--json" in seen
+    if "--all" in seen and "--fact" in values:
+        print(f"plan retract: --all withdraws every certification, so it takes no --fact\n{_PLAN_HELP}",
+              file=sys.stderr)
+        return 2
     import uuid  # noqa: PLC0415 — lazy; only the fact writers need it
 
     plan_status = _plan_status()
@@ -9297,14 +9325,9 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
             "certifies the chunk cannot be told",
             as_json,
         )
-    target = plan_status.retraction_target(
-        plan_path, facts, positionals[0], values.get("--fact"), repo_dir=project_dir
-    )
-    if target.status not in ("ok", "already"):
-        return _plan_refuse("retract", target.status, f"{rel}: {target.detail}", as_json)
-
-    retraction_id = None
-    if target.status == "ok":
+    def write(target) -> "tuple[str | None, str | None]":
+        """Append one pair's `chunk-retracted` fact and its note on HEAD:
+        ``(retraction id, None)``, or ``(None, why)`` when the append failed."""
         now = datetime.now(timezone.utc)
         retraction_id = "chunk-retracted-{}-{}".format(now.strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8])
         body = {
@@ -9316,11 +9339,7 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
         }
         appended = evidence.append_fact(project_dir, plan_status.RETRACTED_KIND, retraction_id, body)
         if appended.get("status") != "appended":
-            return _plan_refuse(
-                "retract", "fact-append-failed",
-                f"chunk {target.chunk}: {appended.get('reason', 'unknown')}", as_json,
-            )
-        retraction_id = appended.get("id", retraction_id)
+            return None, appended.get("reason", "unknown")
         rc, out, _err = evidence.run_git(project_dir, "rev-parse", "HEAD")
         noted = evidence_notes.attach(project_dir, appended.get("envelope") or {}, out if rc == 0 else None)
         if noted.get("status") not in ("attached", "present"):
@@ -9330,6 +9349,61 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
                 "not travel to other clones.",
                 file=sys.stderr,
             )
+        return appended.get("id", retraction_id), None
+
+    if "--all" in seen:
+        planned = plan_status.retraction_plan(plan_path, facts, positionals[0], repo_dir=project_dir)
+        if not isinstance(planned, list):
+            if planned.status != "already":
+                return _plan_refuse("retract", planned.status, f"{rel}: {planned.detail}", as_json)
+            planned_pairs: list = []
+            done_note = planned
+        else:
+            planned_pairs, done_note = planned, None
+        written: list[dict] = []
+        for target in planned_pairs:
+            rid, why = write(target)
+            if rid is None:
+                for w in written:
+                    print(f"  written: {w['fact_id']} -> {w['retraction_id']}", file=sys.stderr)
+                return _plan_refuse(
+                    "retract", "fact-append-failed",
+                    f"chunk {target.chunk}: {why} — {len(written)} of {len(planned_pairs)} "
+                    "written; re-run to finish (written pairs answer `already`)",
+                    as_json,
+                )
+            written.append({"fact_id": target.fact_id, "retraction_id": rid})
+        key = planned_pairs[0].chunk if planned_pairs else done_note.chunk
+        after = plan_status.chunk_states(
+            plan_path, evidence.read_facts(project_dir), repo_dir=project_dir
+        ).get(key)
+        if as_json:
+            print(json.dumps({
+                "status": "ok", "action": "retracted" if written else "already-retracted",
+                "plan_path": rel, "chunk": key, "pairs": written,
+                "state": after.state if after else None,
+                "certified_by": after.fact_id if after else None,
+            }, sort_keys=True))
+            return 0
+        if not written:
+            print(f"{rel}: {done_note.detail}")
+        for w in written:
+            print(f"{rel}: retracted {w['fact_id']}'s certification of chunk {key}")
+        if after is not None:
+            print(f"  chunk {key} now reads: {after.state}")
+        return 0
+
+    target = plan_status.retraction_target(
+        plan_path, facts, positionals[0], values.get("--fact"), repo_dir=project_dir
+    )
+    if target.status not in ("ok", "already"):
+        return _plan_refuse("retract", target.status, f"{rel}: {target.detail}", as_json)
+
+    retraction_id = None
+    if target.status == "ok":
+        retraction_id, why = write(target)
+        if retraction_id is None:
+            return _plan_refuse("retract", "fact-append-failed", f"chunk {target.chunk}: {why}", as_json)
         facts = evidence.read_facts(project_dir)
 
     after = plan_status.chunk_states(plan_path, facts, repo_dir=project_dir).get(target.chunk)
@@ -9349,7 +9423,11 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
     verb = "retracted" if target.status == "ok" else "already retracted"
     print(f"{rel} (scope `{target.scope}`): {verb} {target.fact_id}'s certification of chunk {target.chunk}")
     if after is not None:
-        by = f" (certified by {after.fact_id} — retract that too if it is also wrong)" if after.fact_id else ""
+        by = (
+            f" (certified by {after.fact_id} — retract that too if it is also wrong, or withdraw "
+            f"every certification with `plan retract {target.chunk} --all --reason …`)"
+            if after.fact_id else ""
+        )
         print(f"  chunk {target.chunk} now reads: {after.state}{by}")
     return 0
 
@@ -11199,7 +11277,7 @@ _USAGE = (
     "plan {new <scope> [--branch B] [--base BASE] [--title T] [--kind K] [--working]|"
     "bind <path> --branch B|resolve [--json]|status [<path>] [--json]}|"
     "resolve-base|version|python-floor|print-install-reference|"
-    "evidence {status|list [--kind <k>] [-n <count>]|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}|advisory <subcmd> [args]|"
+    "evidence {status|list [--kind <k>] [--id <fact-id>] [-n <count>] [--json]|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}|advisory <subcmd> [args]|"
     "disposition <review-id> <fid|oid> {--accept <reason>|--file <backlog-id>|--fixed <path>[,<path>...]} [--owner-ruling <text>]|"
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"

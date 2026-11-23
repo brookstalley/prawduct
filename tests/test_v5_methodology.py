@@ -595,6 +595,10 @@ LAST_MEASURED_TOKENS = {
     # Paid in place: the removal-evidence paragraph drops "these fail silently, in the direction of
     # looking finished" and "the files it touched", which delegation.md's "The Done taken on faith"
     # owns. A READING; ceiling lowered with it.
+    # 0 on 2026-11-23 (chunk-plan-order, native review of the boundary round): the `How:` line read
+    # as if the guards joined only the fallback; it now says "either way plus the whole-tree
+    # guards", paid by dropping an article. "The files it touched" now lives in delegation.md's
+    # "What to return" (the line above was wrong that it already did).
     "methodology/building.md": 5651,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
@@ -1380,7 +1384,10 @@ LAST_MEASURED_TOKENS = {
     # names the covering mode on every demotion. Ceiling lowered with it.
     # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): the exit-3 qualifier stops restating which
     # tree a `cumulative`/`verify-resolutions` pass anchored. A READING; ceiling lowered with it.
-    "skills/critic/SKILL.md": 3225,
+    # +22 on 2026-11-22 (chunk-plan-order Chunk 02, #1141), DECLARED: the exit table gains exit 8
+    # (chunks ambiguous), net of cutting step 4's restated definition of the proposal for a pointer
+    # to planning.md "Chunk state", which owns it. Priced in `test_reviewer_payload_budget.py`.
+    "skills/critic/SKILL.md": 3247,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1696,7 +1703,13 @@ LAST_MEASURED_TOKENS = {
     # +10 on 2026-11-18 (backlog-roi, #1199): "Chunk state" names the merged-in side of a
     # non-base merge as span credit — a description of the code, recorded as a departure under
     # data-model.md D1 for the owner's confirmation. A READING.
-    "methodology/planning.md": 5779,
+    # +150 on 2026-11-22 (chunk-plan-order Chunk 06, #1141/#1198): "Chunk state" states the
+    # plan-order rule (a path proposes a chunk only while every earlier open chunk is proposed),
+    # how to name a chunk built ahead of an open one, the `chunk`-mode refusal and `retract --all`;
+    # Plan Shape gains "A plan may ship in parts" (owner ruling 2026-11-22, ruling 3 of "yes to all").
+    # Each is a rule a builder meets nowhere else before the gate answers; drafted at +260 and cut to
+    # this. A READING.
+    "methodology/planning.md": 5929,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1995,7 +2008,11 @@ LAST_MEASURED_TOKENS = {
     # +32 on 2026-11-22 (same scope, Critic round on a04758d4): the ceiling bullet says the row sets
     # the narrow run and the guards are added either way (a narrow ratified row otherwise dropped
     # them), and describes the class by property instead of this repo's guard names. A READING.
-    "methodology/delegation.md": 3001,
+    # +7 on 2026-11-23 (chunk-plan-order, native review of the boundary round): "What to return"
+    # asks a removal or sweep for the files it touched. building.md cut that list on 2026-11-22
+    # because this file owned it, and this file never did. It is added here, the owning item.
+    # A READING.
+    "methodology/delegation.md": 3008,
 }
 
 
@@ -2924,6 +2941,19 @@ class TestBuildingMethodology:
         how = next(ln for ln in self.content.splitlines() if ln.startswith("**How:**"))
         assert "`Delegate verification` row" in how
         assert "whole-tree guards" in how
+        # The guards join the row as well as the fallback (native review,
+        # chunk-plan-order boundary round). "row, else the narrowest run, plus
+        # the guards" read as if only the fallback took them.
+        assert "either way plus the whole-tree guards" in how
+
+    def test_a_sweeps_return_names_the_files_it_touched(self):
+        """building.md cut "the files it touched" from its removal-evidence
+        paragraph because delegation.md owned it, which it did not. The owning
+        item is "What to return"."""
+        from pathlib import Path as _P
+        delegation = (_P(__file__).resolve().parents[1] / "plugin/methodology/delegation.md").read_text()
+        item = next(ln for ln in delegation.splitlines() if ln.startswith("- **What to return**"))
+        assert "the files it touched" in item, item
 
     def test_work_scaled_governance(self):
         """Has governance model with size/type levels, no v4 phase references."""
@@ -6525,7 +6555,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3254 -> 3262 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3262 -> 3232 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 3232 -> 3226 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 3226, f"SKILL.md is ~{tokens} tokens, should be <3226"
+        # RAISED 3226 -> 3248 (chunk-plan-order Chunk 02, #1141): exit 8's row — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3248, f"SKILL.md is ~{tokens} tokens, should be <3248"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
