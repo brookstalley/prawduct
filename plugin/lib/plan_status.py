@@ -810,24 +810,26 @@ def _extended_reviews(reviews: "list[dict]", fact: dict) -> "list[dict] | None":
     carries work both intervals reviewed, so the span is the line's — every
     review on it must certify too (:func:`chunk_states` asks). The link is
     ``coverage_algebra.prior_review`` — the one rule ``critic_mode.review_chain``
-    and the verify roll-call follow too: a review's ``base_tree`` is the
-    ``head_tree`` of the newest review recorded before it; followed back
-    through reviews recording no ``base_commit`` to the first that does. A
-    ``base_tree`` that is not an object id names no tree a commit could hold,
-    so the line ends there. ``reviews`` is the store's review facts in store
-    order."""
+    and the verify roll-call follow too: the review a verify pass recorded as
+    its anchor, else the newest review recorded before it whose ``head_tree``
+    is its ``base_tree``; followed back through reviews recording no
+    ``base_commit`` to the first that does. A ``base_tree`` that is not an
+    object id names no tree a commit could hold, so the line ends there, as it
+    does at an anchor the store does not hold. ``reviews`` is the store's
+    review facts in store order. The steps and the walk's end are
+    ``coverage_algebra.walk_links``': a walk that ends before a review
+    recording a commit (no link, or a revisit on a malformed cycle) is a line
+    that cannot be followed to a commit, so no line."""
     line: list[dict] = []
-    current = fact
-    while not gitstate.is_object_id((current.get("body") or {}).get("base_commit")):
-        if not gitstate.is_object_id((current.get("body") or {}).get("base_tree")):
+    for current in coverage_algebra.walk_links(reviews, fact):
+        if current is not fact:
+            line.append(current)
+        body = current.get("body") or {}
+        if gitstate.is_object_id(body.get("base_commit")):
+            return line or None
+        if not gitstate.is_object_id(body.get("base_tree")):
             return None
-        # Strictly earlier in store order (the link rule), so the walk ends.
-        prior = coverage_algebra.prior_review(reviews, current)
-        if prior is None:
-            return None
-        current = prior
-        line.append(current)
-    return line or None
+    return None
 
 
 # ---------------------------------------------------------------------------

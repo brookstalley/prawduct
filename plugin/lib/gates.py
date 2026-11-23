@@ -2942,26 +2942,34 @@ def _review_mode(fact: dict) -> str:
 
 def _review_verified_passes_stand_on(
     reviews: list[dict], fact: dict
-) -> "dict | None":
-    """The review whose goals ``fact`` stands for: ``fact`` itself unless it is
-    a ``verify-resolutions`` pass, else — walked back over every such pass —
-    the review the first of them resolves. ``None`` when the walk reaches no
-    review that is not a verify pass.
+) -> "tuple[dict | None, dict]":
+    """``(stands_for, last)``: the review whose goals ``fact`` stands for, and
+    the fact the walk stopped at. ``stands_for`` is ``fact`` itself unless it
+    is a ``verify-resolutions`` pass, else — walked back over every such pass —
+    the review the first of them resolves, or ``None`` when the walk reaches no
+    review that is not a verify pass; then ``last`` is the pass whose link
+    ended it, which the caller asks why (:func:`coverage_algebra.missing_anchor`).
 
-    The walk follows the recorded LINK, not store position: a verify pass's
-    interval starts at the ``head_tree`` of the review it verifies (its
-    ``base_tree`` is that review's ``head_tree``), and
-    ``coverage_algebra.prior_review`` is the one owner of that rule —
-    ``carried_blocking`` takes the same hop to find the findings a pass rolls
-    call over. Position would answer a nearby question ("what ran before the
-    pass") and differ from it whenever another review was recorded between the
-    reviewed one and its verification. ``reviews`` is the store's review facts
-    in store order; the link is strictly-earlier there, so the walk ends.
+    The walk follows the recorded LINK, not store position:
+    ``coverage_algebra.prior_review`` is the one owner of "which review does
+    this pass verify" — the review the pass recorded as its anchor, else, on a
+    fact from before that record, the newest earlier review at its
+    ``base_tree`` — and ``carried_blocking`` takes the same hop to find the
+    findings a pass rolls call over. Position would answer a nearby question
+    ("what ran before the pass") and differ from it whenever another review
+    was recorded between the reviewed one and its verification; the tree alone
+    differs from it whenever another worktree reviewed the same tree.
+    ``reviews`` is the store's review facts in store order. The steps and the
+    walk's end are ``coverage_algebra.walk_links``': a recorded anchor is found
+    wherever it sits, so a store naming a cycle of passes ends the walk at a
+    revisit, and that reaches no review.
     """
-    current: "dict | None" = fact
-    while current is not None and _review_mode(current) == _CRITIC_MODE_VERIFY_RESOLUTIONS:
-        current = coverage_algebra.prior_review(reviews, current)
-    return current
+    last = fact
+    for current in coverage_algebra.walk_links(reviews, fact):
+        if _review_mode(current) != _CRITIC_MODE_VERIFY_RESOLUTIONS:
+            return current, last
+        last = current
+    return None, last
 
 
 def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
@@ -3005,7 +3013,11 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
        links reach no other review → unsatisfied. A verify pass runs Goals 1-3
        over a delta; the walk is how it inherits synthesis, and with nothing at
        the end of it there is no record that synthesis ran. Unlike case 4 this
-       session DID review, so "nothing to judge" does not apply.
+       session DID review, so "nothing to judge" does not apply. When the pass
+       that ends the walk names, by a review id's shape, a review this store
+       does not hold, the NOTE names that review (and the pass that recorded
+       it, when that pass is not the latest review) and offers both repairs: sync it in if another clone recorded it, else
+       run a ``final``, since a dropped or unreadable fact never arrives.
     """
     binding = work_unit.resolve(project_dir)
     if binding.state == "broken":
@@ -3053,8 +3065,29 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     if not review_facts:
         return True, ""
     latest = review_facts[-1]
-    stands_for = _review_verified_passes_stand_on(reviews, latest)
+    stands_for, stopped_at = _review_verified_passes_stand_on(reviews, latest)
     if stands_for is None:
+        missing = coverage_algebra.missing_anchor(reviews, stopped_at)
+        if missing is not None:
+            # The pass names a review this store does not hold. It may be
+            # another clone's, not yet synced, or a fact this store dropped or
+            # could not read, which no sync brings back, so the NOTE offers
+            # both repairs rather than waiting for one that may never come.
+            # The pass that named it is the one the walk stopped at, which is
+            # the latest only when no other pass stands between them.
+            who = (
+                "the review it verifies" if stopped_at is latest
+                else f"the review that {stopped_at.get('id')}, a pass on its chain, verifies"
+            )
+            return False, (
+                f"All {total} chunks done or dropped; last Critic review was "
+                f"'{_CRITIC_MODE_VERIFY_RESOLUTIONS}', and {who} ({missing}) is not "
+                "in this clone's evidence store, so nothing here shows end-of-cycle "
+                "synthesis ran. If that review was recorded in another clone, run "
+                "`prawduct-hook evidence sync` to ingest it and this NOTE re-judges; "
+                "otherwise run /prawduct:critic final for end-of-cycle synthesis "
+                "(Coherence, Design, the Records Pass) before pushing."
+            )
         return False, (
             f"All {total} chunks done or dropped; last Critic review was "
             f"'{_CRITIC_MODE_VERIFY_RESOLUTIONS}', and no review it verifies is "

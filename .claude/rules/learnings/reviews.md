@@ -37,3 +37,4 @@ Rules that fire while running or acting on a Critic review.
 - Before withholding a fix to protect a review round, run `cost-of-commit` (no args when the fix is all that's uncommitted) — docs, artifacts and .prawduct/ price `free`. Tell: you are reasoning about which paths move coverage instead of asking
 - While a Critic review is LIVE, only read reviewed files; edit only free surfaces (.prawduct/, plan, change-log) — critic-begin snapshots the tree. Tell: test-status still exits 0; exit 0 is not permission
 - Before recommending something be BUILT, check whether it was built and REMOVED — a removal comment is a measured decision; reopen only on new evidence. Tell: you propose a control without opening its host module
+- A nit or pre-existing finding whose fix changes what a walk or predicate REACHES is a behaviour change, not a tidy-up: price it as one (consumer list, its own review) or accept it. Tell: the fix edits a loop's termination inside a fix round.
