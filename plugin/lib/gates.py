@@ -2948,18 +2948,26 @@ def _review_verified_passes_stand_on(
     the review the first of them resolves. ``None`` when the walk reaches no
     review that is not a verify pass.
 
-    The walk follows the recorded LINK, not store position: a verify pass's
-    interval starts at the ``head_tree`` of the review it verifies (its
-    ``base_tree`` is that review's ``head_tree``), and
-    ``coverage_algebra.prior_review`` is the one owner of that rule —
-    ``carried_blocking`` takes the same hop to find the findings a pass rolls
-    call over. Position would answer a nearby question ("what ran before the
-    pass") and differ from it whenever another review was recorded between the
-    reviewed one and its verification. ``reviews`` is the store's review facts
-    in store order; the link is strictly-earlier there, so the walk ends.
+    The walk follows the recorded LINK, not store position:
+    ``coverage_algebra.prior_review`` is the one owner of "which review does
+    this pass verify" — the review the pass recorded as its anchor, else, on a
+    fact from before that record, the newest earlier review at its
+    ``base_tree`` — and ``carried_blocking`` takes the same hop to find the
+    findings a pass rolls call over. Position would answer a nearby question
+    ("what ran before the pass") and differ from it whenever another review
+    was recorded between the reviewed one and its verification; the tree alone
+    differs from it whenever another worktree reviewed the same tree.
+    ``reviews`` is the store's review facts in store order. A recorded anchor
+    is found wherever it sits, so the walk stops at a fact it has already
+    visited rather than trusting store order to end it: a store naming a cycle
+    reaches no review, which reads as ``None``.
     """
     current: "dict | None" = fact
+    seen: "set[int]" = set()
     while current is not None and _review_mode(current) == _CRITIC_MODE_VERIFY_RESOLUTIONS:
+        if id(current) in seen:
+            return None
+        seen.add(id(current))
         current = coverage_algebra.prior_review(reviews, current)
     return current
 

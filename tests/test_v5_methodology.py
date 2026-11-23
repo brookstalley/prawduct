@@ -1173,7 +1173,11 @@ LAST_MEASURED_TOKENS = {
     # outcomes; paid by cutting its single-writer mechanics, which `lib/ledger.py`'s docstring owns.
     # -7 on 2026-11-23 (round-budget-cadence): the budget caps rounds past a plan's cadence; paid by
     # cutting the `--force`-every-time aside, which `docs/project-state-keys.md` owns.
-    "skills/critic/review-cycle.md": 8222,
+    # -3 on 2026-11-23 (verify-links-review-id, #1220): the anchoring paragraph says a pass's fact
+    # names its anchor (`verifies`) and the manifest key list names the key; paid by cutting the
+    # "When NOT to use verify-resolutions" paragraph, whose two cases `critic-begin` refuses (the
+    # Demotion table's no-prior and scope-widened rows). A READING; ceiling lowered with it.
+    "skills/critic/review-cycle.md": 8219,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -6906,7 +6910,8 @@ class TestReviewCycle:
         # LOWERED 8250 -> 8240 (backlog-roi integration, #334, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 8240 -> 8230 (backlog-roi-wave2, #606, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 8230 -> 8223 (round-budget-cadence, 2026-11-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8223, f"review-cycle.md is ~{tokens} tokens, should be <8223"
+        # LOWERED 8223 -> 8220 (verify-links-review-id, #1220, 2026-11-23) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8220, f"review-cycle.md is ~{tokens} tokens, should be <8220"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

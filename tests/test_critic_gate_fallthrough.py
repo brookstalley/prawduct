@@ -450,8 +450,8 @@ class TestSynthesisAdvisoryReadsThisSessionsReview:
 # A verify-resolutions pass stands for the review it verifies
 # ---------------------------------------------------------------------------
 
-# Tree ids for the link rule (`coverage_algebra.linked_reviews`): a review's
-# `base_tree` is the `head_tree` of the review it starts from. The rule compares
+# Tree ids for the link rule (`coverage_algebra.linked_reviews`): a review that
+# names no anchor starts from the review whose `head_tree` is its `base_tree`. The rule compares
 # strings, so any distinct non-empty ids do; full-length ones keep the facts
 # shaped as production writes them.
 _T0, _T1, _T2, _T3, _T4, _T5 = (c * 40 for c in "012345")
@@ -501,8 +501,11 @@ def _append_review_at(
 class TestSynthesisAdvisoryWalksBackOverVerifyPasses:
     """A `verify-resolutions` pass resolves an earlier review's findings and
     does not undo that review's synthesis, so the advisory asks its question of
-    the review the pass verifies — followed by the recorded link (the pass's
-    `base_tree` is that review's `head_tree`), never by store position.
+    the review the pass verifies — followed by the recorded link, never by
+    store position. These facts name no anchor (`verifies`), as a fact from
+    before that field does, so they link by tree: the pass's `base_tree` is
+    that review's `head_tree`. A named anchor is pinned in
+    `test_verify_links_review_id.py`.
 
     Read off the pass itself, a `Type: cumulative-final` plan whose boundary
     `cumulative` raised findings, fixed and closed by one clean verify pass,

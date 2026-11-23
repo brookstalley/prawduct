@@ -149,7 +149,10 @@ clone that wrote them are `guard-refusal`, `test-run` and `session-start`.
   (`instance`|`class`|`none`), `closure` (one sentence: the property that decides a class's
   membership) and `members[]` (`{id, site, note?}`, ids unique within the finding) — each absent
   when the reviewer gave none, and a malformed part dropped at consolidation, never refused),
-  `counts`, and `observations[]` —
+  `counts`, `verifies` (a `verify-resolutions` pass only: the id of the review it anchored to,
+  which every reader walking from a pass to its review follows; absent on a fact written before
+  2026-11-23, which links by tree, and naming a review this store lacks it links to none), and
+  `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
   `recommendation` and no severity. A `verify-resolutions` pass keeps only observations whose
   `about: {review_id, fid}` names the finding or observation whose fix they judge; it counts the rest
