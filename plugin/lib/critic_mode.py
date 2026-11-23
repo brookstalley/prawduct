@@ -2072,7 +2072,9 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     ways. The rule: an earlier chunk's review is the boundary ``cumulative``,
     so the chunk is COMMITTED and left for it — nothing is ticked, because the
     boundary review names every open chunk that is built (``plan_status``:
-    ``chunk_proposal`` in ``cumulative`` mode) and its fact closes them all.
+    ``chunk_proposal`` in ``cumulative`` mode, where a scoped subject names a
+    chunk whatever its order and a path only while every earlier open chunk is
+    named) and its fact closes them all.
     That proposal counts a subject's chunk only when the subject carries the
     plan's scope, hence the scoped form the text gives. Inference sees a
     committed chunk as ``built`` (:func:`short_plan_deferral`, ``read_built``)
@@ -2094,7 +2096,7 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
         "Then build the last chunk before asking for review: `/prawduct:critic` "
         "infers the boundary `cumulative` once one chunk is left uncommitted and "
         "the tree is clean, and that review names every chunk built and still "
-        "open (a chunk built ahead of an open one by its scoped subject), and closes "
+        "open (a chunk built ahead of an open one is named by its scoped subject), and closes "
         "them together"
     )
 
