@@ -22,12 +22,12 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 import subprocess
 from pathlib import Path
 
+from _hook_inproc import run_hook
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
-HOOK = ROOT / "bin" / "prawduct-hook"
 LEDGER_REL = ".prawduct/.governance-ledger.jsonl"
 CHUNK_MODE = "chunk (lighter pass, not ready for push)"
 FINAL_MODE = "final (full review, ready for push)"
@@ -46,10 +46,8 @@ def _env(repo: Path) -> dict[str, str]:
 
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), "review-stats", *args],
-        cwd=str(repo), capture_output=True, text=True, env=_env(repo), timeout=30,
-    )
+    """`prawduct-hook review-stats <args>` from ``repo``, in-process (`tests/_hook_inproc.py`)."""
+    return run_hook("review-stats", *args, cwd=repo, env=_env(repo))
 
 
 def _event(

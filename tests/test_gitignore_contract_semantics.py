@@ -492,6 +492,56 @@ def test_with_git_the_basis_is_git(world):
     assert gitignore_contract_drift(world)["basis"] == "git"
 
 
+# --- the scratch repo: a parent git's location is shed, nothing else ---------------
+#
+# With no work tree to ask, the rules are evaluated in a scratch repo. A hook running inside
+# a git hook inherits that git's GIT_DIR and GIT_WORK_TREE, which would aim the scratch repo's
+# git at the other repository; everything else in git's environment is the caller's own.
+
+
+def test_a_parent_gits_repository_location_does_not_reach_the_scratch_repo(tmp_path, monkeypatch):
+    """The exported location names a repository that does not exist yet, so asking in place
+    fails and the scratch repo is what answers. Inheriting it, the scratch repo's `git init`
+    would create that repository and its rules would be asked of the other work tree."""
+    other = tmp_path / "other"
+    other.mkdir()
+    elsewhere = tmp_path / "elsewhere.git"
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _write(proj, "*.log\n")
+    monkeypatch.setenv("GIT_DIR", str(elsewhere))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other))
+    assert gitignore_covers(proj, "debug.log")
+    assert not gitignore_covers(proj, "debug.txt")  # control: the rule, not a blanket yes
+    assert not elsewhere.exists(), "the scratch repo's git acted on the inherited GIT_DIR"
+
+
+@pytest.mark.parametrize("ignore_case", ["true", "false"])
+def test_the_scratch_repo_keeps_the_callers_git_configuration(tmp_path, monkeypatch, ignore_case):
+    """Config given in the environment still applies. Both values, because the scratch repo's
+    own config differs by filesystem (git sets `core.ignoreCase` on a case-insensitive one),
+    so whichever the platform defaults to, one case shows whether the caller's value arrived."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _write(proj, "*.log\n")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.ignoreCase")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", ignore_case)
+    assert gitignore_covers(proj, "DEBUG.LOG") is (ignore_case == "true")
+
+
+def test_only_the_location_variables_are_shed():
+    from lib import gitstate  # noqa: PLC0415
+
+    env = {name: "/elsewhere" for name in gitstate.REPO_LOCATING_ENV}
+    kept = {
+        "GIT_AUTHOR_NAME": "A", "GIT_COMMITTER_DATE": "@0 +0000",
+        "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_COUNT": "0", "PATH": "/usr/bin",
+    }
+    assert gitstate.env_without_repo_location({**env, **kept}) == kept
+    assert {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} <= gitstate.REPO_LOCATING_ENV
+
+
 # --- the probe --------------------------------------------------------------------
 
 
