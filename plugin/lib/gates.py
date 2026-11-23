@@ -2918,28 +2918,67 @@ def _merge_base_verdict(
     }
 
 
-#: The modes that run the end-of-cycle goals; any other latest mode on a
-#: finished plan earns the synthesis nudge.
+#: The modes that run the end-of-cycle goals. ``verify-resolutions`` is not
+#: among them and is not their opposite either: it resolves an earlier review's
+#: findings, so whether synthesis ran is read off the review it resolves
+#: (:func:`_review_verified_passes_stand_on`), never off the pass itself.
 _CRITIC_MODE_SYNTHESIS = frozenset({
     _CRITIC_MODE_FINAL,
     _CRITIC_MODE_CUMULATIVE,
 })
 
 
+def _review_mode(fact: dict) -> str:
+    """A review fact's persisted mode; a fact with none predates the field and
+    was a ``final`` (legacy hooks pre-v1.3.13 recorded no mode)."""
+    return (fact.get("body") or {}).get("mode", _CRITIC_MODE_FINAL)
+
+
+def _review_verified_passes_stand_on(
+    reviews: list[dict], fact: dict
+) -> "dict | None":
+    """The review whose goals ``fact`` stands for: ``fact`` itself unless it is
+    a ``verify-resolutions`` pass, else — walked back over every such pass —
+    the review the first of them resolves. ``None`` when the walk reaches no
+    review that is not a verify pass.
+
+    The walk follows the recorded LINK, not store position: a verify pass's
+    interval starts at the ``head_tree`` of the review it verifies (its
+    ``base_tree`` is that review's ``head_tree``), and
+    ``coverage_algebra.prior_review`` is the one owner of that rule —
+    ``carried_blocking`` takes the same hop to find the findings a pass rolls
+    call over. Position would answer a nearby question ("what ran before the
+    pass") and differ from it whenever another review was recorded between the
+    reviewed one and its verification. ``reviews`` is the store's review facts
+    in store order; the link is strictly-earlier there, so the walk ends.
+    """
+    current: "dict | None" = fact
+    while current is not None and _review_mode(current) == _CRITIC_MODE_VERIFY_RESOLUTIONS:
+        current = coverage_algebra.prior_review(reviews, current)
+    return current
+
+
 def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
-    """Check whether the latest Critic review satisfies end-of-cycle synthesis.
+    """Check whether end-of-cycle synthesis has run on a finished plan.
 
     Returns ``(True, "")`` when the gate is satisfied, ``(False, reason)``
     otherwise. The gate is advisory: it fires when a multi-chunk build plan
     is finished — every chunk ``done`` or ``dropped`` by
-    ``plan_status.is_finished``, never by a ticked box (#1051) — but the most
-    recent Critic review was not a ``final`` or ``cumulative`` one, so the
-    end-of-cycle goals (Coherence, Design, the Records Pass, Framework-Specific
-    Checks) have not run. The mode is
-    telemetry read from the latest ``review`` FACT in the evidence store
-    (kernel-v3 chunk 04: no gate — even an advisory one — reads the
-    ``.critic-findings.json`` cache); it steers a workflow nudge, never
-    evidence acceptance (D4).
+    ``plan_status.is_finished``, never by a ticked box (#1051) — but the
+    review this session's latest one stands for was not a ``final`` or
+    ``cumulative``, so the end-of-cycle goals (Coherence, Design, the Records
+    Pass, Framework-Specific Checks) have not run. The mode is telemetry read
+    from ``review`` FACTS in the evidence store (kernel-v3 chunk 04: no gate —
+    even an advisory one — reads the ``.critic-findings.json`` cache); it
+    steers a workflow nudge, never evidence acceptance (D4).
+
+    "The review the latest one stands for" is the latest review fact from this
+    worktree and branch, unless it is a ``verify-resolutions`` pass: a pass
+    resolves an earlier review's findings and does not undo that review's
+    synthesis, so the walk follows each pass back to the review it verifies
+    (:func:`_review_verified_passes_stand_on`). Read off the pass itself, every
+    clean close of a boundary review that raised findings drew a nudge to run a
+    ``final`` nobody owed.
 
     Specific cases (in order):
     0. A broken work-unit binding (two live plans claim this branch) →
@@ -2947,12 +2986,20 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     1. No build plan bound, or no chunks declared → satisfied (non-chunked work).
     2. Single-chunk plan → satisfied (the one Critic run is the final).
     3. Multi-chunk plan not finished → satisfied (mid-cycle).
-    4. Finished multi-chunk plan, latest review fact from this worktree and
-       branch is neither ``final`` nor ``cumulative`` → unsatisfied. Run
+    4. Finished multi-chunk plan, no review fact from this worktree and branch
+       → satisfied (nothing to judge).
+    5. Finished multi-chunk plan, the review the latest one stands for is
+       ``final`` or ``cumulative`` → satisfied. A trailing chain of verify
+       passes over a ``cumulative`` is this case.
+    6. Finished multi-chunk plan, that review is anything else (a ``chunk``,
+       directly or under verify passes — including a ``chunk`` recorded after
+       a ``cumulative``, which the walk reaches first) → unsatisfied. Run
        ``/prawduct:critic final`` for end-of-cycle synthesis.
-    5. Finished multi-chunk plan, latest mode is final/cumulative (or no
-       review fact from this worktree and branch — nothing to judge)
-       → satisfied.
+    7. Finished multi-chunk plan, the latest review is a verify pass whose
+       links reach no other review → unsatisfied. A verify pass runs Goals 1-3
+       over a delta; the walk is how it inherits synthesis, and with nothing at
+       the end of it there is no record that synthesis ran. Unlike case 4 this
+       session DID review, so "nothing to judge" does not apply.
     """
     binding = work_unit.resolve(project_dir)
     if binding.state == "broken":
@@ -2982,25 +3029,45 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     # recorded from THIS worktree on THIS branch, so another worktree's review
     # never steers this advisory. A fact with no `actor.branch` (written before
     # it was recorded) is matched on its worktree alone.
+    #
+    # Only the LATEST review is filtered so. The walk back from a verify pass
+    # follows its link over the whole store: the review a pass verifies is the
+    # one it stands on wherever it was recorded (a fresh worktree of a reviewed
+    # branch verifies a review recorded elsewhere — `verify_anchor`), and that
+    # is not a sibling's newer review steering this one.
     here = str(project_dir)
     branch = gitstate.current_branch(project_dir)
+    reviews = evidence.facts_of_kind(facts, "review")
     review_facts = [
         f
-        for f in evidence.facts_of_kind(facts, "review")
+        for f in reviews
         if (f.get("actor") or {}).get("worktree") == here
         and (f.get("actor") or {}).get("branch", branch) == branch
     ]
     if not review_facts:
         return True, ""
-    latest_body = review_facts[-1].get("body") or {}
-    mode = latest_body.get("mode", _CRITIC_MODE_FINAL)
-    if mode not in _CRITIC_MODE_SYNTHESIS:
+    latest = review_facts[-1]
+    stands_for = _review_verified_passes_stand_on(reviews, latest)
+    if stands_for is None:
         return False, (
             f"All {total} chunks done or dropped; last Critic review was "
-            f"'{mode}'. Run /prawduct:critic final for end-of-cycle "
-            "synthesis (Coherence, Design, the Records Pass) before pushing."
+            f"'{_CRITIC_MODE_VERIFY_RESOLUTIONS}', and no review it verifies is "
+            "on record, so nothing shows end-of-cycle synthesis ran. Run "
+            "/prawduct:critic final for end-of-cycle synthesis (Coherence, "
+            "Design, the Records Pass) before pushing."
         )
-    return True, ""
+    mode = _review_mode(stands_for)
+    if mode in _CRITIC_MODE_SYNTHESIS:
+        return True, ""
+    last = (
+        f"'{mode}'" if stands_for is latest
+        else f"a verify-resolutions pass over a '{mode}' review"
+    )
+    return False, (
+        f"All {total} chunks done or dropped; last Critic review was {last}. "
+        "Run /prawduct:critic final for end-of-cycle synthesis (Coherence, "
+        "Design, the Records Pass) before pushing."
+    )
 
 
 def _repo_relative(project_dir: Path, path: Path) -> str:
