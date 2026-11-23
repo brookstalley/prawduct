@@ -54,6 +54,9 @@ CHUNK = "chunk (lighter pass, not ready for push)"
 
 T0, T1, T2, T3 = (c * 40 for c in "0123")
 OTHER_BASE = "9" * 40
+#: A review id of the minted shape that no fixture's store holds: what another
+#: clone's review, not yet synced, looks like from here.
+ELSEWHERE = "rev-20261123T120000Z-0e1f2a3b"
 
 _ABSENT = object()
 
@@ -132,7 +135,7 @@ class TestTheLinkFollowsTheRecordedAnchor:
     def test_an_anchor_the_store_does_not_hold_links_to_nothing(self):
         """Not yet ingested from the clone that recorded it: the tree's newest
         review is the guess the record exists to stop, so there is no link."""
-        reviews = _two_reviews_of_one_tree(verifies="rev-from-another-clone")
+        reviews = _two_reviews_of_one_tree(verifies=ELSEWHERE)
         assert ca.linked_reviews(reviews, reviews[-1]) == []
         assert ca.prior_review(reviews, reviews[-1]) is None
 
@@ -171,12 +174,49 @@ class TestTheLinkFollowsTheRecordedAnchor:
         assert ca.missing_anchor(reviews, pass_) is None
 
     def test_only_an_id_the_store_lacks_is_missing(self):
-        reviews = _two_reviews_of_one_tree(verifies="rev-from-another-clone")
-        assert ca.missing_anchor(reviews, reviews[-1]) == "rev-from-another-clone"
+        reviews = _two_reviews_of_one_tree(verifies=ELSEWHERE)
+        assert ca.missing_anchor(reviews, reviews[-1]) == ELSEWHERE
         resolved = _two_reviews_of_one_tree()
         assert ca.missing_anchor(resolved, resolved[-1]) is None
         legacy = _two_reviews_of_one_tree(verifies=_ABSENT)
         assert ca.missing_anchor(legacy, legacy[-1]) is None
+
+    @pytest.mark.parametrize("claim", [
+        "rev-gone", "not-a-review", ELSEWHERE.upper(), ELSEWHERE + "0",
+        ELSEWHERE + "\n", ELSEWHERE[:-1],
+    ], ids=["word", "no-prefix", "upper-hex", "long-hex", "newline", "short-hex"])
+    def test_a_claim_shaped_like_no_review_id_is_not_missing(self, claim):
+        """No clone mints such an id, so no sync brings its review: it is
+        unresolved, not waiting to be ingested, and links to nothing."""
+        reviews = _two_reviews_of_one_tree(verifies=claim)
+        assert ca.missing_anchor(reviews, reviews[-1]) is None
+        assert ca.linked_reviews(reviews, reviews[-1]) == []
+
+    def test_the_shape_is_the_minters(self):
+        """One pattern: what `mint_review_id` mints is what the link rule calls
+        a review id, and the minter's age reader parses the same pattern."""
+        minted = cc.mint_review_id()
+        assert ca.REVIEW_ID.match(minted), minted
+        assert cc._REVIEW_ID_TS is ca.REVIEW_ID
+        reviews = _two_reviews_of_one_tree(verifies=minted)
+        assert ca.missing_anchor(reviews, reviews[-1]) == minted
+
+    def test_a_held_review_resolves_whatever_its_ids_spelling(self):
+        """Shape is asked only of an id no review carries: one the store holds
+        is a review's id by being one (fixtures and hand-written facts)."""
+        reviews = _two_reviews_of_one_tree(verifies="rev-old")
+        assert not ca.REVIEW_ID.match("rev-old")
+        assert ca.prior_review(reviews, reviews[-1])["id"] == "rev-old"
+
+    @pytest.mark.parametrize("base", [None, "", 7], ids=["none", "empty", "int"])
+    def test_a_pass_with_no_base_tree_has_no_missing_anchor(self, base):
+        """`linked_reviews` links such a pass to nothing even after its review
+        arrives, so naming the review as awaiting an ingest would promise a
+        link that cannot form. The control: the same pass with its base."""
+        reviews = _two_reviews_of_one_tree(verifies=ELSEWHERE)
+        assert ca.missing_anchor(reviews, reviews[-1]) == ELSEWHERE
+        reviews[-1]["body"]["base_tree"] = base
+        assert ca.missing_anchor(reviews, reviews[-1]) is None
 
 
 # ---------------------------------------------------------------------------
@@ -237,17 +277,53 @@ class TestTheStopHookSynthesisFollowsTheAnchor:
         ok, reason = self._gate(tmp_path, CUMULATIVE, CHUNK, verifies=_ABSENT)
         assert not ok and f"over a '{CHUNK}' review" in reason, reason
 
-    def test_an_anchor_not_in_the_store_names_it_and_asks_for_no_final(self, tmp_path):
+    #: The one sentence naming both repairs, as the NOTE prints it.
+    _BOTH_REPAIRS = (
+        "If that review was recorded in another clone, run `prawduct-hook evidence "
+        "sync` to ingest it and this NOTE re-judges; otherwise run /prawduct:critic "
+        "final for end-of-cycle synthesis (Coherence, Design, the Records Pass) "
+        "before pushing."
+    )
+
+    def test_an_anchor_not_in_the_store_names_it_and_both_repairs(self, tmp_path):
         """A cumulative stands at the tree, but it is not the review the pass
-        names, and that one has not been ingested: synthesis is unknown here,
-        so the NOTE names the review and the repair, never a `final`."""
-        ok, reason = self._gate(
-            tmp_path, CUMULATIVE, CUMULATIVE, verifies="rev-from-another-clone"
-        )
+        names, and that one is not in this store. It may be another clone's,
+        not yet synced, or a fact this store dropped or could not read, which
+        no sync brings back: the NOTE names the review and offers both repairs,
+        so a missing anchor never silences the ask for a `final` for good."""
+        ok, reason = self._gate(tmp_path, CUMULATIVE, CUMULATIVE, verifies=ELSEWHERE)
         assert not ok
-        assert "the review it verifies (rev-from-another-clone) is not in this clone's" in reason
-        assert "evidence sync" in reason, reason
-        assert "/prawduct:critic final" not in reason, reason
+        assert f"and the review it verifies ({ELSEWHERE}) is not in this clone's" in reason
+        assert reason.endswith(self._BOTH_REPAIRS), reason
+        assert "no review it verifies is on record" not in reason, reason
+
+    @pytest.mark.parametrize("claim", ["rev-gone", "garbage"])
+    def test_an_anchor_shaped_like_no_review_id_asks_for_final(self, tmp_path, claim):
+        """No sync can bring a review for an id nothing mints, so the NOTE is
+        the generic run-final one and names no ingest."""
+        ok, reason = self._gate(tmp_path, CUMULATIVE, CUMULATIVE, verifies=claim)
+        assert not ok
+        assert "no review it verifies is on record" in reason, reason
+        assert "/prawduct:critic final" in reason, reason
+        assert "evidence sync" not in reason, reason
+
+    def test_a_missing_anchor_deeper_on_the_walk_names_the_pass_that_recorded_it(
+        self, tmp_path
+    ):
+        """V2 verifies V1, which the store holds; V1 verifies a review the store
+        lacks. The NOTE is about the latest review, V2, so it names V1 as the
+        pass that recorded the missing id, not "the review it verifies"."""
+        repo = _finished_plan_repo(tmp_path)
+        _append(repo, _review("rev-v1", VERIFY_MODE, T1, T2, verifies=ELSEWHERE), here=True)
+        _append(repo, _review("rev-v2", VERIFY_MODE, T2, T3, verifies="rev-v1"), here=True)
+        ok, reason = gates._critic_session_satisfies_gate(repo)
+        assert not ok
+        assert (
+            f"and the review that rev-v1, a pass on its chain, verifies ({ELSEWHERE}) "
+            "is not in this clone's"
+        ) in reason, reason
+        assert "the review it verifies" not in reason, reason
+        assert reason.endswith(self._BOTH_REPAIRS), reason
 
     def test_a_pass_linking_to_nothing_it_names_still_asks_for_final(self, tmp_path):
         """The control for the message's other state: a pass from before the
@@ -364,6 +440,56 @@ class TestTheChainsFollowTheAnchor:
         p2 = _review("rev-p2", VERIFY_MODE, T1, T2, verifies="rev-p1")
         assert plan_status._extended_reviews([p1, p2], p2) is None
 
+    def test_review_chain_walks_every_member_it_adds(self):
+        """A (T0→T1), B (T1→T1, a re-review of the unchanged tree), C (T1→T2).
+        C links to A and B; B links back only to A. Following one line from C
+        ends at B, so A's own predecessor P, at T0, was never reached, with
+        its chunks and blockers."""
+        p = _review("rev-p", CHUNK, OTHER_BASE, T0)
+        a = _review("rev-a", CHUNK, T0, T1)
+        b = _review("rev-b", CHUNK, T1, T1)
+        c = _review("rev-c", CHUNK, T1, T2)
+        chain = critic_mode.review_chain([p, a, b, c], c)
+        assert [f["id"] for f in chain] == ["rev-c", "rev-b", "rev-a", "rev-p"]
+
+    def test_review_chain_reaches_predecessors_behind_an_anchor(self):
+        """The same shape one hop further back: a pass verifying C. The walk
+        reaches C by its anchor and must still walk every review C links to."""
+        p = _review("rev-p", CHUNK, OTHER_BASE, T0)
+        a = _review("rev-a", CHUNK, T0, T1)
+        b = _review("rev-b", CHUNK, T1, T1)
+        c = _review("rev-c", CHUNK, T1, T2)
+        pass_ = _review("rev-pass", VERIFY_MODE, T2, T3, verifies="rev-c")
+        chain = critic_mode.review_chain([p, a, b, c, pass_], pass_)
+        assert [f["id"] for f in chain] == ["rev-pass", "rev-c", "rev-b", "rev-a", "rev-p"]
+
+
+class TestReviewsLinkedFromIgnoresStoreOrder:
+    """``coverage_algebra.reviews_linked_from`` answers membership, so a pass
+    ingested ahead of the review whose tree it starts from is a member."""
+
+    def test_a_pass_ingested_before_its_anchor_is_a_member(self):
+        anchor = _review("rev-a", CHUNK, T0, T1)
+        pass_ = _review("rev-pass", VERIFY_MODE, T1, T2, verifies="rev-a")
+        ids = [f["id"] for f in ca.reviews_linked_from([pass_, anchor], T0)]
+        assert ids == ["rev-pass", "rev-a"]  # store order, both members
+
+    def test_a_chain_ingested_backwards_is_reached_whole(self):
+        """Each review reaches the next tree only once the one before it is
+        in: three rounds to the fixed point, from the end of the store."""
+        r1 = _review("rev-1", CHUNK, T0, T1)
+        r2 = _review("rev-2", CHUNK, T1, T2)
+        r3 = _review("rev-3", CHUNK, T2, T3)
+        ids = [f["id"] for f in ca.reviews_linked_from([r3, r2, r1], T0)]
+        assert ids == ["rev-3", "rev-2", "rev-1"]
+
+    def test_a_review_off_the_root_stays_out(self):
+        """The control: a review whose tree no member reaches is not one."""
+        r1 = _review("rev-1", CHUNK, T0, T1)
+        off = _review("rev-off", CHUNK, OTHER_BASE, T3)
+        ids = [f["id"] for f in ca.reviews_linked_from([off, r1], T0)]
+        assert ids == ["rev-1"]
+
 
 class TestReviewChainConsumersOnAnAnchoredPass:
     """What each reader of ``critic_mode.review_chain`` sees once an anchored
@@ -394,24 +520,94 @@ class TestReviewChainConsumersOnAnAnchoredPass:
     def test_boundary_credit_needs_the_cumulative_on_the_walk(self):
         """`boundary_review_on_chain` (`review_owed_after`,
         `boundary_cumulative_still_owed`): a `cumulative` of the anchor's tree
-        recorded before the anchor is not credited, as the Stop hook (which
-        judges the anchor) never credited it either."""
+        that the walk from the anchor does not reach is not credited, as the
+        Stop hook (which judges the anchor) never credits it either."""
         _facts, chain = self._chain(CUMULATIVE)
         assert not critic_mode.boundary_review_on_chain(chain)
 
-    def test_open_blocker_on_chain_reads_the_walk_only(self):
-        """`_open_blocker_on_chain` (the deferral) no longer sees a blocker on
-        the earlier review of the anchor's tree. The gate's composition still
-        counts it: it stands at a node the gate's path stands on."""
-        facts, chain = self._chain(
-            CHUNK, earlier_findings=[_blocker("F-1", "the earlier review's blocker")]
+    def test_one_worktrees_earlier_cumulative_is_an_accepted_second_round(self):
+        """The accepted cost, in one worktree: a `cumulative` of T1, then a
+        `chunk` re-review of T1 from the same base, then a pass anchored to the
+        chunk. The cumulative is not credited, so a second one is asked for.
+        It errs toward more review; telling this worktree's review from a
+        sibling's needs lineage, which a synced fact's trimmed `actor` cannot
+        give. The control: a re-review that starts FROM the cumulative's tree
+        links back to it, so the walk, not the tree, decides."""
+        cumulative = _review("rev-cumulative", CUMULATIVE, T0, T1)
+        rereview = _review("rev-chunk", CHUNK, T0, T1)
+        pass_ = _review("rev-pass", VERIFY_MODE, T1, T2, verifies="rev-chunk")
+        chain = critic_mode.review_chain([cumulative, rereview, pass_], pass_)
+        assert [f["id"] for f in chain] == ["rev-pass", "rev-chunk"]
+        assert not critic_mode.boundary_review_on_chain(chain)
+        rereview["body"]["base_tree"] = T1
+        chain = critic_mode.review_chain([cumulative, rereview, pass_], pass_)
+        assert [f["id"] for f in chain] == ["rev-pass", "rev-chunk", "rev-cumulative"]
+        assert critic_mode.boundary_review_on_chain(chain)
+
+
+class TestTheDeferralAsksTheGatesCount:
+    """The extension deferral says "reviewed with no open blocker … carry on",
+    and the coverage gate judges that step, so the deferral's blocker
+    condition is the gate's own count up to the newest review's tree, never a
+    walk of the chain. An anchored pass's chain holds its anchor alone, while
+    the gate counts every review standing at a tree its path stands on.
+
+    The store: R-earlier (OTHER_BASE→T1) with an open BLOCKING F-1, R-anchor
+    (T0→T1) clean and certifying chunk 04, and a pass (T1→T2) verifying
+    R-anchor; chunk 05 is still to build, so a later review is owed."""
+
+    @staticmethod
+    def _facts(*, blocker: bool) -> list:
+        earlier = _review("rev-earlier", CHUNK, OTHER_BASE, T1,
+                          findings=[_blocker("F-1", "the earlier review's blocker")]
+                          if blocker else [])
+        anchor = _review("rev-anchor", CHUNK, T0, T1)
+        anchor["body"]["chunk"] = "04"
+        pass_ = _review("rev-pass", VERIFY_MODE, T1, T2, verifies="rev-anchor")
+        return [earlier, anchor, pass_]
+
+    @staticmethod
+    def _owed(monkeypatch, facts, *, merge_base=None):
+        from lib import coverage
+        from lib.plan_status import ChunkState
+        from test_review_interval_extension import TestOnlyASuppliedChunkIdIsCredited
+
+        monkeypatch.setattr(
+            coverage, "resolve_merge_base_tree",
+            lambda _p: merge_base or {"status": "ok", "tree": T0, "merge_base": "8" * 40},
         )
-        assert not critic_mode._open_blocker_on_chain(facts, chain)
-        verdict = ca.coverage_verdict(
-            [dict(f, body=dict(f["body"], files_changed=[], files_reviewed=[])) for f in facts],
-            T0, T2, lambda a, b: None,  # no free edges: the reviews make the path
-        )
+        # No free edges and no tree keys: the reviews alone make the path.
+        monkeypatch.setattr(gates, "_cached_diff_fn", lambda _p: (lambda _a, _b: None))
+        monkeypatch.setattr(gates, "_tree_key_fn", lambda _p: (lambda _t: None))
+        states = {c: ChunkState("done", imported=True) for c in ("01", "02", "03")}
+        states["04"] = ChunkState("done", fact_id="rev-anchor")
+        states["05"] = ChunkState("open")
+        return TestOnlyASuppliedChunkIdIsCredited._owed(None, monkeypatch, facts, states)
+
+    def test_a_blocker_the_gate_counts_off_the_chain_is_not_deferred(self, monkeypatch):
+        facts = self._facts(blocker=True)
+        chain = critic_mode.review_chain(facts, facts[-1])
+        assert [f["id"] for f in chain] == ["rev-pass", "rev-anchor"]  # F-1 is off it
+        verdict = ca.coverage_verdict(facts, T0, T2, lambda a, b: None)
         assert verdict["status"] == "blocked", verdict
+        assert [b["fid"] for b in ca.blockers_counted(verdict)] == ["F-1"]
+        assert self._owed(monkeypatch, facts) is None
+
+    def test_the_control_with_no_blocker_defers(self, monkeypatch):
+        """The fixture reaches the condition: without F-1 the same store defers,
+        and says the words the blocked case must not."""
+        owed = self._owed(monkeypatch, self._facts(blocker=False))
+        assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
+        assert "reviewed with no open blocker" in owed[1] and "carry on" in owed[1], owed
+
+    def test_a_count_the_gate_cannot_give_defers_nothing(self, monkeypatch):
+        """No merge base, so no composition: the deferral relaxes, so an answer
+        it does not have reads as a blocker, never as none."""
+        owed = self._owed(
+            monkeypatch, self._facts(blocker=True),
+            merge_base={"status": "error", "reason": "no base branch"},
+        )
+        assert owed is None
 
 
 # ---------------------------------------------------------------------------

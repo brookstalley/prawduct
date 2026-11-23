@@ -3018,9 +3018,10 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
        over a delta; the walk is how it inherits synthesis, and with nothing at
        the end of it there is no record that synthesis ran. Unlike case 4 this
        session DID review, so "nothing to judge" does not apply. When the pass
-       that ends the walk names a review this store does not hold yet, the NOTE
-       names that review and asks for no ``final``: it may only be waiting to
-       be ingested, so synthesis is unknown here rather than missing.
+       that ends the walk names, by a review id's shape, a review this store
+       does not hold, the NOTE names that review and the pass that recorded it
+       and offers both repairs: sync it in if another clone recorded it, else
+       run a ``final``, since a dropped or unreadable fact never arrives.
     """
     binding = work_unit.resolve(project_dir)
     if binding.state == "broken":
@@ -3072,16 +3073,24 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     if stands_for is None:
         missing = coverage_algebra.missing_anchor(reviews, stopped_at)
         if missing is not None:
-            # The pass names its review and that review has not reached this
-            # clone's store: whether synthesis ran is unknown, not absent, and
-            # asking for a `final` would spend a round that may not be owed.
+            # The pass names a review this store does not hold. It may be
+            # another clone's, not yet synced, or a fact this store dropped or
+            # could not read, which no sync brings back, so the NOTE offers
+            # both repairs rather than waiting for one that may never come.
+            # The pass that named it is the one the walk stopped at, which is
+            # the latest only when no other pass stands between them.
+            who = (
+                "the review it verifies" if stopped_at is latest
+                else f"the review that {stopped_at.get('id')}, a pass on its chain, verifies"
+            )
             return False, (
                 f"All {total} chunks done or dropped; last Critic review was "
-                f"'{_CRITIC_MODE_VERIFY_RESOLUTIONS}', and the review it verifies "
-                f"({missing}) is not in this clone's evidence store yet, so whether "
-                "end-of-cycle synthesis ran cannot be judged here. `prawduct-hook "
-                "evidence sync` fetches and ingests other clones' review facts; "
-                "this NOTE re-judges once that review arrives."
+                f"'{_CRITIC_MODE_VERIFY_RESOLUTIONS}', and {who} ({missing}) is not "
+                "in this clone's evidence store, so nothing here shows end-of-cycle "
+                "synthesis ran. If that review was recorded in another clone, run "
+                "`prawduct-hook evidence sync` to ingest it and this NOTE re-judges; "
+                "otherwise run /prawduct:critic final for end-of-cycle synthesis "
+                "(Coherence, Design, the Records Pass) before pushing."
             )
         return False, (
             f"All {total} chunks done or dropped; last Critic review was "
