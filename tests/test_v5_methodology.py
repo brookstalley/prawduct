@@ -595,6 +595,10 @@ LAST_MEASURED_TOKENS = {
     # Paid in place: the removal-evidence paragraph drops "these fail silently, in the direction of
     # looking finished" and "the files it touched", which delegation.md's "The Done taken on faith"
     # owns. A READING; ceiling lowered with it.
+    # 0 on 2026-11-23 (chunk-plan-order, native review of the boundary round): the `How:` line read
+    # as if the guards joined only the fallback; it now says "either way plus the whole-tree
+    # guards", paid by dropping an article. "The files it touched" now lives in delegation.md's
+    # "What to return" (the line above was wrong that it already did).
     "methodology/building.md": 5651,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
@@ -2002,7 +2006,11 @@ LAST_MEASURED_TOKENS = {
     # +32 on 2026-11-22 (same scope, Critic round on a04758d4): the ceiling bullet says the row sets
     # the narrow run and the guards are added either way (a narrow ratified row otherwise dropped
     # them), and describes the class by property instead of this repo's guard names. A READING.
-    "methodology/delegation.md": 3001,
+    # +7 on 2026-11-23 (chunk-plan-order, native review of the boundary round): "What to return"
+    # asks a removal or sweep for the files it touched. building.md cut that list on 2026-11-22
+    # because this file owned it, and this file never did. It is added here, the owning item.
+    # A READING.
+    "methodology/delegation.md": 3008,
 }
 
 
@@ -2931,6 +2939,19 @@ class TestBuildingMethodology:
         how = next(ln for ln in self.content.splitlines() if ln.startswith("**How:**"))
         assert "`Delegate verification` row" in how
         assert "whole-tree guards" in how
+        # The guards join the row as well as the fallback (native review,
+        # chunk-plan-order boundary round). "row, else the narrowest run, plus
+        # the guards" read as if only the fallback took them.
+        assert "either way plus the whole-tree guards" in how
+
+    def test_a_sweeps_return_names_the_files_it_touched(self):
+        """building.md cut "the files it touched" from its removal-evidence
+        paragraph because delegation.md owned it, which it did not. The owning
+        item is "What to return"."""
+        from pathlib import Path as _P
+        delegation = (_P(__file__).resolve().parents[1] / "plugin/methodology/delegation.md").read_text()
+        item = next(ln for ln in delegation.splitlines() if ln.startswith("- **What to return**"))
+        assert "the files it touched" in item, item
 
     def test_work_scaled_governance(self):
         """Has governance model with size/type levels, no v4 phase references."""
