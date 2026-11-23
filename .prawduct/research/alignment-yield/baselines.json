@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "windows": {
+    "..2026-10-09": {
+      "window": {
+        "since": null,
+        "until": "2026-10-09"
+      },
+      "read": "2026-10-09",
+      "source": "artifact",
+      "tool_basis": "commit:cfe1bb3d",
+      "min_chars": 60,
+      "counts": {
+        "governed": {
+          "requests": null,
+          "substantive": 963,
+          "asked_first": 140,
+          "mid_build_asks": 349,
+          "corrections": 18,
+          "goal_questions": null
+        },
+        "ungoverned": null
+      },
+      "health": null,
+      "note": "Transcribed from 'Yield re-run 2026-11' in .prawduct/artifacts/requirements-alignment-discovery.md, where the recorded baseline (read 2026-10-09) is its governed total; the transcripts have since been pruned. Null means the artifact records no figure: requests and goal_questions (the measure had no goal_questions yet), the ungoverned side, and health. min_chars 60 is the script's default; the artifact does not state the value used. It also does not say which of the two 2026-10-09 commits produced these figures, cfe1bb3d being the one that carried the measure when the baseline was read."
+    }
+  }
+}
