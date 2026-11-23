@@ -32,12 +32,18 @@ testament's pool, so repeated runs cost less wall clock.
 
 **Decisions made mid-build:**
 - Git dates are fixed in the past (2026-01-01). A future date broke the reflection and session-gate
-  tests, whose history must come before the session. A past date broke two tests, which now date
-  their own commits by the real clock.
+  tests, whose history must come before the session. A past date broke two tests, which now take
+  the real-clock marker below.
 - The next cacheability blockers are left for a follow-up item, because each needs a production
   change or a per-test decision. They are: production clock reads (`evidence._now_iso`), tests that
   run the hook as a `python3` child, `core._shared_ignore_matches` stripping every `GIT_*` variable,
   and tests that read this checkout's own history.
+- Review round 1: a fixed git date emptied the stop gate's session span in five tests, which then
+  passed without running their path. Those tests now use real-clock dates (`real_git_clock`, which
+  also marks them `uncacheable`), as a stopgap the owner ruled on 2026-11-23. #1218's "one test
+  clock shared by git and production code" removes it.
+- The area map's specific globs were shadowed by broader ones declared earlier. The broader globs
+  are narrowed, and `testament areas check --strict` exits 0.
 
 **Level:** High — owner-ruled, and measured by testament's own output.
 

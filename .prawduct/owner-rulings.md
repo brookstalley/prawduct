@@ -399,6 +399,10 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
 
 **2026-11-19.** "Yes merge" — PR #1209 (`integration/backlog-roi-wave2-2026-11-18` → `develop`, backlog ROI wave 2) is merged.
 
+**2026-11-23.** "Yes agreed and update 1218 with these learnings" — on whether tests need a real wall clock:
+1. `chore/testament-cache-areas` keeps the real-clock dates and `uncacheable` marks for tests that compare commits with a real-clock session stamp, as a stopgap. It makes those tests correct, though not cacheable.
+2. #1218's clock item becomes "one test clock shared by git and production code": production time reads go through one seam, which tests set to the same instant as `GIT_*_DATE`. That change removes the stopgap's marks. Lands on #1218.
+
 **2026-11-23.** "Yes pr and merge and push to prawduct-live" — PR `fix/dispositions-travel` → `develop` (#1207) is created and merged once its gates pass, and `../prawduct-live` is then advanced to the new `origin/develop` (the dogfood track, `documentation/release-process.md` § Dogfooding the develop track).
 
 **2026-11-23.** "Yes to both git and areas, it will help understand where time is going. Subagents are fine for implementing" — answering whether to act on testament's two pieces of run advice:
