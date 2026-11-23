@@ -379,3 +379,27 @@ class TestSequentialSessions:
         assert result.returncode == 0, result.stderr
         assert "2 review fact(s)" in result.stdout
         assert "stale" not in (result.stdout + result.stderr).lower()
+
+    def test_session_2s_unreviewed_commit_is_its_own_work(self, tmp_path, monkeypatch):
+        # The two tests above pass whether or not session 2's span walk sees its commits: a gate
+        # that finds no session work also says nothing. This one fails then. A commit made at
+        # session 2's start instant, on the clock git and the plugin share, is session 2's work,
+        # and it was never reviewed, so the Stop hook asks for a review.
+        repo = _scratch_repo(tmp_path)
+        _write_active_build_plan(repo)
+        _session_start(repo)
+        _write_edit(repo, "feature.py", "y = 1\n")
+        _run_review(repo, "chunk")
+        _commit_all(repo, "chunk 1")
+
+        set_suite_clock(monkeypatch, 60)
+        _session_start(repo)  # session 2
+        _write_edit(repo, "more.py", "z = 1\n")
+        _write_reflection(repo)
+        _commit_all(repo, "chunk 2, never reviewed")
+
+        stopped = _stop(repo)
+        assert "CRITIC REVIEW" in stopped.stderr, (
+            "session 2's committed, unreviewed edit must read as its work.\n"
+            f"rc={stopped.returncode} stdout={stopped.stdout!r} stderr={stopped.stderr!r}"
+        )
