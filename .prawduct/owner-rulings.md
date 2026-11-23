@@ -398,3 +398,18 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
 2. PR #1206 (`integration/backlog-roi-2026-11-18` → `develop`, the backlog ROI batch) is merged.
 
 **2026-11-19.** "Yes merge" — PR #1209 (`integration/backlog-roi-wave2-2026-11-18` → `develop`, backlog ROI wave 2) is merged.
+
+**2026-11-23.** "Yes to all of your recommendations" — answering four asks together:
+1. The `chunk-plan-order` boundary `cumulative` is bought past the exhausted round budget with `--force`, as a
+   one-off round. Six `chunk` reviews (Chunks 01 to 06) had spent the budget before Chunk 07 was reviewed. The
+   refusal's census goes into the PR body.
+2. R-9(a), left open in `archive/build-plan-review-loop-termination.md` ("chunk-mode reviews spend budget, so a
+   6+-chunk plan exhausts on cadence alone"), is answered. The budget stops counting the first `chunk` review of
+   each chunk and the first boundary review (`final`/`cumulative`) of a scope. It keeps 6 as the cap on every full
+   round after those. The fix goes on its own branch off `develop`. Lands in `critic_consolidate._round_budget_verdict`,
+   `plugin/docs/project-state-keys.md` (`review_round_budget`) and `plugin/skills/critic/review-cycle.md`.
+3. `develop`'s two unpushed commits (a04758d4, 792d8c06, the delegate-ceiling whole-tree guards) ship as a PR after
+   `fix/chunk-plan-order`'s.
+4. The two inferred design calls in `build-plan-chunk-plan-order.md` Goals are confirmed as written: D8's exclusion
+   rule as revised in Chunk 07 (only the code's own naming of a done chunk is questioned), and D3's refusal
+   recorded as one `guard-refusal` fact through `evidence.append_guard_refusal` (the #596 one-sink ruling).
