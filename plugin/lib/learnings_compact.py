@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import clock
+from .core import temp_sibling
 from . import learnings_files, learnings_migrate
 
 SCHEMA = 1
@@ -540,7 +541,7 @@ def load(path: Path) -> dict:
 
 def save(path: Path, ws: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
+    tmp = temp_sibling(path)
     tmp.write_text(
         json.dumps(ws, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8", errors="backslashreplace",

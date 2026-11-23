@@ -68,6 +68,7 @@ staleness" defect class this plan deletes.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -7629,12 +7630,22 @@ def _is_session_file(path: str, prefix: str) -> bool:
     """Whether a repo-relative ``path`` is one of ``GITIGNORE_ENTRIES``, read
     with gitignore's own anchoring: an entry containing a ``/`` before its end
     is anchored at the project root (``prefix``); one without (``__pycache__/``)
-    matches at any depth. A trailing ``/`` names a directory."""
+    matches at any depth. A trailing ``/`` names a directory. A glob entry
+    (``.prawduct/**/*.prawduct.tmp``, ``core.TEMP_SUFFIX``) is read as gitignore
+    reads it: slash-free, against the basename at any depth; anchored, against
+    the whole path, where ``**/`` is zero or more directories (``fnmatch``'s
+    ``*`` already crosses ``/``, so dropping ``**/`` gives exactly that)."""
     parts = path.split("/")
     for entry in GITIGNORE_ENTRIES:
         is_dir = entry.endswith("/")
         name = entry.rstrip("/")
-        if "/" in name:
+        if any(ch in name for ch in "*?["):
+            if "/" in name:
+                if fnmatch.fnmatchcase(path, prefix + name.replace("**/", "")):
+                    return True
+            elif fnmatch.fnmatchcase(parts[-1], name):
+                return True
+        elif "/" in name:
             anchored = prefix + name
             if path == anchored or (is_dir and path.startswith(anchored + "/")):
                 return True

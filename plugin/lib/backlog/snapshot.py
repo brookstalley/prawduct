@@ -33,6 +33,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from .. import clock
+from ..core import TEMP_SUFFIX
 
 # The persisted-format version (Data Model §7): a mismatch means "discard and
 # re-derive" — the snapshot is a cache, so dropping an unreadable one is always
@@ -163,7 +164,7 @@ def _atomic_dump(path: Path, data: dict) -> dict:
     never raises."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=".tmp")
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=TEMP_SUFFIX)
         try:
             with os.fdopen(fd, "w", encoding="utf-8", errors="backslashreplace") as handle:
                 json.dump(data, handle)
