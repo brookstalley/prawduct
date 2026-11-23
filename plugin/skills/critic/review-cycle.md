@@ -138,6 +138,8 @@ reviewed: **exit 3, no review needed — stop.** There is no wider mode to fall 
 re-dispatching one spends a full round on a bundle the gate already passes. Nor is stale or red
 saved test evidence: **exit 7** — its printed remedy, then this mode again (no evidence never refuses).
 
+**Never a chunk's first review**: it re-reviews an earlier review's findings, and `critic-begin` refuses only when this branch has none.
+
 ## Per-Chunk Cycle
 
 1. Builder completes a chunk's implementation and tests.
