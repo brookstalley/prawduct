@@ -8906,8 +8906,8 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
     ``refs/notes/prawduct`` (pushed by ``/prawduct:pr``; another clone takes
     it in with ``evidence sync``, or at session start on this branch);
     removing the block is therefore the advice the kept-block line gives. The flag stays opt-in — a flag removal is not additive — and
-    a fact whose note could not be written is named in a NOTE, since that one
-    stays in this clone. Refusals (exit 1, ``refused:
+    a fact whose note could not be written is named in a NOTE, since other
+    clones do not see that one until an ``evidence sync`` attaches it. Refusals (exit 1, ``refused:
     <code>``): ``archived-plan``, ``no-scope``, ``store-unreadable``,
     ``status-block-ambiguous``, ``status-block-undelimited``,
     ``status-block-trailing-comment``, ``fact-append-failed``,
@@ -9018,9 +9018,9 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
             # an anchor — no note was written, which the NOTE must say.
             if noted.get("status") not in ("attached", "present"):
                 print(
-                    f"NOTE: plan import-status: chunk {cid}'s fact is recorded, but its git "
-                    f"note was not written ({noted.get('reason')}) — it stays in this "
-                    "clone's store and does not travel to other clones.",
+                    evidence_notes.unwritten_notice(
+                        "plan import-status", f"chunk {cid}'s fact", noted.get("reason")
+                    ),
                     file=sys.stderr,
                 )
             written.append({"chunk": cid, "fact_id": appended.get("id", fact_id)})
@@ -9337,9 +9337,7 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
         noted = evidence_notes.attach(project_dir, appended.get("envelope") or {}, out if rc == 0 else None)
         if noted.get("status") not in ("attached", "present"):
             print(
-                f"NOTE: plan retract: the retraction is recorded, but its git note was not "
-                f"written ({noted.get('reason')}) — it stays in this clone's store and does "
-                "not travel to other clones.",
+                evidence_notes.unwritten_notice("plan retract", "the retraction", noted.get("reason")),
                 file=sys.stderr,
             )
         return appended.get("id", retraction_id), None
