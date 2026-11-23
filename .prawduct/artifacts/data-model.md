@@ -214,12 +214,20 @@ clone that wrote it.
   (`ships`/`withheld`) and resolution (`fixed`/`waived`). **A disposition never resolves anything:**
   gate composition filters on `kind` before reading a body, so a BLOCKING finding stays blocking until
   a real resolution lands. Written by the builder via `prawduct-hook disposition` (validated join, no
-  reviewer in the loop); a changed answer is a newer fact under a sequenced id, and last-recorded
-  wins. **Droppability:** a disposition sits on no coverage path, so the store's reachability rule
+  reviewer in the loop); a changed answer is a newer fact under the id
+  `disp:<review_id>:<fid>:<seq>:<tag>`, where `seq` is one above the greatest the finding's history
+  holds and `tag` is the first 12 hex characters of SHA-256 over the canonical body. A finding's
+  winner is its answer with the greatest `(seq, id)` (`dispositions.answer_key`), never the
+  last-recorded by store order, so every clone holding the same facts shows the same answer: one
+  given after seeing another outranks it on any clock, two given without seeing each other are both
+  kept and ranked by id, and the same answer at one `seq` is one fact. Ids from before the tag
+  (`disp:<review_id>:<fid>:<n>`) still read; an id that does not parse ranks below every one that
+  does. **Droppability:** a disposition sits on no coverage path, so the store's reachability rule
   cannot speak to it — a disposition fact is droppable exactly when the review fact it targets is,
-  and never on its own. Compaction that violated this would silently un-answer a finding; the
-  sequenced id defends against it by stepping past ids already present rather than counting
-  surviving history.
+  and never on its own. Compaction that violated this would silently un-answer a finding; minting
+  `seq` from the greatest held, never from the count of surviving history, keeps a new answer above
+  the one it supersedes after a superseded line is pruned, and it steps past every `seq` already
+  held, so a live id is never recycled.
 - **Guard-refusal fact `body`** — that a **pre-dispatch guard** fired: a control that declined to
   spend something (a reviewer, a build) *before* spending it. Carries the `guard` name (the grouping
   key every yield query groups on, and the authority even if a caller's body offers its own), the

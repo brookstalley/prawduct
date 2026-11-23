@@ -55,10 +55,21 @@ algebra walks, so answering one gates exactly what it gated before.
 
 **Re-disposition appends; it never edits.** ``evidence.read_facts`` dedupes
 ``(kind, id)`` keeping the *first* occurrence, so reusing a fact id would make
-a changed answer silently vanish. Each disposition therefore carries a
-per-finding sequence in its id, and an unchanged re-run is caught by comparing
-against the newest recorded answer — reported as a no-op, never left to
-accidental dedupe. Last answer wins, resolved by store order.
+a changed answer silently vanish. Each disposition therefore carries its id as
+``disp:<review_id>:<fid>:<seq>:<tag>``: ``seq`` is one more than the highest
+the finding's history holds, and ``tag`` is a hash of the body, so two
+different answers never share an id and the same answer at one ``seq`` is one
+fact. An unchanged re-run is caught by comparing against the winning answer —
+reported as a no-op, never left to accidental dedupe.
+
+**The winner is a function of the facts, never of store order.** Two clones
+hold the same facts in different orders (ingest appends note lines as it reads
+them; the notes merge sorts them), so a finding's winner is its answer with the
+greatest :func:`answer_key`, ``(seq, id)``. An answer given after seeing
+another carries the higher ``seq`` and wins in every clone, whatever the
+machines' clocks say. Two answers recorded without seeing each other, in two
+clones or racing in one, share a ``seq``: both are kept, and every store picks
+the same one by id.
 
 Errors are return values per project-preferences; exit codes follow
 ``api-contract.md``'s scheme (writer fails closed at 1, usage error at 2).
@@ -66,11 +77,12 @@ Errors are return values per project-preferences; exit codes follow
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
 
-from . import evidence
+from . import evidence, evidence_notes
 
 KIND = "disposition"
 
@@ -179,12 +191,51 @@ def disposition_facts(store: dict) -> list[dict]:
     ]
 
 
-def disposition_index(store: dict) -> dict[tuple[str, str], dict]:
-    """``(review_id, fid)`` → the *newest* disposition fact for that finding.
+def _id_prefix(review_id: str, fid: str) -> str:
+    return f"disp:{review_id}:{fid}:"
 
-    Last answer wins, by store order — which is append order, so a changed
-    answer supersedes its predecessor without either being edited away."""
-    return {_target(fact): fact for fact in disposition_facts(store)}
+
+def _id_seq(fact_id: object, prefix: str) -> int:
+    """The sequence ``fact_id`` carries after ``prefix``, up to the next
+    ``:``, or 0 when the id does not have that shape."""
+    if not isinstance(fact_id, str) or not fact_id.startswith(prefix):
+        return 0
+    head = fact_id[len(prefix):].split(":", 1)[0]
+    return int(head) if head.isascii() and head.isdecimal() else 0
+
+
+def answer_key(fact: dict) -> "tuple[int, str]":
+    """``(seq, id)``: the order in which a finding's answers supersede each
+    other. A finding's winner is its answer with the greatest key.
+
+    ``seq`` is read after the ``disp:<review_id>:<fid>:`` prefix built from the
+    fact's OWN body, so an id naming some other finding does not parse. Both
+    the legacy shape (``disp:R:F:N``) and the tagged one (``disp:R:F:N:tag``)
+    read. An id that does not parse gets ``seq`` 0, below every well-formed
+    answer; this never raises.
+
+    ``seq`` leads rather than ``ts`` because :func:`record` mints it one above
+    the highest it has seen, so a correction outranks what it corrected on any
+    clock; and the id breaks a tie the same way in every clone, where ``ts``
+    differs between two clones' copies of one fact."""
+    fact_id = fact.get("id") if isinstance(fact, dict) else None
+    fact_id = fact_id if isinstance(fact_id, str) else ""
+    target = _target(fact) if isinstance(fact, dict) else None
+    seq = _id_seq(fact_id, _id_prefix(*target)) if target is not None else 0
+    return seq, fact_id
+
+
+def disposition_index(store: dict) -> dict[tuple[str, str], dict]:
+    """``(review_id, fid)`` → the winning disposition fact for that finding:
+    the one with the greatest :func:`answer_key`, so every store holding the
+    same facts picks the same one, in whatever order it holds them."""
+    index: dict[tuple[str, str], dict] = {}
+    for fact in disposition_facts(store):
+        key = _target(fact)
+        held = index.get(key)
+        if held is None or answer_key(fact) > answer_key(held):
+            index[key] = fact
+    return index
 
 
 #: Prior-disposition entries a dispatch manifest will carry. A reviewer reads
@@ -282,18 +333,18 @@ def prior_dispositions(
         for fact in evidence.facts_of_kind(store, "review")
     }
     entries: list[dict] = []
-    # Newest-last in store order; reverse so the newest answer leads and any
-    # truncation drops the oldest. Re-disposition APPENDS rather than editing
-    # (see the module docstring), so a finding can appear more than once here —
-    # reversed order makes the first sighting the live answer and every later
-    # one a superseded predecessor to skip. Showing both would hand a reviewer
-    # two contradictory answers about one finding.
-    seen: set[tuple[str, str]] = set()
-    for fact in reversed(disposition_facts(store)):
-        key = _target(fact)
-        if key in seen:
-            continue
-        seen.add(key)
+    # One entry per finding, its winner: re-disposition APPENDS rather than
+    # editing (see the module docstring), and showing a superseded answer
+    # beside the live one would hand a reviewer two contradictory answers.
+    # Newest-first by the winner's (ts, id), so a truncated block drops the
+    # oldest answers. That order decides only what survives truncation, never
+    # which answer a finding shows, so it may read a clock.
+    winners = sorted(
+        disposition_index(store).items(),
+        key=lambda item: (str(item[1].get("ts") or ""), answer_key(item[1])[1]),
+        reverse=True,
+    )
+    for key, fact in winners:
         finding = findings.get(key)
         if finding is None:
             # Observations are NOT joined here, deliberately. This block is
@@ -335,10 +386,12 @@ def prior_dispositions(
 
 
 def disposition_history(store: dict, review_id: str, fid: str) -> list[dict]:
-    """Every disposition recorded for one finding, oldest first."""
-    return [
-        fact for fact in disposition_facts(store) if _target(fact) == (review_id, fid)
-    ]
+    """Every disposition recorded for one finding, superseded first and the
+    winner last: ascending by :func:`answer_key`, never by store order."""
+    return sorted(
+        (fact for fact in disposition_facts(store) if _target(fact) == (review_id, fid)),
+        key=answer_key,
+    )
 
 
 def resolution_detail_index(store: dict) -> dict[tuple[str, str], str]:
@@ -411,10 +464,14 @@ def record(
     ``paths`` belongs to :data:`FIXED` alone — the files the free fix touched,
     every one of which must be non-judgeable.
 
-    Returns ``{"status": "recorded", "id", "action", "severity"}``,
-    ``{"status": "unchanged", "id", ...}`` when the newest recorded answer is
-    already identical, or ``{"status": "error", "reason"}``. Every refusal is
-    a return value; nothing raises across this boundary.
+    Returns ``{"status": "recorded", "id", "action", "severity", "superseded",
+    "note": {"status", "reason"}}``, ``note`` being what
+    ``evidence_notes.attach`` answered for the git note (``attached``,
+    ``present``, ``skipped`` or ``error``; an ``error`` leaves the record
+    standing); ``{"status": "unchanged", "id", ...}`` when the winning answer
+    is already identical, which attaches nothing; or ``{"status": "error",
+    "reason"}``. Every refusal is a return value; nothing raises across this
+    boundary.
     """
     if action not in ACTIONS:
         return {
@@ -562,11 +619,13 @@ def record(
         "paths": clean_paths or None,
     }
 
+    # Ascending by answer_key, so the last entry is the winner the census shows:
+    # "unchanged" means unchanged from the answer every reader sees.
     history = disposition_history(store, review_id, fid)
     if history:
-        newest = history[-1]["body"]
+        winner = history[-1]["body"]
         if all(
-            newest.get(key) == body.get(key)
+            winner.get(key) == body.get(key)
             for key in ("action", "reason", "backlog_id", "owner_ruling", "paths")
         ):
             return {
@@ -576,31 +635,51 @@ def record(
                 "severity": severity,
             }
 
-    # The id must not collide with one the store already holds: a colliding
-    # append is silently discarded by (kind, id) dedupe while this function
-    # still reports success — a lost answer that nothing surfaces. History
-    # length alone cannot promise that, because a pruned or malformed
-    # superseded line shortens the history and recycles a live id, and the
-    # store's own growth advisory actively invites pruning. So step past every
-    # id that exists rather than trusting the count.
+    # The new answer must outrank every answer the store holds for this
+    # finding, or under :func:`answer_key` it would lose to the one it
+    # supersedes. History LENGTH cannot promise that, because a pruned
+    # superseded line shortens the history (only seq 3 left gives a length of
+    # 1), and the store's own growth advisory invites pruning. So the sequence
+    # starts one above the greatest the history holds, then steps past every
+    # sequence any held id under this finding's prefix carries — a malformed
+    # line among them — so it never recycles a live id, which (kind, id)
+    # dedupe would silently discard while this still reported success.
     #
-    # Two concurrent *different* answers still resolve to one recorded answer
-    # (both compute the same free sequence; dedupe keeps the first), which is
-    # the right outcome for a race — the append itself is atomic either way.
-    existing_ids = {f.get("id") for f in evidence.facts_of_kind(store, KIND)}
-    seq = len(history) + 1
-    while f"disp:{review_id}:{fid}:{seq}" in existing_ids:
+    # The tag hashes the body, so two answers racing to one sequence, in this
+    # clone or in two, mint two ids: both are kept, and the key picks one the
+    # same way in every store. The same answer at one sequence is one id, one
+    # fact, which is right: it is one answer.
+    prefix = _id_prefix(review_id, fid)
+    held_seqs = {
+        _id_seq(f.get("id"), prefix) for f in evidence.facts_of_kind(store, KIND)
+    }
+    seq = max((answer_key(f)[0] for f in history), default=0) + 1
+    while seq in held_seqs:
         seq += 1
-    fact_id = f"disp:{review_id}:{fid}:{seq}"
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    tag = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+    fact_id = f"{prefix}{seq}:{tag}"
     result = evidence.append_fact(project_dir, KIND, fact_id, body)
     if result["status"] != "appended":
         return {"status": "error", "reason": result["reason"]}
+    # The fact travels on the note of the commit the answered review is
+    # anchored on, where the review itself travels. Advice, never authority:
+    # the fact is already in this clone's store, which is all any reader here
+    # needs, so a note that cannot be written costs only its reach to other
+    # clones, is reported in ``note``, and never fails the record.
+    review = next(
+        (f for f in evidence.facts_of_kind(store, "review") if f.get("id") == review_id),
+        None,
+    )
+    anchor = evidence.review_anchor((review or {}).get("body"))
+    outcome = evidence_notes.attach(project_dir, result.get("envelope"), anchor)
     return {
         "status": "recorded",
         "id": fact_id,
         "action": action,
         "severity": severity,
         "superseded": history[-1].get("id") if history else None,
+        "note": {"status": outcome.get("status"), "reason": outcome.get("reason")},
     }
 
 
@@ -623,8 +702,11 @@ def auto_accept(
     plan may not build. Pinned by a regression test.
 
     Returns ``{"status": "swept", "accepted", "skipped_blocking", "failed":
-    [{"review_id", "fid", "reason"}]}`` or ``{"status": "error", "reason"}``
-    when the store cannot be read. Never raises.
+    [{"review_id", "fid", "reason"}], "unsent"}`` or ``{"status": "error",
+    "reason"}`` when the store cannot be read. ``unsent`` counts the accepted
+    records whose git note could not be written (``note.status == "error"``):
+    each is in this clone's store and does not yet reach other clones. Never
+    raises.
     """
     store = evidence.read_facts(project_dir)
     if store["status"] == "error":
@@ -647,6 +729,7 @@ def auto_accept(
     resolutions = resolution_detail_index(store)
     accepted = 0
     skipped_blocking = 0
+    unsent = 0
     failed: list[dict] = []
     for fact in evidence.facts_of_kind(store, "review"):
         rid = fact.get("id")
@@ -672,11 +755,14 @@ def auto_accept(
                 )
             else:
                 accepted += 1
+                if (result.get("note") or {}).get("status") == "error":
+                    unsent += 1
     return {
         "status": "swept",
         "accepted": accepted,
         "skipped_blocking": skipped_blocking,
         "failed": failed,
+        "unsent": unsent,
     }
 
 
@@ -824,7 +910,8 @@ def finding_state(key: "tuple[str, str]", dispositions: dict, resolutions: dict)
     because it is a recorded fact the gate itself reads: a verify pass's
     judgment, or — :data:`STATE_WAIVED_INHERITED`, reported apart — the
     waiver consolidation computes from a base-tree run that already failed the
-    same tests. Among dispositions the newest wins. A resolution value this
+    same tests. Among dispositions the index's winner counts
+    (:func:`answer_key`). A resolution value this
     plugin does not recognize is shown as ``resolved-<value>`` rather than
     hidden."""
     resolution = resolutions.get(key)
@@ -1193,6 +1280,16 @@ def disposition_cmd(project_dir: Path, argv: list[str]) -> int:
     print(f"disposition: {fid} of {review_id} recorded {action.upper()}")
     if result.get("superseded"):
         print(f"  supersedes {result['superseded']}")
+    note = result.get("note") or {}
+    if note.get("status") == "error":
+        # The record stands, so the exit stays 0; what failed is only the
+        # fact's reach to other clones, and the agent running this reads it.
+        print(
+            f"NOTE: disposition: disposition fact {result['id']!r} is recorded, "
+            f"but its git note was not written ({note.get('reason')}) — the fact "
+            "stays in this clone's store and does not travel to other clones.",
+            file=sys.stderr,
+        )
     if result["severity"] == "blocking":
         # An owner ruling records the decision; it does not satisfy the gate.
         print(

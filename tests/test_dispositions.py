@@ -22,6 +22,7 @@ Real git repos, sterile config, mirroring ``test_evidence_store.py``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -31,9 +32,17 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 sys.path.insert(0, str(ROOT))
-from lib import coverage_algebra, dispositions, evidence  # noqa: E402
+from lib import coverage_algebra, dispositions, evidence, evidence_notes  # noqa: E402
 
 KIND_DISPOSITION = dispositions.KIND
+
+
+def _seq(fact_id: str) -> int:
+    """The sequence a minted disposition id carries, read here rather than by
+    :func:`dispositions.answer_key`, so a test of that function cannot grade
+    itself: ``disp:<review>:<fid>:<seq>[:<tag>]``, with the review and fid
+    free of ``:`` in every fixture in this file."""
+    return int(fact_id.split(":")[3])
 
 
 # ---------------------------------------------------------------------------
@@ -440,9 +449,29 @@ class TestRedisposition:
         )
         assert first["id"] != second["id"]
         assert second["superseded"] == first["id"]
+        assert (_seq(first["id"]), _seq(second["id"])) == (1, 2)
 
         store = evidence.read_facts(repo)
         assert len(dispositions.disposition_history(store, "rev-1", "R-1")) == 2
+
+    def test_a_new_id_carries_its_sequence_and_a_tag_of_its_body(self, tmp_path):
+        """``disp:<review>:<fid>:<seq>:<tag>``, the tag the first 12 hex chars
+        of SHA-256 over the canonical body. Two different answers at one
+        ``seq`` then get two ids, and the same answer at one ``seq`` gets one."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "note")])
+        result = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.ACCEPT, reason="craft"
+        )
+        assert result["status"] == "recorded", result
+        stored = dispositions.disposition_index(evidence.read_facts(repo))[
+            ("rev-1", "R-1")
+        ]
+        assert stored["id"] == result["id"]
+        prefix, seq, tag = result["id"].rsplit(":", 2)
+        assert prefix == "disp:rev-1:R-1" and seq == "1"
+        canonical = json.dumps(stored["body"], sort_keys=True, separators=(",", ":"))
+        assert tag == hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
 
     def test_newest_answer_wins(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -482,18 +511,20 @@ class TestRedisposition:
         caller is still told it was recorded."""
         repo = _make_repo(tmp_path)
         _review_fact(repo, "rev-1", [("R-1", "note")])
-        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="one")
+        first = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.ACCEPT, reason="one"
+        )
         second = dispositions.record(
             repo, "rev-1", "R-1", dispositions.FILE, backlog_id="ABC-1234"
         )
 
         # Prune the FIRST disposition, shortening the history under the store.
+        # Its id carries a body tag, so the line is found by the id the writer
+        # reported rather than by a spelled-out id.
         path = evidence.store_path(repo)
-        kept = [
-            line
-            for line in path.read_text().splitlines()
-            if '"disp:rev-1:R-1:1"' not in line
-        ]
+        lines = path.read_text().splitlines()
+        kept = [line for line in lines if f'"{first["id"]}"' not in line]
+        assert len(kept) == len(lines) - 1, "the first answer was not pruned"
         path.write_text("\n".join(kept) + "\n")
 
         third = dispositions.record(
@@ -501,6 +532,9 @@ class TestRedisposition:
         )
         assert third["status"] == "recorded", third
         assert third["id"] != second["id"], "recycled a live id — answer would be lost"
+        # The surviving history holds only seq 2, so the new answer must rank
+        # above it: the winner rule reads the sequence, not store order.
+        assert _seq(third["id"]) == 3
 
         store = evidence.read_facts(repo)
         newest = dispositions.disposition_index(store)[("rev-1", "R-1")]
@@ -528,6 +562,421 @@ class TestRedisposition:
         assert a["id"] != b["id"]
         store = evidence.read_facts(repo)
         assert len(dispositions.disposition_facts(store)) == 2
+
+
+# ---------------------------------------------------------------------------
+# One winner, whatever order the store holds the answers in
+# ---------------------------------------------------------------------------
+
+
+def _envelope(kind: str, fact_id: str, body: dict, ts: str) -> dict:
+    """A store envelope as another clone's writer would have built it — the
+    shape ``evidence.append_envelope`` takes from the notes transport."""
+    return {
+        "schema": evidence.SCHEMA_VERSION,
+        "kind": kind,
+        "id": fact_id,
+        "ts": ts,
+        "body": body,
+    }
+
+
+def _answer(fid: str, action: str, **fields) -> dict:
+    body = {
+        "finding": {"review_id": "rev-1", "fid": fid},
+        "action": action,
+        "reason": None,
+        "backlog_id": None,
+        "owner_ruling": None,
+        "paths": None,
+    }
+    body.update(fields)
+    return body
+
+
+def _append_all(repo: Path, envelopes: "list[dict]") -> None:
+    for envelope in envelopes:
+        result = evidence.append_envelope(repo, envelope)
+        assert result["status"] == "appended", result
+
+
+def _held(repo: Path, fid: str = "R-1") -> dict:
+    """What one store says about one finding: the winner's id, the history's
+    ids, and the census — the three views a clone shows."""
+    store = evidence.read_facts(repo)
+    assert store["status"] == "ok", store
+    winner = dispositions.disposition_index(store).get(("rev-1", fid))
+    return {
+        "winner": winner and winner["id"],
+        "history": [
+            f["id"] for f in dispositions.disposition_history(store, "rev-1", fid)
+        ],
+        "census": dispositions.census(store, review_id="rev-1"),
+    }
+
+
+class TestOneWinnerInEveryOrder:
+    """A finding's winner is its answer with the greatest ``(seq, id)``, so
+    every clone holding the same facts shows the same answer, however its store
+    came to hold them: ingest appends note lines in the order it reads them,
+    and ``evidence sync`` merges notes with ``cat_sort_uniq``, which sorts the
+    lines."""
+
+    def _facts(self) -> "list[dict]":
+        review = _envelope(
+            "review",
+            "rev-1",
+            {
+                "mode": "final",
+                "scope": "s",
+                "findings": [
+                    {"fid": "R-1", "severity": "warning", "title": "one", "files": []},
+                    {"fid": "R-2", "severity": "note", "title": "two", "files": []},
+                ],
+            },
+            "2026-11-01T00:00:00Z",
+        )
+        answers = [
+            # Legacy ids, no tag. `:10` is the newest answer, and its ``ts`` is
+            # the EARLIEST, so neither a timestamp nor a lexical order of ids
+            # nor store order can pick it by accident.
+            _envelope(KIND_DISPOSITION, "disp:rev-1:R-1:1",
+                      _answer("R-1", "accept", reason="first"), "2026-11-02T00:00:00Z"),
+            _envelope(KIND_DISPOSITION, "disp:rev-1:R-1:2",
+                      _answer("R-1", "file", backlog_id="X-2"), "2026-11-03T00:00:00Z"),
+            _envelope(KIND_DISPOSITION, "disp:rev-1:R-1:10",
+                      _answer("R-1", "accept", reason="tenth"), "2026-11-01T12:00:00Z"),
+            # Tagged ids, two concurrent answers at seq 2.
+            _envelope(KIND_DISPOSITION, "disp:rev-1:R-2:1:aaaaaaaaaaaa",
+                      _answer("R-2", "accept", reason="one"), "2026-11-02T00:00:00Z"),
+            _envelope(KIND_DISPOSITION, "disp:rev-1:R-2:2:cccccccccccc",
+                      _answer("R-2", "file", backlog_id="X-9"), "2026-11-03T00:00:00Z"),
+            _envelope(KIND_DISPOSITION, "disp:rev-1:R-2:2:bbbbbbbbbbbb",
+                      _answer("R-2", "accept", reason="two"), "2026-11-04T00:00:00Z"),
+        ]
+        return [review, *answers]
+
+    def test_three_orders_give_one_index_one_history_and_one_census(self, tmp_path):
+        facts = self._facts()
+        review, answers = facts[0], facts[1:]
+        # The order `cat_sort_uniq` leaves a merged note in: its lines sorted
+        # bytewise. Every envelope line starts `{"schema": 1, "kind": …, "id":`,
+        # so this is id order, which puts `:10` between `:1` and `:2`.
+        merged = sorted(answers, key=evidence.envelope_line)
+        assert [e["id"] for e in merged][:3] == [
+            "disp:rev-1:R-1:1", "disp:rev-1:R-1:10", "disp:rev-1:R-1:2",
+        ]
+        orders = {
+            "appended": answers,
+            "reversed": list(reversed(answers)),
+            "merged": merged,
+        }
+        held = {}
+        for name, order in orders.items():
+            repo = _make_repo(tmp_path, name)
+            _append_all(repo, [review, *order])
+            held[name] = {fid: _held(repo, fid) for fid in ("R-1", "R-2")}
+
+        assert held["appended"] == held["reversed"] == held["merged"]
+        r1, r2 = held["merged"]["R-1"], held["merged"]["R-2"]
+        assert r1["winner"] == "disp:rev-1:R-1:10"
+        assert r1["history"] == [
+            "disp:rev-1:R-1:1", "disp:rev-1:R-1:2", "disp:rev-1:R-1:10",
+        ]
+        # Concurrent answers at one seq rank by id: arbitrary, but the same
+        # in every clone.
+        assert r2["winner"] == "disp:rev-1:R-2:2:cccccccccccc"
+        rows = {row["fid"]: row for row in r1["census"]["reviews"][0]["rows"]}
+        assert rows["R-1"]["state"] == dispositions.STATE_ACCEPTED
+        assert rows["R-1"]["reason"] == "tenth"
+        assert rows["R-2"]["state"] == dispositions.STATE_FILED
+
+    def test_the_prior_block_shows_the_winner_in_every_order(self, tmp_path):
+        facts = self._facts()
+        review, answers = facts[0], facts[1:]
+        seen = []
+        for name, order in (("a", answers), ("b", list(reversed(answers)))):
+            repo = _make_repo(tmp_path, name)
+            _append_all(repo, [review, *order])
+            block = dispositions.prior_dispositions(evidence.read_facts(repo), [])
+            seen.append({(e["fid"], e["action"], e["reason"]) for e in block["entries"]})
+        assert seen[0] == seen[1] == {("R-1", "accept", "tenth"), ("R-2", "file", None)}
+
+    def test_the_key_reads_legacy_tagged_and_unparseable_ids(self):
+        def fact(fact_id: str) -> dict:
+            return _envelope(KIND_DISPOSITION, fact_id, _answer("R-1", "accept",
+                             reason="r"), "2026-11-01T00:00:00Z")
+
+        assert dispositions.answer_key(fact("disp:rev-1:R-1:10")) == (
+            10, "disp:rev-1:R-1:10")
+        assert dispositions.answer_key(fact("disp:rev-1:R-1:3:0123456789ab")) == (
+            3, "disp:rev-1:R-1:3:0123456789ab")
+        # The prefix is built from the fact's own body, so an id naming some
+        # other finding does not parse, and neither does a non-integer seq.
+        for unparseable in ("disp:bogus:1", "disp:rev-1:R-2:7", "disp:rev-1:R-1:x",
+                            "disp:rev-1:R-1:", "disp:rev-1:R-1:-1"):
+            assert dispositions.answer_key(fact(unparseable)) == (0, unparseable)
+        assert dispositions.answer_key({"id": 5, "body": "nope"}) == (0, "")
+
+    def test_an_unparseable_id_ranks_below_every_well_formed_answer(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _append_all(repo, [
+            self._facts()[0],
+            _envelope(KIND_DISPOSITION, "disp:rev-1:R-1:1",
+                      _answer("R-1", "file", backlog_id="X-1"), "2026-11-01T00:00:00Z"),
+            _envelope(KIND_DISPOSITION, "zzz-not-a-disposition-id",
+                      _answer("R-1", "accept", reason="odd"), "2026-11-09T00:00:00Z"),
+        ])
+        assert _held(repo)["winner"] == "disp:rev-1:R-1:1"
+
+    def test_two_answers_at_one_seq_keep_both_and_agree_on_a_winner(self, tmp_path):
+        """Two clones answer one finding without seeing each other, then each
+        receives the other's line. Both answers survive in both stores, and
+        both stores pick the same one."""
+        a = _make_repo(tmp_path, "a")
+        _review_fact(a, "rev-1", [("R-1", "warning")])
+        review = next(
+            f for f in evidence.read_facts(a)["facts"] if f["kind"] == "review"
+        )
+        b = _make_repo(tmp_path, "b")
+        _append_all(b, [review])
+
+        in_a = dispositions.record(a, "rev-1", "R-1", dispositions.ACCEPT, reason="mine")
+        in_b = dispositions.record(b, "rev-1", "R-1", dispositions.FILE, backlog_id="X-1")
+        assert in_a["status"] == in_b["status"] == "recorded"
+        assert _seq(in_a["id"]) == _seq(in_b["id"]) == 1
+        assert in_a["id"] != in_b["id"], "two different answers minted one id"
+
+        def stored(repo: Path, fact_id: str) -> dict:
+            return next(
+                f for f in evidence.read_facts(repo)["facts"] if f["id"] == fact_id
+            )
+
+        from_a, from_b = stored(a, in_a["id"]), stored(b, in_b["id"])
+        _append_all(a, [from_b])
+        _append_all(b, [from_a])
+
+        held_a, held_b = _held(a), _held(b)
+        assert held_a["winner"] == held_b["winner"] == max(in_a["id"], in_b["id"])
+        assert held_a["history"] == held_b["history"]
+        assert sorted(held_a["history"]) == sorted([in_a["id"], in_b["id"]])
+
+    def test_an_answer_given_after_another_wins_despite_an_earlier_clock(
+        self, tmp_path
+    ):
+        """B re-answers having seen A's answer, on a machine whose clock runs
+        behind. B's answer still wins, in A, and in a third store that
+        receives B's line before A's — because B minted the higher seq."""
+        a = _make_repo(tmp_path, "a")
+        _review_fact(a, "rev-1", [("R-1", "warning")])
+        first = dispositions.record(a, "rev-1", "R-1", dispositions.ACCEPT, reason="first")
+        held = {f["id"]: f for f in evidence.read_facts(a)["facts"]}
+        review, from_a = held["rev-1"], held[first["id"]]
+
+        b = _make_repo(tmp_path, "b")
+        _append_all(b, [review, from_a])
+        second = dispositions.record(b, "rev-1", "R-1", dispositions.FILE, backlog_id="X-1")
+        assert second["status"] == "recorded", second
+        from_b = next(
+            f for f in evidence.read_facts(b)["facts"] if f["id"] == second["id"]
+        )
+        from_b = {**from_b, "ts": "2000-01-01T00:00:00Z"}
+        assert from_b["ts"] < from_a["ts"]
+
+        c = _make_repo(tmp_path, "c")
+        _append_all(c, [review, from_b, from_a])
+        _append_all(a, [from_b])
+
+        for repo in (a, c):
+            assert _held(repo)["winner"] == second["id"]
+            block = dispositions.prior_dispositions(evidence.read_facts(repo), [])
+            assert [(e["action"], e["backlog_id"]) for e in block["entries"]] == [
+                ("file", "X-1")
+            ]
+
+    def test_a_pruned_history_mints_above_the_sequence_it_still_holds(self, tmp_path):
+        """With only seq 3 left, one more than the history's LENGTH is 2, which
+        would rank below the answer it supersedes. One more than the history's
+        greatest seq is 4, and wins."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "note")])
+        ids = [
+            dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="one")["id"],
+            dispositions.record(repo, "rev-1", "R-1", dispositions.FILE, backlog_id="X-1")["id"],
+            dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="three")["id"],
+        ]
+        assert [_seq(i) for i in ids] == [1, 2, 3]
+        path = evidence.store_path(repo)
+        lines = path.read_text().splitlines()
+        kept = [
+            line for line in lines
+            if f'"{ids[0]}"' not in line and f'"{ids[1]}"' not in line
+        ]
+        assert len(kept) == len(lines) - 2, "the first two answers were not pruned"
+        path.write_text("\n".join(kept) + "\n")
+        assert _held(repo)["history"] == [ids[2]]
+
+        fourth = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.FILE, backlog_id="X-4"
+        )
+        assert fourth["status"] == "recorded", fourth
+        assert _seq(fourth["id"]) == 4
+        assert _held(repo)["winner"] == fourth["id"]
+
+
+# ---------------------------------------------------------------------------
+# The writer puts its fact on the notes transport
+# ---------------------------------------------------------------------------
+
+
+def _note_on(repo: Path, commit: str) -> "str | None":
+    proc = subprocess.run(
+        ["git", "notes", "--ref", evidence_notes.NOTES_REF, "show", commit],
+        cwd=str(repo), capture_output=True, text=True, timeout=15,
+    )
+    return proc.stdout if proc.returncode == 0 else None
+
+
+class TestTheWriterAttaches:
+    """``record`` attaches the fact it appended to the note on the anchor of
+    the review it answers, and reports how that went. The fact is in the
+    store either way, so a note that cannot be written never fails the
+    record."""
+
+    def _anchored(self, tmp_path) -> "tuple[Path, str]":
+        """A repo whose review is anchored on its first commit, with HEAD
+        moved past it — so a note on HEAD and a note on the anchor differ."""
+        repo = _make_repo(tmp_path)
+        anchor = _git(repo, "rev-parse", "HEAD")
+        _review_fact(repo, "rev-1", [("R-1", "warning"), ("R-2", "note")],
+                     head_commit=anchor)
+        (repo / "code.py").write_text("x = 2\n")
+        _git(repo, "commit", "-qam", "c2")
+        assert _git(repo, "rev-parse", "HEAD") != anchor
+        return repo, anchor
+
+    def test_with_no_remote_and_no_ref_it_records_and_writes_a_local_note(
+        self, tmp_path, monkeypatch
+    ):
+        # Dispositions join the transported set in another change; admitting
+        # the kind here drives the real `attach` through this writer's call.
+        monkeypatch.setattr(
+            evidence, "TRANSPORTED_KINDS", evidence.TRANSPORTED_KINDS | {KIND_DISPOSITION}
+        )
+        repo, anchor = self._anchored(tmp_path)
+        # `git notes append` commits to the notes ref, so it needs an identity
+        # the runner's environment may not supply.
+        _git(repo, "config", "user.email", "t@t")
+        _git(repo, "config", "user.name", "t")
+        assert _git(repo, "remote") == ""
+        assert _note_on(repo, anchor) is None
+
+        result = dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="ok")
+        assert result["status"] == "recorded", result
+        assert result["note"] == {"status": "attached", "reason": None}
+        note = _note_on(repo, anchor)
+        assert note is not None and f'"{result["id"]}"' in note
+        assert _note_on(repo, _git(repo, "rev-parse", "HEAD")) is None
+
+    def test_unpatched_the_result_carries_the_note_and_nothing_fails(self, tmp_path):
+        """Nothing injected: the production `attach` runs. Whether it writes or
+        skips depends on whether the kind is in the transported set, which
+        another change owns; either way the record stands and says which."""
+        repo, _anchor = self._anchored(tmp_path)
+        result = dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="ok")
+        assert result["status"] == "recorded", result
+        assert set(result["note"]) == {"status", "reason"}
+        assert result["note"]["status"] in ("skipped", "attached")
+
+    def test_a_review_with_no_anchor_skips_the_note(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            evidence, "TRANSPORTED_KINDS", evidence.TRANSPORTED_KINDS | {KIND_DISPOSITION}
+        )
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+        result = dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="ok")
+        assert result["status"] == "recorded", result
+        assert result["note"]["status"] == "skipped"
+        assert "not a commit id" in result["note"]["reason"]
+
+    def test_it_hands_attach_the_stored_envelope_and_the_review_anchor(
+        self, tmp_path, monkeypatch
+    ):
+        calls = []
+
+        def fake(project_dir, envelope, anchor):
+            calls.append((envelope, anchor))
+            return {"status": "attached", "reason": None}
+
+        monkeypatch.setattr(evidence_notes, "attach", fake)
+        repo, anchor = self._anchored(tmp_path)
+        result = dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="ok")
+        stored = next(
+            f for f in evidence.read_facts(repo)["facts"] if f["id"] == result["id"]
+        )
+        assert calls == [(stored, anchor)]
+
+    def test_an_unchanged_rerun_attaches_nothing(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            evidence_notes, "attach",
+            lambda *a: calls.append(a) or {"status": "attached", "reason": None},
+        )
+        repo, _anchor = self._anchored(tmp_path)
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="ok")
+        again = dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="ok")
+        assert again["status"] == "unchanged"
+        assert len(calls) == 1
+
+    def _failing(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            evidence_notes, "attach",
+            lambda *a: {"status": "error", "reason": "git notes append failed (boom)"},
+        )
+
+    def test_a_failed_attach_still_records(self, tmp_path, monkeypatch):
+        self._failing(monkeypatch)
+        repo, _anchor = self._anchored(tmp_path)
+        result = dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="ok")
+        assert result["status"] == "recorded", result
+        assert result["note"] == {
+            "status": "error", "reason": "git notes append failed (boom)",
+        }
+        index = dispositions.disposition_index(evidence.read_facts(repo))
+        assert index[("rev-1", "R-1")]["id"] == result["id"]
+
+    def test_the_cli_says_the_note_failed_and_exits_zero(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        repo, _anchor = self._anchored(tmp_path)
+        assert dispositions.disposition_cmd(
+            repo, ["rev-1", "R-2", "--accept", "fine"]
+        ) == 0
+        control = capsys.readouterr()
+        assert "recorded ACCEPT" in control.out
+        assert "git note" not in control.err
+
+        self._failing(monkeypatch)
+        assert dispositions.disposition_cmd(
+            repo, ["rev-1", "R-1", "--accept", "ok"]
+        ) == 0
+        out = capsys.readouterr()
+        assert "recorded ACCEPT" in out.out
+        fact_id = dispositions.disposition_index(evidence.read_facts(repo))[
+            ("rev-1", "R-1")]["id"]
+        notes = [line for line in out.err.splitlines() if line.startswith("NOTE: disposition:")]
+        assert len(notes) == 1, out.err
+        assert repr(fact_id) in notes[0]
+        assert "(git notes append failed (boom))" in notes[0]
+        assert "does not travel to other clones" in notes[0]
+
+    def test_the_sweep_counts_its_unsent_records(self, tmp_path, monkeypatch):
+        self._failing(monkeypatch)
+        repo, _anchor = self._anchored(tmp_path)
+        swept = dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
+        assert swept["accepted"] == 2 and swept["failed"] == []
+        assert swept["unsent"] == 2
+        assert len(dispositions.disposition_index(evidence.read_facts(repo))) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -1376,8 +1825,12 @@ class TestAutoAccept:
         _review_fact(repo, "rev-1", [("R-1", "warning"), ("R-2", "note")])
 
         swept = dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
+        # ``unsent`` counts the sweep's records whose git note failed. A note
+        # that was written, or skipped because the kind does not travel, is
+        # not one.
         assert swept == {
             "status": "swept", "accepted": 2, "skipped_blocking": 0, "failed": [],
+            "unsent": 0,
         }
         rows = {
             row["fid"]: row
