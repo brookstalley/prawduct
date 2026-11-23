@@ -68,15 +68,7 @@ CUMULATIVE_MODE = "cumulative (bundle review, ready for merge)"
 def _git_env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        **GIT_TEST_ENV,
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(home)
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -207,7 +199,7 @@ FAKE_REVIEW_ID = "rev-test-0001"
 #: `fact_to_cache_record` reads its waivers from the store, so it takes one.
 _NO_FACTS = {"facts": []}
 
-from conftest import GIT_TEST_ENV, V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home for the shape
+from conftest import V2_MANIFEST as _V2_MANIFEST, scrubbed_env  # noqa: E402 — one home for the shape
 
 
 def _review_id(repo: Path) -> str:
@@ -10046,7 +10038,6 @@ class TestRoundBudgetOnTheTrunkShape:
         assert verdict["status"] == "within"
         assert verdict["spent"] == 0
         assert verdict["review_ids"] == []
-
 
 
 def _seed_chunk_review(repo: Path, fact_id: str, head: str, chunks, *,

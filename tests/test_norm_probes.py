@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 _TESTS_DIR = Path(__file__).resolve().parent
@@ -45,6 +45,7 @@ from lib.advisory_store import (
 from lib import core, norm_probes as np
 from lib.backlog import core as backlog_core, encode, sync as backlog_sync
 from fakes.fake_github import FakeGitHub
+from conftest import suite_now  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -74,11 +75,11 @@ def _write_artifact(tmp_path, name: str, body: str) -> None:
 
 
 def _days_ago(n: int) -> str:
-    return (datetime.now(timezone.utc).date() - timedelta(days=n)).isoformat()
+    return (suite_now().date() - timedelta(days=n)).isoformat()
 
 
 def _days_ahead(n: int) -> str:
-    return (datetime.now(timezone.utc).date() + timedelta(days=n)).isoformat()
+    return (suite_now().date() + timedelta(days=n)).isoformat()
 
 
 def _item(item_id: str, *, section: str = "Open", status: str = "open", extra: str = "") -> str:
@@ -1272,7 +1273,7 @@ class TestSilentAgainstThisRepo:
         # asserted whether or not the backlog can be reached. This is the clock
         # behind the bounded exceptions recorded in `architecture.md` and
         # `nonfunctional-requirements.md`; when one lapses unrenewed, CI says so.
-        lapsed = np._expired_stopgaps(codebase, today=datetime.now(timezone.utc).date())
+        lapsed = np._expired_stopgaps(codebase, today=suite_now().date())
         assert lapsed == {}, (
             "recorded stopgap(s) past their expiry — renew the bound with a fresh "
             f"reason, or complete the transition: {sorted(lapsed)}"
@@ -1360,7 +1361,7 @@ class TestTheTripwireCannotPassVacuously:
                 f"  Stopgap: recorded {_days_ago(200)}, expires {_days_ago(1)}.\n"
             ),
         )
-        lapsed = np._expired_stopgaps(_cb(tmp_path), today=datetime.now(timezone.utc).date())
+        lapsed = np._expired_stopgaps(_cb(tmp_path), today=suite_now().date())
         assert sorted(lapsed) == [("architecture.md", "OBS-4C1K")]
 
     def test_the_cache_dependent_set_matches_the_probes_that_read_the_backlog(self, tmp_path):
@@ -1634,7 +1635,7 @@ class TestPostCutoverResolvesThroughTheCache:
             tmp_path,
             tracked={
                 "title": "norms: the stalled export item",
-                "updated": datetime.now(timezone.utc) - timedelta(days=np.STALL_WINDOW_DAYS + 10),
+                "updated": suite_now() - timedelta(days=np.STALL_WINDOW_DAYS + 10),
             },
         )
         _write_artifact(
@@ -1655,7 +1656,7 @@ class TestPostCutoverResolvesThroughTheCache:
             tmp_path,
             tracked={
                 "title": "norms: the moving export item",
-                "updated": datetime.now(timezone.utc) - timedelta(days=2),
+                "updated": suite_now() - timedelta(days=2),
             },
         )
         _write_artifact(
@@ -1674,7 +1675,7 @@ class TestPostCutoverResolvesThroughTheCache:
             tracked={
                 "title": "norms: the abandoned export item",
                 "status": "dropped",
-                "updated": datetime.now(timezone.utc) - timedelta(days=np.STALL_WINDOW_DAYS + 10),
+                "updated": suite_now() - timedelta(days=np.STALL_WINDOW_DAYS + 10),
             },
         )
         _write_artifact(

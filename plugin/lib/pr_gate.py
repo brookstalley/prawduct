@@ -33,6 +33,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from . import clock
 
 REFUSE = "refuse"
 WARNING = "warning"
@@ -223,12 +224,11 @@ def _closure_issues(project_dir: Path, scope: str, ids: list[str]) -> list[Resul
     the cache does not hold reads ``unchecked``: the cache can be stale or
     partial (#1195), and this check stays offline rather than adding an egress
     caller, so it names the command that can answer instead of guessing."""
-    from datetime import datetime, timezone  # noqa: PLC0415
 
     from .backlog import cachequery  # noqa: PLC0415
     from .backlog import ids as backlog_ids  # noqa: PLC0415
 
-    now = datetime.now(timezone.utc)
+    now = clock.now()
     default_owner = scope.split("/", 1)[0] if "/" in scope else None
     default_repo = backlog_ids.parse_repo(scope)
     unresolved: list[str] = []

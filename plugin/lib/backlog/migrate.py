@@ -52,6 +52,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .. import clock
 from . import core, encode, ids, issuefmt, legacy, provision, restructure
 from .transport import Transport, TransportError, paginate
 
@@ -536,7 +537,7 @@ class Checkpoint:
             pass
         data["runs"][self._entry_key()] = {
             "done": sorted(self._done),
-            "updated_at": _iso(datetime.now(timezone.utc)),
+            "updated_at": _iso(clock.now()),
         }
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -1934,7 +1935,7 @@ def export_backlog(
     (MG2/G5/MIG-3). A cheap dump for backup/inspection, **not** a lossless re-import
     schema (Data Model §8). Returns an envelope; a filesystem or transport failure
     degrades to an error, never raises."""
-    now = now or datetime.now(timezone.utc)
+    now = now or clock.now()
     dest = Path(dest)
     warnings: list[str] = []
     try:

@@ -39,10 +39,10 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 
+from . import clock
 from . import gitstate, model_tier
 from .ledger import CONSOLIDATION_TRIGGERS, ledger_path
 from .timewindow import in_window, is_usable_bound
@@ -1088,7 +1088,7 @@ def _read_dispositions(project_dir: Path, events: list[dict]) -> dict:
     """
     from . import evidence, stats  # noqa: PLC0415 — lazy, as the module's other cross-lib imports are
 
-    as_of = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    as_of = clock.now().strftime("%Y-%m-%dT%H:%M:%SZ")
     read = evidence.read_facts(project_dir)
     if read["status"] == "error":
         return {"status": "unavailable", "reason": read.get("reason") or "evidence store unreadable"}
@@ -1170,7 +1170,7 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
     report = {
         "schema_version": report.pop("schema_version"),
         "project": gitstate.project_label(project_dir),
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": clock.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
         # Stated even when null. A windowed report and a whole-corpus one are
         # the same shape, and a consumer that cannot tell them apart will
         # compare one against the other.

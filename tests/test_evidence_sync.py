@@ -44,8 +44,6 @@ def _sterile_git(monkeypatch, tmp_path):
     home = tmp_path / "_home"
     home.mkdir(exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-    monkeypatch.setenv("GIT_CONFIG_SYSTEM", "/dev/null")
     monkeypatch.setenv("GIT_TERMINAL_PROMPT", "0")
     for role in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{role}_NAME", "T")

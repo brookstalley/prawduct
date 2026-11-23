@@ -25,8 +25,7 @@ DAY = 86400
 
 def git(cwd: Path, *args: str) -> str:
     result = subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
-         "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
+        ["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
         cwd=str(cwd), capture_output=True, text=True, check=True,
     )
     return result.stdout

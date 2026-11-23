@@ -45,7 +45,7 @@ _PLAN = (
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-c", "user.email=t@e.com", "-c", "user.name=T", *args],
+        ["git", *args],
         cwd=str(repo), capture_output=True, text=True, check=True, timeout=10,
     ).stdout.strip()
 
@@ -168,11 +168,6 @@ class TestRetract:
 
 class TestTheRetractionTravels:
     def test_it_is_attached_as_a_note_on_head(self, tmp_path, capsys, monkeypatch):
-        # `git notes append` commits to the notes ref, so it needs an identity
-        # the machine's global config may not supply.
-        for var in ("GIT_AUTHOR", "GIT_COMMITTER"):
-            monkeypatch.setenv(f"{var}_NAME", "T")
-            monkeypatch.setenv(f"{var}_EMAIL", "t@e.com")
         repo = _repo(tmp_path)
         _review(repo, "R1", ["01", "02"])
         assert _run(repo, capsys, "02", "--reason", "unbuilt")[0] == 0

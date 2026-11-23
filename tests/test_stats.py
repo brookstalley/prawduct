@@ -21,6 +21,7 @@ _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 sys.path.insert(0, str(_ROOT))
 
 from lib import evidence, stats  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 
 def _fact(kind, body, *, fid="f", ts="2026-10-01T10:00:00Z", plugin="3.7.1-dev.2", session="s1"):
@@ -442,7 +443,7 @@ class TestWindow:
 
 
 def _git(repo, *args):
-    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+    subprocess.run(["git", *args],
                    cwd=str(repo), check=True, capture_output=True, timeout=15)
 
 
@@ -461,8 +462,11 @@ class TestCli:
         return subprocess.run(
             [sys.executable, str(_ROOT / "bin" / "prawduct-hook"), "stats", *args],
             cwd=str(repo), capture_output=True, text=True, timeout=60,
-            env={"CLAUDE_PROJECT_DIR": str(repo), "CLAUDE_PLUGIN_ROOT": str(_ROOT),
-                 "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin", "HOME": str(repo.parent)},
+            env=scrubbed_env(
+                repo.parent,
+                CLAUDE_PROJECT_DIR=str(repo),
+                CLAUDE_PLUGIN_ROOT=str(_ROOT),
+            ),
         )
 
     def test_json_contract(self, tmp_path):

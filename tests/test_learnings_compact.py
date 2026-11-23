@@ -48,7 +48,7 @@ LONG = "a rule that grew a body and a paragraph-length heading " * 6
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo), capture_output=True, text=True, timeout=30,
     )
 

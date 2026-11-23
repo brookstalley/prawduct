@@ -28,13 +28,13 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from _hook_inproc import run_hook
-from conftest import SHAPED_REFLECTION
+from conftest import SHAPED_REFLECTION, scrubbed_env, suite_now, suite_stamp
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -58,7 +58,9 @@ def as_just_run(report: Path) -> Path:
     suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
     total = root.get("time") if root.tag == "testsuites" else None
     duration = float(total) if total else sum(float(s.get("time") or 0) for s in suites)
-    end = datetime.now(timezone.utc).timestamp() + duration + 0.05
+    # The report was written after every file the fixture wrote, so a start just after its
+    # own write time is after all of them; read from the file, not the clock.
+    end = report.stat().st_mtime + duration + 0.05
     os.utime(report, (end, end))
     return report
 
@@ -294,13 +296,12 @@ def run_plugin_hook(
     # keeps the plugin-lib import from writing .pyc into this repo during tests.
     home = mock_bin.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), command, *args],
         capture_output=True, text=True, env=env, timeout=90, input=stdin,
@@ -308,8 +309,12 @@ def run_plugin_hook(
 
 
 def _make_session_start(prawduct: Path, offset_seconds: int = -60) -> None:
-    ts = datetime.now(timezone.utc) + timedelta(seconds=offset_seconds)
-    (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    # On the suite's one clock, text and mtime both: the hook reads the session start from the
+    # marker's mtime, and a real-clock stamp would sit months after every frozen git date.
+    marker = prawduct / ".session-start"
+    marker.write_text(suite_stamp(offset_seconds))
+    at = suite_now(offset_seconds).timestamp()
+    os.utime(marker, (at, at))
 
 
 class TestPluginClearBriefing:
@@ -3324,7 +3329,7 @@ class TestUnanchoredFreshnessFailsClosed:
         _make_session_start(repo / ".prawduct", offset_seconds=-60)
         ev_path = repo / ".prawduct" / ".test-evidence.json"
         ev = json.loads(ev_path.read_text())
-        ev["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ev["timestamp"] = suite_stamp()
         ev["evidence_tree"] = "0" * 40  # a tree that cannot possibly validate
         ev_path.write_text(json.dumps(ev))
         assert _run_in(repo, "test-status").returncode == 0, \

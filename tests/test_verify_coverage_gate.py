@@ -36,10 +36,6 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 
 def _git(repo: Path, *args: str) -> None:
     env = os.environ.copy()
-    env.setdefault("GIT_AUTHOR_NAME", "test")
-    env.setdefault("GIT_AUTHOR_EMAIL", "test@example.com")
-    env.setdefault("GIT_COMMITTER_NAME", "test")
-    env.setdefault("GIT_COMMITTER_EMAIL", "test@example.com")
     subprocess.run(
         ["git", *args], cwd=str(repo), env=env, check=True, capture_output=True
     )

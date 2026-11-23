@@ -22,7 +22,7 @@ from lib import lifecycle_repair
 
 
 def _git(repo: Path, *args: str) -> None:
-    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+    env = dict(os.environ)
     subprocess.run(["git", *args], cwd=str(repo), env=env, check=True, capture_output=True)
 
 

@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
 from test_plugin_runtime import HOOK, ROOT, _git, _run_in  # noqa: E402
 
 from lib import gates, record_progress  # noqa: E402
+from conftest import scrubbed_env
 
 _GREEN = (
     '<testsuites><testsuite name="s" time="{time}">'
@@ -57,9 +58,12 @@ Path(sys.argv[1]).write_text(%r)
 def _env(repo: Path) -> dict:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-            "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "PYTHONDONTWRITEBYTECODE": "1"}
+    return scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(repo),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=os.environ.get("PATH", "/usr/bin:/bin"),
+    )
 
 
 def _popen(repo: Path, *args: str) -> subprocess.Popen:

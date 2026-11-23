@@ -28,19 +28,11 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 
 sys.path.insert(0, str(ROOT))
 from lib import gates, gitstate  # noqa: E402
-from conftest import GIT_TEST_ENV  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 
 def _git_env(repo: Path) -> dict[str, str]:
-    return {
-        **GIT_TEST_ENV,
-        "HOME": str(repo.parent / "_home"),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(repo.parent / "_home")
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -225,15 +217,7 @@ def test_an_unreadable_repository_takes_the_third_outcome_and_says_nothing_was_c
     bill, and must not claim a push would fix it."""
     outside = tmp_path / "not-a-repo"
     outside.mkdir()
-    env = {
-        **GIT_TEST_ENV,
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "HOME": str(tmp_path / "_home"),
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "CLAUDE_PROJECT_DIR": str(outside),
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(tmp_path / "_home", CLAUDE_PROJECT_DIR=str(outside))
     r = subprocess.run(
         [sys.executable, str(HOOK), "check-branch-pushed"],
         cwd=str(outside), capture_output=True, text=True, env=env, timeout=30,

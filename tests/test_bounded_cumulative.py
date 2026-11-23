@@ -27,7 +27,7 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
 from lib import critic_mode, evidence, gates  # noqa: E402
-from conftest import GIT_TEST_ENV  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 CUMULATIVE = cc.MODE_TOKEN_TO_VERBOSE["cumulative"]
 CHUNK = cc.MODE_TOKEN_TO_VERBOSE["chunk"]
@@ -48,15 +48,7 @@ PLAN = (
 def _env(repo: Path) -> dict:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        **GIT_TEST_ENV,
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(home)
 
 
 def _git(repo: Path, *args: str) -> str:

@@ -27,7 +27,7 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo), capture_output=True, text=True, timeout=15,
     )
     assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"

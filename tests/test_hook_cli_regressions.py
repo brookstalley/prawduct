@@ -24,6 +24,7 @@ import importlib.util
 import subprocess
 import sys
 from pathlib import Path
+from conftest import scrubbed_env
 
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
@@ -39,7 +40,7 @@ _loader.exec_module(_hook)
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -207,7 +208,7 @@ class TestCriticBeginRendersABranchlessSiblingWorktree:
 
         bare = tmp_path / "bare.git"
         subprocess.run(
-            ["git", "clone", "-q", "--bare", str(src), str(bare)],
+            ["git", "clone", "-q", "--bare", str(src), str(bare)], cwd=str(tmp_path),
             capture_output=True, text=True, timeout=30, check=True,
         )
         work = tmp_path / "wt"
@@ -235,13 +236,11 @@ class TestCriticBeginRendersABranchlessSiblingWorktree:
             capture_output=True,
             text=True,
             timeout=60,
-            env={
-                "CLAUDE_PROJECT_DIR": str(work),
-                "CLAUDE_PLUGIN_ROOT": str(_ROOT),
-                "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-                "HOME": str(tmp_path / "_home"),
-                "PYTHONDONTWRITEBYTECODE": "1",
-            },
+            env=scrubbed_env(
+                tmp_path / "_home",
+                CLAUDE_PROJECT_DIR=str(work),
+                CLAUDE_PLUGIN_ROOT=str(_ROOT),
+            ),
         )
 
         assert proc.returncode == 0, proc.stderr

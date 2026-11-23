@@ -29,10 +29,10 @@ from __future__ import annotations
 import re
 import subprocess
 from dataclasses import dataclass
-from datetime import date as _date
 from pathlib import Path
 from typing import Literal
 
+from . import clock
 from . import change_fragments, core, gitstate, plan_index, work_unit
 
 ARTIFACTS_REL = ".prawduct/artifacts"
@@ -249,7 +249,7 @@ def new(
     fragment_text = change_fragments.render_fragment(
         kind=kind,
         scope=scope,
-        date=_date.today().isoformat(),
+        date=clock.local_today().isoformat(),
         title=title or "",
         narrative="",
         consumer_note="",
@@ -579,7 +579,7 @@ def _render_plan(scope: str, branch: str, base: str) -> str:
         f"{plan_index.BRANCH_KEY}: {branch}\n",
         f"{BASE_KEY}: {base}\n",
         f"{work_unit.WORKING_BRANCHES_KEY}: []\n",
-        f"last_validated: {_date.today().isoformat()}\n",
+        f"last_validated: {clock.local_today().isoformat()}\n",
     ]
     anchor = next((i for i, line in enumerate(kept) if line.startswith("version:")), None)
     insert_at = anchor + 1 if anchor is not None else 0

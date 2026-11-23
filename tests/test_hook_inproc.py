@@ -125,6 +125,7 @@ class TestInventories:
         # fixture sets (a clock, say) belongs here: stripping it would hand the hook the real one.
         passed_through = {
             "PRAWDUCT_VERSION",  # `lib/__init__`'s export table names the constant
+            "PRAWDUCT_TEST_ONLY_FROZEN_NOW",  # the suite's one clock (`lib/clock.py`), set by conftest
         }
         assert names - _hook_inproc.STRIPPED_ENV - passed_through == set()
         assert _hook_inproc.STRIPPED_ENV - names == set(), "stripped names production never reads"

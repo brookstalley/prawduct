@@ -14,7 +14,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from conftest import GIT_TEST_ENV  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -23,21 +23,12 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 def _env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        **GIT_TEST_ENV,
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "CLAUDE_PROJECT_DIR": str(repo),
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(home, CLAUDE_PROJECT_DIR=str(repo))
 
 
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(
-        ["git", "-c", "user.email=t@e.com", "-c", "user.name=T", *args],
+        ["git", *args],
         cwd=str(repo), capture_output=True, text=True, env=_env(repo), check=True, timeout=10,
     )
 
@@ -93,7 +84,7 @@ def test_a_missing_local_branch_is_reported_and_exits_1(tmp_path):
 def test_a_branch_only_on_a_remote_resolves(tmp_path):
     repo = _repo(tmp_path)
     remote = tmp_path / "remote.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True, timeout=10, env=_env(repo))
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], cwd=str(tmp_path), check=True, timeout=10, env=_env(repo))
     _git(repo, "remote", "add", "origin", str(remote))
     _git(repo, "branch", "feature/pushed")
     _git(repo, "push", "-q", "origin", "feature/pushed")

@@ -32,12 +32,12 @@ from __future__ import annotations
 import json
 import sys
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
-from conftest import SHAPED_REFLECTION
+from conftest import SHAPED_REFLECTION, scrubbed_env, suite_now
 from lib import critic_mode, evidence, gates, plan_index, work_unit
 from lib.critic_mode import infer_mode
 from test_critic_mode_inference import (
@@ -359,13 +359,11 @@ class TestEligiblePlanDefers:
 
     def test_subcommand_prints_the_deferred_token(self, tmp_path: Path):
         _short_plan_branch(tmp_path)
-        env = {
-            "HOME": str(tmp_path.parent / "_home"),
-            "CLAUDE_PROJECT_DIR": str(tmp_path),
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
+        env = scrubbed_env(
+            tmp_path.parent / "_home",
+            CLAUDE_PROJECT_DIR=str(tmp_path),
+            CLAUDE_PLUGIN_ROOT=str(ROOT),
+        )
         (tmp_path.parent / "_home").mkdir(exist_ok=True)
         proc = subprocess.run(
             [sys.executable, str(HOOK), "infer-critic-mode"],
@@ -475,20 +473,14 @@ def _arm_stop(prawduct: Path) -> None:
     """Pre-satisfy every gate but the Critic one, as the sibling harnesses do."""
     (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (prawduct / ".session-git-baseline").write_text("")
-    ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+    ts = suite_now() - timedelta(seconds=60)
     (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
 
 
 def _run_stop(repo: Path) -> subprocess.CompletedProcess:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(repo),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(home, CLAUDE_PROJECT_DIR=str(repo), CLAUDE_PLUGIN_ROOT=str(ROOT))
     return subprocess.run(
         [sys.executable, str(HOOK), "stop"],
         capture_output=True, text=True, env=env, cwd=str(repo), timeout=30,

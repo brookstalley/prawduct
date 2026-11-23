@@ -22,7 +22,6 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,9 +39,10 @@ from conftest import (  # noqa: E402
     FULL,
     PARTIAL,
     SCOPE_RECORD_SUFFIX,
+    TEST_NOW_EPOCH,
     classify_invocation,
     pre_session_git_env,
-    require_real_git_clock,
+    scrubbed_env,
     write_scope_record,
 )
 
@@ -185,15 +185,14 @@ def _run_hook(repo: Path, *args: str, **env_extra: str) -> subprocess.CompletedP
     globbed this process's temp dir, found nothing either way, and passed with
     the cleanup deleted.
     """
-    home = repo.parent / "_home"
-    home.mkdir(exist_ok=True)
     return subprocess.run(
         [sys.executable, str(HOOK), *args],
         capture_output=True, text=True, timeout=90,
-        env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-             "CLAUDE_PLUGIN_ROOT": str(PLUGIN_ROOT),
-             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-             "PYTHONDONTWRITEBYTECODE": "1", **env_extra},
+        env=scrubbed_env(
+            repo.parent / "_home", CLAUDE_PROJECT_DIR=str(repo),
+            CLAUDE_PLUGIN_ROOT=str(PLUGIN_ROOT),
+            PATH=os.environ.get("PATH", "/usr/bin:/bin"), **env_extra,
+        ),
     )
 
 
@@ -207,8 +206,7 @@ def repo_with_report(tmp_path) -> tuple[Path, Path]:
     repo = tmp_path / "repo"
     (repo / ".prawduct").mkdir(parents=True)
     (repo / "test_sample.py").write_text("def test_ok():\n    assert True\n")
-    for cmd in (("init", "-b", "main"), ("add", "-A"), ("-c", "user.email=t@t",
-                "-c", "user.name=t", "commit", "-m", "c1")):
+    for cmd in (("init", "-b", "main"), ("add", "-A"), ("commit", "-m", "c1")):
         subprocess.run(["git", *cmd], cwd=repo, capture_output=True, check=True)
     (repo / ".prawduct" / ".test-evidence.json").write_text(json.dumps({
         "timestamp": "2026-09-17T00:00:00Z", "command": "pytest", "passed": 9,
@@ -356,8 +354,7 @@ class TestTheUndeclaredRunPath:
         # No `test_command:` — this is the interpreter-fallback state, which the
         # template ships as the default.
         (repo / ".prawduct" / "project-state.yaml").write_text("project_name: undeclared\n")
-        for cmd in (("init", "-b", "main"), ("add", "-A"), ("-c", "user.email=t@t",
-                    "-c", "user.name=t", "commit", "-m", "c1")):
+        for cmd in (("init", "-b", "main"), ("add", "-A"), ("commit", "-m", "c1")):
             subprocess.run(["git", *cmd], cwd=repo, capture_output=True, check=True)
         return repo
 
@@ -414,8 +411,7 @@ class TestTheRunPathCleansUpAfterItself:
         (repo / ".prawduct" / "project-state.yaml").write_text(
             f"test_command: {sys.executable} {repo / 'fake_runner.py'} {{junit_xml}}\n"
         )
-        for cmd in (("init", "-b", "main"), ("add", "-A"), ("-c", "user.email=t@t",
-                    "-c", "user.name=t", "commit", "-m", "c1")):
+        for cmd in (("init", "-b", "main"), ("add", "-A"), ("commit", "-m", "c1")):
             subprocess.run(["git", *cmd], cwd=repo, capture_output=True, check=True)
 
         tmpdir = tmp_path / "hooktmp"
@@ -858,8 +854,7 @@ def test_an_unsplittable_declared_command_refuses_before_any_suite_runs(tmp_path
         f"  - {sys.executable} {repo / 'first.py'} {{junit_xml}}\n"
         "  - node --test --dest={junit_xml} 'unbalanced\n"
     )
-    for cmd in (("init", "-b", "main"), ("add", "-A"), ("-c", "user.email=t@t",
-                "-c", "user.name=t", "commit", "-m", "c1")):
+    for cmd in (("init", "-b", "main"), ("add", "-A"), ("commit", "-m", "c1")):
         subprocess.run(["git", *cmd], cwd=repo, capture_output=True, check=True)
     res = _run_hook(repo, "test-evidence", "record")
     assert res.returncode == 2, res.stdout + res.stderr
@@ -917,7 +912,7 @@ class TestLifetimeProseMatchesTheSingleSlot:
 
 def _git_in(repo: Path, *args: str, env: "dict[str, str] | None" = None) -> None:
     subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=repo, capture_output=True, check=True, env=env,
     )
 
@@ -929,8 +924,10 @@ def _test_runs(repo: Path) -> list[dict]:
 @pytest.fixture
 def ingest_repo(tmp_path) -> tuple[Path, Path]:
     """A committed repo with a test-affecting tree and a full-scope report whose
-    mtime is set in the PAST but after every file, so each test moves exactly
-    one thing after it and asserts what that one thing does to the stamp."""
+    mtime is set before the suite's clock but after every file, so each test
+    moves exactly one thing after it and asserts what that one thing does to the
+    stamp. A commit a test makes takes the suite's clock, so it lands after the
+    report; the fixture's own commit is dated before every file."""
     repo = tmp_path / "ingest"
     (repo / ".prawduct").mkdir(parents=True)
     (repo / ".prawduct" / "project-state.yaml").write_text("project_name: ingest\n")
@@ -940,8 +937,8 @@ def ingest_repo(tmp_path) -> tuple[Path, Path]:
     (repo / "mod.py").write_text("X = 1\n")
     _git_in(repo, "init", "-b", "main")
     _git_in(repo, "add", "-A")
-    # Before the report even in a `real_git_clock` test, so `HEAD@{<run start>}` names this
-    # commit by its own entry rather than by git's oldest-entry fallback.
+    # Before the report, so `HEAD@{<run start>}` names this commit by its own entry rather
+    # than by git's oldest-entry fallback.
     _git_in(repo, "commit", "-m", "c1", env=pre_session_git_env())
     report = repo / ".prawduct" / ".test-report.xml"
     report.write_text(
@@ -949,10 +946,10 @@ def ingest_repo(tmp_path) -> tuple[Path, Path]:
         '<testcase name="b"/></testsuite></testsuites>\n'
     )
     _record_beside(report)
-    # Every file and directory the suite reads predates the report by an hour;
-    # the report itself is ten minutes old. Set explicitly because a fixture
-    # written in one instant would otherwise tie, and a tie stamps.
-    past = time.time() - 3600
+    # Every file and directory the suite reads predates the report by most of an
+    # hour; the report is ten minutes older than the suite's clock. Set explicitly
+    # because a fixture written in one instant would otherwise tie, and a tie stamps.
+    past = TEST_NOW_EPOCH - 3600
     for path in sorted(repo.rglob("*"), reverse=True):
         if ".git" not in path.relative_to(repo).parts and path != report:
             os.utime(path, (past, past))
@@ -1005,19 +1002,15 @@ class TestIngestStampsATreeOnlyWhenTheReportIsNewer:
         self._withheld(repo, self._ingest(repo, report))
 
     # A HEAD move after the run is found at `HEAD@{<run start>}`, and git dates a reflog entry
-    # by the committer date: under the suite's fixed one the commit below would sit before the
-    # report's wall-clock start, so these two take the real clock (`conftest._real_git_clock`).
-    @pytest.mark.real_git_clock
+    # by the committer date, which is the suite's clock: after the report's start.
     def test_a_deletion_committed_after_the_report_withholds_the_tree(self, ingest_repo):
         """Once committed, the deletion is in neither the index nor a diff
         against HEAD; HEAD's own movement since the report is what shows it."""
         repo, report = ingest_repo
         _git_in(repo, "rm", "-q", "tests/test_b.py")
-        require_real_git_clock()
         _git_in(repo, "commit", "-q", "-m", "drop b")
         self._withheld(repo, self._ingest(repo, report))
 
-    @pytest.mark.real_git_clock
     def test_a_commit_after_the_report_that_deletes_nothing_still_stamps(self, ingest_repo):
         """Run, commit, ingest is the ordinary flow. HEAD moved after the
         report, but every file it carries predates it, so the stamp holds."""
@@ -1026,7 +1019,6 @@ class TestIngestStampsATreeOnlyWhenTheReportIsNewer:
         past = report.stat().st_mtime - 60
         os.utime(repo / "notes.txt", (past, past))
         _git_in(repo, "add", "notes.txt")
-        require_real_git_clock()
         _git_in(repo, "commit", "-q", "-m", "notes")
         res = self._ingest(repo, report)
         assert res.returncode == 0, res.stderr

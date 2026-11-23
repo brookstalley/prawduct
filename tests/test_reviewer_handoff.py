@@ -31,7 +31,7 @@ if str(ROOT) not in sys.path:
 
 from lib import critic_consolidate as cc  # noqa: E402
 from lib import evidence  # noqa: E402
-from conftest import GIT_TEST_ENV  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 PARTIALS_REL = ".prawduct/.critic-partials"
 MANIFEST_REL = f"{PARTIALS_REL}/manifest.json"
@@ -43,15 +43,7 @@ AT_CEILING = "claude-opus-4-8[1m]"
 def _git_env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        **GIT_TEST_ENV,
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(home)
 
 
 def _git(repo: Path, *args: str) -> str:

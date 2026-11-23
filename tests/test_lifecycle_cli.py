@@ -181,7 +181,7 @@ class TestLifecycleRepairCommand:
         (`plan_status`), so the fixture lands Chunk 02 on a feature branch. The
         key name is the doctor contract this file pins; it is unchanged."""
         project = _repo(tmp_path)
-        env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+        env = dict(os.environ)
         for args in (
             ("init", "-q", "-b", "main"),
             ("config", "user.email", "t@example.com"),
@@ -209,7 +209,7 @@ class TestBuiltNotDoneLeadLine:
     message from the state)."""
 
     def _land(self, project: Path, *chunks: str) -> None:
-        env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+        env = dict(os.environ)
         steps = [
             ("init", "-q", "-b", "main"),
             ("config", "user.email", "t@example.com"),
@@ -650,7 +650,7 @@ class TestBuiltStateUnavailableIsNamedNotSilent:
     chunks and reading as a clean sweep."""
 
     def _land_with_a_dead_base(self, project: Path) -> None:
-        env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+        env = dict(os.environ)
         for args in (
             ("init", "-q", "-b", "main"),
             ("config", "user.email", "t@example.com"),

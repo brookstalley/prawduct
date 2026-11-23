@@ -45,7 +45,7 @@ def _isolated_registry():
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -89,7 +89,7 @@ def _repo(
     if with_origin:
         origin = tmp_path / "origin.git"
         subprocess.run(
-            ["git", "init", "--bare", "-q", str(origin)],
+            ["git", "init", "--bare", "-q", str(origin)], cwd=str(tmp_path),
             check=True,
             capture_output=True,
             text=True,
