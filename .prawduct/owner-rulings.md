@@ -410,6 +410,9 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
    `plugin/docs/project-state-keys.md` (`review_round_budget`) and `plugin/skills/critic/review-cycle.md`.
 3. `develop`'s two unpushed commits (a04758d4, 792d8c06, the delegate-ceiling whole-tree guards) ship as a PR after
    `fix/chunk-plan-order`'s.
+   **2026-11-23, later:** "That's fine one PR works." `fix/chunk-plan-order` was cut after those two commits
+   landed on `develop`, so they are in its history and ship in its PR, which the body names. There is no separate
+   PR. Raised by R-5 of rev-20261123T132423Z-278552aa.
 4. The two inferred design calls in `build-plan-chunk-plan-order.md` Goals are confirmed as written: D8's exclusion
    rule as revised in Chunk 07 (only the code's own naming of a done chunk is questioned), and D3's refusal
    recorded as one `guard-refusal` fact through `evidence.append_guard_refusal` (the #596 one-sink ruling).
