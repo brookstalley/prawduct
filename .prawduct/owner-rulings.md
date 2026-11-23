@@ -399,6 +399,8 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
 
 **2026-11-19.** "Yes merge" — PR #1209 (`integration/backlog-roi-wave2-2026-11-18` → `develop`, backlog ROI wave 2) is merged.
 
+**2026-11-23.** "Yes pr and merge and push to prawduct-live" — PR `fix/dispositions-travel` → `develop` (#1207) is created and merged once its gates pass, and `../prawduct-live` is then advanced to the new `origin/develop` (the dogfood track, `documentation/release-process.md` § Dogfooding the develop track).
+
 **2026-11-23.** "Yes to both git and areas, it will help understand where time is going. Subagents are fine for implementing" — answering whether to act on testament's two pieces of run advice:
 1. The test suite's git subprocesses are made cacheable: an autouse fixture isolates git config and fixes git dates for the children tests spawn (testament advice `cache`, first site `gitstate.git_common_dir`).
 2. The suite declares areas in `.testament.toml`, so runs report and time by area.
