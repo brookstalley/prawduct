@@ -135,9 +135,13 @@ clone that wrote it.
   `mode`, `stage` (`inner` | `boundary`, derived once at dispatch from the mode's interval; null on a
   fact consolidated from a manifest written before the field), `roster` (roles + models),
   `files_reviewed`/`files_changed`, `chunks[]` (the build-plan chunks this review **names**, each of which it certifies (as it
-  does an unnamed chunk a scoped commit subject in its interval names), in plan order — declared at dispatch with `critic-begin --chunks`, or exactly the code-derived
-  proposal when omitted; ST8 of #1050), `chunks_proposed[]` (that proposal, recorded beside the
-  declaration so an edit to it is visible on the record, never silent), `chunk` (on facts written
+  does an unnamed chunk a scoped commit subject in its interval names), in plan order — declared at dispatch with `critic-begin --chunks`, or the code-derived
+  proposal when omitted, in which a path proposes a chunk only while every earlier open chunk is
+  proposed (#1198); ST8 of #1050), `chunks_proposed[]` (that proposal, recorded beside the
+  declaration so an edit to it is visible on the record, never silent), `chunks_declared` (bool:
+  whether `--chunks` was passed) and `chunks_evidence` (per proposed chunk `{paths[≤3], paths_more,
+  commits[≤3]}`: what named it) — both optional, added 2026-11-23 (#1141), read only for the route a
+  `done` row prints and by the bug-report intake, never for state; `chunk` (on facts written
   by v3.8.1 and earlier only — `chunks[0]` or null, or alone on a fact from before `chunks`; new facts
   omit it, and `plan_status.fact_chunks` is the reader rule for both), `findings[]` (each with a
   stable `fid`, `goal`, `severity`, `title`, `recommendation`, and — on a test-failure finding —

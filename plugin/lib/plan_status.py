@@ -18,11 +18,12 @@ pins that over every ``lib`` module and the hook.
   short plan's last chunk), never to disarm one; :func:`chunk_states` never
   calls it;
 - :func:`chunk_proposal` — the chunk set a review dispatch proposes (ST8),
-  with notes saying why it named fewer than it might; :func:`propose_chunks`
-  is its chunk list alone. It and :func:`built_chunks` are the two git-walking
+  under the one-owner and plan-order rules, with notes saying why it named
+  fewer than it might; :func:`propose_chunks` is its chunk list alone. It and :func:`built_chunks` are the two git-walking
   answers here, sharing one ``git log`` reader;
 - :func:`retraction_target` — whether a fact's certification of a chunk can be
-  withdrawn, the one check ``plan retract`` writes behind;
+  withdrawn, the one check ``plan retract`` writes behind, and
+  :func:`retraction_plan` every pair ``plan retract --all`` writes;
 - :func:`render_table` — the ``plan status`` table, the one renderer the CLI,
   the ``/clear`` handoff and the PR payload print;
 - :func:`built_not_done_notice` — the bound plan's chunks that are built and

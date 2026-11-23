@@ -11847,6 +11847,68 @@ class TestPartOneOfAPlanLeavesItsLaterChunksOpen:
         }
 
 
+class TestAPlanShippedInTwoParts:
+    """#1198-A4 and owner ruling 2026-11-22 ("shipping one plan in two PRs is
+    a supported shape"), the sentence `planning.md` Plan Shape carries: each
+    part's boundary `cumulative` certifies what that part built; merged with a
+    merge commit, part one's certifications stand, and part two's boundary
+    review finishes the plan. A squash merge takes part one's reviewed commits
+    out of history, and its chunks reopen."""
+
+    _PLAN = TestPartOneOfAPlanLeavesItsLaterChunksOpen._PLAN
+
+    def _part_one(self, tmp_path: Path) -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
+        _commit_file(repo, ".prawduct/artifacts/build-plan-cs.md", self._PLAN, "plan")
+        _git(repo, "checkout", "-b", "feat/cs", "--quiet")
+        for n in range(1, 5):
+            _commit_file(repo, f"src/c{n}.py", "x = 1\n", f"feat(cs): c{n} (Chunk 0{n})")
+        assert cc.begin_review(repo, "cumulative", force=True)["status"] == "ok"
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        return repo
+
+    def _states(self, repo: Path) -> dict:
+        from lib import plan_status
+
+        plan = repo / ".prawduct/artifacts/build-plan-cs.md"
+        return {k: s.state for k, s in plan_status.chunk_states(
+            plan, evidence.read_facts(repo), repo_dir=repo).items()}
+
+    def _part_two(self, repo: Path) -> None:
+        _commit_file(repo, "src/c5.py", "x = 1\n", "feat(cs): c5 (Chunk 05)")
+        _commit_file(repo, "docs/guide.md", "done\n", "docs(cs): the docs (Chunk 06)")
+        assert cc.begin_review(repo, "cumulative", force=True)["status"] == "ok"
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+
+    def test_merged_with_a_merge_commit_part_two_finishes_the_plan(self, tmp_path):
+        from lib import plan_status
+
+        repo = self._part_one(tmp_path)
+        assert [self._states(repo)[c] for c in ("01", "04", "05", "06")] == ["done", "done", "open", "open"]
+        _git(repo, "checkout", "main", "--quiet")
+        _git(repo, "merge", "--no-ff", "-m", "Merge part one", "feat/cs", "--quiet")
+        _git(repo, "checkout", "feat/cs", "--quiet")
+        _git(repo, "merge", "--ff-only", "main", "--quiet")
+        self._part_two(repo)
+        assert set(self._states(repo).values()) == {"done"}
+        plan = repo / ".prawduct/artifacts/build-plan-cs.md"
+        assert plan_status.is_finished(plan, evidence.read_facts(repo), repo_dir=repo)
+
+    def test_a_squash_merge_reopens_part_ones_chunks(self, tmp_path):
+        repo = self._part_one(tmp_path)
+        _git(repo, "checkout", "main", "--quiet")
+        _git(repo, "merge", "--squash", "feat/cs", "--quiet")
+        _git(repo, "commit", "-qm", "Squash part one")
+        _git(repo, "branch", "-D", "feat/cs")
+        _git(repo, "checkout", "-b", "feat/cs", "--quiet")
+        states = self._states(repo)
+        assert [states[c] for c in ("01", "02", "03", "04")] == ["open"] * 4
+
+
 class TestManifestChunkFields:
     def test_chunks_and_proposal_are_typed_lists(self):
         ok, _ = cc.validate_manifest(_manifest_dict(chunks=["01", "03"], chunks_proposed=["01"]))

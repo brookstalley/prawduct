@@ -1697,7 +1697,13 @@ LAST_MEASURED_TOKENS = {
     # +10 on 2026-11-18 (backlog-roi, #1199): "Chunk state" names the merged-in side of a
     # non-base merge as span credit — a description of the code, recorded as a departure under
     # data-model.md D1 for the owner's confirmation. A READING.
-    "methodology/planning.md": 5779,
+    # +150 on 2026-11-22 (chunk-plan-order Chunk 06, #1141/#1198): "Chunk state" states the
+    # plan-order rule (a path proposes a chunk only while every earlier open chunk is proposed),
+    # how to name a chunk built ahead of an open one, the `chunk`-mode refusal and `retract --all`;
+    # Plan Shape gains "A plan may ship in parts" (owner ruling 2026-11-22, ruling 3 of "yes to all").
+    # Each is a rule a builder meets nowhere else before the gate answers; drafted at +260 and cut to
+    # this. A READING.
+    "methodology/planning.md": 5929,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

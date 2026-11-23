@@ -75,9 +75,21 @@ build, the report's Found-in label also carries the plugin tree's commit
 skew in or out. A released version keeps its bare label, and the report's machine-read `found_in`
 stays the bare version.
 
+### Chunk 06: methodology and descriptions
+
+`planning.md` "Chunk state" states the plan-order rule, how to name a chunk built ahead of an open
+one, the `chunk`-mode refusal, and `retract --all`. Plan Shape gains "A plan may ship in parts",
+which says to merge each part with a merge commit or a fast-forward, because a squash reopens the
+part's chunks. An end-to-end test pins both outcomes. The API contract records exit 8,
+`chunks_declared`/`chunks_evidence`, `plan status --json`'s `ahead_of` and its route lines, `plan
+retract --all`, and `evidence list --id/--json`. The data model records the two new fact fields,
+and the review cycle's manifest key list names them.
+
 ## Consumer note
 A review no longer certifies a later chunk just because its diff touched that chunk's files while
-an earlier chunk is still open. `critic-begin` prints a note when it holds a chunk back. To credit
+an earlier chunk is still open. Earlier certifications are not rewritten: `plan status` flags any
+done chunk with an open chunk before it, and `plan retract <chunk> --all` reopens one that was
+never built. `critic-begin` prints a note when it holds a chunk back. To credit
 a chunk you built ahead of an earlier one, give its commits a scoped subject
 (`<type>(<scope>): … (Chunk N)`) or pass `--chunks N`. A `chunk` review whose diff proposes two
 chunks now stops with exit 8 and asks you to name the one you built with `--chunks`.
