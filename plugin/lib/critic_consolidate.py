@@ -843,10 +843,13 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
 
     **Without ``counted`` it is the anchor alone** — the posture before #334,
     for a caller whose composition was unavailable (no merge base, no path to
-    the anchor). The anchor is ``anchor_id`` when the caller already chose it
-    (the dispatch picks its prior from the findings cache's pointer, which can
-    name a different review at the same tree than the link would), else the
-    review the link rule names (``coverage_algebra.prior_review``): structural,
+    the anchor). The anchor is the review the pass verifies, as
+    ``coverage_algebra.prior_review`` answers it: ``anchor_id`` is the id the
+    pass anchored to — the dispatch's choice before the fact exists (the
+    findings cache's pointer, or this branch's newest review), the fact's
+    recorded ``verifies`` after — and the probe carries it, so the link
+    follows it; an id the store does not hold carries nothing. Only a fact
+    from before that record passes ``None`` and is linked by tree: structural,
     without reading ``.critic-findings.json`` (D7), and never "most recent
     fact" — the store is shared by every worktree of the clone, so a sibling's
     newer review would otherwise be picked up as this branch's anchor. Only
@@ -876,15 +879,16 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
             out.append(entry)
         return out
     reviews = evidence.facts_of_kind({"facts": facts}, "review")
+    # The pass as the link rule sees it: its id places it in store order
+    # (strictly-before excludes it and anything recorded after it), its base
+    # is the caller's — at dispatch it is not in the store yet — and its
+    # anchor, when the caller holds one, decides over the tree.
+    probe_body: dict = {"base_tree": base_tree}
     if anchor_id is not None:
-        anchor = next((f for f in reviews if f.get("id") == anchor_id), None)
-    else:
-        # The pass as the link rule sees it: its id places it in store order
-        # (strictly-before excludes it and anything recorded after it), and
-        # its base is the caller's — at dispatch it is not in the store yet.
-        anchor = coverage_algebra.prior_review(
-            reviews, {"id": this_review_id, "body": {"base_tree": base_tree}}
-        )
+        probe_body[coverage_algebra.VERIFIES_KEY] = anchor_id
+    anchor = coverage_algebra.prior_review(
+        reviews, {"id": this_review_id, "body": probe_body}
+    )
     if anchor is None or anchor.get("id") == this_review_id:
         return []
     resolved = coverage_algebra.resolution_index(facts)
@@ -4932,6 +4936,13 @@ def begin_review(
         manifest["bounded_from"] = bounded_from
         manifest["span_reason"] = span_reason
         manifest["files_context"] = files_context
+    if verify_anchor is not None:
+        # The review this verify pass anchored to, by id, so its fact says
+        # which review it verifies. The interval's base tree cannot: another
+        # worktree of the clone may have reviewed the same tree, and every
+        # reader that walks from the pass to its review
+        # (`coverage_algebra.prior_review`) would otherwise guess the newest.
+        manifest[coverage_algebra.VERIFIES_KEY] = verify_anchor.get("id")
     # The review STAGE, derived once here from the mode (which chose the
     # interval above) and read everywhere else — the reviewer prompt's signals
     # line, the review fact, the findings cache, the ledger event and
@@ -5518,10 +5529,21 @@ def validate_manifest(data) -> tuple[bool, str]:
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals", "dispatch_tree", "reviewer_model",
-                "bounded_from", "span_reason"):
+                "bounded_from", "span_reason", coverage_algebra.VERIFIES_KEY):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
+    # The review a verify pass anchored to. Optional, as a manifest written
+    # before the field still consolidates (its fact then links by tree); only a
+    # verify pass may carry one, because the readers follow it as "the review
+    # this pass verifies" whatever the fact's mode.
+    if data.get(coverage_algebra.VERIFIES_KEY) is not None and (
+        mode != MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
+    ):
+        return False, (
+            f"'{coverage_algebra.VERIFIES_KEY}' names a verified review, which only a "
+            f"verify-resolutions manifest records (mode is {mode!r})"
+        )
     # Optional for the same reason `files_oracle` is — a manifest restored from
     # before the field existed still consolidates — and typed because the value
     # reaches the fact and the severity rule keys on it: a misspelt stage must
@@ -6779,6 +6801,12 @@ def build_fact_body(
         "bounded_from": manifest.get("bounded_from"),
         "span_reason": manifest.get("span_reason"),
     }
+    # The review a verify pass anchored to (``coverage_algebra.prior_review``
+    # follows it). Absent on every other mode and on a fact from a manifest
+    # written before the field, which the readers link by tree instead.
+    verifies = manifest.get(coverage_algebra.VERIFIES_KEY)
+    if verifies is not None:
+        body[coverage_algebra.VERIFIES_KEY] = verifies
     # The dispatch clock, on the one record every worktree of the clone can
     # read. `duration_seconds` above is the reviewers' own estimate; this is
     # the stamp code read before they were spawned, and the interval ends at
@@ -7037,6 +7065,7 @@ def branch_review_record(
             gate_counted_blockers(
                 prawduct_dir.parent, gate_facts, body.get("base_tree"), read=gate_read
             ),
+            anchor_id=body.get(coverage_algebra.VERIFIES_KEY),
         )
         if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
         else []
@@ -8635,6 +8664,7 @@ def _consolidate(
                 project_dir, store.get("facts") or [], manifest.get("base_tree"),
                 resolved=merge_base, read=store,
             ),
+            anchor_id=manifest.get(coverage_algebra.VERIFIES_KEY),
         )
         if is_verify
         else []

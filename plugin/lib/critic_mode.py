@@ -1755,12 +1755,15 @@ def review_chain(facts: list[dict], newest: dict) -> list[dict]:
     """Every review fact on the chain ``newest`` stands on, newest first.
 
     The chain is structural: each review's ``base_tree`` is the ``head_tree`` of
-    a review recorded before it — ``coverage_algebra.linked_reviews``, the one
+    a review recorded before it, and a verify pass steps back to the review it
+    recorded as its anchor — ``coverage_algebra.linked_reviews``, the one
     link rule the verify roll-call's anchor and ``plan_status``'s extended
-    line follow too. EVERY review standing at a linked tree is included, not
-    only the newest there, because a second review of an unchanged tree must
-    not hide the first; the walk steps back through the newest of them. Walked
-    to the end, because a chain can be several passes long.
+    line follow too. EVERY review standing at a linked tree before that one is
+    included, not only it, because a second review of an unchanged tree must
+    not hide the first; the walk steps back through the linked one. Walked
+    to the end, because a chain can be several passes long; a fact already on
+    the chain is never walked again, which is what ends a walk over an anchor
+    recorded later in the store than its pass.
     """
     # Append order is recording order (the store is append-only); `ts` has
     # one-second resolution, so it cannot order two reviews in the same second.

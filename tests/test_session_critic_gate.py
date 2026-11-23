@@ -1104,6 +1104,75 @@ class TestModeAdvisoryAfterAVerifyPass:
         assert f"a verify-resolutions pass over a '{self._CHUNK}' review" in note
 
 
+class TestModeAdvisoryFollowsTheVerifiedReview:
+    """Gate 2.5 as the Stop hook prints it when another worktree of the clone
+    reviewed the same tree after this one did. The pass records the review it
+    anchored to (`verifies`), and the advisory judges that review, not the
+    newest review at the pass's base tree — read by tree, a sibling's `chunk`
+    drew a NOTE for a `final` this worktree's `cumulative` had made unowed.
+
+    Same stubbing as `TestModeAdvisoryAfterAVerifyPass`: only the coverage
+    verdict, to "covered", so Gate 2.5 runs."""
+
+    _NOTE = TestModeAdvisoryAfterAVerifyPass._NOTE
+    _CUMULATIVE = TestModeAdvisoryAfterAVerifyPass._CUMULATIVE
+    _CHUNK = TestModeAdvisoryAfterAVerifyPass._CHUNK
+    _VERIFY = TestModeAdvisoryAfterAVerifyPass._VERIFY
+
+    def _stop_after(self, tmp_path, monkeypatch, capsys, own_mode, sibling_mode) -> str:
+        repo = _session_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n"
+            "- [x] Chunk 01: a\n- [x] Chunk 02: b\n- [x] Chunk 03: c\n"
+        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        _commit(repo, "code.py", "x = 2\n", "c2")
+        t0, t1, t2 = _tree(repo, "HEAD~1"), "1" * 40, _tree(repo)
+
+        def body(mode, base, head, **extra):
+            return {"mode": mode, "findings": [], "files_reviewed": ["code.py"],
+                    "base_tree": base, "head_tree": head, **extra}
+
+        appended = evidence.append_fact(repo, "review", "rev-own", body(own_mode, t0, t1))
+        assert appended["status"] == "appended", appended
+        store = evidence.store_path(repo)
+        with open(store, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({
+                "schema": evidence.SCHEMA_VERSION, "kind": "review", "id": "rev-sibling",
+                "ts": "2026-11-23T00:00:00Z",
+                "actor": {"session": "s", "worktree": "/sibling", "plugin": "x", "branch": "main"},
+                "body": body(sibling_mode, "2" * 40, t1),
+            }) + "\n")
+        appended = evidence.append_fact(
+            repo, "review", "rev-verify", body(self._VERIFY, t1, t2, verifies="rev-own")
+        )
+        assert appended["status"] == "appended", appended
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda project_dir, **_kw: {"status": "covered"},
+        )
+        _hook.cmd_stop(repo, {})
+        return capsys.readouterr().err
+
+    def test_a_pass_over_this_worktrees_cumulative_prints_no_note(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        err = self._stop_after(tmp_path, monkeypatch, capsys, self._CUMULATIVE, self._CHUNK)
+        assert self._NOTE not in err, err
+
+    def test_the_mirror_a_pass_over_this_worktrees_chunk_prints_it(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A sibling's newer `cumulative` at the tree does not silence the NOTE
+        this worktree's `chunk` owes — and the line names that `chunk`."""
+        err = self._stop_after(tmp_path, monkeypatch, capsys, self._CHUNK, self._CUMULATIVE)
+        note = next((line for line in err.splitlines() if self._NOTE in line), None)
+        assert note is not None, err
+        assert f"a verify-resolutions pass over a '{self._CHUNK}' review" in note, note
+
+
 def _imported_history_session(
     tmp_path: Path, *, review_own: bool = True, findings: "list[dict] | None" = None
 ) -> Path:
