@@ -3019,8 +3019,8 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
        the end of it there is no record that synthesis ran. Unlike case 4 this
        session DID review, so "nothing to judge" does not apply. When the pass
        that ends the walk names, by a review id's shape, a review this store
-       does not hold, the NOTE names that review and the pass that recorded it
-       and offers both repairs: sync it in if another clone recorded it, else
+       does not hold, the NOTE names that review (and the pass that recorded
+       it, when that pass is not the latest review) and offers both repairs: sync it in if another clone recorded it, else
        run a ``final``, since a dropped or unreadable fact never arrives.
     """
     binding = work_unit.resolve(project_dir)

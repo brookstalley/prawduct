@@ -1551,10 +1551,11 @@ def dispatch_directives(
     return directives
 
 
-#: The minted id's shape, group 1 its dispatch stamp. The pattern lives in the
-#: pure layer because the link rule asks it too (an anchor id shaped like no
-#: review's is not "not yet ingested"); minter and readers share one pattern.
-_REVIEW_ID_TS = coverage_algebra.REVIEW_ID
+#: A review id's dispatch stamp, group 1: only the ``rev-<stamp>-`` prefix, so
+#: an id with any suffix still has an age (fixtures and hand-written manifests
+#: carry such ids). The whole minted shape, which the link rule asks, is
+#: ``coverage_algebra.REVIEW_ID``.
+_REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
 
 def mint_review_id() -> str:

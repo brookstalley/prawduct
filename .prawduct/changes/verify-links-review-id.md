@@ -33,23 +33,23 @@ The coverage gate does not read the chain. It counts every unresolved blocker re
 its composed path stands on, including another review's at the anchor's tree, and none at a tree
 a clean spanning review routes the path around. The extension deferral used to ask the chain
 whether a blocker was open, so it could say "reviewed with no open blocker … carry on" while the
-gate was blocked; it now asks the gate's own count up to the newest review's tree, and does not
-defer when that count is unavailable.
+gate was blocked; it now asks the gate's own count up to the newest review's tree, and falls
+back to the chain's own blockers only when the gate cannot compose (an uncovered path is no
+answer about blockers).
 
 When the Stop hook's walk ends at a pass naming a review, shaped like a review id, that the
-store does not hold, the NOTE names that review and the pass that recorded it, and gives both
+store does not hold, the NOTE names that review (and the pass that recorded it, when that pass is
+not the latest review), and gives both
 repairs: `prawduct-hook evidence sync` if another clone recorded it, else
 `/prawduct:critic final`, since a dropped or unreadable fact never arrives. The walks that loop
 over the link stop at a fact they have already visited, since an anchor found by id no longer
-follows store order. `review_chain` walks every review it adds, not only the newest each one
-links to, so a re-review of an unchanged tree no longer cuts off the predecessors of the review
-it repeats. `reviews_linked_from` grows its reached trees to a fixed point, so a pass ingested
-ahead of the review whose tree it starts from is still a member. The review id's shape has one
-pattern, which the minter's age reader and the link rule share. The schema change is additive:
-old facts stay valid, and git notes carry the field unchanged. Tests put two reviews at one tree
-with the pass anchored to the older one, and pin each walker, the dangling, mismatched and
-malformed cases, each Stop-hook message, the deferral against the gate's count, and the field
-written end to end through `critic-begin` and `critic-consolidate`.
+follows store order. A malformed `verifies` value (not shaped like a review id) is
+unresolved but never "not yet ingested"; the dispatch-age reader keeps reading only the id's `rev-<stamp>-`
+prefix. The schema change is additive: old facts stay valid, and git notes carry the field
+unchanged. Tests put two reviews at one tree with the pass anchored to the older one, and pin each
+walker, the dangling, mismatched and malformed cases, each Stop-hook message, the deferral against
+the gate's count (and its chain fallback when the gate cannot compose), and the field written end to
+end through `critic-begin` and `critic-consolidate`.
 
 `review-cycle.md`'s "never a chunk's first review" line also says not to verify after drift
 unrelated to the findings, which `critic-begin` refuses only past the scope-widened threshold.

@@ -381,9 +381,10 @@ def _store_position(reviews: list[dict], fact: dict) -> int:
 VERIFIES_KEY = "verifies"
 
 #: The shape of a review id, ``rev-<UTC %Y%m%dT%H%M%SZ>-<8 hex>``: what
-#: ``critic_consolidate.mint_review_id`` mints, whose dispatch-age reader parses
-#: group 1 back out. Defined here, in the pure layer both import, so the minter's
-#: reader and :func:`_resolve_claim` ask one pattern.
+#: ``critic_consolidate.mint_review_id`` mints, and what :func:`_resolve_claim`
+#: asks of an id no review carries. Defined here, in the pure layer both import;
+#: the dispatch-age reader asks only the ``rev-<stamp>-`` prefix, so an id with
+#: another suffix still has an age.
 REVIEW_ID = re.compile(r"^rev-(\d{8}T\d{6}Z)-[0-9a-f]{8}\Z")
 
 
@@ -521,48 +522,35 @@ def prior_review(reviews: list[dict], fact: dict) -> "dict | None":
 
 
 def reviews_linked_from(reviews: list[dict], root_tree: str) -> list[dict]:
-    """Every review whose chain of trees reaches back to ``root_tree``, in
-    store order: one standing AT it, one starting from it, and one starting
-    from the ``head_tree`` of another member.
+    """Every review whose chain of links reaches back to ``root_tree``, in
+    store order: one standing AT it, one starting from it, and — the link rule
+    read forward — one starting from the ``head_tree`` of an earlier member.
 
-    Membership does not depend on store order. Ingest appends another clone's
-    facts in note order, so a pass can sit ahead of the review whose tree it
-    starts from; the trees reached are therefore grown to a fixed point (every
-    review is asked again until a round reaches no new tree), not in one
-    forward scan, which would leave such a pass out.
-
-    It reads the tree relation :func:`linked_reviews` reads backward, from a
-    root instead of from a review, without that rule's "recorded strictly
-    before": this answers whether a review belongs to the work that started at
-    the root, not which review it links to. A verify pass's recorded anchor is
-    not consulted for the same reason: one that resolves stands at the pass's
-    ``base_tree`` (:func:`_resolve_claim` refuses one that does not), so it
-    names which review at a reached tree the pass verified, never another
-    tree. ``coverage.branch_review_ids`` bounds its empty-span fallback with
-    it, over one worktree's reviews, where the anchor may have been recorded
+    The tree relation :func:`linked_reviews` reads backward, from a root
+    instead of from a review, so the two agree about which TREES link. A
+    verify pass's recorded anchor is not consulted here: one that resolves
+    stands at the pass's ``base_tree`` (:func:`_resolve_claim` refuses one that
+    does not), so it names which review at a linked tree the pass verified,
+    never another tree, and this answers membership
+    (does a review's chain reach the root), not which review it verified.
+    ``coverage.branch_review_ids`` bounds its empty-span fallback with it,
+    over one worktree's reviews, where the anchor may have been recorded
     elsewhere."""
     if not isinstance(root_tree, str) or not root_tree:
         return []
     reached = {root_tree}
-    members: "set[int]" = set()
-    grew = True
-    while grew:
-        grew = False
-        for i, fact in enumerate(reviews):
-            if i in members:
-                continue
-            body = fact.get("body") or {}
-            head = body.get("head_tree")
-            base = body.get("base_tree")
-            # A malformed or newer-schema body can carry a non-string tree; a
-            # set lookup on an unhashable one would raise out of every gate
-            # reading this.
-            if (isinstance(base, str) and base in reached) or head == root_tree:
-                members.add(i)
-                grew = True
-                if isinstance(head, str) and head:
-                    reached.add(head)
-    return [fact for i, fact in enumerate(reviews) if i in members]
+    out = []
+    for fact in reviews:
+        body = fact.get("body") or {}
+        head = body.get("head_tree")
+        base = body.get("base_tree")
+        # A malformed or newer-schema body can carry a non-string tree; a set
+        # lookup on an unhashable one would raise out of every gate reading this.
+        if (isinstance(base, str) and base in reached) or head == root_tree:
+            out.append(fact)
+            if isinstance(head, str) and head:
+                reached.add(head)
+    return out
 
 
 # ---------------------------------------------------------------------------

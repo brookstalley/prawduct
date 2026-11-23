@@ -1,5 +1,11 @@
 # Issue #1160 — critic: stranded blocker can't clear after budget is spent: Design
 
+> **Superseded detail (2026-11-23, #1220):** the deferral's blocker condition no longer walks the chain.
+> `critic_mode._gate_counts_an_open_blocker` asks the gate's composed count and falls back to the chain's
+> own blockers only when the gate cannot compose; `_open_blocker_on_chain` is gone. References to it
+> below describe this design as written.
+
+
 `status: draft · stage: design · area: critic · added: 2026-11-16 · source: scheduled design pass ·
 issue: https://github.com/brookstalley/prawduct/issues/1160`
 
