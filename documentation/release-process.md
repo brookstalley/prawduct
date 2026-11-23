@@ -250,15 +250,15 @@ same set in executable running order, and is the document to work from when actu
    ```
    A no-op while `.prawduct/change-log.md` is within its size threshold; past it, shipped
    entries move verbatim into `.prawduct/change-log-archive/YYYY-MM.md`, and any release-pending
-   legacy entry stays. Its order relative to `plan-backfill` does not matter: that sweep reads the live
+   legacy entry stays live, where the release refusal and `migrate-change-log` find it. Its order relative to `plan-backfill` does not matter: that sweep reads the live
    log and the archive together.
 
-5. **Write the consumer-facing narrative — two files, not one.** `plugin/CHANGELOG.md` gets a
-   `## vX.Y.Z` section every release; `README.md`'s `## Recent Changes` gets refreshed on a
-   **minor or major bump only**. The cut (step 3) writes the whole CHANGELOG section from the
+5. **Write the consumer-facing narrative, and check the README still holds.** `plugin/CHANGELOG.md` gets a
+   `## vX.Y.Z` section every release; `README.md` carries no release notes, and gets reread for
+   claims this line made false on a **minor or major bump only**. The cut (step 3) writes the whole CHANGELOG section from the
    fragments' notes; you write the headline in `.prawduct/release-headline.md` before it runs. The
    headline becomes the section's first line, which the version-delta banner shows every repo
-   crossing this version. Both files are written at **Phase 1** of
+   crossing this version. Both files are handled at **Phase 1** of
    `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` — this checklist names them rather
    than restating them, because the README went eight releases stale precisely while no release
    document named it at all.
@@ -340,16 +340,16 @@ same set in executable running order, and is the document to work from when actu
 **A fragment the gate cannot read is not a third state — it is a refusal.** A fragment that fails
 validation (`bad-change-fragment:`) may be missing its scope or carrying the wrong one, so it can be
 neither shipped nor withheld, and `check-releasability` refuses rather than certify a release over
-it. So does a scope pending both as a fragment and as a legacy entry (`scope-in-both-shapes:`), a
-half-done migration whose two records can disagree about what ships.
+it.
 
-**In a repo not yet migrated**, a release-pending entry is a change-log entry tagged `scope=` with
-no `release=`, and adding `release=vX.Y.Z` to its tag line ships it. There an entry whose
-`prawduct:` tag line sets neither `scope=` nor `release=` enumerates as no scope and is refused as
-`unclassifiable-pending-entry:`, naming each entry and its line number. (An entry with **no tag
-line at all** is untagged history, not a malformed entry, and the gate has never claimed authority
-over it.) On a trunk repo in that shape the closing PR itself carries the `release=`-tagged entry
-and the plan retirement (create-flow Step 1d); a trunk repo on fragments has no such path yet.
+**Releases read fragments only (#1125).** A release-pending entry still in `.prawduct/change-log.md`
+(a `prawduct:` tag line with no `release=`, scoped or not) is in no pending set, so it could be
+neither shipped nor withheld. `check-releasability` and `cut-change-log` refuse on it instead, with
+one `legacy-pending-entry:` line per entry naming its title, its line and the remedy:
+`/prawduct:doctor`, whose check #22 runs `migrate-change-log` to move it into a fragment. Nothing
+in the live log ships, and nothing there is dropped without a word. (An entry with **no tag line
+at all** is untagged history, not a malformed entry, and the gate has never claimed authority over
+it.)
 
 **A legacy `status=` tag is inert.** Older logs carry `status=merged` and `status=shipped`
 from the retired derived-views mechanism. Nothing reads them, no value of them means
@@ -372,13 +372,11 @@ Fragments remove that shape. Pending means "a file in `.prawduct/changes/`", and
 carrying a `release` key is refused (`released-fragment`), so nothing can mark pending work as
 shipped except the cut, which writes `release=vX.Y.Z` only into the archive entry it creates.
 
-In a repo still on the legacy log the tag remains the state, and a `release=` that is not
-`vMAJOR.MINOR.PATCH` or a four-part `vMAJOR.MINOR.PATCH.N` (either optionally `-suffix`) is a
-validation error that fails closed: `check-releasability` exits 1 with a `bad-change-log-tag:` line
-naming the entry and its line number. That check used to live only in the derived-views
-regenerator, which a release did not run, which is why the v3.2.8 placeholder reached a release at
-all; it moved onto the gate that acts on the field. Entries with multiple non-conflicting tag lines
-are unioned with a stderr WARNING (VWS-4D8J).
+The live log can still carry the old shape, so a `release=` there that is not
+`vMAJOR.MINOR.PATCH` or a four-part `vMAJOR.MINOR.PATCH.N` (either optionally `-suffix`) fails
+closed: `check-releasability` and the cut refuse with a `legacy-pending-entry:` line giving
+`migrate-change-log`'s own reason (`unreleased-placeholder`), and `archive-change-log` refuses to
+move entries out of a log carrying one.
 
 The gate also reports **advisories** that do not change its exit code, such as work shipping with
 nothing describing it. They are enumerated where a release operator meets them, in Phase 0 of
@@ -474,9 +472,9 @@ benign**, not a gate to satisfy:
   `plugin/.claude-plugin/plugin.json` + `plugin/VERSION` + `pyproject.toml`). The CRT-7M2D coverage
   gate only excuses a doc-only (`.md`) delta since the recorded review, so these version edits read
   as "code changed since review" → exit 1.
-- **Why it's benign:** the operative pre-release reviews already happened — each feature had a clean
-  cumulative Critic at its feature→`develop` merge, and the release-readiness PR reviewer ran on each
-  feature PR. The release adds no new behavior, only version bookkeeping.
+- **Why it's benign:** the operative pre-release review already happened — each feature had a clean
+  cumulative Critic at its feature→`develop` merge. The release adds no new behavior, only version
+  bookkeeping.
 - **What to do:** nothing for this gate. Do **not** re-run `/prawduct:critic cumulative` over version
   bumps (zero added signal — the CRT-7M2D treadmill), and do **not** write `.gates-waived` — a waiver
   means "this gate cannot be satisfied this session," which is false here (the gate is perfectly

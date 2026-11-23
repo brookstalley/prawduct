@@ -38,7 +38,11 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from .core import atomic_write_text
+from .core import (
+    FLAG_UNREADABLE,
+    atomic_write_text,
+    read_bool_flag,
+)
 
 # Recognized status tokens. ``pending`` is the only status that blocks
 # ``/prawduct:pr create``; ``verified`` and ``accepted`` are both drained states
@@ -48,7 +52,11 @@ _STATUS_VERIFIED = "verified"
 _STATUS_ACCEPTED = "accepted"
 _VALID_STATUSES = frozenset({_STATUS_PENDING, _STATUS_VERIFIED, _STATUS_ACCEPTED})
 
-_VRF_HEADING_RE = re.compile(r"^##\s+(?P<vrf_id>VRF-\S+?)(?:\s+|$)")
+# Accepts `## VRF-012 — title` and the bracketed `## [VRF-012] title`. The id
+# group excludes the brackets; ``heading`` is stored verbatim, so a round trip
+# keeps the operator's style. Only a `VRF-` id opens an entry, so an unrelated
+# `## Notes` heading stays preamble.
+_VRF_HEADING_RE = re.compile(r"^##\s+\[?(?P<vrf_id>VRF-[^\s\]]+)\]?(?:\s|$)")
 _STATUS_LINE_RE = re.compile(
     r"^\*\*Status:\*\*\s+(?P<status>\S+)\s*$"
 )
@@ -214,6 +222,33 @@ class VerificationEntry:
 #: nothing, and folding them reports a drained queue on a queue nobody parsed.
 QUEUE_OK = "ok"
 QUEUE_UNREADABLE = "unreadable"
+#: The gate's OTHER input could not be read: ``project-state.yaml`` exists but
+#: the ``operator_verification_required`` flag in it is unknowable. Reported
+#: through ``queue_status`` (the one status key every result carries) because it
+#: takes the same third outcome for the same reason, and it blocks: a repo that
+#: turned the gate on is not told it is off because its state file went bad.
+QUEUE_STATE_UNREADABLE = "state-unreadable"
+
+
+#: The tail both unreadable-queue messages take when nothing is stopped on
+#: them — the check with ``operator_verification_required`` off. The refusal's
+#: tail ("NOT a clear queue … You can stop here") is blocking voice, and an off
+#: gate that speaks it sends a reader to stop work, or to clear a flag that is
+#: already clear, over a queue no gate reads.
+_OFF_TAIL = (
+    "Nothing is blocked: `operator_verification_required` is off, so no gate "
+    "reads this queue. It is the operator's record — if they want it readable, "
+    "hand them the line above; do not rewrite it yourself."
+)
+
+
+class QueueUnreadable(Exception):
+    """The queue file exists and could not be read or decoded.
+
+    Raised only by :func:`_load_queue` and caught by every runner, which turns it
+    into that runner's own error shape. Not an ``OSError``/``ValueError``, so a
+    broad catch of those elsewhere cannot absorb it. It never crosses the CLI.
+    """
 
 
 def unparsed_content_lines(preamble: str) -> list[str]:
@@ -255,6 +290,40 @@ def unparsed_content_lines(preamble: str) -> list[str]:
             continue
         out.append(stripped)
     return out
+
+
+def _unreadable_queue(queue_path: Path, preamble: str, *, blocks: bool = True) -> str | None:
+    """The one message for a queue file the parser read nothing from.
+
+    ``None`` when nothing in ``preamble`` looks like unrecognised queue content.
+    Otherwise one message quoting the first unrecognised ``##`` line (the first
+    unparsed line when none is a ``##`` heading), the count, the accepted
+    shapes, and what the caller CAN do. The check, accept and verify paths all
+    render this and none carries its own copy, so the remedy cannot drift.
+
+    ``blocks`` says whether the caller stops on it, and picks the tail: the
+    refusal's (the check with the gate on; accept and verify, which cannot
+    proceed) or :data:`_OFF_TAIL` (the check with the gate off, a note).
+    """
+    unparsed = unparsed_content_lines(preamble)
+    if not unparsed:
+        return None
+    first = next((ln for ln in unparsed if ln.startswith("##")), unparsed[0])
+    return (
+        f"parsed 0 entries from a queue file that is not empty — "
+        f"{len(unparsed)} line(s) in {queue_path} were not recognised as "
+        f"entries. The first is: `{first}`. An entry is a level-2 heading "
+        "`## VRF-<id> - <title>` or `## [VRF-<id>] <title>` whose first body "
+        "line is `**Status:** pending|verified|accepted`. " + (
+            "This is NOT a clear queue: nothing was read, so nothing could be "
+            "found pending.\n"
+            "This queue is the operator's record. DO NOT rewrite the queue to "
+            "satisfy this - hand the operator the quoted line and let them rename "
+            "the headings or clear `operator_verification_required`. You can stop "
+            "here and report."
+            if blocks else _OFF_TAIL
+        )
+    )
 
 
 def parse_operator_verification(content: str) -> tuple[str, list[VerificationEntry]]:
@@ -379,31 +448,43 @@ def _append_drain_footer(entry: VerificationEntry, footer: str) -> None:
     entry.body_lines.extend(tail)
 
 
-def mark_verified(entry: VerificationEntry, *, today: date | None = None) -> bool:
+def _mutation_ok() -> dict:
+    return {"status": "ok", "reason": None}
+
+
+def _mutation_refused(reason: str) -> dict:
+    return {"status": "refused", "reason": reason}
+
+
+def mark_verified(
+    entry: VerificationEntry, *, today: date | None = None
+) -> dict:
     """Flip pending → verified and append a ``**Verified:**`` line.
 
-    Returns True when the entry carries ``verified`` on return, False when it
-    was **refused** because its status line cannot be read — and a refusal
+    Returns ``{"status": "ok", "reason": None}`` when the entry carries
+    ``verified`` on return, or ``{"status": "refused", "reason": <text>}`` when
+    it was **refused** — because it is ``accepted`` (verifying would erase the
+    override rationale) or because its status line cannot be read. A refusal
     leaves ``body_lines`` exactly as it found them, so the caller has written
-    nothing. Render the reason from :attr:`VerificationEntry.status_defect`.
+    nothing, and ``reason`` is the operator-facing text.
 
-    Idempotent on already-verified entries (no-op, True). Refuses to verify an
-    ``accepted`` entry — accept is a deliberate override and shouldn't be
-    silently upgraded to verified.
+    Idempotent on already-verified entries (no-op, ok).
     """
     if entry.status == _STATUS_VERIFIED:
-        return True
+        return _mutation_ok()
     if entry.status == _STATUS_ACCEPTED:
-        raise ValueError(
-            f"Entry {entry.vrf_id} was accepted via --accept-pending-verification; "
+        return _mutation_refused(
+            f"{entry.vrf_id} was accepted via --accept-pending-verification; "
             "verifying an accepted entry would erase the override rationale. "
-            "If verification is now genuine, edit the file by hand."
+            "Edit the file by hand if the verification is now genuine."
         )
     today = today or date.today()
     if not _set_status_line(entry, _STATUS_VERIFIED):
-        return False
+        return _mutation_refused(
+            describe_status_defect(entry.vrf_id, entry.status_defect)
+        )
     _append_drain_footer(entry, f"**Verified:** {today.isoformat()}")
-    return True
+    return _mutation_ok()
 
 
 def mark_accepted(
@@ -411,32 +492,34 @@ def mark_accepted(
     *,
     rationale: str,
     today: date | None = None,
-) -> bool:
+) -> dict:
     """Flip pending → accepted and append a ``**Accepted:** ... rationale: ...`` line.
 
-    Returns True when the entry needs nothing further, False when it was
-    **refused** because its status line cannot be read — a refusal leaves
-    ``body_lines`` untouched, so the caller has written nothing. Render the
-    reason from :attr:`VerificationEntry.status_defect`.
+    Returns ``{"status": "ok", "reason": None}`` when the entry needs nothing
+    further, or ``{"status": "refused", "reason": <text>}`` when it was
+    **refused** — an empty rationale, or a status line that cannot be read. A
+    refusal leaves ``body_lines`` untouched, so the caller has written nothing.
 
     Idempotent on already-accepted entries (no-op). No-op on already-verified
     entries (a verified entry is drained — no rationale needed).
     """
     if entry.status in {_STATUS_ACCEPTED, _STATUS_VERIFIED}:
-        return True
+        return _mutation_ok()
     if not rationale or not rationale.strip():
-        raise ValueError(
+        return _mutation_refused(
             "Acceptance requires a non-empty rationale — the override "
             "is recorded in the queue file as the work-log entry."
         )
     today = today or date.today()
     if not _set_status_line(entry, _STATUS_ACCEPTED):
-        return False
+        return _mutation_refused(
+            describe_status_defect(entry.vrf_id, entry.status_defect)
+        )
     _append_drain_footer(
         entry,
         f"**Accepted:** {today.isoformat()} — rationale: {rationale.strip()}",
     )
-    return True
+    return _mutation_ok()
 
 
 def count_pending(entries: list[VerificationEntry]) -> int:
@@ -447,30 +530,6 @@ def pending_entries(entries: list[VerificationEntry]) -> list[VerificationEntry]
     return [e for e in entries if e.status == _STATUS_PENDING]
 
 
-def is_operator_verification_required(state_path: Path) -> bool:
-    """Read ``operator_verification_required`` from ``project-state.yaml``.
-
-    Column-0 scanner mirroring the convention shared with
-    ``coverage_required`` (see
-    ``core.read_bool_yaml_key``): only top-level keys count; commented-out
-    and indented occurrences are ignored. Defaults to ``False`` when the file
-    or key is absent — the explicit-opt-in posture for v1.4 enforcement features.
-    """
-    if not state_path.is_file():
-        return False
-    try:
-        content = state_path.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    for raw in content.splitlines():
-        if raw[:1] in (" ", "\t"):
-            continue
-        stripped = raw.split("#", 1)[0].rstrip()
-        if stripped.startswith("operator_verification_required:"):
-            return stripped.split(":", 1)[1].strip().lower() == "true"
-    return False
-
-
 def _load_queue(queue_path: Path) -> tuple[str, list[VerificationEntry]]:
     """Read the queue as utf-8 — the encoding :func:`_write_queue` writes.
 
@@ -478,10 +537,37 @@ def _load_queue(queue_path: Path) -> tuple[str, list[VerificationEntry]]:
     encoding, so a mangled write was mangled back on read. Now that the shared
     writer is utf-8, a bare ``read_text()`` here would make the pair asymmetric
     and transcode a committed product file on the next status mutation.
+
+    An absent queue is empty. One that exists and cannot be read or decoded
+    raises :class:`QueueUnreadable` for the runner above to turn into its error
+    shape; it used to escape as a bare ``OSError``/``UnicodeDecodeError`` and
+    cross the CLI as a traceback, which api-contract.md § Error Model forbids.
     """
-    if not queue_path.is_file():
+    try:
+        text = queue_path.read_text(encoding="utf-8")
+    except (FileNotFoundError, NotADirectoryError):
         return "", []
-    return parse_operator_verification(queue_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:
+        raise QueueUnreadable(_queue_unreadable_reason(queue_path, exc)) from exc
+    return parse_operator_verification(text)
+
+
+def _queue_unreadable_reason(queue_path: Path, exc: Exception, *, blocks: bool = True) -> str:
+    """The one sentence for a queue that could not be read at all.
+
+    Distinct from :func:`_unreadable_queue`, which is a queue that was read and
+    yielded no entries: this one was never read, so nothing can be said about
+    its content and the operator is pointed at the file, not at its headings.
+    ``blocks`` picks the tail as it does there.
+    """
+    lead = f"cannot read {queue_path} ({type(exc).__name__}), so no entry in it could be checked. "
+    if not blocks:
+        return lead + "The file must be UTF-8 and readable. " + _OFF_TAIL
+    return lead + (
+        "This is NOT a clear queue. Fix the file's "
+        "permissions or encoding (it must be UTF-8) and re-run; do not "
+        "recreate or rewrite the queue, it is the operator's record."
+    )
 
 
 def _existing_line_ending(queue_path: Path) -> str:
@@ -539,7 +625,7 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
     """Read-only gate check. Mirrors ``check-cumulative-critic`` semantics.
 
     Returns ``{"required", "pending", "queue_status", "unparsed_lines",
-    "unparsed_status_entries", "queue_path", "first_pending", "message"}`` — the
+    "unparsed_status_entries", "queue_path", "first_pending", "message", "note"}`` — the
     same keys on every branch, so a caller never has to know which one produced
     its result.
 
@@ -559,8 +645,41 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
     state_path = prawduct_dir / "project-state.yaml"
     queue_path = prawduct_dir / "operator-verification.md"
 
-    required = is_operator_verification_required(state_path)
+    def _blocked(queue_status: str, required: bool | None, refusal: str) -> dict:
+        return {
+            "required": required,
+            "pending": 0,
+            "queue_status": queue_status,
+            "unparsed_lines": 0,
+            "unparsed_status_entries": [],
+            "queue_path": str(queue_path),
+            "first_pending": None,
+            "message": "blocking: " + refusal,
+            "note": None,
+        }
+
+    # An unreadable state file is not a gate that is off. Absent file or key
+    # still reads as off (`ok`/False); a file that exists and cannot be read
+    # leaves `required` unknown, so the check refuses with the third outcome
+    # instead of waving a repo through that may have opted in.
+    flag = read_bool_flag(state_path, "operator_verification_required")
+    if flag["status"] == FLAG_UNREADABLE:
+        return _blocked(QUEUE_STATE_UNREADABLE, None, flag["reason"])
+    required = flag["value"]
     if not required:
+        # A repo that turned the gate off is never stopped, but it should not
+        # carry an unreadable queue unseen either: surface it as a note.
+        # Derived from `required` (False here): a note, so neither message
+        # speaks in the blocking voice of the refusal it would be with the gate on.
+        note = None
+        if queue_path.is_file():
+            try:
+                preamble, entries = _load_queue(queue_path)
+            except QueueUnreadable as exc:
+                note = _queue_unreadable_reason(queue_path, exc.__cause__ or exc, blocks=False)
+            else:
+                if not entries:
+                    note = _unreadable_queue(queue_path, preamble, blocks=False)
         return {
             "required": False,
             "pending": 0,
@@ -573,9 +692,13 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
                 "operator-verification gate not required "
                 "(operator_verification_required is false or unset)"
             ),
+            "note": note,
         }
 
-    preamble, entries = _load_queue(queue_path)
+    try:
+        preamble, entries = _load_queue(queue_path)
+    except QueueUnreadable as exc:
+        return _blocked(QUEUE_UNREADABLE, True, str(exc))
 
     # A gate that could not read its input has not found an empty queue. The
     # preamble is where every line this parser failed to recognise ends up, and
@@ -585,29 +708,18 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
     # not-required branch returned above — so only a repo that opted into this
     # gate can be stopped by it, which is where being stopped is correct.
     if not entries:
-        unparsed = unparsed_content_lines(preamble)
-        if unparsed:
+        refusal = _unreadable_queue(queue_path, preamble)
+        if refusal:
             return {
                 "required": True,
                 "pending": 0,
                 "queue_status": QUEUE_UNREADABLE,
-                "unparsed_lines": len(unparsed),
+                "unparsed_lines": len(unparsed_content_lines(preamble)),
                 "unparsed_status_entries": [],
                 "queue_path": str(queue_path),
                 "first_pending": None,
-                "message": (
-                    f"blocking: parsed 0 entries from a queue file that is not "
-                    f"empty — {len(unparsed)} line(s) in {queue_path} were not "
-                    "recognised as entries. An entry is a level-2 heading "
-                    "`## VRF-<id> - <title>` whose first body line is "
-                    "`**Status:** pending|verified|accepted`. This is NOT a "
-                    "clear queue: nothing was read, so nothing could be found "
-                    "pending.\n"
-                    "DO NOT rewrite the queue to satisfy this check. It is an "
-                    "operator-authored record and reformatting it is a silent "
-                    "edit nobody reviewed - report the mismatch to the operator "
-                    "and let them decide."
-                ),
+                "message": "blocking: " + refusal,
+                "note": None,
             }
 
     pending = pending_entries(entries)
@@ -625,6 +737,7 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
                 if queue_path.is_file()
                 else f"operator-verification queue is empty (no queue file at {queue_path})"
             ),
+            "note": None,
         }
     first = pending[0]
     # Entries counted pending only because their status line could not be read.
@@ -676,6 +789,7 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
         "queue_path": str(queue_path),
         "first_pending": first.vrf_id,
         "message": message,
+        "note": None,
     }
 
 
@@ -713,9 +827,16 @@ def run_verify_entry(
             )
         }
 
-    preamble, entries = _load_queue(queue_path)
+    try:
+        preamble, entries = _load_queue(queue_path)
+    except QueueUnreadable as exc:
+        return {"error": "Cannot verify: " + str(exc)}
     target = next((e for e in entries if e.vrf_id == vrf_id), None)
     if target is None:
+        if not entries:
+            refusal = _unreadable_queue(queue_path, preamble)
+            if refusal:
+                return {"error": "Cannot verify: " + refusal}
         known = [e.vrf_id for e in entries]
         return {
             "error": (
@@ -746,11 +867,9 @@ def run_verify_entry(
         # raising, and the whole defect this guards was the previous caller
         # ignoring it: the write below ran regardless, so a status that never
         # moved got a `**Verified:**` footer and an operator got told it worked.
-        if not mark_verified(target, today=today):
-            return {
-                "error": describe_status_defect(vrf_id, target.status_defect)
-                + "\n\nNothing was changed."
-            }
+        outcome = mark_verified(target, today=today)
+        if outcome["status"] != "ok":
+            return {"error": outcome["reason"] + "\n\nNothing was changed."}
         _write_queue(queue_path, preamble, entries)
         actions.append(
             f"Marked {vrf_id} verified in {queue_path.relative_to(product_path)}"
@@ -799,7 +918,13 @@ def run_accept_pending(
         }
 
     queue_path = prawduct_dir / "operator-verification.md"
-    preamble, entries = _load_queue(queue_path)
+    try:
+        preamble, entries = _load_queue(queue_path)
+    except QueueUnreadable as exc:
+        return {
+            "error": "Cannot accept: " + str(exc) + " An override here would "
+            "record a bypass covering no entries."
+        }
     pending = pending_entries(entries)
 
     # The override reaches the same queue by a different door, so it inherits
@@ -809,17 +934,12 @@ def run_accept_pending(
     # check, because this is the path an operator takes when they have DECIDED
     # to bypass the gate, and a bypass that silently covers zero entries is a
     # recorded decision about work that was never seen.
-    if not entries and unparsed_content_lines(preamble):
+    refusal = None if entries else _unreadable_queue(queue_path, preamble)
+    if refusal:
         return {
             "error": (
-                f"Cannot accept: parsed 0 entries from a queue file that is not "
-                f"empty ({queue_path}). Nothing was read, so there is nothing to "
-                "accept and an override here would record a bypass covering no "
-                "entries. Fix the queue's format — an entry is a level-2 heading "
-                "`## VRF-<id> - <title>` whose first body line is "
-                "`**Status:** pending|verified|accepted` — or clear "
-                "`operator_verification_required`. Do NOT reformat the queue on "
-                "the operator's behalf."
+                "Cannot accept: " + refusal + " An override here would "
+                "record a bypass covering no entries."
             )
         }
 
@@ -843,9 +963,10 @@ def run_accept_pending(
         # every entry but one, silently, would record a decision about work
         # nobody read — the same failure the unreadable-queue refusal above
         # exists to prevent, arriving one entry at a time instead of all at once.
-        if not mark_accepted(entry, rationale=rationale, today=today):
+        outcome = mark_accepted(entry, rationale=rationale, today=today)
+        if outcome["status"] != "ok":
             return {
-                "error": describe_status_defect(entry.vrf_id, entry.status_defect)
+                "error": outcome["reason"]
                 + "\n\nNothing was changed and no entries were accepted — this "
                 "override covers every "
                 "pending entry or none, so that a recorded bypass never quietly "

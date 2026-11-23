@@ -101,7 +101,7 @@ def worksheet_path(project_dir: Path) -> "Path | None":
 
 
 def _digest(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +155,7 @@ def build_worksheet(project_dir: Path) -> dict:
         files[rel] = {
             "name": path.name,
             "digest": _digest(text),
-            "bytes": len(text.encode("utf-8")),
+            "bytes": len(text.encode("utf-8", "surrogateescape")),
             "frontmatter": frontmatter,
             "preamble": preamble,
         }
@@ -171,7 +171,7 @@ def build_worksheet(project_dir: Path) -> dict:
                 "line": block.line,
                 "text": block.unit,
                 "body": block.body,
-                "bytes": len((block.raw + "\n" + block.body).encode("utf-8")),
+                "bytes": len((block.raw + "\n" + block.body).encode("utf-8", "surrogateescape")),
                 "cited": cited.get(learnings_files.unit_hash(block.unit), 0),
                 "candidate_areas": candidates,
                 "disposition": None,
@@ -430,7 +430,7 @@ def validate(project_dir: Path, ws: dict) -> Result:
                 f"{bad[0].line} ({bad[0].kind}) — check its preamble"
             )
             continue
-        size = len(content.encode("utf-8"))
+        size = len(content.encode("utf-8", "surrogateescape"))
         limit = record_lint.budget_in_force(name, budgets, base_budgets)
         if size > limit:
             if name == learnings_files.CORE_NAME:
@@ -507,7 +507,7 @@ def apply(project_dir: Path, ws: dict, *, local: bool = False) -> Result:
         for rel, content in res.outputs.items():
             path = project_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
+            path.write_text(content, encoding="utf-8", errors="backslashreplace")
             written.append(rel)
         for rel in res.deletions:
             (project_dir / rel).unlink(missing_ok=True)
@@ -541,5 +541,8 @@ def load(path: Path) -> dict:
 def save(path: Path, ws: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(ws, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp.write_text(
+        json.dumps(ws, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8", errors="backslashreplace",
+    )
     tmp.replace(path)

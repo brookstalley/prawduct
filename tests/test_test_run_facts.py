@@ -24,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
 
-from test_plugin_runtime import _git, _run_in  # noqa: E402
+from test_plugin_runtime import _git, _run_in, as_just_run  # noqa: E402
 
 from lib import evidence, verdict_cache  # noqa: E402
 
@@ -51,6 +51,7 @@ def _test_runs(repo: Path) -> list[dict]:
 def _record_junit(repo: Path, xml: str, *extra: str):
     junit = repo / "report.xml"
     junit.write_text('<?xml version="1.0" encoding="utf-8"?>\n' + xml)
+    as_just_run(junit)
     return _run_in(repo, "test-evidence", "record", "--from-junit", str(junit), *extra)
 
 
@@ -120,6 +121,37 @@ class TestEachRecordAppendsOneFact:
         _record_junit(repo, _GREEN, "--degraded", "a worker died under load")
         (run,) = _test_runs(repo)
         assert run["body"]["degraded"] == "a worker died under load"
+
+
+class TestARunFactNamesItsFailingTests:
+    """The fact carries the same failing ids as the evidence record, so a later
+    review can tell a failure inherited from the base tree from a new one
+    (``evidence.inherited_failures``). Absent, never ``[]``, when none."""
+
+    def test_a_red_run_carries_the_records_failed_tests(self, tmp_path):
+        repo = _repo(tmp_path)
+        _record_junit(repo, _RED)
+        (run,) = _test_runs(repo)
+        assert _record_file(repo)["failed_tests"]  # the control: the record has ids
+        assert run["body"]["failed_tests"] == _record_file(repo)["failed_tests"]
+
+    def test_a_green_run_has_no_failed_tests_key(self, tmp_path):
+        repo = _repo(tmp_path)
+        _record_junit(repo, _GREEN)
+        (run,) = _test_runs(repo)
+        assert run["body"]["failed"] == 0
+        assert "failed_tests" not in run["body"]
+
+    def test_the_fact_keeps_the_records_cap(self, tmp_path):
+        repo = _repo(tmp_path)
+        cases = "".join(
+            f'<testcase classname="c" name="t{i}"><failure/></testcase>' for i in range(105)
+        )
+        _record_junit(repo, f'<testsuites><testsuite name="s" time="1">{cases}</testsuite></testsuites>')
+        (run,) = _test_runs(repo)
+        assert run["body"]["failed"] == 105
+        assert len(run["body"]["failed_tests"]) == 100
+        assert run["body"]["failed_tests"] == _record_file(repo)["failed_tests"]
 
 
 class TestAFailedAppendIsSoft:

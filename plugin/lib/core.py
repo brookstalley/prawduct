@@ -40,6 +40,23 @@ try:
 except FileNotFoundError:
     PRAWDUCT_VERSION = "dev"
 
+#: What marks a development build's version (``3.8.2-dev.1``): the one test both
+#: the contribution buckets and the native-review pairing ask, so they cannot
+#: disagree on which builds are development builds.
+DEV_VERSION_MARKER = "-dev"
+
+
+def is_dev_version(version: "str | None") -> bool:
+    """True when ``version`` names a development build. The bare ``"dev"`` a
+    tree without a ``VERSION`` file reads is no version at all, so it is not."""
+    return isinstance(version, str) and DEV_VERSION_MARKER in version
+
+
+def is_dev_build() -> bool:
+    """True when the running plugin is a development build. Reads
+    :data:`PRAWDUCT_VERSION` at call time, so tests can set it."""
+    return is_dev_version(PRAWDUCT_VERSION)
+
 BLOCK_BEGIN = "<!-- PRAWDUCT:BEGIN -->"
 BLOCK_END = "<!-- PRAWDUCT:END -->"
 
@@ -75,6 +92,54 @@ MANAGED_DIRS: dict[str, dict] = {
     },
 }
 
+class CommittedPath(NamedTuple):
+    """One path a plugin-governed product repo commits (see :data:`V2_COMMITTED_PATHS`)."""
+
+    path: str  # repo-relative; a trailing "/" is a directory
+    always: bool  # True: a scaffolded repo has it. False: it exists only once its feature is used
+    why: str  # where it comes from, so the entry can be checked against its owner
+
+
+# What a plugin-governed (v2) product repo needs COMMITTED, which is what a `.gitignore` rule must
+# never hide. This is NOT ``MANAGED_FILES``: that is the 1.x file-sync registry, which
+# ``migrate_plugin`` DELETES from a consumer, so a v2 repo never has those files. Source of truth:
+# ``documentation/project-structure.md`` ("Product repos (plugin-governed)") plus what
+# ``init_product`` scaffolds; each entry names its owner in ``why``.
+#
+# ``always`` splits what the scaffold creates (reported wherever it is hidden, present or not, so
+# onboarding can say so before ``git init``) from state a feature writes later (reported only once
+# it exists, so a repo that never uses the feature is not told it "needs" files it will not have).
+# The "replace" remedy re-includes every entry regardless, so a rule narrowed today does not hide a
+# file the feature creates tomorrow.
+#
+# Settled explicitly, because each was open to argument:
+#   * ``.prawduct/project-state.yaml`` is committed: it is the shared source of truth, and
+#     nothing in prawduct writes per-clone state into it (per-clone state is the dot-files in
+#     ``GITIGNORE_ENTRIES``).
+#   * ``.prawduct/releases/`` and ``release-headline.md`` are committed, ``always=False``: the
+#     release cut (``change_cut``) writes them where ``consumer_digest:`` is declared, and they ARE
+#     the shipped record; an ignored copy is lost on the next clone.
+#   * ``.claude/rules/`` is committed (the learnings corpus) but ``.claude/`` as a whole is not:
+#     personal skills and ``settings.local.json`` stay the owner's, so the remedy never asks to
+#     un-ignore them.
+V2_COMMITTED_PATHS: tuple[CommittedPath, ...] = (
+    CommittedPath("AGENTS.md", True, "init_product: the governance anchor"),
+    CommittedPath("CLAUDE.md", True, "init_product: imports AGENTS.md"),
+    CommittedPath(".claude/settings.json", True, "init_product: the install reference"),
+    CommittedPath(".claude/rules/", True, "learnings_files: the learnings corpus"),
+    CommittedPath(".prawduct/project-state.yaml", True, "init_product: product state"),
+    CommittedPath(".prawduct/backlog.md", True, "init_product: deferred work"),
+    CommittedPath(".prawduct/changes/", True, "change_fragments.FRAGMENT_DIR_REL: the change record"),
+    CommittedPath(".prawduct/artifacts/", True, "init_product: specs, plans, archive/"),
+    CommittedPath(".prawduct/change-log.md", False, "change_log.CHANGE_LOG_REL_PATH: legacy log, until migrate-change-log"),
+    CommittedPath(".prawduct/change-log-archive/", False, "change_log_archive.ARCHIVE_DIR_REL: shipped history"),
+    CommittedPath(".prawduct/releases/", False, "consumer_digest.RELEASES_DIR_REL: written by the release cut"),
+    CommittedPath(".prawduct/release-headline.md", False, "consumer_digest.HEADLINE_FILE_REL: the next release's headline"),
+    CommittedPath(".prawduct/operator-verification.md", False, "operator_verification: the queue"),
+    CommittedPath(".prawduct/owner-rulings.md", False, "methodology/building.md: the owner's dated rulings"),
+    CommittedPath(".prawduct/runbooks/", False, "docs/runbook-authoring.md: operational procedures"),
+)
+
 # Session files that should be gitignored in product repos
 GITIGNORE_ENTRIES = [
     ".claude/settings.local.json",
@@ -82,9 +147,19 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials/",
     ".prawduct/.critic-partials-archive/",
+    # The paired native review's text (#1130), one file per Critic review. Its
+    # wrapper writes it while the reviewers still run, so it must be a session
+    # path: consolidation exempts these by path, and anything else written
+    # mid-review refuses the review as a changed tree.
+    ".prawduct/.native-reviews/",
     ".prawduct/.delegate-brief.md",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
+    # The PR description `/prawduct:pr` drafts for `check-pr-body` and
+    # `gh pr create --body-file`. The skill removes it after the create; a flow
+    # that stops first leaves it, so it is ignored here and swept at the next
+    # session boundary rather than ridden into the next `git add -A`.
+    ".prawduct/.pr-body.md",
     ".prawduct/.test-evidence.json",
     # The conventional test report and its scope record
     # (`docs/test-report-contract.md`). Run output, regenerated by every run —
@@ -94,9 +169,10 @@ GITIGNORE_ENTRIES = [
     # section it already has, without being told to add anything.
     ".prawduct/.test-report.xml",
     ".prawduct/.test-report.xml.scope.json",
-    ".prawduct/.pr-reviews/",
     ".prawduct/.critic-review-dispatch.json",
-    ".prawduct/.pr-review-dispatch.json",
+    # What the Stop hook has parsed of each session's host transcript
+    # (`host.session_tool_activity`), so a Stop reads only what was appended.
+    ".prawduct/.session-activity.json",
     ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",
@@ -134,9 +210,24 @@ def log(msg: str) -> None:
 
 
 def atomic_write_text(
-    path: Path, text: str, *, encoding: str = "utf-8", newline: str | None = None
+    path: Path,
+    text: str,
+    *,
+    encoding: str = "utf-8",
+    errors: str = "backslashreplace",
+    newline: str | None = None,
 ) -> None:
     """Write ``text`` to ``path`` atomically: tmp sibling + ``os.replace``.
+
+    ``errors`` defaults to ``backslashreplace``, the plugin's policy for every
+    text write (``tests/test_text_codec_policy.py``). Subprocess output decodes
+    with ``surrogateescape``, so a byte of a legacy encoding in a pathname or a
+    commit subject arrives here as a lone surrogate, which a strict encoder
+    raises on. ``backslashreplace`` writes it as ``\\udce9`` instead, so the
+    file stays valid UTF-8 and every strict reader of it keeps working. A file
+    that must mirror git's bytes exactly (``.session-git-baseline``, compared
+    line by line with fresh ``git status`` output) passes ``surrogateescape``
+    and is read back with it.
 
     ``encoding`` defaults to **utf-8**. It previously defaulted to ``None``,
     i.e. ``locale.getpreferredencoding(False)``, which made the round trip
@@ -148,8 +239,8 @@ def atomic_write_text(
     subprocess rather than asserting in-process.
 
     **The writer alone does not settle the round trip — each reader must ask
-    for utf-8 too.** There are 11 call sites (four of them in the extensionless
-    ``bin/prawduct-hook``, which a ``*.py``-filtered grep does not see), and
+    for utf-8 too.** Its call sites include the extensionless
+    ``bin/prawduct-hook``, which a ``*.py``-filtered grep does not see, and
     their readers were not uniformly utf-8: ``operator_verification`` wrote
     through here and read back with a bare ``read_text()``. That pair was
     self-inverse while both used the locale encoding and became asymmetric the
@@ -176,7 +267,7 @@ def atomic_write_text(
     the next write overwrites it.
     """
     tmp = path.with_name(path.name + ".tmp")
-    with tmp.open("w", encoding=encoding, newline=newline) as handle:
+    with tmp.open("w", encoding=encoding, errors=errors, newline=newline) as handle:
         handle.write(text)
     os.replace(tmp, path)
 
@@ -480,10 +571,9 @@ def read_preference_row(project_dir: Path, label: str, *, lower: bool = True) ->
 def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """Value of a top-level (column-0) ``key: value`` scalar, or None.
 
-    Mirrors the column-0 idiom used by :func:`read_bool_yaml_key` and
-    bin/prawduct-hook's ``_read_bool_yaml_key`` — no PyYAML dependency, fail-soft to None on a
-    missing/unreadable file or absent key. Surrounding quotes and inline ``#``
-    comments are stripped; an empty value, or the YAML null literal (``null`` /
+    Mirrors the column-0 idiom used by :func:`read_bool_flag` — no PyYAML
+    dependency, fail-soft to None on a missing/unreadable file or absent key.
+    Surrounding quotes and inline ``#`` comments are stripped; an empty value, or the YAML null literal (``null`` /
     ``~``, case-insensitive), reads as None — so ``active_build_plan: null`` means
     "unset", the same opt-out :func:`lib.plan_index.parse_build_plan_frontmatter_scope`
     already honors for ``scope:`` (VWS-7N3K). Without this, a literal ``null``
@@ -755,39 +845,52 @@ def review_round_budget(prawduct_dir: Path) -> "int | None":
 #: comparison something to iterate, so the next flag whose template value and
 #: code default diverge fails a test instead of shipping.
 #:
-#: Opt-in is the whole contract: :func:`read_bool_yaml_key` fails soft to False
-#: on a missing file, an absent key, or a malformed line, so **False is the code
-#: default for every member** and the template must say so too.
+#: Opt-in is the whole contract: :func:`read_bool_flag` reads False for a missing
+#: file, an absent key, or a malformed line, so **False is the code default for
+#: every member** and the template must say so too. A file that exists and
+#: cannot be read is not "absent" and does not default: it is reported.
 OPT_IN_FLAGS: tuple[str, ...] = (
     "coverage_required",
     "operator_verification_required",
 )
 
 
-def read_bool_yaml_key(path: Path, key: str) -> bool:
-    """True if ``path`` has a top-level (column-0) ``key: true`` scalar.
+#: States of a boolean opt-in flag read, as returned by :func:`read_bool_flag`.
+FLAG_OK = "ok"
+FLAG_UNREADABLE = "unreadable"
 
-    The boolean sibling of ``read_str_yaml_key``, sharing the same no-PyYAML
-    column-0 idiom but with boolean semantics: the value is lowercased and
-    compared to ``"true"`` (quotes are *not* stripped — a quoted ``"true"``
-    reads as False). Fail-soft to False on a missing/unreadable file, an absent
-    key, or a malformed/indented line — opt-in by design.
 
-    Reads the repo's opt-in flags — ``coverage_required`` today. It once also
-    read ``views_enabled``, which was retired along with derived views; the
-    function is general and outlived its second caller. bin/prawduct-hook's
-    ``_read_bool_yaml_key`` stays an inline mirror (import-light hot path),
-    pinned by a parity test.
+def read_bool_flag(path: Path, key: str) -> dict:
+    """The one reader of a top-level (column-0) boolean opt-in ``key``.
+
+    Returns ``{"status": FLAG_OK | FLAG_UNREADABLE, "value": bool, "reason":
+    str | None}``. ``value`` is True only for a readable ``key: true``; the
+    value is lowercased and compared to ``"true"`` (quotes are *not* stripped,
+    so a quoted ``"true"`` reads as False).
+
+    **Absent is not unreadable, and the two take opposite answers.** A missing
+    file, a path whose parent is not a directory, an absent key or an indented
+    line is a repo that never opted in: ``ok`` with ``value`` False. A file that
+    EXISTS and cannot be read (permission denied, a directory in its place,
+    bytes that are not UTF-8) is ``unreadable``: an operator who turned a gate on
+    cannot be told it is off because the file holding the answer went bad. The
+    caller turns that status into its own refusal (api-contract.md § Error
+    Model) rather than a verdict.
     """
-    if not path.exists():
-        return False
     try:
         content = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        # Same hole as `read_str_yaml_key`: undecodable is unreadable, and this
-        # promises to fail soft on unreadable. Fixed in both, because the two
-        # are documented as siblings sharing one idiom.
-        return False
+    except (FileNotFoundError, NotADirectoryError):
+        return {"status": FLAG_OK, "value": False, "reason": None}
+    except (OSError, UnicodeDecodeError) as exc:
+        return {
+            "status": FLAG_UNREADABLE,
+            "value": False,
+            "reason": (
+                f"cannot read {path} ({type(exc).__name__}), so whether `{key}` "
+                "is on is unknown. An unreadable state file is not a gate that "
+                "is off: fix the file's permissions or encoding and re-run."
+            ),
+        }
     needle = f"{key}:"
     for raw in content.splitlines():
         if raw[:1] in (" ", "\t"):
@@ -796,8 +899,8 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
         if not line.startswith(needle):
             continue
         value = line.split(":", 1)[1].strip().lower()
-        return value == "true"
-    return False
+        return {"status": FLAG_OK, "value": value == "true", "reason": None}
+    return {"status": FLAG_OK, "value": False, "reason": None}
 
 
 def pointer_plan_path(prawduct_dir: Path) -> Path | None:
@@ -921,30 +1024,208 @@ def write_template(src: Path, dst: Path, subs: dict[str, str], *, overwrite: boo
             return False  # Already up to date
 
     dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(content)
+    dst.write_text(content, encoding="utf-8", errors="backslashreplace")
     return True
 
 
-def _contract_diff(existing_lines: set[str]) -> dict:
-    """Pure gitignore-contract diff for a set of existing ``.gitignore`` lines.
+#: Appended to a directory entry (``.prawduct/.critic-partials/``) to name a file
+#: inside it. A directory entry is satisfied when the files INSIDE it are ignored,
+#: by its own rule or by a broader one, so that is the path git is asked about.
+_DIR_ENTRY_PROBE = "prawduct-probe"
+
+
+def _entry_probe_path(entry: str) -> str:
+    return entry + _DIR_ENTRY_PROBE if entry.endswith("/") else entry
+
+
+#: The file git is asked about for a COMMITTED directory entry. ``.md`` on purpose: what lives in
+#: those directories is mostly Markdown, so a ``*.md`` rule must show up as hiding them.
+_COMMITTED_DIR_PROBE = "prawduct-probe.md"
+
+
+def _committed_probe_path(path: str) -> str:
+    return path + _COMMITTED_DIR_PROBE if path.endswith("/") else path
+
+
+def _committed_in_scope(target: Path) -> list[str]:
+    """The v2 committed paths whose being ignored is worth reporting for ``target``.
+
+    :data:`V2_COMMITTED_PATHS` entries that a scaffolded repo always has, plus the on-demand ones
+    that exist on disk here; plus the retired entries not already inside a committed directory
+    (the build plan is covered by ``.prawduct/artifacts/``, and naming both says one thing twice).
+    """
+    out = [
+        c.path for c in V2_COMMITTED_PATHS if c.always or (Path(target) / c.path).exists()
+    ]
+    dirs = [c.path for c in V2_COMMITTED_PATHS if c.path.endswith("/")]
+    out += [r for r in RETIRED_GITIGNORE_ENTRIES if not any(r.startswith(d) for d in dirs)]
+    return out
+
+
+def _shared_ignore_matches(
+    target: Path, content: str, paths: list[str]
+) -> dict[str, tuple[str, int, str]] | None:
+    """Which of ``paths`` a SHARED ``.gitignore`` rule ignores, asked of git.
+
+    Returns ``{path: (source, line, pattern)}`` for the paths ignored by a
+    non-negated rule in a ``.gitignore`` file, or ``None`` when git could not be
+    asked at all (the caller then falls back to literal lines and says so).
+
+    **Why git is asked rather than the file parsed.** gitignore semantics (parent
+    directory exclusion, ``*``/``**``, anchoring, negation order, nested files) are
+    exactly what a re-implementation gets subtly wrong, and the failure is the one
+    this function exists to prevent: a confident wrong answer about what git hides.
+
+    **Two ways to ask.** In a work tree, of the repo itself (so a nested
+    ``.gitignore`` counts). Where there is no work tree (the ``onboard`` case
+    before the repo exists), in a scratch repo holding only the ``.gitignore``
+    text; that evaluates the same rules without a repo to ask. ``None`` only when
+    git is missing or fails both ways.
+
+    **Only a ``.gitignore`` inside the work tree counts, decided by PATH.** The
+    contract is about what travels with the repo. A rule from ``.git/info/exclude``
+    or a global excludes file is this machine's, not another clone's, so it neither
+    satisfies a session entry nor makes a committed file a hazard. A global file is
+    commonly named ``.gitignore`` too (``core.excludesFile=~/.gitignore``), so the
+    name alone proves nothing: see :func:`_is_tree_gitignore`.
+    """
+    from . import gitstate  # noqa: PLC0415 — lazy: keeps core's import surface unchanged
+
+    tree = target
+    rules = gitstate.git_ignore_rules(target, paths)
+    if rules is None:
+        import subprocess  # noqa: PLC0415
+        import tempfile  # noqa: PLC0415
+
+        # A scratch repo must not inherit GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE
+        # (set while a git hook runs): creating it would then act on THAT repo.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        with tempfile.TemporaryDirectory(prefix="prawduct-gitignore-") as scratch:
+            try:
+                subprocess.run(
+                    ["git", "init", "-q", "."],
+                    cwd=scratch, env=env, check=True, capture_output=True, timeout=10,
+                )
+                (Path(scratch) / ".gitignore").write_text(
+                    content, encoding="utf-8", errors="backslashreplace"
+                )
+            except (OSError, subprocess.SubprocessError):
+                return None
+            rules = gitstate.git_ignore_rules(Path(scratch), paths, env=env)
+            tree = Path(scratch)
+        if rules is None:
+            return None
+    return {
+        path: rule
+        for path, rule in rules.items()
+        if _is_tree_gitignore(rule[0], tree) and not rule[2].startswith("!")
+    }
+
+
+def _is_tree_gitignore(source: str, tree: Path) -> bool:
+    """Whether a rule's ``source`` (as ``git check-ignore -v`` prints it) is a ``.gitignore``
+    inside the work tree ``tree``, the one whose ``.gitignore`` was given.
+
+    git prints a rule from inside the work tree as a path relative to its root
+    (``.gitignore``, ``sub/.gitignore``) and every rule from elsewhere as an absolute
+    path: ``core.excludesFile`` (expanded), ``$XDG_CONFIG_HOME/git/ignore``.
+    ``.git/info/exclude`` is relative but is not named ``.gitignore``. So the file must
+    be named ``.gitignore``, and be relative, or absolute and resolve to under ``tree``.
+    """
+    path = Path(source)
+    if path.name != ".gitignore":
+        return False
+    if not path.is_absolute():
+        return True
+    try:
+        path.resolve().relative_to(Path(tree).resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _contract_diff(target: Path, content: str) -> dict:
+    """Gitignore-contract diff for the ``.gitignore`` text ``content`` of ``target``.
 
     The single source of truth for what "satisfies the session-file contract"
     means, shared by :func:`update_gitignore` (which reads it to decide what to
-    write) and the ``gitignore`` advisory probe (which reads
-    :func:`gitignore_contract_drift` to decide whether to nudge) — so the nudge
-    can never disagree with the fix. Returns
-    ``{"missing", "incorrectly_ignored"}``: session entries that SHOULD be ignored
-    but aren't, and managed/retired entries that ARE ignored but shouldn't be.
-    Both empty ⇔ :func:`update_gitignore` makes no change (its ``modified``
-    condition is exactly ``missing or incorrectly_ignored``). The two entry sets
-    are disjoint (session files to ignore vs. managed files to commit), so the
-    order in which the fixer removes then adds never affects either set.
+    write), the ``gitignore`` advisory probe (via :func:`gitignore_contract_drift`),
+    and ``init_product``'s onboarding — so the nudge can never disagree with the fix.
+
+    **What git would ignore, not which lines are present (#762).** Comparing
+    literal lines fails both ways against a wholesale rule such as ``.prawduct/``:
+    every session entry reads "missing" although all are ignored, and files that
+    must be committed are ignored and go unnoticed. So the comparison asks git
+    (:func:`_shared_ignore_matches`). Returns:
+
+    * ``missing`` — session entries that SHOULD be ignored and are not: not a
+      literal line, and not ignored by any shared rule.
+    * ``incorrectly_ignored`` — managed/retired paths with a LITERAL line in the
+      file. The fixer removes exactly these lines, and only these: a line is
+      removed only when it names the path itself. This is ``MANAGED_FILES``'s role
+      here: the 1.x files a literal line must not hide from a repo mid-migration.
+    * ``ignored_by_rule`` — paths a v2 repo commits (:data:`V2_COMMITTED_PATHS`,
+      plus the retired build plan) ignored by a rule the fixer will NOT touch
+      (``{"path", "source", "line", "pattern"}``): a wholesale ``.prawduct/``,
+      ``.claude/``, a glob, or a literal line for a file the fixer does not own.
+      Those are the owner's own rules, so this is reported, never repaired. Git names
+      only the LAST matching rule per path, so a path a literal line also hides can
+      surface here one run later, after the literal is stripped. ``path`` is the
+      entry as the constant spells it (a directory keeps its trailing ``/``).
+    * ``basis`` — ``"git"``, or ``"literal"`` when git could not be asked at all.
+      Then ``missing`` and ``incorrectly_ignored`` are the old literal comparison
+      and ``ignored_by_rule`` is empty: a wholesale rule is invisible. That is the
+      boundary, and callers say so rather than present it as a clean bill.
+
+    ``missing`` and ``incorrectly_ignored`` are disjoint (session files vs.
+    managed files), and ``update_gitignore``'s ``modified`` is exactly
+    ``missing or incorrectly_ignored``: ``ignored_by_rule`` never makes it write.
+    A literally present entry is never ``missing`` even if a later negation
+    un-ignores it, so a repaired file stays repaired (the fixer would otherwise
+    append the same line on every run).
     """
-    missing = [e for e in GITIGNORE_ENTRIES if e not in existing_lines]
-    incorrectly_ignored = sorted(
+    existing_lines = set(content.splitlines())
+    not_literal = [e for e in GITIGNORE_ENTRIES if e not in existing_lines]
+    literal_managed = sorted(
         e for e in (*MANAGED_FILES, *RETIRED_GITIGNORE_ENTRIES) if e in existing_lines
     )
-    return {"missing": missing, "incorrectly_ignored": incorrectly_ignored}
+    must_commit = _committed_in_scope(target)
+    probes = [_entry_probe_path(e) for e in not_literal]
+    commit_probes = {path: _committed_probe_path(path) for path in must_commit}
+    matches = _shared_ignore_matches(target, content, [*probes, *commit_probes.values()])
+    if matches is None:
+        return {
+            "missing": not_literal,
+            "incorrectly_ignored": literal_managed,
+            "ignored_by_rule": [],
+            "basis": "literal",
+        }
+    missing = [e for e in not_literal if _entry_probe_path(e) not in matches]
+    removable = set(literal_managed)
+    ignored_by_rule = [
+        {
+            "path": path,
+            "source": matches[probe][0],
+            "line": matches[probe][1],
+            "pattern": matches[probe][2],
+        }
+        for path, probe in commit_probes.items()
+        if probe in matches and matches[probe][2] not in removable
+    ]
+    return {
+        "missing": missing,
+        "incorrectly_ignored": literal_managed,
+        "ignored_by_rule": ignored_by_rule,
+        "basis": "git",
+    }
+
+
+def _read_gitignore(target: Path) -> str:
+    """``target/.gitignore`` text; a missing or unreadable file reads as empty."""
+    try:
+        return (target / ".gitignore").read_text()
+    except OSError:
+        return ""
 
 
 def gitignore_contract_drift(target: Path) -> dict:
@@ -954,26 +1235,135 @@ def gitignore_contract_drift(target: Path) -> dict:
     every session entry then counts as ``missing``) and returns the
     :func:`_contract_diff` result. Never mutates and never raises on a missing
     file — the ``gitignore`` advisory probe calls this on every session start, so
-    it must be cheap and side-effect-free.
+    it must be cheap (one git subprocess) and side-effect-free.
     """
-    gitignore = target / ".gitignore"
-    try:
-        existing_lines = set(gitignore.read_text().splitlines())
-    except OSError:
-        existing_lines = set()
-    return _contract_diff(existing_lines)
+    return _contract_diff(target, _read_gitignore(target))
+
+
+def gitignore_covers(target: Path, rel_path: str) -> bool:
+    """True when ``target``'s ``.gitignore`` already ignores ``rel_path``.
+
+    A literal line, or any shared rule git says matches. For writers that add one
+    entry (the version marker) and must not append a line a broader rule already
+    makes redundant. When git cannot be asked, only the literal line counts.
+    """
+    content = _read_gitignore(target)
+    if rel_path in content.splitlines():
+        return True
+    matches = _shared_ignore_matches(target, content, [rel_path])
+    return matches is not None and rel_path in matches
+
+
+def _directory_rule(pattern: str) -> str | None:
+    """The directory a wholesale rule excludes (``.prawduct/``, ``/.prawduct``,
+    ``.prawduct/*``, ``.prawduct/**``), else ``None`` for any other shape."""
+    base = pattern
+    for suffix in ("/**", "/*", "/"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    base = base.lstrip("/")
+    if not base or any(c in base for c in "*?[]\\!"):
+        return None
+    return base
+
+
+#: How every deletion option ends. Deleting a rule can expose session files: where a
+#: broader rule (a wholesale ``.prawduct/``, ``*.json``) already ignored a session entry,
+#: :func:`update_gitignore` adds no line of its own for it, so the rule was the only thing
+#: hiding it. Running the fixer after the deletion writes those lines.
+_THEN_RECONCILE = (
+    "then run `prawduct-hook update-gitignore`, so any session file that rule was hiding "
+    "gets a line of its own"
+)
+
+
+def describe_ignored_by_rule(entries: list[dict]) -> list[str]:
+    """One plain sentence per offending rule: what it hides, and the exact lines.
+
+    The fixer never edits the owner's rule (#762), so this is the repair, and the ONE owner
+    of the lines that narrow a rule: callers point here (``update-gitignore --dry-run``
+    prints it) rather than spelling their own subset.
+
+    The option that leads is the one safe on its own. A wholesale directory rule is
+    replaced by ``dir/*`` plus one ``!`` re-include for every top-level entry
+    :data:`V2_COMMITTED_PATHS` holds under that directory: all of them, hidden today or not,
+    so the narrowed rule does not hide a file a feature creates later (git will not
+    re-include a file whose parent directory is excluded, hence ``!dir/artifacts/`` and not
+    a file inside it), while session files and anything else under it (personal skills
+    under ``.claude/``) stay ignored. A bare ``dir/`` rule cannot be negated, which is why
+    it is replaced, not appended to. Any other rule keeps standing and takes ``!`` lines
+    after it, one per path it hides; a directory takes two, ``!dir/`` for a rule that
+    excludes the directory itself and ``!dir/**`` for its contents. Deleting the rule is the
+    second option, and it is not safe on its own: in the repo this advice exists for, the
+    rule is why no session entry was ever written (see :data:`_THEN_RECONCILE`), so the
+    deletion names the fixer run that restores them. A rule that excludes a committed
+    directory itself can only be deleted.
+    """
+    groups: dict[tuple[str, int, str], list[str]] = {}
+    for e in entries:
+        groups.setdefault((e["source"], e["line"], e["pattern"]), []).append(e["path"])
+    out: list[str] = []
+    for (source, line, pattern), paths in groups.items():
+        many = len(paths) > 1
+        sentence = (
+            f"{', '.join(f'`{p}`' for p in paths)} {'are' if many else 'is'} ignored by "
+            f"`{pattern}` ({source}:{line}), but prawduct needs {'them' if many else 'it'} "
+            "committed. Prawduct will not edit your rule. "
+        )
+        directory = _directory_rule(pattern)
+        if directory and any(p.rstrip("/") == directory for p in paths):
+            # The rule IS a committed directory: `!` cannot re-include it, so only deleting works.
+            out.append(sentence + f"Delete that line, {_THEN_RECONCILE}.")
+            continue
+        if directory and all(p.startswith(directory + "/") for p in paths):
+            reincludes: list[str] = []
+            for c in V2_COMMITTED_PATHS:
+                if not c.path.startswith(directory + "/"):
+                    continue
+                head, sep, _ = c.path[len(directory) + 1 :].partition("/")
+                line_ = f"!{directory}/{head}{sep}"
+                if line_ not in reincludes:
+                    reincludes.append(line_)
+            for p in paths:  # a retired path, or anything not in the constant
+                head, sep, _ = p[len(directory) + 1 :].partition("/")
+                line_ = f"!{directory}/{head}{sep}"
+                if line_ not in reincludes:
+                    reincludes.append(line_)
+            sentence += "Replace it with these lines: " + ", ".join(
+                f"`{x}`" for x in [f"{directory}/*", *reincludes]
+            )
+        else:
+            # A directory entry gets `!dir/` as well as `!dir/**`: a rule such as `artifacts/`
+            # excludes the directory ITSELF, and git never re-includes a file whose parent
+            # directory is excluded, so `!dir/**` alone leaves it hidden.
+            lines = [
+                x for p in paths
+                for x in ([f"!{p}", f"!{p}**"] if p.endswith("/") else [f"!{p}"])
+            ]
+            sentence += "Add these lines after it: " + ", ".join(f"`{x}`" for x in lines)
+        out.append(sentence + f". Or delete it, {_THEN_RECONCILE}.")
+    return out
 
 
 def update_gitignore(target: Path, dry_run: bool = False) -> dict:
     """Add prawduct entries to .gitignore and remove incorrect ones.
 
-    Managed files (MANAGED_FILES) should be committed, not gitignored.
+    Managed files (MANAGED_FILES, the 1.x file-sync set) are un-ignored by literal line, and
+    what a v2 repo commits (V2_COMMITTED_PATHS) is reported when a rule hides it.
     Session files (GITIGNORE_ENTRIES) should be gitignored.
     Returns dict with 'modified' bool, 'unignored' list of paths that were
     removed from .gitignore (caller should advise user to git-add these), and
     'missing' list of session entries that were added.
 
-    ``dry_run=True`` computes the same three answers and skips the write, so a
+    Two more keys report what this function will NOT repair (#762):
+    ``ignored_by_rule`` lists committed-by-contract files hidden by a rule of the owner's own
+    (a wholesale ``.prawduct/``; see :func:`describe_ignored_by_rule` for the exact
+    lines to offer), and ``basis`` is ``"git"`` or ``"literal"`` (git could not be
+    asked, so a wholesale rule was invisible). A user's rule is never rewritten or
+    deleted here: ``ignored_by_rule`` does not make ``modified`` true.
+
+    ``dry_run=True`` computes the same answers and skips the write, so a
     caller can PREVIEW the reconcile. The whole point is that the preview and
     the repair share one body: a separate "what would change" implementation is
     free to drift from the fixer, and a preview that disagrees with the fix is
@@ -981,12 +1371,7 @@ def update_gitignore(target: Path, dry_run: bool = False) -> dict:
     """
     gitignore = target / ".gitignore"
 
-    if gitignore.is_file():
-        content = gitignore.read_text()
-        existing_lines = set(content.splitlines())
-    else:
-        content = ""
-        existing_lines = set()
+    content = gitignore.read_text() if gitignore.is_file() else ""
 
     modified = False
     unignored: list[str] = []
@@ -995,7 +1380,7 @@ def update_gitignore(target: Path, dry_run: bool = False) -> dict:
     # managed/retired entries wrongly ignored, and session entries still missing.
     # The sets are disjoint, so computing both up front (before the removal
     # mutates the file) yields the same result as the sequential passes below.
-    diff = _contract_diff(existing_lines)
+    diff = _contract_diff(target, content)
     incorrectly_ignored = set(diff["incorrectly_ignored"])
     missing = diff["missing"]
 
@@ -1023,6 +1408,12 @@ def update_gitignore(target: Path, dry_run: bool = False) -> dict:
         modified = True
 
     if modified and not dry_run:
-        gitignore.write_text(content)
+        gitignore.write_text(content, encoding="utf-8", errors="backslashreplace")
 
-    return {"modified": modified, "unignored": unignored, "missing": list(missing)}
+    return {
+        "modified": modified,
+        "unignored": unignored,
+        "missing": list(missing),
+        "ignored_by_rule": diff["ignored_by_rule"],
+        "basis": diff["basis"],
+    }

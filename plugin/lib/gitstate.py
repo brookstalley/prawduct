@@ -89,7 +89,8 @@ def _git_toplevel(cwd: Path) -> Path | None:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(cwd),
             timeout=10,
         )
@@ -117,7 +118,8 @@ def git_common_dir(cwd: Path) -> Path | None:
         result = subprocess.run(
             ["git", "rev-parse", "--git-common-dir"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(cwd),
             timeout=10,
         )
@@ -392,7 +394,8 @@ def git_status_output(project_dir: Path) -> str | None:
         result = subprocess.run(
             ["git", "status", "--porcelain"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -464,7 +467,8 @@ def current_branch(project_dir: Path) -> str | None:
         result = subprocess.run(
             ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -487,7 +491,7 @@ def _run_git_text(project_dir: Path, *args: str) -> tuple[int, str]:
         result = subprocess.run(
             ["git", *args],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
@@ -567,7 +571,7 @@ def record_is_gone(record: dict) -> bool | None:
 
 def held_branches(records: list[dict]) -> set[str]:
     """Branches checked out in a worktree somebody could be working in — the one
-    definition of "held" that the stranded-branch scan and git hygiene share.
+    definition of "held" that the stranded-work scans and git hygiene share.
 
     A worktree whose directory is gone does not hold its branch: git still lists
     it, but nobody can be working there, and counting it would hide exactly the
@@ -593,7 +597,8 @@ def local_branches(project_dir: Path) -> set[str] | None:
         result = subprocess.run(
             ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads/"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -653,7 +658,8 @@ def _git_text(project_dir: Path, *args: str) -> tuple[int, str, str]:
         result = subprocess.run(
             ["git", *args],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -951,7 +957,7 @@ def git_has_session_changes(project_dir: Path, status_output: str | None = None)
         return ""
 
     try:
-        baseline = baseline_path.read_text()
+        baseline = baseline_path.read_text(encoding="utf-8", errors="surrogateescape")
     except (UnicodeDecodeError, OSError):
         return ""  # Corrupted baseline — treat as no baseline (safe: permits session end)
     # No whole-output .strip(): it eats the FIRST line's leading status space
@@ -969,11 +975,10 @@ def git_has_session_changes(project_dir: Path, status_output: str | None = None)
     return ""
 
 
-# _session_changes_are_doc_only moved to lib/gates.py as
-# session_changes_all_non_judgeable (kernel-v3 chunk 04): the "doc-only"
-# question is now answered by THE judgeability predicate
-# (coverage_algebra.is_judgeable_path), and coverage_algebra sits above this
-# module in the import DAG.
+# Whether a session's changes are "doc-only" is not answered here: the Stop
+# hook reads `gates.session_work_span(...)["judgeable"]`, which applies the one
+# judgeability predicate (`coverage_algebra.is_judgeable_path`), and
+# coverage_algebra sits above this module in the import DAG.
 
 
 def _is_framework_tooling(f: Path, project_dir: Path) -> bool:
@@ -1106,7 +1111,8 @@ def _git_head_sha(project_dir: Path) -> str:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1157,7 +1163,8 @@ def git_path_is_ignored(project_dir: Path, rel_path: str) -> bool:
         result = subprocess.run(
             ["git", "check-ignore", "-q", "--", rel_path],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1187,7 +1194,8 @@ def git_paths_ignored(project_dir: Path, rel_paths: "list[str]") -> "set[str]":
             ["git", "check-ignore", "--stdin", "-z"],
             input="\0".join(rel_paths),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1196,6 +1204,66 @@ def git_paths_ignored(project_dir: Path, rel_paths: "list[str]") -> "set[str]":
     if result.returncode != 0:
         return set()
     return {p for p in result.stdout.split("\0") if p}
+
+
+def git_ignore_rules(
+    project_dir: Path,
+    rel_paths: "list[str]",
+    env: "dict[str, str] | None" = None,
+) -> "dict[str, tuple[str, int, str]] | None":
+    """The ignore rule git settles on for each of ``rel_paths``, or ``None`` if git
+    could not be asked.
+
+    ``git check-ignore --no-index -v --stdin -z`` in ONE call. ``--no-index`` asks
+    "would a rule ignore this path" without regard to whether it is already
+    tracked, which is the question the ``.gitignore`` contract poses (a managed
+    file that is committed today is still hidden from the next ``git add -A`` of a
+    fresh clone). ``-v`` names the deciding rule, so a caller can tell a shared
+    ``.gitignore`` from a per-clone exclude.
+
+    Returns ``{path: (source, line, pattern)}`` for every path some pattern
+    matched. A path with no matching pattern is absent. A NEGATED match (a
+    ``!re-include``) is present with the ``!`` still on ``pattern``: it is the
+    deciding rule and the path is NOT ignored, so the caller must read the prefix.
+
+    ``None`` is a different answer from ``{}``: git missing, timed out, or not a
+    work tree (exit 128) means "unknown", not "nothing is ignored", and a caller
+    that collapsed them would turn a failed probe into a confident claim.
+
+    ``env`` replaces the child's environment when given (a caller aiming at a
+    scratch repo must shed an inherited ``GIT_DIR``, or git answers about the
+    wrong repository).
+    """
+    if not rel_paths:
+        return {}
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "-v", "--stdin", "-z"],
+            input="\0".join(rel_paths),
+            capture_output=True,
+            encoding="utf-8",
+            errors="surrogateescape",
+            cwd=str(project_dir),
+            timeout=10,
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode not in (0, 1):
+        return None
+    fields = result.stdout.split("\0")
+    if fields and fields[-1] == "":
+        fields.pop()
+    if len(fields) % 4 != 0:
+        return None
+    rules: dict[str, tuple[str, int, str]] = {}
+    for i in range(0, len(fields), 4):
+        source, line, pattern, path = fields[i : i + 4]
+        try:
+            rules[path] = (source, int(line), pattern)
+        except ValueError:
+            return None
+    return rules
 
 
 def git_path_is_tracked(project_dir: Path, rel_path: str) -> bool | None:
@@ -1217,7 +1285,8 @@ def git_path_is_tracked(project_dir: Path, rel_path: str) -> bool | None:
         result = subprocess.run(
             ["git", "ls-files", "-z", "--", f":(literal){rel_path}"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1253,7 +1322,8 @@ def git_merge_attribute(project_dir: Path, rel_path: str) -> str | None:
         result = subprocess.run(
             ["git", "check-attr", "-z", "merge", "--", rel_path],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             cwd=str(project_dir),
             timeout=10,
         )
@@ -1283,7 +1353,9 @@ def _get_session_changed_files(project_dir: Path, status_output: str | None = No
     if baseline_path.is_file():
         try:
             # Unstripped on both sides — see git_has_session_changes.
-            baseline_lines = set(baseline_path.read_text().splitlines())
+            baseline_lines = set(
+                baseline_path.read_text(encoding="utf-8", errors="surrogateescape").splitlines()
+            )
         except (UnicodeDecodeError, OSError):
             pass  # Corrupted baseline — same stance as the sibling readers above
     changed = []

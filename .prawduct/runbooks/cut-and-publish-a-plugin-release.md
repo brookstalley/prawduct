@@ -12,6 +12,10 @@ last_verified: 2026-09-13   # steps 0-22 executed end to end at the v3.5.0 cut, 
                             # on 2026-10-26 for the release-file model (#733): step 10's rename and
                             # step 22's open section are gone. They are unexecuted until the v3.8.0
                             # cut.
+                            # Phase 0's record refusals and step 0a were REWRITTEN on 2026-11-15:
+                            # releases read fragments only and refuse a pending legacy entry
+                            # (#1125), and collateral is declared before the cut (#1024). Both are
+                            # unexecuted until the next cut.
 verified_by: brookstalley
 ---
 
@@ -38,10 +42,9 @@ not grading a plan:
 **Read the scope list, not the exit code.** Two outcomes matter — plus one that gives you no
 scope list to read at all:
 
-- **A record refusal on stderr, exit 1, and NO scope list** — `bad-change-fragment:`,
-  `scope-in-both-shapes:`, `bad-change-log-tag:` or `unclassifiable-pending-entry:`. The gate
-  refused the pending record itself before it could be trusted, so there is nothing to read here
-  yet. **Fix what it names and re-run**; the
+- **A record refusal on stderr, exit 1, and NO scope list** — `bad-change-fragment:` or
+  `legacy-pending-entry:`. The gate refused the pending record itself before it could be trusted,
+  so there is nothing to read here yet. **Fix what it names and re-run**; the
   reason-code table in Phase 0 step 0 says how. Do not read this as either outcome below — the
   absence of a scope list is the tell.
 
@@ -135,16 +138,17 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    ./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
    ```
 
-   **Expected:** a `scanned:` line naming what the gate looked at — change-log entries, tagged
-   entries, change fragments, release-pending records, the scopes they enumerate, and how many
-   enumerate none — then
+   **Expected:** a `scanned:` line naming what the gate looked at — the change fragments in
+   `.prawduct/changes/`, the release-pending scopes they are (one each), and how many
+   `.prawduct/change-log.md` entries it read as shipped history — then
    `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld` and the two lists.
-   **Note `K` — it selects the promotion shape at Phase 2.**
+   **Note `K` — it selects the promotion shape at Phase 2, and when it is 1 or more, step 0a runs
+   before Phase 1.**
 
    Read the `scanned:` line as the gate's denominator — a verdict is only as good as what it looked
-   at. Several entries per scope is ordinary, so the two counts differing is not a signal; the
-   number to read is the last one, and it is `0 unclassifiable` on every run that gets this far,
-   because a non-zero one refuses instead.
+   at. The pending set is the fragments and nothing else: a release-pending entry still in the
+   live log refuses instead (`legacy-pending-entry:`, below), so every run that gets this far has
+   none.
 
    Beneath it, `digest headline: '…' (.prawduct/release-headline.md → plugin/CHANGELOG.md)` — the
    pending headline's first line, printed back verbatim. The cut puts it directly under this
@@ -174,8 +178,17 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 
    `unclassified scope(s)`
    - **Add a row** to the `## Release classification` table in
-     `.prawduct/artifacts/release-plan-vX.Y.Z.md`, naming `ships` or `withheld` + an **open**
-     blocker id. Create the release plan if it does not exist yet.
+     `.prawduct/artifacts/release-plan-vX.Y.Z.md`, naming `ships`, `withheld` + an **open**
+     blocker id, or `withheld` + `collateral-of <scope>` for work held by another scope's cut point
+     (step 0a). Create the release plan if it does not exist yet.
+
+   ``declared `collateral-of …` `` · ``… is not in the table`` · ``… is not `withheld` `` ·
+   ``… is itself collateral``
+   - A collateral row the table cannot honour. A collateral scope is held by its parent's blocker,
+     so it is never `ships` (its code stays on `develop` with the parent's, and the cut would
+     archive it as shipped), and its parent must be a `withheld` row with a blocker of its own.
+     **Fix the row the message names:** reclassify it `withheld | collateral-of <parent>`, add or
+     withhold the parent, or point it at the scope that holds the blocker.
 
    `withholding blocker(s) no longer open`
    - The reason to withhold is gone. **Re-take the decision:** either it ships now, or a different
@@ -189,7 +202,8 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      release, so a cut has already shipped it. **Do NOT delete the row** — that makes the gate pass
      and ships the very scope the table withheld. Decide which is true. If it ships, reclassify the
      row as `ships`. If it is withheld, undo the cut before committing (Phase 1 step 3 says how)
-     and re-run it.
+     and re-run it. Once committed, the archive is append-only: write a `reopens: <scope>`
+     fragment instead, as `promote-a-pruned-release.md` step 3 says.
 
    `cannot-verify-blockers:`
    - A withholding blocker's liveness could not be read. On the GitHub Issues backlog it is read
@@ -214,32 +228,18 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      gate defect — fix the fragment** as the detail says (`plugin/templates/change-fragment.md`
      documents every key), then re-run.
 
-   `scope-in-both-shapes:`
-   - One scope is pending as a fragment and as a legacy change-log entry, so its record is in two
-     places. **Keep one:** fold the entry's text into the fragment and delete the entry.
-
-   > **The two rows below refuse legacy change-log entries.** This repo records pending work as
-   > fragments, so a pending entry in `.prawduct/change-log.md` is itself the fault. Fix what the
-   > row names. If the entry is release-pending, then convert it with
-   > `./plugin/bin/prawduct-hook migrate-change-log` (a preview; add `--apply` to write it).
-
-   `unclassifiable-pending-entry:`
-   - A release-pending change-log entry carrying no `scope=`. It is in no scope, so it reaches no
-     row of the classification table, so it can be neither shipped nor withheld — the gate would be
-     certifying a release over work it never enumerated. **This is not a gate defect — add a
-     `scope=` to each entry it names** (the message gives the title and the change-log line number),
-     matching the `scope:` of the build plan the work belongs to. Then re-run.
-
-   `bad-change-log-tag:`
-   - A change-log tag line the gate refuses to act on. **This is not a gate defect — fix the tag.**
-     The common case is a `release=` value that is not a version (`release=unreleased`,
-     `release=TBD`): *any* `release=` value marks the entry already-released, so its whole scope
-     drops out of the pending set and the gate would otherwise answer "nothing to cut" while the
-     work never ships. That is not hypothetical — it hid an entire branch from v3.2.8.
-     **Release-pending is statusless with NO `release=` tag: delete the tag** — unless the entry did
-     ship, in which case set `release=` to the version it shipped in. The other case is one
-     entry carrying several `prawduct:` tag lines that disagree — merge them and resolve the
-     conflict. The message names the entry and its line number.
+   `legacy-pending-entry:`
+   - `.prawduct/change-log.md` still holds an entry that has not shipped. Releases read only
+     `.prawduct/changes/` fragments (#1125), so that entry is in no pending set: it could be
+     neither shipped nor withheld, and the gate refuses rather than drop it. One line per entry,
+     naming its title and line. **This is not a gate defect — move it onto a fragment:** run
+     `/prawduct:doctor` (check #22), or directly
+     `./plugin/bin/prawduct-hook migrate-change-log` (a preview; add `--apply` to write it), then
+     re-run. A line that says the move refuses the entry gives the migration's own reason: the
+     common one is `unreleased-placeholder`, a `release=` that is not a version
+     (`release=unreleased`, `release=TBD`), which reads as shipped while the work never ships —
+     it hid an entire branch from v3.2.8. Set `release=` to the version it shipped in, or delete the
+     tag if it has not shipped, then run the migration.
 
    `WARNING: … has no build-plan file` · `WARNING: duplicate scope=`
    - **Advisory, not a stop.** The first says work is shipping with no plan describing it (worth a
@@ -324,9 +324,24 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    | coverage-perf | ships | |
    | v3.2.0-golive | withheld | BKL-6J2X |
    | backlog-sync | withheld | #1024 |
+   | small-fix | withheld | collateral-of v3.2.0-golive |
    ```
 
-   A blocker is a markdown id (`BKL-6J2X`) or an Issues id (`#1024`, `owner/repo#1024`).
+   A blocker is a markdown id (`BKL-6J2X`) or an Issues id (`#1024`, `owner/repo#1024`). A
+   `collateral-of <scope>` row is held by that scope's blocker (step 0a).
+
+0a. **If `K withheld` is 1 or more, find the collateral now, before Phase 1.** A pruned release
+    promotes by commit range, so work that merged at or before the newest withheld commit cannot
+    ship either, even when it is unrelated. Phase 1's cut ships every `ships` row, so a collateral
+    scope still marked `ships` would be archived as shipped in vX.Y.Z and its fragment removed,
+    while its code stays on `develop`.
+
+    Run `promote-a-pruned-release.md` § *Before Phase 1 — find the collateral* (C1–C3): find the
+    cut point, read both ranges, and declare each collateral scope in the table as
+    `withheld | collateral-of <scope>`. Then re-run step 0.
+
+    **Expected:** `releasable: …` again, with `K` now counting the collateral, and each collateral
+    scope listed as `<scope> (collateral of <parent>, blocked by <id>)`. On `K = 0` skip this step.
 
 ---
 
@@ -349,8 +364,9 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 
    The cut reads the same pending set and the same `## Release classification` table Phase 0
    step 0 graded: every file in `.prawduct/changes/` is release-pending, a `ships` row is cut and
-   a `withheld` row is kept. **Do not pass `--scope` here.** It names the scopes to cut directly,
-   bypassing the table, which is the one check that keeps withheld work out of this release.
+   a `withheld` row (a `collateral-of` row included) is kept. **Do not pass `--scope` here.** It
+   names the scopes to cut directly, bypassing the table, which is the one check that keeps
+   withheld work out of this release.
 
    **If it prints `nothing to do`:** no fragment is pending, so nothing ships and there is no
    release to cut. Go back to the check at the top of this runbook.
@@ -363,9 +379,9 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      release plan and re-run Phase 0 step 0**, then this step.
 
    `invalid-pending-set:`
-   - A fragment fails validation, or one scope is pending both as a fragment and as a legacy
-     change-log entry. Phase 0 step 0 names each one by file and code (`bad-change-fragment:`,
-     `scope-in-both-shapes:`); its remedy rows say how to fix them.
+   - A fragment fails validation, or `.prawduct/change-log.md` still holds an entry that has not
+     shipped. Phase 0 step 0 names each one by code (`bad-change-fragment:`,
+     `legacy-pending-entry:`); its remedy rows say how to fix them.
 
    `no-headline:`
    - `.prawduct/release-headline.md` is absent, empty or unreadable, and prawduct's declaration
@@ -523,22 +539,19 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > *Adjudicated, not derived: the file's own comment asks for this bump;
    > `documentation/release-process.md` step 2 didn't name it until v3.1.1.*
 
-10. **On a minor or major bump — not a patch — refresh `README.md`'s `## Recent Changes`** so the
-    current line is represented there. (`plugin/CHANGELOG.md` needs nothing here: step 3 wrote its
-    `## vX.Y.Z` section, and `develop` carries no open `-dev` section to rename.) If the README
-    already has a section for this line under a prerelease heading, bring that one up to date
-    rather than adding a second. Rewrite the section; do not append a
-    per-release bullet. A patch has nothing to say on that surface, so skipping it is the correct
-    outcome and not an omission.
+10. **On a minor or major bump — not a patch — reread `README.md` against this release.** The
+    README carries no release notes; `plugin/CHANGELOG.md` does, and step 3 already wrote its
+    `## vX.Y.Z` section. Check what the README does claim: the prerequisites, the install and
+    onboard steps, the commands it names, and what "How it works" says the hooks enforce. Fix
+    anything this line made false. A patch has nothing to say on that surface, so skipping it is
+    the correct outcome and not an omission.
 
     > *Why it is conditional, and why it lives here: the README is the first thing a
-    > prospective user reads, and no release had ever updated it — it sat two minor
-    > versions and eight releases stale (3.1.0 through 3.2.4) because no release document
-    > named the file. A per-release step would no-op on every patch, and a step that
-    > usually does nothing is a step you stop reading. A minor-bump-only step fires rarely
-    > and has something to say every time it does. `documentation/release-process.md` step 5
-    > points here for both files rather than restating them, so deleting this paragraph is
-    > what makes that pointer dangle.*
+    > prospective user reads, and it went eight releases stale (3.1.0 through 3.2.4) while no
+    > release document named it. A per-release step would no-op on every patch, and a step that
+    > usually does nothing is a step you stop reading. `documentation/release-process.md` step 5
+    > points here rather than restating it, so deleting this paragraph is what makes that
+    > pointer dangle.*
 
 11. **Clear the pointer if one is still set, then archive the plans this release shipped.**
     On gitflow the closing PR deliberately RETAINS each plan — the work is not released yet
@@ -671,7 +684,7 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 
 `origin/develop` now holds the whole release: bumped version, the shipped scopes in the
 change-log archive tagged `release=vX.Y.Z` with their fragments removed, cleared plan
-pointer — and, on a minor or major bump, a `## Recent Changes` section that covers this line. Everything up to here
+pointer — and, on a minor or major bump, a README still true of this line. Everything up to here
 is undone by an ordinary commit on `develop`, so this is a safe place to stop
 and come back.
 

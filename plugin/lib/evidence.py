@@ -19,7 +19,7 @@ consumer migration, C9 tier 1).
 
 ``schema`` rides on every record so readers can reject-or-skip explicitly
 (C7); ``kind`` namespaces the store (:data:`KNOWN_KINDS` is the set written
-today; ``pr-review``/``promotion`` are reserved for later constituent plans);
+today; ``promotion`` is reserved for a later constituent plan);
 ``id`` is fixed at dispatch time so consolidation is idempotent
 (CRT-4B7X) and readers dedupe. ``actor`` answers the debugging question
 ("who wrote this, when, from where, under which plugin") — Q7. Its ``branch``
@@ -92,8 +92,10 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # run for a tree after the per-worktree ``.test-evidence.json`` has moved on to
 # another branch. Like ``guard-refusal`` it is observational to the COVERAGE
 # data plane — ``coverage_algebra`` never reads it. Its readers are the
-# test-evidence freshness fallback (``gates._store_run_vouching``), the one that
-# decides anything, and ``evidence list``, which only displays it.
+# test-evidence freshness fallback (``gates._store_run_vouching``),
+# :func:`newest_suite_run` (through which consolidate waives a failure the base
+# tree already had, and checks the reviewed tree's own run accounts for every
+# failure), and ``evidence list``, which only displays it.
 #
 # ``session-start`` records one session boundary (startup or /clear, never a
 # resume) — the denominator that turns a count of Stop-hook blocks or guard
@@ -487,7 +489,7 @@ def _append_line(path: Path, line: str) -> "dict | None":
         # below the text-IO buffer size — Critic ch.01 finding).
         fd = os.open(str(path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
         try:
-            os.write(fd, line.encode("utf-8"))
+            os.write(fd, line.encode("utf-8", "surrogateescape"))
         finally:
             os.close(fd)
     except OSError as exc:
@@ -691,8 +693,10 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
     ``body`` carries ``tree`` (the working tree the run met, as
     :func:`capture_tree` returned it), ``passed``/``failed``/``skipped``,
     ``duration_seconds``, ``source`` (``run`` | ``from-junit``), ``head``
-    (the commit checked out, when there is one) and ``degraded`` when the run
-    reported itself so. A restamp records no fact: it measures nothing, and the
+    (the commit checked out, when there is one), ``degraded`` when the run
+    reported itself so, and ``failed_tests`` — the evidence record's failing
+    ids, under the same cap, omitted when it has none — which
+    :func:`run_failed_tests` reads, with ``failed`` telling whether the cap cut it. A restamp records no fact: it measures nothing, and the
     run whose counts it reuses already has its own. A later run on the same
     tree is a NEW fact, and the newest one for a tree decides it, so a red
     re-run supersedes an earlier green without editing the store.
@@ -709,14 +713,100 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
     return append_fact(project_dir, "test-run", fact_id, body)
 
 
-#: Observation keys a clear gate records, named once so its writer (the Stop
+def newest_suite_run(store: dict, tree: str) -> "tuple[dict | None, str]":
+    """The newest whole-suite ``test-run`` fact recorded on ``tree``, as
+    ``(fact, "")`` — or ``(None, reason)`` naming why there is none to trust.
+
+    The NEWEST run on a tree decides, so a later green run supersedes an older
+    red one. A scratch worktree's narrowed run is skipped, as the freshness
+    reader (``gates._store_run_vouching``) skips it: a few files' run is not
+    the suite, and it must not overrule a run that was.
+
+    ``store`` is :func:`read_facts`' answer. Fails closed when that read failed,
+    and when a newer plugin wrote a ``test-run`` fact this reader cannot see:
+    that fact may be the newest run on ``tree``, and a reader that skipped it
+    would answer from an older one."""
+    if store.get("status") == "error":
+        return None, f"the evidence store is unreadable ({store.get('reason')})"
+    if any(entry.get("kind") == "test-run" for entry in store.get("schema_ahead") or []):
+        return None, (
+            "a newer plugin recorded a test-run this reader cannot see — update "
+            "the plugin (/reload-plugins or restart Claude Code)"
+        )
+    newest: "dict | None" = None
+    for fact in facts_of_kind(store, "test-run"):
+        body = fact.get("body")
+        if not isinstance(body, dict) or body.get("narrowed") is True:
+            continue
+        if body.get("tree") == tree and isinstance(fact.get("id"), str):
+            newest = fact  # store order is append order: the last one is newest
+    if newest is None:
+        return None, f"no whole-suite test run is recorded on tree {tree[:12]}"
+    return newest, ""
+
+
+def run_failed_tests(fact: dict) -> "tuple[set[str], bool]":
+    """A ``test-run`` fact's failing ids, and whether they are ALL of its failures.
+
+    The ids are capped at 100 when recorded, so a run whose ``failed`` count
+    exceeds the ids it carries is incomplete: the dropped ids are unknown, and
+    a reader proving something of EVERY failure must not take the visible ones
+    for the set. A run with no usable ``failed`` count is incomplete too."""
+    body = fact.get("body") or {}
+    listed = body.get("failed_tests")
+    ids = (
+        {t for t in listed if isinstance(t, str) and t}
+        if isinstance(listed, list)
+        else set()
+    )
+    failed = body.get("failed")
+    complete = (
+        isinstance(failed, int) and not isinstance(failed, bool) and failed <= len(ids)
+    )
+    return ids, complete
+
+
+def inherited_failures(
+    store: dict, base_tree: str, test_ids: "list[str] | set[str]"
+) -> "tuple[str | None, set[str], str]":
+    """Which of ``test_ids`` the base tree already failed, and the run that says so.
+
+    Returns ``(run_fact_id, subset, "")``: the id of :func:`newest_suite_run`
+    on ``base_tree`` and the ids of ``test_ids`` in its ``failed_tests``. The
+    run must have met that tree — a clean checkout of the base. Matching on
+    ``head`` would accept a run on a dirty checkout of the base commit, which
+    proves nothing about the base. A later green run supersedes an older red
+    one, and its empty set waives nothing; an id the run's 100-id cap dropped
+    is not in its set, so it is never matched.
+
+    Fails closed — ``(None, set(), reason)`` — whenever :func:`newest_suite_run`
+    finds no run to trust. WHICH tree is the base is not this reader's question:
+    its one caller, ``critic_consolidate._waive_inherited_failures``, resolves
+    it with ``coverage.resolve_merge_base_tree`` and refuses a "base" that is not
+    before the reviewed work.
+    """
+    run, reason = newest_suite_run(store, base_tree)
+    if run is None:
+        return None, set(), reason
+    base_set, _complete = run_failed_tests(run)
+    return run["id"], {t for t in test_ids if t in base_set}, ""
+
+
+#: Observation keys a clear check records, named once so its writer (the Stop
 #: hook) and its reader (``stats``' verdict rules) cannot drift apart.
 OBSERVED_WORK_LIVE = "work_live"
 OBSERVED_NOTES_PRESENT = "notes_present"
+OBSERVED_SESSION_CHANGED = "session_changed"
 
 #: Prefix of the ``guard`` a Stop-hook block is recorded under; the gate id
 #: follows it. Readers select Stop blocks from other control firings by it.
 STOP_GATE_PREFIX = "stop-gate:"
+
+#: Prefix of the ``guard`` a Stop-hook check that OBSERVES without blocking is
+#: recorded under; the check's id follows it. Kept apart from
+#: :data:`STOP_GATE_PREFIX` so a reader counting blocked Stops never counts a
+#: Stop that was let through.
+STOP_OBSERVED_PREFIX = "stop-observed:"
 
 #: The ``guard`` a base-advance transfer's GRANT is recorded under. It shares
 #: the guard-refusal sink with the refusals, but it is a pass that saves a
@@ -763,6 +853,44 @@ def append_stop_block(
             )
         )
     return results
+
+
+def append_stop_observation(
+    project_dir: Path,
+    gate: str,
+    *,
+    reason: "str | None" = None,
+    observed: "dict | None" = None,
+    dedupe_key: "str | None" = None,
+    known_facts: "list[dict] | None" = None,
+) -> dict:
+    """Record that a non-blocking Stop check found what it looks for.
+
+    The firing goes through the same control sink as a block
+    (:func:`append_guard_refusal`), under :data:`STOP_OBSERVED_PREFIX`, with the
+    same ``reason`` and ``observed`` a block of that check records. That way a
+    check retired from blocking keeps answering its yield question
+    (``stats``' catch/slip rules read it unchanged) without counting as
+    friction. The check itself does not block, so there is no ``stop`` id or
+    ``co_gates``; another gate may still block the same Stop, and the two
+    facts are not linked. Callers treat a failure as soft.
+
+    ``dedupe_key`` is for a check that meets one standing event at every Stop
+    (a commit it goes on leaving out of the span): the event is recorded once,
+    and a later Stop's call returns ``{"status": "duplicate"}``, which is a
+    success (:func:`append_guard_refusal`). ``known_facts`` is that dedupe
+    probe's input when the caller has read the store already, as it is there:
+    a caller recording several events at one Stop reads the store once.
+    """
+    return append_guard_refusal(
+        project_dir,
+        f"{STOP_OBSERVED_PREFIX}{gate}",
+        {"gate": gate},
+        reason=reason,
+        observed=observed,
+        dedupe_key=dedupe_key,
+        known_facts=known_facts,
+    )
 
 
 def append_session_start(project_dir: Path) -> dict:
@@ -879,7 +1007,7 @@ def read_facts(project_dir: Path) -> dict:
         try:
             record = json.loads(raw)
         except json.JSONDecodeError:
-            coverage_hash.update(raw.encode("utf-8") + b"\n")
+            coverage_hash.update(raw.encode("utf-8", "surrogateescape") + b"\n")
             excluded += 1
             tail = (
                 " (torn tail from a crashed writer — heals on next append)"
@@ -893,7 +1021,7 @@ def read_facts(project_dir: Path) -> dict:
             )
             continue
         if not _is_observational(record):
-            coverage_hash.update(raw.encode("utf-8") + b"\n")
+            coverage_hash.update(raw.encode("utf-8", "surrogateescape") + b"\n")
         if not isinstance(record, dict):
             excluded += 1
             print(
@@ -988,6 +1116,10 @@ def _is_observational(record: object) -> bool:
         and isinstance(record.get("id"), str)
         and isinstance(record.get("body"), dict)
     )
+
+
+#: The range `evidence status` counts facts with no note over, said on the line.
+UNATTACHED_SCOPE = ", on this branch's commits (merge base..HEAD)"
 
 
 def facts_of_kind(read_result: dict, kind: str) -> list[dict]:
@@ -1119,7 +1251,14 @@ def run_git(
     part of its status code, and stripping it shifts the whole parse.
 
     A subcommand that reaches a remote (fetch, push, ls-remote…) takes
-    :func:`network_timeout` instead of the local budget."""
+    :func:`network_timeout` instead of the local budget.
+
+    Output decodes as UTF-8 with ``surrogateescape``, as every subprocess in
+    the plugin does (``tests/test_text_codec_policy.py``): git hands back
+    file content, commit messages and pathnames as raw bytes, so one byte of a
+    legacy encoding in a consuming repo must not turn a whole diff into "could
+    not be read" — and a pathname must survive the round trip back into a git
+    argument byte for byte."""
     network = bool(args) and args[0] in _NETWORK_SUBCOMMANDS
     timeout, unusable = network_timeout() if network else _git_timeout()
     if unusable is not None:
@@ -1129,7 +1268,8 @@ def run_git(
             ["git", *args],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=timeout,
             env=env,
             input=input,
@@ -1154,14 +1294,6 @@ def run_git(
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, "", str(exc)
-    except UnicodeDecodeError as exc:
-        # `text=True` decodes strictly, so a command whose output carries file
-        # CONTENT (a diff) raises on the first non-UTF-8 byte in any consuming
-        # repo — a binary blob, a latin-1 doc. Every caller here already treats
-        # a nonzero return as "could not read this", which is the honest answer
-        # and the fail-soft one; letting the exception escape instead takes down
-        # whichever gate happened to ask. Reported, never silent.
-        return 1, "", f"output is not valid UTF-8: {exc}"
     stdout = proc.stdout.strip() if strip else proc.stdout
     return proc.returncode, stdout, proc.stderr.strip()
 
@@ -1385,6 +1517,223 @@ def capture_tree(project_dir: Path) -> dict:
                 pass  # already absent — git may never have created it
 
 
+def _split_z(out: str) -> list[str]:
+    return [p for p in out.split("\0") if p]
+
+
+def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str | None":
+    """Why the working tree may hold content these reports never ran against,
+    or ``None`` when every file the suite reads predates the start of the run
+    behind every report (#848 R-4).
+
+    ``--from-junit`` stamps the CURRENT tree onto the run it ingests, and that
+    stamp is what lets a later session or another worktree reuse the run. A
+    report's existence licenses "a run happened, with the scope its record
+    states"; it never licensed "against this tree", so the ingest stamps only
+    what this check cannot fault.
+
+    **The bound is when the run STARTED, not when its report was written**
+    (:func:`_report_run_start_ns`). A report's mtime is when the run ended, so an
+    edit made while the suite ran predated it and was stamped onto a run that
+    never read it. The start is the earlier of the report's mtime less its
+    recorded duration and a ``<testsuite timestamp>`` carrying its offset; a
+    report naming neither withholds. The duration and timestamp are the
+    producer's, and the mtime the reader's own observation; the earlier reading
+    wins, so a producer can only make the bound stricter by under-reporting.
+    A file the suite itself writes into a path it reads, not ignored, now
+    withholds too — as the live run path's before/after tree capture does.
+
+    Three questions, each over the paths ``coverage_algebra.affects_test_outcome``
+    keeps (with the repo's ``suite_coupled_prefixes``), the predicate the tree
+    clause itself judges by:
+
+    1. **Edits.** A tracked or untracked (not ignored) file newer than the
+       earliest run start — other than the reports and their scope records,
+       the run's own output, which a report kept in the tree always is.
+    2. **Uncommitted deletions.** A file in the index but gone from disk, or
+       deleted relative to ``HEAD``. A deleted file has no mtime; the directory
+       it left does, so each is dated by its nearest existing ancestor.
+    3. **Deletions that moved with ``HEAD``.** A commit, merge, checkout or
+       reset after the run started takes a file out of both of the above. Where
+       ``HEAD`` was when the run started (its reflog) is diffed against
+       ``HEAD`` now, and each path that left is dated the same way — so a
+       deletion made before the run and committed after it does not count.
+       A directory the run itself wrote into (a ``__pycache__`` beside the
+       tests) is dated by that write, so a deletion there made before the run
+       withholds too: the safe direction, paid only when something was deleted.
+
+    **Directories are consulted only for deletions, deliberately.** A bound over
+    every ancestor directory reads every entry created beside a test-affecting
+    file as a change to it: the producer's scope record is replaced in
+    ``.prawduct/`` after the JUnit writer runs, and ``.prawduct/`` holds
+    ``project-state.yaml``, so that bound withholds the stamp on every ingest of
+    the conventional report path — the double run the stamp exists to save.
+
+    **Blind spots, both toward a stamp:** a tool that preserves old mtimes
+    (``rsync -a``, archive extraction) makes new content look old; and an
+    untracked file removed after the run is in no listing to miss. A
+    filesystem whose mtime resolution is coarse can tie an edit with the run's
+    start, and a tie stamps. A start read from a duration rounded to the
+    millisecond can sit that much late. Every failure to ask (git, a stat, the
+    report's start) returns a
+    reason, which withholds the stamp: the safe direction costs a later re-run,
+    never a false green.
+    """
+    from . import core, coverage_algebra  # noqa: PLC0415 — lazy: leaf modules, ingest-only
+
+    if not reports:
+        return None
+    starts: list[int] = []
+    for report in reports:
+        start_ns, why = _report_run_start_ns(Path(report))
+        if start_ns is None:
+            return why
+        starts.append(start_ns)
+    report_ns = min(starts)
+    root = Path(project_dir)
+    prefixes = core.suite_coupled_prefixes(gitstate.get_prawduct_dir(project_dir))
+
+    def coupled(paths: "list[str]") -> "list[str]":
+        return coverage_algebra.suite_coupled_files(sorted(set(paths)), prefixes)
+
+    rc, out, err = run_git(
+        project_dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard",
+        strip=False,
+    )
+    if rc != 0:
+        return f"the files the suite reads could not be listed ({err or 'git ls-files failed'})"
+    # The run's own output is written after it started by construction: a
+    # report (and its scope record) kept inside the tree is not an edit.
+    from . import report_scope  # noqa: PLC0415 — lazy, as above
+
+    own_output: set[Path] = set()
+    for report in reports:
+        resolved = Path(report).resolve()
+        own_output.update({resolved, report_scope.record_path(resolved).resolve()})
+    gone: list[str] = []
+    for rel in coupled(_split_z(out)):
+        if (root / rel).resolve() in own_output:
+            continue
+        try:
+            mtime = (root / rel).lstat().st_mtime_ns
+        except FileNotFoundError:
+            gone.append(rel)
+            continue
+        except OSError as exc:
+            return f"{rel} could not be read ({exc})"
+        if mtime > report_ns:
+            return (
+                f"{rel}, a file the suite reads, changed after the run behind this "
+                "report started"
+            )
+
+    rc, head, _ = run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+    head = head if rc == 0 else ""
+    if head:
+        rc, out, err = run_git(
+            project_dir, "diff", "-z", "--no-renames", "--diff-filter=D", "--name-only",
+            "HEAD", strip=False,
+        )
+        if rc != 0:
+            return f"deletions since HEAD could not be listed ({err or 'git diff failed'})"
+        gone += _split_z(out)
+        # One second earlier than the run's start, because the reflog keeps
+        # whole seconds: a HEAD move in that second must count as after.
+        when = report_ns // 1_000_000_000 - 1
+        rc, then, err = run_git(
+            project_dir, "rev-parse", "--verify", "-q", f"HEAD@{{@{when} +0000}}"
+        )
+        if rc != 0 or not then:
+            return (
+                "where HEAD stood when the run behind this report started is not in the reflog "
+                f"({err or 'no entry'}), so a file removed by a later commit or "
+                "checkout cannot be ruled out"
+            )
+        if then != head:
+            rc, out, err = run_git(
+                project_dir, "diff", "-z", "--no-renames", "--diff-filter=D",
+                "--name-only", then, head, strip=False,
+            )
+            if rc != 0:
+                return f"what HEAD's move removed could not be listed ({err or 'git diff failed'})"
+            gone += _split_z(out)
+
+    for rel in coupled(gone):
+        parent = (root / rel).parent
+        while not parent.exists() and parent != root:
+            parent = parent.parent
+        try:
+            mtime = parent.stat().st_mtime_ns
+        except OSError as exc:
+            return f"the directory {rel} was deleted from could not be read ({exc})"
+        if mtime > report_ns:
+            return (
+                f"{rel}, a file the suite reads, was deleted after the run behind "
+                "this report started"
+            )
+    return None
+
+
+def _report_run_start_ns(report: Path) -> "tuple[int | None, str]":
+    """When the run behind a JUnit report STARTED, in ns, as early as the report
+    lets it be read — or ``(None, why)`` when it cannot be read at all.
+
+    The report's mtime is when the run ENDED, so a file edited while the suite
+    ran predates it and would be stamped as if the run had read it. Two
+    readings of the start, the earlier wins, because a start read too late is
+    the side that stamps:
+
+    * the report's mtime less its duration — the root ``<testsuites time>``
+      where given, else the sum of the ``<testsuite time>`` values (a sum
+      overstates suites that ran in parallel, which errs early, the safe way);
+    * the earliest ``<testsuite timestamp>`` that carries a UTC offset (pytest
+      writes the run's start that way). A naive timestamp is a local time on an
+      unknown clock, so it is not read — reading it would be the guess.
+
+    Neither present, or the report unparseable, withholds rather than guesses.
+    """
+    import xml.etree.ElementTree as ET  # noqa: PLC0415 — lazy: ingest-only
+
+    try:
+        mtime_ns = report.stat().st_mtime_ns
+        root = ET.parse(report).getroot()
+    except (OSError, ET.ParseError) as exc:
+        return None, f"when the run behind this report started could not be read ({exc})"
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+    candidates: list[int] = []
+
+    def seconds(value: "str | None") -> "float | None":
+        try:
+            parsed = float(value) if value is not None else None
+        except ValueError:
+            return None
+        return parsed if parsed is not None and parsed >= 0 else None
+
+    total = seconds(root.get("time")) if root.tag == "testsuites" else None
+    if total is None:
+        times = [seconds(s.get("time")) for s in suites]
+        total = sum(times) if times and all(t is not None for t in times) else None
+    if total is not None:
+        candidates.append(mtime_ns - int(total * 1_000_000_000))
+    for suite in suites:
+        stamp = suite.get("timestamp")
+        if not stamp:
+            continue
+        try:
+            started = datetime.fromisoformat(stamp)
+        except ValueError:
+            continue
+        if started.tzinfo is not None:
+            candidates.append(int(started.timestamp() * 1_000_000_000))
+    if not candidates:
+        return None, (
+            "when the run behind this report started cannot be read (no testsuite "
+            "`time`, and no `timestamp` with a UTC offset), so an edit made while "
+            "it ran cannot be ruled out"
+        )
+    return min(candidates), ""
+
+
 def tree_diff(
     project_dir: Path, tree_a: str, tree_b: str, paths: "list[str] | None" = None
 ) -> "list[str] | None":
@@ -1398,8 +1747,9 @@ def tree_diff(
     ``paths`` narrows the question to a pathspec: *do these two trees differ on
     THESE files?* Asked of a whole tree the answer costs a full tree walk; asked
     of a handful of paths it costs a pruned one, which is what makes a per-file
-    equality check affordable across many candidate trees
-    (``coverage.diagnose_base_advance_transfer``). The comparison stays git's
+    equality check affordable across many candidate trees — asked of many pairs
+    at once through :func:`tree_diffs`, the batched form
+    ``coverage.diagnose_base_advance_transfer`` uses. The comparison stays git's
     own, so a mode-only change (``chmod +x``, a file becoming a symlink at the
     same blob) still reports as a difference — the fail-OPEN that a
     ``(path, object id)`` comparison would introduce, and that
@@ -1408,9 +1758,10 @@ def tree_diff(
     **A path this function reports must be a path it can be asked back about,
     and two separate git conventions break that round trip.** Both matter here
     because the returned list becomes the pathspec of the next call
-    (``coverage.diagnose_base_advance_transfer`` asks "do these trees differ on
-    the files you just told me changed?"), and both are answered at this
-    boundary rather than by each caller.
+    (``coverage.diagnose_base_advance_transfer`` asks :func:`tree_diffs` "do
+    these trees differ on the files you just told me changed?", with the same
+    ``-z`` and ``:(literal)``), and both are answered at this boundary rather
+    than by each caller.
 
     - ``-z``, so paths come back RAW. ``--name-only`` alone honours
       ``core.quotepath``, which is on by default, so a non-ASCII filename is
@@ -1450,6 +1801,106 @@ def tree_diff(
     if rc != 0:
         return None
     return [path for path in out.split("\0") if path]
+
+
+def tree_diffs(
+    project_dir: Path, pairs: "list[tuple[str, str]]", paths: "list[str]"
+) -> "dict[tuple[str, str], list[str] | None]":
+    """:func:`tree_diff` over many tree pairs and ONE path set, from one
+    ``git diff-tree --stdin`` however many pairs are asked — so a caller
+    comparing N candidate trees against an anchor pays one subprocess, not N
+    (#937: ~140 diffs, ~2.9 s of a warm Stop, growing with the review facts).
+
+    Each pair's answer has :func:`tree_diff`'s shape: the paths that differ,
+    ``[]`` for agreement, ``None`` when it cannot be computed. The comparison
+    is still git's own tree-to-tree diff, so a mode-only change still reports
+    — never ``cat-file --batch-check <tree>:<path>``, which ignores modes and
+    would pass one (fail-open). Plumbing reads none of the porcelain's
+    ``diff.*`` config, so the LIST can differ from :func:`tree_diff`'s where
+    that config applies — ``diff.renames`` pairs a rename into one name where
+    this reports both, ``diff.ignoreSubmodules`` hides a gitlink change this
+    reports — and whether it is empty differs only toward "they differ", the
+    side that denies.
+
+    **A pair git did not answer is asked again the slow way, never read as
+    agreement.** ``diff-tree --stdin`` skips a pair whose tree it cannot read
+    — it prints an error and moves on, exit 0 — so silence is not "no
+    difference". Every pair's answer starts with a header echoing the pair
+    (``<a> <b>\\n``); a pair with no header goes to :func:`tree_diff`, which
+    returns ``None`` for an unreadable tree and attributes a malformed one,
+    exactly as before. So does every pair when the batch as a whole fails or
+    its output cannot be parsed: a miss costs time, never a verdict.
+
+    **Why the parse is unambiguous.** Paths come back raw under ``-z``, and a
+    raw path may hold a newline, so a path must never read as a header. Each
+    reported path is a pathspec path or lies beneath one (``:(literal)``
+    matches a path and the directory it names, never a wildcard), and a header
+    holds neither ``/`` nor ``\\0``. So when no requested path contains a
+    newline, no reported path can begin with a header line: one that is a
+    requested path has no newline to end a header at, and one beneath it has a
+    ``/`` before any newline it could hold. A path set that does contain a
+    newline, or an empty one (which reports every path in the tree), skips the
+    batch and asks per pair — a rare name costs time, not soundness.
+
+    Only well-formed tree ids are sent: a line that is not two object ids is
+    echoed back by git verbatim (it reads as a commit-log query), so a
+    malformed id could forge output. Those pairs go to :func:`tree_diff`,
+    which rejects them with attribution."""
+    unique = list(dict.fromkeys(pairs))
+    answers: "dict[tuple[str, str], list[str] | None]" = {}
+    batch = [
+        pair for pair in unique
+        if gitstate.is_object_id(pair[0]) and gitstate.is_object_id(pair[1])
+    ]
+    if batch and paths and not any("\n" in p for p in paths):
+        rc, out, _err = run_git(
+            project_dir,
+            "diff-tree", "--stdin", "-r", "--name-only", "-z",
+            "--", *(f":(literal){p}" for p in paths),
+            input="".join(f"{a} {b}\n" for a, b in batch),
+            strip=False,
+        )
+        if rc == 0:
+            parsed = _parse_diff_tree_stdin(out, batch)
+            if parsed is not None:
+                answers.update(parsed)
+    for tree_a, tree_b in unique:
+        if (tree_a, tree_b) not in answers:
+            answers[(tree_a, tree_b)] = tree_diff(project_dir, tree_a, tree_b, paths=paths)
+    return answers
+
+
+def _parse_diff_tree_stdin(
+    out: str, batch: "list[tuple[str, str]]"
+) -> "dict[tuple[str, str], list[str]] | None":
+    """Split ``diff-tree --stdin -z --name-only`` output into per-pair path
+    lists. Pairs whose header never appears are left out (the caller re-asks
+    them). ``None`` when the output does not read as headers in input order
+    followed by NUL-terminated paths — then nothing from this batch is
+    trusted."""
+    order = {f"{a} {b}\n": i for i, (a, b) in enumerate(batch)}
+    longest = max(len(header) for header in order)
+    parsed: "dict[tuple[str, str], list[str]]" = {}
+    current: "list[str] | None" = None
+    last = -1
+    pos = 0
+    while pos < len(out):
+        newline = out.find("\n", pos, pos + longest)
+        index = order.get(out[pos:newline + 1]) if newline != -1 else None
+        if index is not None:
+            if index <= last:
+                return None  # out of order or repeated: not the shape asked for
+            last = index
+            current = parsed[batch[index]] = []
+            pos = newline + 1
+            continue
+        end = out.find("\0", pos)
+        if current is None or end == -1:
+            return None  # a path before any header, or one never terminated
+        if end > pos:
+            current.append(out[pos:end])
+        pos = end + 1
+    return parsed
 
 
 def missing_objects(project_dir: Path, object_ids: "list[str]") -> "set[str] | None":
@@ -1738,7 +2189,13 @@ def _print_note_transport(project_dir: Path, path: Path, result: dict) -> None:
     if found["status"] != "ok":
         print(f"notes: facts with no note not counted — {found['reason']}")
     else:
-        print(f"{len(found['missing'])} transported fact(s) with no note on their commit")
+        # Counted over this branch's commits only (`evidence_notes.unattached`
+        # bounds it, as sync's reconcile does): older facts with no note are not
+        # owed one, and a bare count read as the whole store's after a sync.
+        print(
+            f"{len(found['missing'])} transported fact(s) with no note on their commit"
+            f"{UNATTACHED_SCOPE}"
+        )
         if found["missing"]:
             print(remedy)
     ahead = evidence_notes.unpushed(project_dir, refs or [])

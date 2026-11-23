@@ -66,7 +66,7 @@ class TestCriticSkillDenyPatterns:
         (Chunk 5 repoint, replacing the retired `python3 tools/product-hook …`)."""
         expected = [
             "Read", "Glob", "Grep", "Bash(wc *)", "Write", "Agent",
-            "Bash(prawduct-hook test-status)",
+            "Bash(prawduct-hook test-status*)",
             "Bash(prawduct-hook infer-critic-mode*)",
         ]
         allowed = _extract_allowed_tools(_PLUGIN_CRITIC_SKILL.read_text())
@@ -301,18 +301,6 @@ _MANDATE_NOT_GRANTED: dict[tuple[str, str, str], str] = {
     # a review from three partials of which only one exists.
     ("skills/critic/review-protocol.md", "critic-reviewer", "critic-consolidate"): (
         "single-pass only; a dispatched reviewer must never consolidate"
-    ),
-    # `cross-checks.md` prints this inside the NOTE text the Critic hands the
-    # BUILDER when backlog reconciliation is unavailable. It is remedy prose the
-    # operator runs, and granting it would give a read-only review a network write.
-    ("skills/critic/cross-checks.md", "critic", "backlog sync"): (
-        "remedy text reported to the builder, never run by the review"
-    ),
-    # The same remedy text, as the dispatched reviewer meets it: since W3b the
-    # sustainability reviewer reads cross-checks.md, and must not get a network
-    # write either.
-    ("skills/critic/cross-checks.md", "critic-reviewer", "backlog sync"): (
-        "remedy text reported to the builder, never run by the review"
     ),
 }
 

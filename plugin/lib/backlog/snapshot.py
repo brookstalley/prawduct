@@ -93,16 +93,78 @@ def write(path: Path, scope: str, counts: dict, *, now: datetime | None = None) 
     Merges into the scope-keyed map, so refreshing one project never drops
     another's counts. Returns ``{"status": "written", "path", "fetched_at"}`` or
     ``{"status": "error", "reason": ...}`` — never raises.
+
+    A success is also an attempt: it stamps ``last_attempt_at`` and clears
+    ``last_error`` in the same write, so fresh counts never sit beside a stale
+    failure (#755; the pair moves together, as ``cache.record_sync_attempt``'s
+    two columns do for the cache).
     """
     now = now or datetime.now(timezone.utc)
     fetched_at = _iso(now)
     data = _load(path)
-    data["scopes"][scope] = {"counts": counts, "fetched_at": fetched_at}
+    data["scopes"][scope] = {
+        "counts": counts,
+        "fetched_at": fetched_at,
+        "last_attempt_at": fetched_at,
+        "last_error": None,
+    }
+    result = _atomic_dump(path, data)
+    if result["status"] != "written":
+        return result
+    return {"status": "written", "path": result["path"], "fetched_at": fetched_at}
+
+
+def record_attempt(path: Path, scope: str, *, error: str, now: datetime | None = None) -> dict:
+    """Stamp a FAILED refresh attempt, leaving ``counts``/``fetched_at`` untouched.
+
+    The failure half of the pair :func:`write` completes on success (#755): the
+    last good counts survive, only ``last_attempt_at``/``last_error`` move.
+
+    **Unlike** ``cache.record_sync_attempt`` **this may create the scope's
+    entry, and the asymmetry is deliberate.** The cache's cursor row means "this
+    scope has synced", so minting one from a failure would lie; here
+    :func:`read` gates on ``counts``, so an attempt-only entry still reads as no
+    snapshot while :func:`refresh_health` reports the failure — which is exactly
+    the never-once-succeeded case the briefing must call stuck, not warming.
+    Same return shape as :func:`write`; never raises.
+    """
+    now = now or datetime.now(timezone.utc)
+    data = _load(path)
+    entry = data["scopes"].get(scope)
+    if not isinstance(entry, dict):
+        entry = data["scopes"][scope] = {}
+    entry["last_attempt_at"] = _iso(now)
+    entry["last_error"] = error
+    return _atomic_dump(path, data)
+
+
+def refresh_health(path: Path, scope: str, *, now: datetime | None = None) -> dict | None:
+    """``{"last_attempt_at", "last_error", "attempt_age_seconds"}`` for ``scope``,
+    or ``None`` when no attempt was ever recorded — including a snapshot written
+    before the record existed. A non-``None`` ``last_error`` says the most recent
+    attempt failed. Touches no network (the same BLOCK-5 contract as
+    :func:`read`)."""
+    entry = _load(path)["scopes"].get(scope)
+    if not isinstance(entry, dict) or "last_attempt_at" not in entry:
+        return None
+    now = now or datetime.now(timezone.utc)
+    return {
+        "last_attempt_at": entry.get("last_attempt_at"),
+        "last_error": entry.get("last_error"),
+        "attempt_age_seconds": _age_seconds(entry.get("last_attempt_at"), now),
+    }
+
+
+def _atomic_dump(path: Path, data: dict) -> dict:
+    """The temp-file + ``os.replace`` write :func:`write` and
+    :func:`record_attempt` share, so a crash mid-write never tears the snapshot.
+    ``{"status": "written", "path"}`` or ``{"status": "error", "reason"}``;
+    never raises."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=".tmp")
         try:
-            with os.fdopen(fd, "w") as handle:
+            with os.fdopen(fd, "w", encoding="utf-8", errors="backslashreplace") as handle:
                 json.dump(data, handle)
             os.replace(tmp, path)  # atomic on POSIX — the old file is never torn
         finally:
@@ -113,7 +175,7 @@ def write(path: Path, scope: str, counts: dict, *, now: datetime | None = None) 
                 pass
     except OSError as exc:
         return {"status": "error", "reason": f"{type(exc).__name__}"}
-    return {"status": "written", "path": str(path), "fetched_at": fetched_at}
+    return {"status": "written", "path": str(path)}
 
 
 def read(path: Path, scope: str, *, now: datetime | None = None) -> dict | None:

@@ -141,7 +141,7 @@ def run_key(
     payload = (
         (content or "") + "\x00" + (archive_content or "") + "\x00" + (plan_text or "")
     )
-    return hashlib.sha256(payload.encode()).hexdigest()[:12]
+    return hashlib.sha256(payload.encode("utf-8", "surrogateescape")).hexdigest()[:12]
 
 
 # --- write-pacing (NFR §3/§9 — the content-creation and REST-points budgets) --
@@ -542,7 +542,7 @@ class Checkpoint:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), prefix=self.path.name, suffix=".tmp")
             try:
-                with os.fdopen(fd, "w") as handle:
+                with os.fdopen(fd, "w", encoding="utf-8", errors="backslashreplace") as handle:
                     json.dump(data, handle)
                 os.replace(tmp, self.path)  # atomic — a torn checkpoint is impossible
             finally:
@@ -593,7 +593,7 @@ class ImportRecord:
         Data Model §5), so an id-less item is still resumable/non-duplicating."""
         if self.pfx:
             return ids.alias_label(self.pfx)
-        digest = hashlib.sha256(f"{self.title}\n{self.body}".encode()).hexdigest()[:12]
+        digest = hashlib.sha256(f"{self.title}\n{self.body}".encode("utf-8", "surrogateescape")).hexdigest()[:12]
         return f"import-key:{digest}"
 
 
@@ -2019,7 +2019,7 @@ def _scan_all(transport: Transport, owner: str, repo: str) -> list[dict]:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    with open(path, "w") as handle:
+    with open(path, "w", encoding="utf-8", errors="backslashreplace") as handle:
         json.dump(data, handle, indent=2, sort_keys=True)
 
 

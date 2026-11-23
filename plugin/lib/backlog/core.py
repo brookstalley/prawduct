@@ -67,8 +67,25 @@ def error(
     }
 
 
+def is_gone(exc: TransportError) -> bool:
+    """Whether ``exc`` is the provider's 410 Gone — a hard-deleted resource, as
+    distinct from the ambiguous 404 (never existed, or no access)."""
+    return exc.code == "not_found" and exc.details.get("http_status") == 410
+
+
 def from_transport_error(exc: TransportError) -> dict:
     return error(exc.code, exc.message, retryable=exc.retryable, details=exc.details)
+
+
+def failure_text(result) -> str | None:
+    """The failure text of an envelope, or ``None`` when it succeeded — the one
+    spelling every writer of an attempt record stamps (the cache's sync cursor
+    and the counts snapshot, #755)."""
+    if not isinstance(result, dict) or result.get("status") != "error":
+        return None
+    err = result.get("error") or {}
+    code, message = err.get("code"), err.get("message")
+    return f"{code}: {message}" if code and message else (message or code or "error")
 
 
 #: A write path's local-mirror hook: ``(issue, owner, repo) -> None``. Named once
@@ -193,7 +210,11 @@ def file_item(
 
     _mirror(absorb, issue, owner, repo)
     canonical = f"{owner}/{repo}#{issue.get('number')}"
-    item, decode_warnings = encode.decode_item(issue, canonical_id=canonical)
+    # Not `advise_degraded`: this issue was just composed here, and an omitted
+    # `--stage` is the filer's choice rather than a lost label (#745).
+    item, decode_warnings = encode.decode_item(
+        issue, canonical_id=canonical, advise_degraded=False
+    )
     warnings.extend(decode_warnings)
     item["actor"] = actor
     # Audit the created issue against the standard (§4). WARN-only — findings ride
@@ -301,9 +322,16 @@ def get_item(
     default_repo: tuple[str, str] | None = None,
     settle_retries: int = 0,
     sleeper=None,
+    on_gone: Callable[[str, str, int], None] | None = None,
 ) -> dict:
     """Fetch one item by any accepted ID spelling **or a hand-minted ``PFX`` alias**;
     decode into the item shape.
+
+    ``on_gone`` (``(owner, repo, number) -> None``) is offered the item's
+    coordinates when the provider answers **410 Gone** — proof the issue was
+    hard-deleted — so a caller holding a local cache can evict the ghost (#1080).
+    It fires on 410 only: a 404 also means "no access", which is not proof of
+    deletion. The error envelope is the same with or without it.
 
     A ``PFX`` (e.g. ``BKL-0QR1``) is resolved via its ``id:PFX`` alias label against
     ``default_repo`` (``--repo``); see :func:`resolve_ref` for the not-found /
@@ -314,6 +342,7 @@ def get_item(
     not-found stays fast and the never-block floor is never diluted with retries on
     real absences.
     """
+    nid = None
     try:
         nid = resolve_ref(
             transport, id_raw, default_owner=default_owner, default_repo=default_repo
@@ -324,6 +353,11 @@ def get_item(
             transport, nid.owner, nid.repo, nid.number, settle_retries, sleeper
         )
     except TransportError as exc:
+        # Only the single-item read above is proof of deletion: a 410 from the
+        # alias search in `resolve_ref` (nid still unresolved) says nothing about
+        # one item, so `nid.ok` gates the callback.
+        if on_gone is not None and is_gone(exc) and nid is not None and nid.ok:
+            on_gone(nid.owner, nid.repo, nid.number)
         return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
         log_diag(f"unexpected transport failure on get: {type(exc).__name__}")
@@ -1383,9 +1417,30 @@ def _mutate_edge(
             # index here — `pick` reads dependencies live, permanently — so
             # mirroring them would be mirroring nothing. `related` lives in the
             # body block, which the store does hold and index.
+            #
+            # Two independent body writes, owned by this one call so the edge can
+            # never be visible from one end only (#835). The source goes first and
+            # is mirrored before the target is attempted, so a target failure
+            # leaves the cache true to what actually landed.
             written = _related(transport, nid, tid.canonical, add=add)
             if written is not None:
                 _mirror(absorb, written, nid.owner, nid.repo)
+            try:
+                written = _related(transport, tid, nid.canonical, add=add)
+            except TransportError as exc:
+                return _related_target_failed(exc, nid, tid, add=add)
+            except (OSError, json.JSONDecodeError) as exc:  # ERR-6
+                log_diag(
+                    f"unexpected transport failure on {verb} (target side): {type(exc).__name__}"
+                )
+                return _related_target_failed(
+                    TransportError(
+                        "unavailable", "the backend request failed unexpectedly"
+                    ),
+                    nid, tid, add=add,
+                )
+            if written is not None:
+                _mirror(absorb, written, tid.owner, tid.repo)
     except TransportError as exc:
         return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
@@ -1393,8 +1448,56 @@ def _mutate_edge(
         log_diag(f"unexpected transport failure on {verb}: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
+    data = {"item": nid.canonical, "edge": edge, "target": tid.canonical, "linked": add}
+    if edge == "related":
+        data["target_written"] = True
+    return ok(data)
+
+
+def _related_target_failed(
+    exc: TransportError, nid, tid, *, add: bool
+) -> dict:
+    """The ``related`` target write failed **after** the source side was done.
+
+    Never silent, and the shape depends on whether a retry can ever succeed:
+
+    * **Retryable** (``rate_limited``, ``unavailable``, ``conflict``): an error
+      envelope, because the edge is half-present and a retry-driver must see it.
+      ``details`` carries ``partial: true`` with the ``written`` side and the
+      ``unwritten`` one. A replay is safe and completes only the missing side,
+      since each side is idempotent on its own.
+    * **Permanent** (``auth``, ``not_found``, ``validation`` — typically a
+      cross-repo target this identity cannot write): ``ok`` with
+      ``data.target_written: false`` and a warning. Retrying would fail forever,
+      and failing the call would make ``related`` links from a product to an
+      upstream issue unusable; the source side is still useful.
+
+    The source write is never rolled back: a rollback is a third write that can
+    itself fail, and either half-state is repairable by replaying the call."""
+    if exc.retryable:
+        details = dict(exc.details)
+        details.update({"partial": True, "written": nid.canonical, "unwritten": tid.canonical})
+        verb = "recorded on" if add else "removed from"
+        return error(
+            exc.code,
+            f"{exc.message}; `related` was {verb} {nid.canonical} only — "
+            f"re-run the same command to complete {tid.canonical}",
+            retryable=True,
+            details=details,
+        )
+    verb = "recorded on" if add else "removed from"
     return ok(
-        {"item": nid.canonical, "edge": edge, "target": tid.canonical, "linked": add}
+        {
+            "item": nid.canonical,
+            "edge": "related",
+            "target": tid.canonical,
+            "linked": add,
+            "target_written": False,
+        },
+        [
+            f"`related` {verb} {nid.canonical} only — {tid.canonical} is not "
+            f"writable by this identity ({exc.code})"
+        ],
     )
 
 

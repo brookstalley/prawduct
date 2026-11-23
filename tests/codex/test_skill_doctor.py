@@ -42,8 +42,8 @@ def test_skill_resolves_exact_canonical_files_in_source_and_isolated_layout(tmp_
     overview = PLUGIN / "skills" / "methodology" / "SKILL.md"
     guide = PLUGIN / "methodology" / "building.md"
     expected = {
-        overview.resolve(): "87953b9984645092bc93b344af3fd242f762b5c1b778f5f0699e37e70233e7de",
-        guide.resolve(): "d15712de890b5b3da80d82435da7bb3a5e076ad61af869045d55b295fb56e136",
+        overview.resolve(): "83adb8db5be8a5dee9adf1a687f413fa5d031b093808ac38254efa12c72a0faf",
+        guide.resolve(): "ee1465871a2aa1f90ff429c8ef22a62c499cd78c341e975e1a1482c6c349d37d",
     }
     for isolated in (False, True):
         root = tmp_path / "isolated" if isolated else ADAPTER

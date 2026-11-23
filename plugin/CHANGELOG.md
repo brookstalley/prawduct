@@ -10,15 +10,672 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.9.0
+
+**Prawduct now reads change fragments only: a PR or a release refuses a `.prawduct/change-log.md` that still holds an unreleased entry, so move it onto fragments before your next PR (`/prawduct:doctor` offers the move) — and `critic-begin --chunk` is gone; use `--chunks`.** Also in this release: `/prawduct:pr` runs no separate PR reviewer, because the Critic is the PR boundary's one review; a repeat cumulative review covers only what changed since the branch's last boundary review; reviewers never run above Opus-class by accident; a turn that needs you ends with its asks under **Needs you**; the principles are grouped by how they fire; and fixes across the Stop gate, test evidence, verify-resolutions and the backlog cache.
+
+**`delegate-scratch-and-revisit-wording`**: When you delegate to parallel subagents, give each one its own scratch subdirectory in its brief.
+The `revisit-due` advisory now says a past `revisit:` date may be work scheduled for that date
+rather than an expired exception. Its id is unchanged, so a dismissal still holds.
+
+**`none-reason-wraps`**: A `none:` consumer note in a change fragment may now wrap onto more than one line; the release cut
+still reads it as none and publishes nothing for it. A `none:` note followed by a blank line and
+more text is refused as `none-with-note`: write the note for consumers, or keep only the reason.
+
+**`branch-review-set`**: A bare `render-dispositions` now lists every review on the branch, not just the newest one, so a
+change-log entry or PR body pasted from it can grow. Pass `--review <id>` to get the old
+single-review table. A `--json` consumer sees `schema_version: 3`, which has three new summary keys
+and no removed ones.
+
+**`chunk-credit-merged-verified`**: `plan status` may now show as done a chunk it showed as open: one verified by a
+`verify-resolutions` pass and then committed, or one built by a delegate and merged into the plan's
+branch with a merge commit. No action needed.
+
+**`class-finding-members`**: A finding whose reviewer listed `members` now needs every member answered before a `fixed`
+resolution is recorded. Until then, consolidate's `NEXT-ACTION` names the unanswered ids. Findings
+without members, and every existing record, behave as before.
+
+**`clear-verdict-delegates`**: Agents in governed repos may now close `SAFE TO CLEAR` while delegates are still running, provided
+`.prawduct/.handoff-notes.md` says what each one is doing and why, where its result lands and what
+integration it owes. A live Critic review still keeps the session open.
+
+**`closes-cache-miss`**: A clone whose backlog cache holds watermarks for more than one repo rebuilds its cache on the next
+sync, once. No action needed.
+
+An id spelled with different case (`Owner/Repo#N`) is this repo's item: GitHub owner and repo names are
+case-insensitive, so the scope comparison is too.
+
+**`exit1-covering-mode`**: A `verify-resolutions` that cannot use its anchor now prints `Re-dispatch as `<mode>`` in its exit-1
+reason. Re-dispatch in that mode. Exit codes do not change.
+
+**`git-tidy-submodule-worktrees`**: `prawduct-hook git-tidy --reap <worktree>` now removes a merged, clean delegate worktree that
+contains submodules, instead of failing with git's "working trees containing submodules cannot be
+moved or removed". When a submodule holds commits none of its remote-tracking branches reach, it
+keeps the worktree and says to push or drop them, or, if they are already published (a release tag),
+to remove the worktree by hand with the command it prints.
+
+**`ledger-outcomes`**: `.prawduct/.governance-ledger.jsonl` is review telemetry for this worktree. It is not your audit
+trail, and it never records whether a finding was fixed, accepted or filed. To see a finding's
+outcome, run `prawduct-hook render-dispositions` (`--review <id>` or `--scope <scope>`). Fixes
+verified by `verify-resolutions` reach your other clones with the reviews when `/prawduct:pr`
+pushes. ACCEPT and FILE dispositions stay in the clone that recorded them.
+
+**`post-fix-rule-one-home`**: The `uncovered` and `blocking` messages from `check-cumulative-critic` and the Stop hook word the
+post-fix step differently. They no longer try to predict which tree a `verify-resolutions` pass
+graded. They tell you to commit the tree the pass graded exactly as it was, or, if the pass listed
+files it left out, to commit those files and verify the new changes. No exit code or verdict changes.
+
+The last code carrier, `begin_review`'s working-tree-anchor note for `verify-resolutions`, now prints
+`gates.POST_FIX_COVERAGE` too, so all three CLI surfaces print the one sentence.
+
+**`pushed-branch-never-prd`**: A new advisory may appear for a finished branch that was pushed but never merged. Run
+`prawduct-hook worktrees --prs` to see whether it ever had a pull request. Then land it, or dismiss
+the advisory with the reason.
+
+**`retire-three-principles`**: Citations of `(#12)`, `(#19)` or `(#20)` in your learnings or specs still resolve: the slots point
+at the principles that absorbed them. The always-injected digest is about 11 tokens smaller.
+
+**`round-tally-at-next-action`**: After a branch's second Critic round, the review's next action ends with "This branch has recorded
+N review rounds since the merge-base …; name what round N+1 will do differently before you spend
+it." The count includes the review just recorded, so it matches what the coverage gate prints.
+
+**`stop-span-bash-authorship`**: If you run two Claude Code sessions in the same checkout, a file a session wrote through Bash,
+a delegate subagent or a background command now counts as its own work when you commit it from
+a terminal, as long as that write came before the commit. Before, that commit was left out, and
+the reflection and Critic Stop gates did not ask about it. A commit left out as the other session's is now also recorded, once, as an
+`other-session-commit` observation that `prawduct-hook stats` counts.
+
+**`subprocess-utf8-decoding`**: A branch whose diff carries non-UTF-8 content is now checked by `check-pr-hygiene`, so
+`/prawduct:pr create` no longer stops on it, and a credential elsewhere on that branch is now
+reported. In a repo with `core.quotePath=false`, a changed file whose name is not UTF-8 no longer
+stops session start or the handoff; the handoff lists it with the byte escaped. Any other command
+that hit such content (a review's diff, a file shown from HEAD) now reads it instead of reporting
+the read as failed.
+
+**`testament-evidence-wrapper-scripts`**: A repo with `.testament.toml` whose declared suite command is an in-repo script that runs
+`testament run` no longer sees the `declared-command-skips-testament` advisory. Where the advisory
+still fires, its wording is hedged and warns that replacing a wrapper drops its other checks. The
+advisory id does not change.
+
+**`coherence-pass`**: `contract-ignored-by-rule` is now a warning and its advisory id changes, so a dismissal of the old
+advisory no longer applies; it re-surfaces once. A script that parsed the old `test-status` or
+exit-7 text should expect the remedy once, after the finding. A review manifest no longer carries
+`chunk` or `native_review.text_path`; read `chunks`.
+
+**`backlog-service`**: `backlog get` of a deleted issue now exits 3 (`not_found`) instead of 6, and clears it from the
+local cache. `link`/`unlink --edge related` now write both items; a half-written link shows
+`details.partial` in the error and is finished by repeating the command. Reads of an open item
+with no stage, or one whose `prawduct:` block was removed, carry a new warning. Run `backlog
+unlink`/`link` again on old one-sided `related` pairs to complete them.
+
+**`branch-review-one-owner`**: After you switch branches, the session handoff's Critic findings are the checked-out branch's own
+review. When the findings cache still holds another branch's review, the handoff names both.
+`/prawduct:critic` may now answer `deferred` for a fix after a review that a merged delegate branch
+recorded. It no longer defers on a review recorded under a reused branch name on another lineage,
+or on one the branch lost to a rebase. In those cases it asks for the review.
+
+**`gate-flags-fail-closed`**: If `check-operator-verification` or `verify-coverage` starts failing with "cannot read
+.prawduct/project-state.yaml", fix that file's permissions or encoding (it must be UTF-8). The gate
+was not being enforced before; now it says so.
+
+**`gate-span-and-coverage-slips`**: If you run two Claude Code sessions in the same checkout, a session that changed nothing is no
+longer asked for a reflection just because the other session committed. A session whose commit
+touches a file it wrote is still asked, including when you commit that work yourself from a
+terminal or with `!git commit`. A file it wrote is one its edit tools (Edit, Write, MultiEdit,
+NotebookEdit) named, or one last written before the commit while it had a tool call or `!` command running: through
+Bash, a delegate subagent or a background command. A file last written by someone else while
+this session ran nothing is not its own. A commit left out this way is named on one line in the
+Stop hook's output and recorded once as an `other-session-commit` observation that
+`prawduct-hook stats` counts.
+`update_gitignore` adds `.prawduct/.session-activity.json` to your `.gitignore` at the next
+session start.
+
+**`gitignore-contract-semantics`**: If your `.gitignore` has a rule like `.prawduct/` or `.claude/`, you will now be told that it hides
+files prawduct needs committed, with the lines to use instead. Nothing edits that rule for you.
+Session entries that such a rule already covers are no longer reported missing or appended again.
+
+**`operator-verification`**: If your queue uses `## [VRF-NNN] title` headings it now works with no edits. If an unreadable queue was
+ever reported as "empty", you will now see the real reason.
+
+**`pre-dispatch-notice-one-owner`**: Inside an agent worktree, the snapshot notice now appears in the SessionStart context instead of on
+Stop's stderr. Nothing else changes.
+
+**`release-fragments-only`**: Move your change record onto fragments before your next PR. If `.prawduct/change-log.md`
+still holds an entry that has not shipped, `check-releasability`, `cut-change-log` and the PR gate
+(`check-change-log-entry`) now refuse with a `legacy-pending-entry:` line for each one, naming
+`/prawduct:doctor`, and the PR gate no longer accepts a new change-log entry as a branch's record. Run it (check #22),
+review the dry run, and apply: each unreleased entry becomes its own file in
+`.prawduct/changes/`, and released history stays where it is. The session briefing's
+`change-log-fragments-available` advisory now shows at `warn` until you do.
+
+**`retire-chunk-status-shims`**: Replace `critic-begin --chunk 02` with `critic-begin --chunks 02` in any script or habit. A reader
+of review facts should read `chunks` (falling back to `chunk` for facts written before v3.8.0).
+
+**`test-evidence-no-stale-green`**: While `test-evidence record` is running, `test-status` prints **running** with the elapsed time and
+an estimate from the last run, a worktree's first run included. Wait for it with
+`prawduct-hook test-status --wait`, which exits 75 if its timeout passes first, rather than starting
+a second run. If a `test-evidence record` refuses or is interrupted, `test-status` now reads
+**stale (interrupted)** and names the attempt. It no longer shows the previous green, and a refused
+first attempt no longer reads as no evidence. A run on another machine reads as interrupted once it
+is three times the last run's duration old (at least 30 minutes). Run the suite through the
+recorder, or ingest a whole-suite report, to get back to current. Ingesting a report of a run that
+started before your latest edit still records it, but only as current for this session: a later
+session or another worktree will run the suite again rather than trust it for a tree it never ran
+against.
+
+**`verify-coverage-stub-remedy`**: `prawduct-hook verify-coverage` on a repo with `coverage_required: true` still exits 1 while a
+record attempt is in progress or after it was interrupted; the message now tells you to wait
+(`prawduct-hook test-status --wait`) or to run the suite and record it, instead of asking for F4a
+coverage fields.
+
+**`verify-resolutions-lineage`**: After you switch branches, `/prawduct:critic verify-resolutions` now anchors on the checked-out
+branch's own newest review, not the review the findings cache last named. A bare
+`/prawduct:critic` also suggests verify-resolutions there when you are fixing that review's
+findings. It also refuses up front
+(exit 7) when your saved test evidence is stale or failing. Run your test suite, then run
+verify-resolutions again. A repo with no test evidence at all is not affected.
+
+**`testament-evidence-wiring`**: A repo with `.testament.toml` and a declared command that doesn't run testament sees one new
+dismissable advisory. In every repo, the `--from-counts` refusal's wording changes; what it refuses
+does not.
+
+**`native-review-paired`**: On a development build of the plugin, each boundary (`cumulative`) Critic review also starts the
+host's native `/code-review` at `high` over the same range, beside the Critic and never blocking it.
+Its findings are listed in the review's `NEXT-ACTION`, and `prawduct-hook native-review show` prints
+them. Set `native_review_pairing: false` in `.prawduct/project-state.yaml` to opt a repo out. Released
+builds do nothing new. Every build's `.gitignore` contract gains `.prawduct/.native-reviews/`, so the
+gitignore advisory asks once for `prawduct-hook update-gitignore`.
+
+**`asks-last`**: When a turn needs you to decide, approve or supply something, those asks are now the last thing
+in the turn. They appear under a **Needs you:** header after the one-line status close, not above
+it, and they are repeated after the agent answers a Stop-hook block. The close keeps its labels,
+and a turn with nothing for you still ends on the close. `prawduct-hook stats` gains a
+`close-pointer` row under *observed only*, counting closes whose reason pointed "above" or
+"below" instead of saying what the asks were.
+
+**`bounded-cumulative`**: A repeat `/prawduct:critic cumulative` on a long-lived branch now reviews only what changed since
+the branch's last clean boundary review, and says so when it dispatches (`Span: bounded from
+<id>`). The PR gate is unchanged. Before a risky merge, `/prawduct:critic cumulative full` reviews
+the whole branch again; a product that wants that every time can require it in its own process.
+
+**`gate-clarity`**:
+
+- **The Stop hook is faster on repos with a long review history.** The base-advance diagnosis no
+  longer grows with the number of past reviews.
+- **An `uncovered` verdict says why.** Both `check-cumulative-critic` and the Stop gate now print a
+  `CAUSE:` line naming whether the base advanced, the branch's head changed, or uncommitted files
+  are in the way. When uncommitted suite-coupled files are the cause, follow the remedy's
+  `git stash push` route instead of running another review.
+- **Syncing or switching branches no longer drags imported files into the Stop gate's demand.**
+  The Stop gate judges the files this session wrote and names the ones it excused. The PR gate
+  still requires review of the whole branch.
+- **Readers of the test-evidence record should also read `changes_out_of_remit`.** Non-Python
+  changed files now land there instead of in `changes_unjudged`. `changes_unchecked` still carries
+  the same list under its old name, until a major release.
+
+**`import-status-remove-block`**: `prawduct-hook plan import-status <plan> --apply --remove-block` no longer deletes chunk
+definitions kept as `###` subsections under `## Status`. It now stops with
+`refused: status-block-undelimited`, names the line of the first heading inside the section, and
+writes nothing. To remove the block, add a `## ` heading between the checkbox list and the
+subsections (for example `## Build Chunks`) and run it again, or delete the list by hand. If an
+earlier run of this command already removed chunk definitions from a plan, they are in that
+plan's git history.
+
+**`pr-reviewer-fold`**: `/prawduct:pr` no longer runs a PR reviewer. A PR opens when Critic reviews cover the branch, and
+two commands run in the flow: `check-pr-hygiene`, which stops the PR on a credential-shaped line
+the branch adds (a fixture or documented example takes a `prawduct:allow prawduct/credential-shape
+-- reason` comment) and warns when the change record closes an item the backlog does not know; and
+`check-pr-body`, which holds the PR description to your repo's PR template when it has one. The
+Stop hook no longer asks for PR-review evidence, and no longer calls `gh` at the end of a turn.
+Files left in `.prawduct/.pr-reviews/` are unused and safe to delete. The managed ignore list
+gains one entry, `.prawduct/.pr-body.md`: `prawduct-hook update-gitignore` adds it, and the
+ignore-drift advisory names it until then. A session that was already
+open when the plugin updated must be restarted before it can open a PR: its loaded skill text
+calls commands that were removed, and they say so. `learnings-files --for-diff` and the cache
+queries `affecting` and `created-since` are gone.
+
+**`read-cost-review`**: `final` and `cumulative` Critic reviews now look at what a changed read costs: a lookup that walks
+a growing collection for want of a key, index or bound, whole records or heavy fields fetched
+where a few values are used, one read per item where one would serve. Such a verdict's title opens
+`read-cost:`. It is a warning at most, where your data model or non-functional requirements state
+a volume that makes the cost real, or the read runs on every request over a collection that
+plainly grows, and it never blocks. If your data model states no volume for a store that grows,
+expect an observation pointing you to the data-model template's new Access Paths section:
+expected volume, how each frequent read finds its records, and which fields are heavy. Adding that
+section is optional and nothing checks for it.
+
+One known cost. In a blind test, reviewers carrying this check raised every planted read-cost
+mistake and stopped raising a different real defect, a broken run command in a script the check
+judged clean, which reviewers without the check usually caught. A file this check passes has not
+been cleared of anything else.
+
+**`review-round-cost`**:
+
+- **A failing reviewer partial no longer costs the whole round.** When `critic-consolidate`
+  refuses one, its message names the role and gives the remedy: re-dispatch that one reviewer.
+  Follow it; do not start a new review, which is refused while the other partials are on disk.
+- **Reviewers check their own partial.** They now run `prawduct-hook validate-partial` before
+  returning, so a malformed partial is usually caught before consolidation. It reads the review
+  from the partial's own path and exits 3 when nothing can check the file (the review already
+  consolidated, or the file is keyed to another review); a reviewer stops there rather than
+  rewriting a sound partial.
+- **Telemetry readers:** `review-stats --json` is schema 12 and `stats --json` schema 4. Both gained
+  the `waived_inherited` outcome, which neither acted-on count includes.
+- **Getting an inherited failure waived without a round.** If your branch's base already fails a
+  test, record the suite once in a clean checkout of the merge-base, for example
+  `git worktree add --detach <dir> $(git merge-base HEAD <base>)` and then
+  `prawduct-hook test-evidence record` there. The evidence store is shared by the clone, so the
+  branch's next review, in any mode, waives a BLOCKING finding for that same failure itself, as
+  long as your own tree's recorded run fails nothing new that no other finding names. The finding
+  still shows on the record, marked waived and citing the base run. When a waiver does not fire,
+  the finding's `not_waived` in `.critic-findings.json` says why. Record the base run before the
+  review: a run recorded after it serves only later reviews, and a finding already raised clears
+  through `verify-resolutions`. A repo whose base resolves to the `HEAD~1` fallback
+  gets no waiver; set `base_branch:` in `.prawduct/project-state.yaml`.
+
+**`reviewer-model-cap`**: On a session running a model stronger than Opus-class, Critic and PR reviews now run on
+Opus-class instead of on the session's model, and `/prawduct:backlog` and `/prawduct:advisory`
+run on Sonnet-class on every session. On a capped session every single-pass review, whatever its
+mode, is handed by the Critic to one background reviewer, so `/prawduct:critic` returns before the
+review lands: run `prawduct-hook critic-consolidate` before reading the findings, as after a
+three-reviewer review. Sessions on Opus-class or below review exactly as before. `prawduct-hook review-stats`
+gains a count of reviews that ran above the ceiling.
+
+**`audit-guidance`**: Sessions close with one line instead of three paragraphs, and a turn that needs you ends with its
+questions restated above that line. A close that cites the message itself as its record is no
+longer sent back by the Stop hook; it is counted under "observed only" in `prawduct-hook stats`.
+Agents delegate by default when it shortens the work, tell you how many agents and which models,
+and keep the full test suite off delegates; `Delegation: off` in `project-preferences.md` turns
+this off, and a `Delegation approval` row, if you have one, is no longer read. Agents now write
+your rulings to `.prawduct/owner-rulings.md`; commit that file.
+
+**`critic-trim`**: Critic reviews get shorter. A reviewer no longer files backlog-reconciliation, learnings
+cross-check or "priors" notes, or a note listing the plan's mid-build decisions, and nothing is
+rated NOTE: what used to be a note arrives as an observation, which gates nothing and needs no
+disposition, so the closing line no longer asks you to answer observations. Record-lint results
+(a missing declared deliverable, a learnings file over budget, a `governed_by:` gap) now appear
+in the review as findings or observations recorded by consolidation itself, at the severity the
+lint assigns; a review whose plan has no gradable chunk section records a blocking finding for
+the deliverable check that could not run. A record-lint warning you accepted or filed is not
+raised again until the result changes. Reviews recorded before this change keep their notes.
+
+## v3.8.1
+
+**If your product still records changes in `.prawduct/change-log.md`, move it onto change fragments now — the session briefing offers the move, and the next release is planned to accept fragments only.** Also in this release: a dated `revisit:` on a GitHub Issues backlog item now raises an advisory when it passes, and the Stop hook no longer sends back a turn that closes `YOUR TURN` or `COMPLETE` with `DO NOT CLEAR` — it records it instead.
+
+**`retire-clear-verdict`**: A turn that ends `YOUR TURN` or `COMPLETE` with `DO NOT CLEAR` is no longer sent back by the Stop
+hook. Each one is still counted, and `prawduct-hook stats` lists them under "observed only".
+`stats --json` is now schema 3. An older plugin sharing the clone counts these firings as guard
+refusals.
+
+**`revisit-due-issues`**: If your backlog is on GitHub Issues, a dated `revisit:` on an open item now raises an advisory
+in the session briefing once the date passes. Renew it with a fresh date, act on it, or close the
+item. Items that already carry a past date will raise one advisory at your next session start.
+Because the check now reads the backlog cache at every session start, a clone whose cache has
+never been synced now sees the `backlog-cache-unreadable` advisory even with no norm citations;
+`prawduct-hook backlog sync --repo <owner/repo>` clears it. Its wording changed, so an
+earlier dismissal of it does not carry over.
+
+**`change-log-fragments-advisory`**: If your product still records changes in `.prawduct/change-log.md`, the session briefing now says
+so and offers to move it onto per-change files under `.prawduct/changes/`, so branches stop
+editing one shared file (which conflicts at merge, or with `merge=union` can bring archived entries
+back). You see a dry run first, nothing is written until you approve it,
+and the move is one commit you can revert.
+
+## v3.8.0
+
+**Prawduct now needs Python 3.14 on every machine that opens a governed repo — install it before upgrading, or governance switches off for the session.** Also in this release: a build plan's chunks now show their state, derived from review facts, and a boundary review certifies only the chunks actually built; review evidence travels with the branch as git notes, so a second clone sees the reviews another clone ran; products can declare their own changelog, which the release cut writes from each change's consumer note; and fixes to the Stop and clear gates, flaky-test reruns, and plugin-skew notices.
+
+**`changelog-list-notes`**:
+
+- With `consumer_digest: layout: paragraphs`, a consumer note that starts with a list item now
+  renders as a list under its label, instead of putting the first item on the label line as text.
+
+**`clear-gate-telemetry`**:
+
+- `YOUR TURN` + `DO NOT CLEAR` is no longer refused while a background task or a live Critic review
+  is running. Name the work in the copy. With nothing running, the pair is still refused.
+- `prawduct-hook stats` may report fewer `clear-reason` catches than before. Firings from sessions
+  that changed nothing, and firings recorded before this release, are now unclassified.
+
+**`block-append`**:
+
+- When the Stop hook blocks a turn, its message now says to add only what the blocking items ask
+  for, without repeating the answer. Write a closing block again only when the one above would
+  now be wrong: an item faults it, or you must close `RUNNING` / `DO NOT CLEAR`.
+
+**`crlf-preserve`**: In a repo whose `.prawduct/` files use CRLF line endings, `archive-change-log`, `cut-change-log`
+and `migrate-change-log` now keep CRLF in the files they rewrite. On macOS and Linux they used
+to convert those files to LF, so the diff showed every line as changed.
+
+**`second-clone-evidence`**:
+
+- In a second clone of your repo, a review that ran in another clone now counts the way it does
+  there. Inference no longer asks for a `cumulative` the PR gate already considers covered, and
+  `/prawduct:critic verify-resolutions` works on fixes to it. Run `prawduct-hook evidence sync`
+  (or start a session) to pull the other clone's reviews in.
+- `evidence status`'s no-note count now says it covers only this branch's commits.
+
+**`briefing-banner`**: After a version rollback, the session banner now says `↓ Prawduct downgraded` instead of
+announcing an update. A build plan that merged and is waiting for its
+release no longer gets the "not a branch in this repo … Fix the frontmatter" line in the session
+briefing. A plan that is not in the base branch's tree (committed only on an unmerged branch,
+or not committed yet) and whose `branch:` names a branch that does not exist still gets it. `plan status` and `plan check-claims` now report that plan as
+`unknown` rather than merged-unreleased.
+
+**`build-stamp`**: Every evidence fact now records which plugin build wrote it when the plugin runs
+from a git checkout (a dev or beta build), as `actor.build`. A marketplace install records none.
+To compare builds of the same version, run `prawduct-hook stats --by-build`. The build sha now
+travels with those facts wherever `evidence sync` pushes them, which is your product's own remote,
+as the branch name already does. Contribution reports to prawduct are unchanged: they still carry
+only the major.minor version.
+
+**`chunk-state-table`**: A chunk now reads done in `prawduct-hook plan status` when a clean review's interval holds one of
+your branch's commits whose subject carries the plan's scope and the chunk, `<type>(<scope>): …
+(Chunk N)`, even if the review did not name it with `--chunks`. Before, such chunks stayed open,
+`plan-backfill` refused the plan at release, and `archive-plan` stamped built work as unbuilt. If
+your commit subjects do not name chunks that way, keep passing `--chunks`: touching a chunk's
+Deliverables files does not count. A chunk reviewed over uncommitted work also stays done after its
+branch is merged with a merge commit and deleted. Two merges still leave chunks open once the branch
+is deleted, whether or not a review named them: a squash merge (the reviewed commits are on no
+ref), and a fast-forward of a chunk whose only review was over uncommitted work (its anchor cannot
+be told from the fork point). Nothing here closes them yet; merge with a merge commit, or keep the
+branch until the release.
+
+A `governed_by:` entry written as a bare path now reports a `governed-by-gap` warning when its
+artifact has `## Direction` norms, the next time a review changes the plan. Write it as
+`- artifact: <name>` with a `dispositions:` line per norm.
+
+**`python-floor`**:
+
+- **Every machine that opens a governed repo needs Python 3.14 or newer**, including repos that are
+  not Python projects, because prawduct's hooks are Python. Install one so `python3.14` runs from the
+  repo: `brew install python@3.14` or `uv python install 3.14`. Under pyenv, `pyenv install 3.14`
+  is not enough where a `.python-version` pins an older version; also make 3.14 selectable there,
+  e.g. `pyenv local <current> 3.14`. The error names any `python3.14` it found that would not run.
+- Nothing else changes where `python3` already resolves to 3.14. Where it resolves lower, hooks
+  re-run themselves under the 3.14 they find, at the cost of a probe and a re-exec per hook call.
+  To avoid that, make `python3` resolve to 3.14 in the repo (for example a pyenv
+  `.python-version`). `/prawduct:doctor` shows which case you are in.
+- With no qualifying interpreter, the session opens with "PRAWDUCT GOVERNANCE IS OFF THIS
+  SESSION", and no gate, review or briefing runs until one is installed and Claude Code restarts.
+- If you record tests without a declared `test_command`, the pytest fallback still runs your
+  invoked `python3`. Declaring `test_command` remains the robust choice.
+
+**`session-authored-span`**:
+
+- A session that only syncs (`git pull`, merging the base branch in, switching branches) is no
+  longer blocked for a reflection or a Critic review of history older than the session. Code the
+  session commits or leaves uncommitted fires the gates as before.
+- Commits made by anyone after the session started still count when a pull, merge or checkout
+  brings them in, including another session's in a shared checkout: the rule is by age, so a
+  delegate's merged-back work is never lost.
+
+**`stop-deferral-quiet`**:
+
+- The `WARNING (deferred-boundary-review)` notice no longer appears in your transcript on
+  turns that end normally. Nothing about when reviews are owed has changed: the boundary review
+  is still required, and its gate blocks as before.
+
+**`unloaded-tripwire`**: Run `/prawduct:doctor` once in each governed repo. It adds a SessionStart hook to the repo's
+`.claude/settings.json` (commit it) that prints a warning when a session starts in a Claude Code
+profile where prawduct is not installed, and stays silent otherwise. New repos get it from
+`/prawduct:onboard`. Doctor also offers the updated governance anchor, which tells agents that a
+missing Prawduct session banner means governance is off. On Windows without Git Bash the hook does
+not run, and nothing warns.
+
+To opt out, delete the one `hooks.SessionStart` group in `.claude/settings.json` whose command
+starts with `: prawduct-unloaded-tripwire`. Then dismiss the `tripwire-missing` advisory with
+`/prawduct:advisory dismiss`. A dismissal stays put through later syncs, but it is recorded per
+clone, so each clone dismisses it once. Re-running `/prawduct:onboard` or `/prawduct:migrate` on
+an onboarded repo does not add the hook back: both do nothing once `distribution: plugin` is
+recorded. `/prawduct:doctor` Check #1 still reports the hook as missing and offers
+`install-tripwire --apply`. Decline that offer, or it writes the hook again.
+
+**`unmigrated-file-sync`**:
+
+- A repo still on the pre-2.0 file-sync install now sees an advisory recommending
+  `/prawduct:migrate` at session start. It is urgent while the legacy sync hook can still run at
+  session start. Once migrated, the advisory stops firing.
+
+**`chunk-proposal-silence`**: A `final` or `cumulative` Critic review that certifies no chunk while your plan still has open
+ones now says so at the end of its `NEXT-ACTION:` line, naming the chunks and the `--chunks` flag
+to pass. Before this, such a review left the chunks open without a word, and they were archived
+as unbuilt at release. Commit subjects now name a chunk in any case, including
+`<scope> chunk 01: …`. When a chunk's Deliverables are all bare file names (`page.js` rather than
+`src/page.js`), the dispatch says only a commit subject can find it: write Deliverables paths
+from the repo root.
+
+**`consumer-digest`**: **Release notes now reach your own changelog.** Declare `consumer_digest:` with your changelog's
+`path` in `.prawduct/project-state.yaml`. From then on, `cut-change-log --apply` writes each
+release's fragment notes into it as a new section above your newest release, and keeps a copy in
+`.prawduct/releases/<version>.md`. No other byte of the file changes, line endings included. The
+cut never renames a heading, so a tool that dates or tags releases can run after it.
+- Layouts: `paragraphs`, `bullets` or `by-type` (Keep a Changelog subsections), with a heading
+  and an entry template of your choice.
+- An optional headline goes in `.prawduct/release-headline.md`. Set `headline: required` to have
+  the cut insist on one.
+- The dry run prints the exact section, which you can paste into a release PR as its notes.
+- Without the key nothing changes, except that the cut now says how to turn it on.
+- Full reference: `/prawduct:methodology project-state`, under `consumer_digest`.
+
+**`final-review-chunks`**: `/prawduct:critic` in `final` or `cumulative` mode partway through a plan (for example, an early
+keystone chunk declaring `Critic mode: final`) now certifies only the chunks that were built, not
+every chunk still open. If an earlier review marked unbuilt chunks done, `prawduct-hook plan status`
+shows which fact certified each chunk. `prawduct-hook plan retract <chunk> --reason "<why>"`
+reopens a chunk on the record.
+
+**`flaky-rerun`**: When one test fails under load, `prawduct-hook test-evidence record --rerun-failed` retries only
+the failures instead of the whole suite. A test that passes on retry is recorded as a flake, not
+hidden in the green. With a declared `test_command:`, add a `test_rerun_command:` that takes
+`{junit_xml}` and `{pytest_node_ids}` (`test_rerun_commands:`, one per entry, for
+`test_commands:`). Flakes are judged against your branch's diff: under the default
+`flaky_policy: warn`, a flake in a test the branch changed draws a Critic warning, and
+`flaky_policy: block` keeps it failing. Reports that mark a runner's own retries
+(`<flakyFailure>`, Maven Surefire's convention) are read the same way. `test-status`, the
+session handoff and the PR body now list flakes.
+
+**`host-seam`**: Nothing changes in a Claude Code session: the hooks print the same bytes and exit with the same
+codes. One edge case moves: if `CLAUDE_CONFIG_DIR` holds a literal `~`, the banner now expands it,
+as the rest of prawduct already did. Host adapters set the new `PRAWDUCT_HOST` variable in their
+hook registration. Leave it unset under Claude Code, because an unrecognised value makes the Stop
+hook block until it is fixed.
+
+If your plugin is a git checkout you advance in place, update it while no session is ending a
+turn. A Stop that runs while the files are mid-swap, an old `prawduct-hook` with the new `lib/`
+or the reverse, can lose that turn's Stop deferrals and one clear-verdict block. A marketplace
+install swaps the whole tree at once and is not affected.
+
+**`scope-record-no-clock`**: The worked pytest producer in `docs/test-report-contract.md` no longer writes the optional `at`
+field, and the contract now says why. A clock read in `pytest_configure` happens outside any test,
+so a result cache that refuses to reuse clock-reading tests charges it to every test in the run. If
+you copied the producer, you can drop `at` from yours too: the JUnit report's own `timestamp` says
+when the run happened. Records that still carry `at` read exactly as before.
+
+**`stub-not-built`**: Right after `prawduct-hook plan new`, `plan status` no longer shows the change-record chunk as
+`built`, and a first `/prawduct:critic` review no longer proposes it. That chunk now reads as built
+once its fragment's narrative or consumer note is written and committed. A `final` or `cumulative`
+review now proposes a chunk from a commit subject only when that subject carries the plan's scope,
+for example `feat(<scope>): Chunk 02 — …`. When it leaves one out, `critic-begin` prints a
+`PRAWDUCT NOTE` naming it, and `--chunks` declares it.
+
+**`testament-cacheability-advisory`**: If your tests run through testament, the session briefing can now tell you which causes keep
+your test results from being cached, and how many tests each one alone is blocking. For each
+cause you either fix it, or declare it expected in testament's configuration so it stops being
+reported. Dismissing the advisory hides it until the set of causes changes. Nothing changes for
+repos that don't use testament, or until a testament release writes the snapshot this reads.
+
+**`branch-claimed-plan-no-fallback`**:
+
+- A build plan whose frontmatter declares `branch: X` is no longer the active plan on any other
+  branch, even when `active_build_plan` names it or it lives at `artifacts/build-plan.md`. A plan
+  declaring no `branch:` resolves exactly as before.
+- After a branch-declaring plan merges on gitflow there is no pointer step: the plan stays live
+  and inactive until the release archives it.
+
+**`chunk-status`**:
+
+- `prawduct-hook critic-begin --chunks 01,03` names the chunks a review certifies (comma list,
+  repeatable; omitted, the review certifies exactly the code-derived proposal); `--chunk` stays as
+  a one-element alias for one release. The review fact carries `chunks`, `chunks_proposed` and
+  `chunk` (= `chunks[0]`, one release, for old readers). An id the plan does not declare is refused
+  (`unknown-chunk`, exit 1); an id outside the proposal is recorded with a `WARNING:` note.
+- New fact kind `chunk-imported` (observational for coverage; authoritative for chunk completion).
+  New subcommands: `plan status [<path>] [--json]`; `plan import-status <path> [--apply]
+  [--remove-block]` (MG2 — the block is removed only on request, because the imported facts reach
+  another clone only through the notes transport that ships in this same release (`evidence sync`;
+  see the evidence-transport entry); refusal codes in `api-contract.md`); `plan check-claims [--json]`
+  (outcomes `exists` / `release-pending` / `missing`; a merged plan retained for release is
+  release-pending, not a defect).
+- Build-plan frontmatter gains `dropped:` — a block sequence of `- <id>: <reason>`; a reasonless or
+  unparseable entry leaves the chunk open with the cause in `plan status`'s `reason` column.
+- The Stop hook no longer reads `project-state.yaml` `build_plan.chunks[].status` (ST7) or counts
+  boxes; it arms when the checkout is bound to a live plan or the binding is broken. On a short
+  plan, commits whose subject names `Chunk <id>` (or touch the chunk's deliverables) are what make
+  it the last chunk; a git-derived signal can arm the gate, never disarm it.
+- `test-evidence record` from a scratch worktree now appends a `test-run` fact with
+  `narrowed: true` and `ceiling` to the shared store and writes no per-worktree JSON; a narrowed
+  fact never vouches for the suite. `test-status` lists those runs by tree after its verdict line.
+- The `unticked-committed-chunk` briefing token is retired; its successor is `built-not-done`
+  ("built, not done — run the Critic"), printed at `/clear` and by `handoff preview` for the
+  bound plan's chunks that are committed but not yet certified.
+- Template: `## Status` leaves `templates/build-plan.md`; a minted plan carries none. Prose: the
+  rule lives once in `methodology/planning.md`; the digest, the template and the skills reference
+  it. `work_unit.live_declarations` is public (`_live_declarations` aliased one release).
+- Briefing and handoff: a finished bound plan stays visible as active work with `Resume: finished`
+  (it no longer falls back to project-state WIP); `**Current chunk**` names the first open chunk.
+  The staleness scan's "project-state.yaml has a completed build plan" check is retired with the
+  key it read.
+- `lifecycle-repair`'s `plans_to_review` now names chunks committed on the plan's branch that no
+  review has certified (`Chunk <id>`), and names a plan whose built state git could not report with
+  the cause (`unavailable`) instead of listing nothing; an open chunk with nothing built is no
+  longer reported.
+- `record-lint` grades every chunk the review names: `chunks_graded` (list) joins `chunk_graded`,
+  which is the single id or null when several.
+- `plan_archive.unbuilt_at_archive(plan_path, *, repo_dir, facts=None)` replaces the content-taking
+  form; `unbuilt_at_archive:` is stamped from the open chunks. `plan status --json` carries
+  `built_unavailable` (null when git answered).
+
+**`evidence-transport`**:
+
+- Three new commands. `prawduct-hook evidence ingest [--all]` reads the ref into the store
+  (session start runs it bounded to the branch). `evidence sync [--no-push]` fetches, merges,
+  ingests and pushes the ref; `/prawduct:pr create|update` runs it after the branch push, and a
+  failure there is reported without blocking the PR — `evidence status` then shows
+  `N note commit(s) not yet pushed` (or, when no push from this clone has ever landed,
+  `N note commit(s) never pushed from this clone`) until a sync succeeds. `evidence configure --apply` adds the
+  notes fetch refspec (a pattern, `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*`, so a
+  plain `git fetch` keeps working while the remote has no notes yet) and `notes.rewriteRef` to the
+  clone's `.git/config`, so a plain `git fetch` brings
+  the remote's notes into a tracking ref that the next session start or `evidence ingest` reads, and an amend or rebase keeps them; `/prawduct:doctor` offers it and
+  `/prawduct:onboard` runs it. Exit codes are in `api-contract.md`.
+- Facts fetched from the remote feed this clone's coverage gates exactly as locally written ones do;
+  the trust decision and its limits are recorded in `security-model.md` beneath the egress site.
+- Exit codes: `evidence list` with a bad flag and an unknown `evidence` op now exit 2 (usage), not 1
+  — every `evidence` op shares one router and one convention (0 ok / 1 failure / 2 usage); a script
+  that branched on 1 for those two cases needs the change. Recorded as a departure from
+  additive-first in `api-contract.md`.
+- To undo transport in a clone: `git config --unset-all remote.<remote>.fetch '^\\+refs/notes/prawduct'`,
+  `git config --unset notes.rewriteRef`, `git update-ref -d refs/notes/prawduct` (and the tracking
+  ref `refs/notes/<remote>/prawduct`); on the remote, `git push <remote> --delete refs/notes/prawduct`
+  — the ref carries findings text and file paths, so deleting it there is the only way to retract them.
+- `stats` and `contribute` count ingested reviews beside native ones, so two contributing clones
+  double-count at the collector — a known defect, #1058, not intended behaviour.
+- A shallow or single-branch clone (CI's default checkout) has no merge base, so a bounded ingest
+  reads nothing and session start says nothing: run `evidence ingest --all` there, or fetch the base
+  branch first.
+- A fresh clone has an empty store: it shows a branch's coverage after one `evidence sync` run, or after
+  `evidence configure --apply` plus a `git fetch` and a session start, with
+  that branch checked out.
+- Reviews of uncommitted trees count only in the clone that holds the tree; the boundary
+  `cumulative` is committed, so the PR gate's verdict is identical in every clone.
+- `stats` and `contribute` read the store, so reviews ingested from another clone count there too.
+- `plan status` prints a `lifecycle:` line and `--json` gains `lifecycle`; `--probe-pr` asks GitHub
+  for a merged PR when git alone cannot tell (never run by a hook).
+- `plan check-claims` now judges a claim by the plan's observed lifecycle, so a `working-branches:`
+  entry missing while the integration branch is still in progress reads `missing` (exit 1) where
+  it was `release-pending`, which can flip a consumer's `/prawduct:doctor` check #24 line.
+
+**`merged-plan-chunk-state`**:
+
+- A build plan whose branch the merge deleted now reads its chunks as done from the base's
+  history. The session-start staleness line "has chunks left and declares `branch: X`, which is
+  not a branch in this repo" stops firing for such a plan once its chunks are certified; it
+  still fires for a merged plan with a chunk no review certified, which `lifecycle-repair`
+  names.
+- `plan status` reason text for an unplaceable commit changes shape when the branch is gone:
+  "its commit is not on `develop` (`feature/x` is on no local or remote branch, so the base it
+  merged into is asked)".
+
+**`plan-archive-scope-name`**:
+
+- `prawduct-hook archive-plan` (and `plan-backfill`, which archives through it) now writes
+  `archive/<name>-<scope>.md` for a plan whose filename does not carry its scope, for example
+  `build-plan.md` with scope `demo` becomes `archive/build-plan-demo.md`. Plans already named
+  `build-plan-<scope>.md` archive under their own name, as before.
+
+**`review-stats-dispositions`**:
+
+- `prawduct-hook review-stats --json` is `schema_version` 9. It adds a top-level
+  `dispositions` header and a `dispositions` block on every stat block (`joined_reviews`,
+  `unjoined_reviews`, `by_outcome`, `answered`, `acted_on_rate`). No key was removed, and
+  `actionable_rate` keeps its meaning.
+- The human line leads its yield figures with `acted on N% of M answered blocking/warning
+  findings, U undispositioned (J of R reviews joined)`, and the old `actionable` figure now
+  reads `severity-actionable`.
+
+**`refusal-reasons`**:
+
+- `prawduct-hook stats` prints a `stop reasons` line per clear gate, and `--json` is
+  `schema_version` 2. It adds `stop_blocks.by_gate_reason`, `stop_blocks.verdicts` and
+  `guard_refusals.by_guard_reason`. No key was removed.
+
+**`untracked-verbatim-commit`**:
+
+- `critic-begin` can print a `PRAWDUCT NOTE` naming untracked files in the reviewed tree. If they
+  belong in the commit, commit with `git add -A`. If not, exclude them and re-dispatch before the
+  review runs.
+
+**`work-unit-binding`**:
+
+- The `active_build_plan` pointer and the `artifacts/build-plan.md` default path are deprecated.
+  They are served only in a legacy window, for a repo in which no live plan declares `branch:`, and
+  only for a plan that itself declares none. The `plan-unbound-legacy` advisory fires there and names
+  the migration: `prawduct-hook plan bind <path> --branch <name>`.
+- The window closes no earlier than two minor releases later, and only after
+  `plan-unbound-legacy` has fired on no known consumer for a release.
+- A detached HEAD now binds nothing: a checkout that resolved a plan by branch name or pointer
+  before resolves to none, and gates keyed to the plan do not arm there.
+- `closed-by` is validated: a branch name or an unknown `scope:` value is refused where it is written.
+- A fragment whose scope near-misses a plan's is refused where it is read.
+- Base-branch resolution for the gates, `check-cumulative-critic` and the PR payload consults the
+  bound plan's `base:` first (then the repo's `base_branch:`, then the remote default): a stacked
+  branch whose plan declares `base: feature/A` reviews against `feature/A`, not the integration
+  branch. A plan declaring no `base:` resolves exactly as before.
+- `verify-chunk-refs` with a chunk named but no plan bound, or a broken binding, exits 1
+  `cannot-verify` instead of a false 0; with no chunk named on an unbound checkout it prints `ok`
+  with the reason.
+- `critic-begin` records `scope_chosen_by` as one of `binding`, `legacy-pointer`, `legacy-default`,
+  `explicit-args` or `none`; `branch-name` and `not-resolved` are no longer written, and history
+  that carries them still reads. A consumer filtering on `binding` alone misses every
+  legacy-window and every unbound review.
+- `prawduct-hook plan resolve --json` carries `case` and `base` beside the Binding's other keys. The
+  `core.resolve_build_plan_path` and `buildplan_refs.resolve_branch_plan` shims are removed, not
+  kept for a release.
+
 ## v3.7.2
 
 **Products can now record each change as its own file, so parallel branches stop colliding over `change-log.md`; `/prawduct:doctor` offers the move.** Also in this release: a `tidy-available` advisory and `git-tidy` clean up merged branches and dead worktrees only on proof nothing is lost, the alignment pass judges whether the goals under the work are grounded, record-lint reports surviving copies of a retired claim, and a 57-item backlog burndown that retires the `Type: trivial` Stop gate.
 
-**`network-git-budget`**: - `git-tidy`'s fetch, `ls-remote`, `push --delete` and `gh` calls now wait up to 60 seconds,
+**`network-git-budget`**:
+
+- `git-tidy`'s fetch, `ls-remote`, `push --delete` and `gh` calls now wait up to 60 seconds,
   instead of 15, before counting as failed. Set `PRAWDUCT_GIT_TIMEOUT` above 60 to allow longer.
   Setting it below 60 now shortens only local git calls.
 
-**`git-hygiene`**: - A repo with merged branches or dead worktrees sees one new advisory at session start,
+**`git-hygiene`**:
+
+- A repo with merged branches or dead worktrees sees one new advisory at session start,
   `tidy-available`. It changes nothing until the owner approves the dry run. Dismissing it holds
   until the set of removals changes. To turn it off, set `Branch cleanup: off` in
   `project-preferences.md`.
@@ -29,7 +686,9 @@ release process keeps the two in sync (one headline per shipped release).
 - The online dry run fetches with `--prune` and calls `gh pr list` against the product's own
   repo. Without `gh`, remote deletions are listed as unchecked and not performed.
 
-**`retired-claim-survives`**: - A new record-lint check, `retired-claim-survives`, reads `Retires:` phrases (`docs/norms.md`
+**`retired-claim-survives`**:
+
+- A new record-lint check, `retired-claim-survives`, reads `Retires:` phrases (`docs/norms.md`
   § Anatomy). A repo that declares none sees only a new zero in the review fact's `record_lint`
   counts. A repo whose norms already carry a `Retires:` line with quoted phrases gets a WARNING
   for each surviving copy at its next boundary review. Rewrite each one, or waive a quotation
@@ -38,7 +697,9 @@ release process keeps the two in sync (one headline per shipped release).
   A cache that was never synced, or cannot be read, reports `retired-claim-survives unchecked`
   until `prawduct-hook backlog sync` runs.
 
-**`backlog-burndown`**: - The `Type: trivial` Stop gate is retired. `trivial` remains a chunk type the Critic reviews: a
+**`backlog-burndown`**:
+
+- The `Type: trivial` Stop gate is retired. `trivial` remains a chunk type the Critic reviews: a
   rationale the diff contradicts blocks, and a missing one is a warning.
 - `stamp-merged` and `regen-views` are removed. Both had been inert no-ops and were never
   registered in a shipped `hooks.json`, so nothing that ran them did anything. That is why this

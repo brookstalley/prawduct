@@ -323,6 +323,18 @@ def register_probe(
     }
 
 
+def registered_versions() -> dict[tuple[str, str], int]:
+    """``{(feature, type): version}`` for every type the registry can stamp.
+
+    The version each candidate of that type carries into its advisory id — the
+    same answer :func:`run_probes` stamps, read without running any probe."""
+    return {
+        (record["feature"], ctype): record["probe_version"]
+        for record in _REGISTRY.values()
+        for ctype in record["types"]
+    }
+
+
 def clear_registry() -> None:
     """Empty the registry. Primarily for test isolation."""
     _REGISTRY.clear()
@@ -406,7 +418,7 @@ def compute_id(feature: str, probe_type: str, probe_version: int, evidence: Iter
     illustrative and a probe simply chooses a short ``feature`` token.
     """
     joined = "\n".join(evidence)
-    digest = hashlib.sha256(joined.encode("utf-8")).hexdigest()[:6]
+    digest = hashlib.sha256(joined.encode("utf-8", "surrogateescape")).hexdigest()[:6]
     return f"{feature}-{probe_type}-v{probe_version}-{digest}"
 
 
@@ -450,7 +462,7 @@ def _preserve_corrupt(path: Path, raw: str) -> None:
     a failed preservation is swallowed rather than propagated.
     """
     try:
-        path.with_name(path.name + ".corrupt").write_text(raw)
+        path.with_name(path.name + ".corrupt").write_text(raw, encoding="utf-8", errors="backslashreplace")
     except OSError:
         pass  # best-effort: never let preservation break the (non-raising) read
 
@@ -520,7 +532,7 @@ def load_project_state(product_dir) -> ProjectState:
     """Parse top-level scalar fields from ``project-state.yaml`` (column-0 scan).
 
     No PyYAML dependency — mirrors the column-0 pattern used elsewhere
-    (``_read_sync_config``, ``core.read_bool_yaml_key``). Only top-level ``key: value``
+    (``_read_sync_config``, ``core.read_bool_flag``). Only top-level ``key: value``
     scalars are captured; nested-block headers (``key:`` with no value) are
     skipped. Resolution-condition facts probes consult (e.g.
     ``uses_llm_inference``) live at the top level.

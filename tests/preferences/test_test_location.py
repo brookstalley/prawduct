@@ -27,6 +27,7 @@ merits: it is agent scratch whether or not it holds a checkout.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -47,12 +48,38 @@ def _is_nested_checkout(directory: Path) -> bool:
     return (directory / ".git").exists()
 
 
+def _git_ignored(root: Path) -> frozenset[Path]:
+    """Every path git ignores under ``root`` — `.gitignore`, `.git/info/exclude`
+    and the user's excludes — as git reports it, a directory once as a whole.
+
+    An ignored file is local to this clone and never ships, so a misplaced test
+    among them is not one `testpaths` silently skips in anyone's checkout: the
+    owner's local evidence kept under an excluded directory reddened the suite
+    on the one machine holding it (2026-11-15). Outside a git repository, or if
+    git cannot answer, nothing is pruned — the walk then judges every file, the
+    stricter direction."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--others", "--ignored",
+             "--exclude-standard", "--directory", "-z"],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return frozenset()
+    if proc.returncode != 0:
+        return frozenset()
+    return frozenset((root / p.rstrip("/")).resolve() for p in proc.stdout.split("\0") if p)
+
+
 def _all_test_files(root: Path = REPO_ROOT) -> list[Path]:
     matches: list[Path] = []
+    ignored = _git_ignored(root)
 
     def walk(directory: Path) -> None:
         for entry in directory.iterdir():
             if entry.name in EXCLUDED_DIRS:
+                continue
+            if entry.resolve() in ignored:
                 continue
             if entry.is_dir():
                 if _is_nested_checkout(entry):
@@ -77,6 +104,27 @@ class TestTestLocation:
             "Test files found outside `tests/` — pyproject.toml's testpaths=[\"tests\"] "
             "would silently skip these:\n  - "
             + "\n  - ".join(misplaced)
+        )
+
+    def test_walk_skips_what_git_ignores_and_still_catches_an_untracked_stray(self, tmp_path: Path):
+        """A git-excluded local directory holding test files (the owner's blind-test
+        fixture under `.git/info/exclude`) is not this repo's source; an untracked
+        test file git does NOT ignore still is, and must still be found."""
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_real.py").write_text("def test_x(): pass\n")
+        local = tmp_path / ".prawduct" / ".local-evidence" / "fixture" / "tests"
+        local.mkdir(parents=True)
+        (local / "test_fixture.py").write_text("def test_y(): pass\n")
+        (tmp_path / ".git" / "info" / "exclude").write_text(".prawduct/.local-evidence/\n")
+        stray = tmp_path / "src" / "test_stray.py"
+        stray.parent.mkdir()
+        stray.write_text("def test_z(): pass\n")
+
+        found = _all_test_files(tmp_path)
+        assert stray in found, "an untracked, un-ignored stray must still be caught"
+        assert all(".local-evidence" not in p.parts for p in found), (
+            f"walk judged git-ignored files: {[p for p in found if '.local-evidence' in p.parts]}"
         )
 
     def test_walk_excludes_claude_worktree_checkouts(self, tmp_path: Path):

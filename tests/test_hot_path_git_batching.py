@@ -137,27 +137,31 @@ class TestUntrackBatching:
         assert hook._untrack_session_files(repo) == [".prawduct/.session-handoff.md"]
         assert _tracked(repo) == {"app.py"}
 
-    def test_tracked_pr_reviews_dir_collapses_to_declared_pathspec(self, tmp_path, monkeypatch):
-        # `.prawduct/.pr-reviews` is the one DIRECTORY pathspec in the session set:
+    def test_tracked_session_dir_collapses_to_declared_pathspec(self, tmp_path, monkeypatch):
+        # `.prawduct/.critic-partials` is a DIRECTORY pathspec in the session set:
         # `git ls-files` expands it to member files, so D1 must collapse those back
         # to the declared pathspec (the trickiest branch of the batch logic) so the
-        # report and the rm target stay the canonical session-path set.
+        # report and the rm target stay the canonical session-path set. (This used
+        # `.prawduct/.pr-reviews` until that directory left the set with the PR
+        # reviewer.)
         repo = _init_repo(tmp_path, monkeypatch)
-        reviews = repo / ".prawduct" / ".pr-reviews"
-        reviews.mkdir(parents=True)
-        (reviews / "pr-42.json").write_text("{}")
-        (reviews / "pr-43.json").write_text("{}")
+        partials = repo / ".prawduct" / ".critic-partials"
+        partials.mkdir(parents=True)
+        (partials / "goals-1-3.json").write_text("{}")
+        (partials / "goals-4-7.json").write_text("{}")
         subprocess.run(
             ["git", "add", "-f",
-             ".prawduct/.pr-reviews/pr-42.json", ".prawduct/.pr-reviews/pr-43.json"],
+             ".prawduct/.critic-partials/goals-1-3.json",
+             ".prawduct/.critic-partials/goals-4-7.json"],
             cwd=repo, check=True,
         )
-        subprocess.run(["git", "commit", "-qm", "oops reviews"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "oops partials"], cwd=repo, check=True)
 
         hook = _load_hook()
+        assert ".prawduct/.critic-partials" in hook._SESSION_GITIGNORED_PATHS, "precondition"
         untracked = hook._untrack_session_files(repo)
         # Reported once as the declared directory pathspec — not the member files.
-        assert untracked == [".prawduct/.pr-reviews"]
+        assert untracked == [".prawduct/.critic-partials"]
         # Both member files are actually untracked.
         assert _tracked(repo) == set()
 
@@ -189,7 +193,7 @@ class TestStatusCaptureOnce:
         monkeypatch.setattr(gitstate, "git_status_output", _boom)
         porcelain = " M src/app.py\n"
         assert gitstate.git_has_session_changes(project, porcelain) != ""
-        assert gates.session_changes_all_non_judgeable(project, porcelain) is False
+        assert gates.session_work_span(project, porcelain)["judgeable"] is True
         assert gitstate._get_session_changed_files(project, porcelain) == ["src/app.py"]
 
     def test_no_baseline_fallback_also_honors_passed_output(self, tmp_path, monkeypatch):
@@ -204,10 +208,10 @@ class TestStatusCaptureOnce:
         porcelain = " M a.md\n M b.py\n"
         monkeypatch.setattr(gitstate, "git_status_output", lambda _: porcelain)
         computed = gitstate._get_session_changed_files(project)
-        doc_only_computed = gates.session_changes_all_non_judgeable(project)
+        span_computed = gates.session_work_span(project)
         monkeypatch.setattr(gitstate, "git_status_output", _boom)
         assert gitstate._get_session_changed_files(project, porcelain) == computed
-        assert gates.session_changes_all_non_judgeable(project, porcelain) == doc_only_computed
+        assert gates.session_work_span(project, porcelain) == span_computed
 
     def test_default_none_still_computes(self, tmp_path, monkeypatch):
         # Backward compat: omitting the param computes via git_status_output.

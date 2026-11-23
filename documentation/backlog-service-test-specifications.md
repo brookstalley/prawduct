@@ -907,7 +907,7 @@ so CRASH-3/XP-1 assert them fully; see §8 debts 2–3.)*
 
 ## 8. Out of scope / anti-tests, and known limits
 
-Stating what is **deliberately not tested** (Scope Discipline, P12; honest coverage boundary):
+Stating what is **deliberately not tested** (Complete Delivery, "none more", P2; honest coverage boundary):
 
 - **The Security "not defended" list** — GitHub itself compromised; a trusted repo-write collaborator
   acting maliciously; nation-state; the owner's laptop compromised. Explicit non-goals; **no test**

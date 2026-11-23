@@ -77,6 +77,15 @@ def _block(gate, stop, session="s1", *, reason=None, observed=None):
     return _fact("guard-refusal", body, fid=f"g-{gate}-{stop}", session=session)
 
 
+def _observation(gate, fid, session="s1", *, reason=None, observed=None):
+    body = {"guard": f"{evidence.STOP_OBSERVED_PREFIX}{gate}", "gate": gate}
+    if reason is not None:
+        body["reason"] = reason
+    if observed is not None:
+        body["observed"] = observed
+    return _fact("guard-refusal", body, fid=f"o-{gate}-{fid}", session=session)
+
+
 def _v(facts, version="3.7", **kw):
     return stats.aggregate(facts, **kw)[version]
 
@@ -351,13 +360,21 @@ class TestRefusalReasons:
     @pytest.mark.parametrize(
         "observed, verdict",
         [
-            ({"notes_present": False, "work_live": False}, "catch"),
-            ({"notes_present": True, "work_live": False}, "slip"),
-            ({"notes_present": None, "work_live": False}, "unclassified"),
+            ({"notes_present": False, "session_changed": True}, "catch"),
+            ({"notes_present": True, "session_changed": True}, "slip"),
+            ({"notes_present": True, "session_changed": False}, "slip"),
+            ({"notes_present": None, "session_changed": True}, "unclassified"),
+            # A read-only session: the turn is an answer its reader just read.
+            ({"notes_present": False, "session_changed": False}, "unclassified"),
+            ({"notes_present": False, "session_changed": None}, "unclassified"),
+            # Recorded before the observation existed: it could not tell.
+            ({"notes_present": False, "work_live": False}, "unclassified"),
             (None, "unclassified"),
         ],
     )
-    def test_clear_reason_is_a_catch_only_when_nothing_was_written_down(self, observed, verdict):
+    def test_clear_reason_is_a_catch_only_when_changed_work_was_not_written_down(
+        self, observed, verdict
+    ):
         facts = [_block("clear-reason", "x1", reason="in-this-message", observed=observed)]
         verdicts = _v(facts)["stop_blocks"]["verdicts"]["clear-reason"]
         assert verdicts[verdict] == 1 and sum(verdicts.values()) == 1
@@ -478,7 +495,9 @@ class TestCli:
             details={
                 "clear-reason": {
                     "reason": "in-this-message",
-                    "observed": {"notes_present": False, "work_live": False},
+                    "observed": {
+                        "notes_present": False, "work_live": False, "session_changed": True,
+                    },
                 }
             },
         )
@@ -536,3 +555,82 @@ class TestCli:
     @pytest.mark.parametrize("args", [["--since"], ["--since", "last tuesday"], ["--bogus"]])
     def test_bad_arguments_exit_1(self, tmp_path, args):
         assert self._run(self._repo(tmp_path), *args).returncode == 1
+
+
+class TestStopObservations:
+    """A Stop check retired from blocking (clear-verdict, #1044) is still scored,
+    and never counted as a block, a guard refusal, or friction."""
+
+    def test_an_observation_is_counted_apart_from_blocks_and_refusals(self):
+        facts = [
+            _fact("session-start", {}, fid="s-1", session="s1"),
+            _observation("clear-verdict", "a", reason="handed-over-complete",
+                         observed={"work_live": False}),
+            _observation("clear-verdict", "b", reason="handed-over-your-turn",
+                         observed={"work_live": True}),
+            _block("reflection", "x1"),
+        ]
+        v = _v(facts)
+        assert v["stop_blocks"]["by_gate"] == {"reflection": 1}
+        assert v["stop_blocks"]["stops_blocked"] == 1
+        assert v["guard_refusals"]["total"] == 0
+        obs = v["stop_observations"]
+        assert obs["total"] == 2 and obs["by_gate"] == {"clear-verdict": 2}
+        assert obs["by_gate_reason"]["clear-verdict"] == {
+            "handed-over-complete": 1, "handed-over-your-turn": 1,
+        }
+        assert obs["verdicts"]["clear-verdict"] == {"catch": 1, "slip": 1, "unclassified": 0}
+
+    def test_clear_reason_observations_are_scored_by_its_own_rule(self):
+        """clear-reason left the blocking set too (#1131): its observations are
+        scored like its blocks were — slip on notes, catch only where the
+        session changed something, unclassified otherwise."""
+        facts = [
+            _fact("session-start", {}, fid="s-1", session="s1"),
+            _observation("clear-reason", "a", reason="in-this-message",
+                         observed={"notes_present": True, "session_changed": True}),
+            _observation("clear-reason", "b", reason="above-below",
+                         observed={"notes_present": False, "session_changed": True}),
+            _observation("clear-reason", "c", reason="in-this-message",
+                         observed={"notes_present": False, "session_changed": False}),
+            _observation("clear-verdict", "d", reason="handed-over-complete",
+                         observed={"work_live": False}),
+        ]
+        v = _v(facts)
+        assert v["stop_blocks"]["stops_blocked"] == 0
+        obs = v["stop_observations"]
+        assert obs["by_gate"] == {"clear-reason": 3, "clear-verdict": 1}
+        assert obs["by_gate_reason"]["clear-reason"] == {"in-this-message": 2, "above-below": 1}
+        assert obs["verdicts"]["clear-reason"] == {"catch": 1, "slip": 1, "unclassified": 1}
+        report = {"project": "p", "window": {"since": None, "until": None},
+                  "by_version": stats.aggregate(facts)}
+        text = stats.render_human(report)
+        assert "observed only      clear-reason 3 (catch 1, slip 1, unclassified 1)" in text
+        assert "clear-verdict 1 (catch 1, slip 0, unclassified 0)" in text
+
+    def test_close_pointer_observations_are_counted_by_kind_with_no_verdict(self):
+        """close-pointer has no slip rule: a positional reason is the defect
+        whatever the session's state, so it is counted and never scored."""
+        facts = [
+            _fact("session-start", {}, fid="s-1", session="s1"),
+            _observation("close-pointer", "a", reason="points-above",
+                         observed={"notes_present": True, "work_live": False}),
+            _observation("close-pointer", "b", reason="points-below",
+                         observed={"notes_present": False, "work_live": True}),
+        ]
+        obs = _v(facts)["stop_observations"]
+        assert obs["by_gate"] == {"close-pointer": 2}
+        assert obs["by_gate_reason"]["close-pointer"] == {"points-above": 1, "points-below": 1}
+        assert "close-pointer" not in obs["verdicts"]
+        assert "close-pointer" not in stats.SLIP_WHEN_OBSERVED
+
+    def test_the_human_report_shows_observations_only_when_there_are_some(self):
+        facts = [_fact("session-start", {}, fid="s-1", session="s1"), _observation("clear-verdict", "a",
+                 reason="handed-over-complete", observed={"work_live": False})]
+        report = {"project": "p", "window": {"since": None, "until": None},
+                  "by_version": stats.aggregate(facts)}
+        text = stats.render_human(report)
+        assert "observed only      clear-verdict 1 (catch 1, slip 0, unclassified 0)" in text
+        quiet = {"project": "p", "window": {"since": None, "until": None},
+                 "by_version": stats.aggregate([_fact("session-start", {}, fid="s-1", session="s1")])}
+        assert "observed only" not in stats.render_human(quiet)

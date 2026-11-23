@@ -9,6 +9,12 @@ this item's sibling program comes from. None of #829–#833 has a `documentation
 (checked directly); this item does not depend on any of them shipping first, but a design pass
 should stay aware `scope=` is also the join key #830/#831 read off the same ledger.
 
+*Note, 2026-11-11 (#1129):* this item builds on the PR reviewer's payload (`pr-review-payload`,
+`lib/pr_payload.py`, `cited_backlog_citations`), which was removed with the PR reviewer. What
+survives is `check-pr-hygiene` (`lib/pr_gate.py`), which reads a branch's closure claims from its
+change record's `closes:` list, not from commit text. The requirements below need re-grounding on
+that before design continues.
+
 ## Problem
 
 **1,113 of 4,321 findings (25.8%) mention the change log**, across 886 commits touching it: 289

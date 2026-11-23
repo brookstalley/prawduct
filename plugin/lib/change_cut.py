@@ -15,7 +15,10 @@ nothing to the rest:
    exactly the pending set.
 
 What ships is decided by the release plan's classification table, or by
-naming the scopes. The changelog is written, never searched for a section to
+naming the scopes. The pending set is the fragments and nothing else: a
+release-pending entry still in the single-file ``.prawduct/change-log.md``
+refuses the cut (``release_readiness.pending_scopes``), naming
+``/prawduct:doctor``, rather than being shipped or silently left behind. The changelog is written, never searched for a section to
 write into: a release is its release file, and that file's existence is the
 record that the release was cut. Everything is validated before anything is
 written, the writes are one all-or-nothing transaction, and the removals come
@@ -79,8 +82,6 @@ class CutPlan:
     #: A headline file left in place because it is not this release's.
     headline_kept: Path | None = None
     headline_kept_reason: str = ""
-    #: Pending legacy scopes that ship; they carry no consumer note.
-    legacy_shipping: list[str] = field(default_factory=list)
 
     @property
     def has_work(self) -> bool:
@@ -116,18 +117,18 @@ def _selected_scopes(
     version: str,
     fragment_scopes: list[str],
     scopes: list[str] | None,
-    legacy_scopes: list[str],
-) -> tuple[list[str], list[str], list[str]]:
-    """``(cut, kept, legacy shipping)`` among the pending scopes.
+) -> tuple[list[str], list[str]]:
+    """``(cut, kept)`` among the pending scopes.
 
     Named scopes are cut exactly. Otherwise the release plan decides: ``ships``
-    is cut, ``withheld`` is kept, and a fragment the table does not classify
-    refuses the cut, because skipping it silently would publish a release that
-    leaves work behind with no record of why.
+    is cut, ``withheld`` is kept (a ``collateral-of`` row is ``withheld`` behind
+    its parent's blocker, so it is kept too), and a fragment the table does not
+    classify refuses the cut, because skipping it silently would publish a
+    release that leaves work behind with no record of why.
     """
     if scopes:
         _check_named(fragment_scopes, scopes)
-        return [s for s in fragment_scopes if s in scopes], [s for s in fragment_scopes if s not in scopes], []
+        return [s for s in fragment_scopes if s in scopes], [s for s in fragment_scopes if s not in scopes]
 
     plan_path, classification = _classification(project_dir, version)
     unclassified = [s for s in fragment_scopes if s not in classification]
@@ -138,30 +139,12 @@ def _selected_scopes(
         )
     cut = [s for s in fragment_scopes if classification[s][0] == release_readiness.SHIPS]
     kept = [s for s in fragment_scopes if classification[s][0] != release_readiness.SHIPS]
-    legacy = [s for s in legacy_scopes if classification.get(s, ("",))[0] == release_readiness.SHIPS]
-    return cut, kept, legacy
+    return cut, kept
 
 
 def _entry_block(fragment: change_fragments.Fragment, version: str) -> change_log_archive.Block:
     _preamble, blocks = change_log_archive.split(change_fragments.render_entry(fragment, release=version))
     return blocks[0]
-
-
-def _legacy_shipping(project_dir: Path, version: str, legacy_scopes: list[str]) -> list[str]:
-    """The legacy scopes this release's plan ships, when nothing else is pending.
-
-    Read only to say whether the legacy line applies. With no fragment to cut
-    there is nothing to refuse, so a missing or unreadable release plan means
-    no scope is known to ship, and the line stays quiet rather than claiming
-    every pending legacy scope ships.
-    """
-    if not legacy_scopes:
-        return []
-    try:
-        _plan_path, classification = _classification(project_dir, version)
-    except (CutRefused, OSError, UnicodeDecodeError):
-        return []
-    return [s for s in legacy_scopes if classification.get(s, ("",))[0] == release_readiness.SHIPS]
 
 
 def _plan_rerun(
@@ -306,6 +289,9 @@ def plan_cut(
     pending = release_readiness.pending_scopes(project_dir)
     if pending.read_error is not None:
         raise CutRefused("no-change-log", pending.read_error)
+    # A fragment that fails validation, or a release-pending entry still in the
+    # single-file log, which the cut cannot ship and must not leave behind
+    # unannounced. Each refusal names its own remedy.
     if pending.refusals:
         raise CutRefused("invalid-pending-set", "; ".join(pending.refusals))
 
@@ -320,11 +306,7 @@ def plan_cut(
             return _plan_rerun(project_dir, version, scopes, pending.fragment_scopes, release_file, decl)
 
     if not pending.fragment_scopes and not scopes:
-        return _nothing_ships(
-            project_dir,
-            decl,
-            CutPlan(version=version, cut=[], kept=[], legacy_shipping=_legacy_shipping(project_dir, version, pending.legacy_scopes)),
-        )
+        return _nothing_ships(project_dir, decl, CutPlan(version=version, cut=[], kept=[]))
     # A repo that tracks its fragments but would ignore the archive would commit
     # the fragments' removal and silently drop the history they moved to.
     if change_log_archive.archive_would_be_ignored(project_dir):
@@ -332,14 +314,12 @@ def plan_cut(
             "archive-ignored",
             f"git would ignore {change_log_archive.ARCHIVE_DIR_REL}/; un-ignore it so the history the cut writes is committed",
         )
-    cut_scopes, kept, legacy = _selected_scopes(
-        project_dir, version, pending.fragment_scopes, scopes, pending.legacy_scopes
-    )
+    cut_scopes, kept = _selected_scopes(project_dir, version, pending.fragment_scopes, scopes)
 
     files = {f.fragment.scope: f for f in change_fragments.load_pending(project_dir) if f.ok}
     cut = [files[s] for s in cut_scopes]
     fragments = [f.fragment for f in cut]
-    result = CutPlan(version=version, cut=cut, kept=kept, legacy_shipping=legacy)
+    result = CutPlan(version=version, cut=cut, kept=kept)
     if not cut:
         return _nothing_ships(project_dir, decl, result)
 
@@ -395,11 +375,6 @@ def _print_headline_kept(project_dir: Path, cut_plan: CutPlan) -> None:
         print(f"  headline file: kept {_rel(project_dir, cut_plan.headline_kept)}; {cut_plan.headline_kept_reason}")
 
 
-def _print_legacy(cut_plan: CutPlan) -> None:
-    if cut_plan.legacy_shipping:
-        print("  legacy entries carry no consumer note; /prawduct:doctor offers the move to fragments")
-
-
 def cut_cmd(project_dir: Path, argv: list[str]) -> int:
     """``cut-change-log --release vX.Y.Z [--scope S]... [--apply]``. Exit 0 / 1 refused / 2 usage."""
     release: str | None = None
@@ -435,7 +410,6 @@ def cut_cmd(project_dir: Path, argv: list[str]) -> int:
     if not cut_plan.has_work:
         print(f"cut-change-log ({mode}): no fragment ships in {cut_plan.version}; nothing to do.")
         _print_headline_kept(project_dir, cut_plan)
-        _print_legacy(cut_plan)
         return 0
     if cut_plan.cut:
         print(
@@ -470,7 +444,6 @@ def cut_cmd(project_dir: Path, argv: list[str]) -> int:
             f"{_rel(project_dir, cut_plan.release_file)} already holds"
         )
     _print_headline_kept(project_dir, cut_plan)
-    _print_legacy(cut_plan)
     for scope, reason in cut_plan.none_reasons:
         print(f"  none: {scope} — {reason}")
     if cut_plan.kept:

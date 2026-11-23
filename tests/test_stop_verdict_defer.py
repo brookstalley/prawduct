@@ -2,25 +2,30 @@
 hands the session over may not say DO NOT CLEAR.
 
 The Stop hook fires at every turn end; its reflection and Critic gates are about
-SESSION end. A turn whose standing block says ``RUNNING`` and closes on
-``DO NOT CLEAR`` is the agent's own statement that it is still working, so those
+SESSION end. A turn whose close says ``RUNNING`` and ``DO NOT CLEAR`` — on the
+one line the methodology now prescribes, or in the older three-paragraph
+block sessions on an older digest still write — is the agent's own statement that it is still working, so those
 two gates defer through the same exit-0 path the in-flight-background-work
 deferral uses. Every other gate keeps blocking, and every uncertain reading of
 the turn keeps blocking, because this relaxes an authority gate and authority
 fails closed.
 
-``YOUR TURN`` or ``COMPLETE`` with ``DO NOT CLEAR`` is a contradiction — the
-reader is handed the session and told not to end it, and may sit on both for
-days — so it defers nothing and the clear-verdict gate refuses it. The
-clear-reason gate refuses a ``SAFE TO CLEAR`` whose stated reason is the turn itself ("the
-questions are in this message"), because a clear deletes exactly that (#977).
+``COMPLETE`` with ``DO NOT CLEAR`` is a contradiction — the reader is handed
+the session and told not to end it, and may sit on both for days — so it defers
+nothing, and the clear-verdict check records it without refusing it. So does
+``YOUR TURN`` with ``DO NOT CLEAR``, unless the hook observes work a clear would
+kill (a harness background task or a live Critic review): then the hold is as
+true as ``RUNNING``'s and nothing is recorded. The clear-reason check records,
+without refusing, a ``SAFE TO CLEAR`` whose stated reason is the turn itself
+("the questions are in this message"), because a clear deletes exactly that
+(#977, retired from blocking by #1131).
 
 Three layers, each pinned where it can fail:
 
 * ``standing_block`` — what counts as the closing verdict and the disposition,
   and when the two contradict;
 * ``gates.turn_declares_in_flight`` / ``turn_contradicts_its_verdict`` /
-  ``turn_cites_itself_as_record`` — the payload degradation ladder;
+  ``turn_self_citation`` — the payload degradation ladder;
 * ``prawduct-hook stop`` end to end — which blockers defer and which do not.
 
 The payload shape is the one Claude Code 2.1.282 writes to a Stop hook's stdin,
@@ -45,7 +50,7 @@ _CODE_DIFF = " M src/app.py"
 
 
 def _block(disposition: str, verdict: str, copy: str = "the reason.") -> str:
-    """A standing block in the shape the methodology prescribes."""
+    """The three-paragraph close sessions on an older digest still write."""
     return (
         "Did the work; details above.\n\n"
         "---\n\n"
@@ -67,6 +72,25 @@ DNC_BOLD_TURN = (
     "**STATE:** The coupon files are on your Desktop.\n\n"
     "**RUNNING:** The review of this session's code is still going.\n\n"
     "**DO NOT CLEAR:** the review is still running, and clearing now would lose its findings."
+)
+
+
+def _line(disposition: str, verdict: str, reason: str = "the reason.") -> str:
+    """A turn closing on the one-line close the methodology prescribes."""
+    return f"Did the work; details above.\n\n`{disposition}` · `{verdict}` — {reason}"
+
+
+DNC_LINE = _line("RUNNING", "DO NOT CLEAR", "the cumulative review is in flight, about 4 minutes.")
+SAFE_LINE = _line("COMPLETE", "SAFE TO CLEAR", "nothing is outstanding.")
+ASK_DNC_LINE = _line("YOUR TURN", "DO NOT CLEAR", "I need your decision first.")
+# The older hand-over shape: the asks just above the line, which follows them
+# without a blank line — the last LINE is the close, not the last paragraph.
+# Still read, since a turn with no asks header closes on its last line.
+ASK_SAFE_LINE = (
+    "Two decisions for you.\n\n"
+    "1. Merge commit or squash? Recommended: merge commit.\n"
+    "2. Keep the flag one more release? Recommended: yes.\n"
+    "`YOUR TURN` · `SAFE TO CLEAR` — the plan is in the handoff notes."
 )
 
 
@@ -154,6 +178,400 @@ class TestClearVerdict:
 
     def test_non_string_reads_as_none(self):
         assert standing_block.clear_verdict(None) is None  # type: ignore[arg-type]
+
+
+class TestTheOneLineClose:
+    """The close is one line, last: disposition, clear verdict, a short reason.
+    The older three-paragraph close is still read (above), because sessions on
+    an older digest still write it."""
+
+    @pytest.mark.parametrize(
+        ("text", "disposition", "verdict"),
+        [
+            (DNC_LINE, "RUNNING", "DO NOT CLEAR"),
+            (SAFE_LINE, "COMPLETE", "SAFE TO CLEAR"),
+            (ASK_DNC_LINE, "YOUR TURN", "DO NOT CLEAR"),
+            (ASK_SAFE_LINE, "YOUR TURN", "SAFE TO CLEAR"),
+            # Natural variants of the separator and decoration.
+            ("Done.\n\n**RUNNING · DO NOT CLEAR** — the review.", "RUNNING", "DO NOT CLEAR"),
+            ("Done.\n\n`RUNNING` / `DO NOT CLEAR` — the review.", "RUNNING", "DO NOT CLEAR"),
+            ("Done.\n\n`RUNNING` — `DO NOT CLEAR`: the review.", "RUNNING", "DO NOT CLEAR"),
+            ("Done.\n\n`COMPLETE` | `SAFE TO CLEAR`", "COMPLETE", "SAFE TO CLEAR"),
+            ("Done.\n\n`COMPLETE` `SAFE TO CLEAR`", "COMPLETE", "SAFE TO CLEAR"),
+            # After a rule line.
+            ("Done.\n\n---\n\n`RUNNING` · `DO NOT CLEAR` — x.", "RUNNING", "DO NOT CLEAR"),
+            # A label quoted earlier in the turn does not move the line's verdict.
+            ("Last turn said SAFE TO CLEAR.\n\n" + DNC_LINE, "RUNNING", "DO NOT CLEAR"),
+        ],
+        ids=["running-dnc", "complete-safe", "your-turn-dnc", "asks-above",
+             "bold-whole", "slash", "dash-colon", "pipe", "space-only", "after-rule",
+             "label-quoted-earlier"],
+    )
+    def test_disposition_and_verdict_are_read(self, text, disposition, verdict):
+        assert standing_block.disposition(text) == disposition
+        assert standing_block.clear_verdict(text) == verdict
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Labels quoted mid-prose: the line does not LEAD with a disposition.
+            "Done.\n\nThe suite is RUNNING · DO NOT CLEAR until it lands.",
+            "Done.\n\nI said `RUNNING` · `DO NOT CLEAR` last turn; now it is over.",
+            # A disposition followed by prose, then a verdict later on the line.
+            "Done.\n\n`RUNNING` the suite now, so DO NOT CLEAR yet.",
+            # Both verdicts on the line.
+            "Done.\n\n`RUNNING` · `DO NOT CLEAR` — not SAFE TO CLEAR until it lands.",
+            # Text after the line: it is no longer the close.
+            DNC_LINE + "\n\nOne more thing I forgot.",
+            # Lower-case prose is not the label.
+            "Done.\n\nrunning · do not clear — the review.",
+            # A longer word that starts with the label.
+            "Done.\n\n`RUNNING` · DO NOT CLEARLY decide.",
+        ],
+        ids=["mid-prose", "quoted-in-sentence", "prose-between", "both-verdicts",
+             "trailing-text", "lower-case", "longer-word"],
+    )
+    def test_no_verdict_where_the_line_does_not_state_one(self, text):
+        assert standing_block.clear_verdict(text) is None
+
+    def test_mid_prose_states_no_disposition_either(self):
+        assert standing_block.disposition(
+            "Done.\n\nThe suite is RUNNING · DO NOT CLEAR until it lands."
+        ) is None
+
+    def test_a_handed_over_line_saying_dnc_contradicts(self):
+        assert standing_block.contradiction(ASK_DNC_LINE) == standing_block.YOUR_TURN
+        assert standing_block.contradiction(DNC_LINE) is None
+        assert standing_block.contradiction(ASK_SAFE_LINE) is None
+
+    @pytest.mark.parametrize(("reason", "phrase"), [
+        ("the questions are in this message.", "are in this message"),
+        ("see above.", "see above"),
+    ])
+    def test_a_self_citing_line_is_named(self, reason, phrase):
+        assert standing_block.self_citation(_line("YOUR TURN", "SAFE TO CLEAR", reason)) == phrase
+
+    def test_the_asks_above_the_line_are_not_its_reason(self):
+        """Only what follows the verdict on the line is its reason: an ask
+        above it that happens to say 'this message' is not a citation."""
+        text = (
+            "1. The whole plan is in this message: approve it? Recommended: yes.\n"
+            "`YOUR TURN` · `SAFE TO CLEAR` — nothing is running."
+        )
+        assert standing_block.self_citation(text) is None
+        assert standing_block.verdict_line(text).startswith("`YOUR TURN`")
+
+
+def _with_asks(close: str, *asks: str, header: str = "**Needs you:**") -> str:
+    """A turn whose asks for the user come last: the one-line close, a blank
+    line, then the asks block under its header — the shape the methodology now
+    prescribes for a turn that needs the user."""
+    numbered = "\n".join(f"{i}. {ask}" for i, ask in enumerate(asks, 1))
+    return f"Did the work; details above.\n\n{close}\n\n{header}\n{numbered}"
+
+
+_DNC_CLOSE = "`RUNNING` · `DO NOT CLEAR` — the verify pass is running; a clear would lose it."
+_ASK_SAFE_CLOSE = "`YOUR TURN` · `SAFE TO CLEAR` — the plan is in the handoff notes."
+_ASK = "Store format 16 for the servable figure? I recommend yes."
+DNC_ASKS = _with_asks(_DNC_CLOSE, _ASK)
+# The same turn with the header dropped: the last line is an ask, not a close.
+DNC_ASKS_NO_HEADER = f"Did the work; details above.\n\n{_DNC_CLOSE}\n\n1. {_ASK}"
+# A turn that quotes the close-then-asks layout in a fence, then closes for itself.
+FENCED_LAYOUT_THEN_SAFE = (
+    f"The new shape looks like this:\n\n```\n{_DNC_CLOSE}\n\n**Needs you:**\n1. {_ASK}\n```\n\n"
+    f"{SAFE_LINE}"
+)
+
+
+class TestTheAsksBlock:
+    """A turn that needs the user ends with its asks, under the fixed
+    ``**Needs you:**`` header, AFTER the one-line close. The close is then read
+    from the line just before that header — and only there, because this
+    reading relaxes an authority gate: only a line leading with the header
+    (its emphasis optional, outside any code fence) opens the block,
+    the close must be the line immediately before it, and nothing inside the
+    block is ever read as the verdict."""
+
+    def test_the_header_is_the_module_constant(self):
+        assert standing_block.ASKS_HEADER == "**Needs you:**"
+
+    @pytest.mark.parametrize(
+        ("text", "disposition", "verdict"),
+        [
+            (DNC_ASKS, "RUNNING", "DO NOT CLEAR"),
+            (_with_asks(_ASK_SAFE_CLOSE, _ASK, "Keep the flag? I recommend yes."),
+             "YOUR TURN", "SAFE TO CLEAR"),
+            # No blank line between the close and the header.
+            (f"Done.\n\n{_DNC_CLOSE}\n**Needs you:**\n1. {_ASK}", "RUNNING", "DO NOT CLEAR"),
+            # The header's decoration is the module's usual tolerance.
+            (_with_asks(_DNC_CLOSE, _ASK, header="Needs you:"), "RUNNING", "DO NOT CLEAR"),
+            (_with_asks(_DNC_CLOSE, _ASK, header="`Needs you:`"), "RUNNING", "DO NOT CLEAR"),
+            # The first ask on the header's own line.
+            (f"Done.\n\n{_DNC_CLOSE}\n\n**Needs you:** {_ASK}", "RUNNING", "DO NOT CLEAR"),
+        ],
+        ids=["running-dnc", "your-turn-safe", "no-blank-line", "plain-header",
+             "backticked-header", "ask-on-header-line"],
+    )
+    def test_the_close_before_the_asks_is_read(self, text, disposition, verdict):
+        assert standing_block.disposition(text) == disposition
+        assert standing_block.clear_verdict(text) == verdict
+
+    def test_the_verdict_line_is_the_close_not_the_asks(self):
+        assert standing_block.verdict_line(DNC_ASKS) == _DNC_CLOSE
+
+    def test_a_fenced_quotation_of_the_layout_is_not_the_close(self):
+        # A turn may QUOTE the close-then-asks layout (explaining it, as this
+        # guide's own example does) and then close for itself. The quotation
+        # must not be read: here it would defer the gates on a SAFE turn.
+        assert standing_block.clear_verdict(FENCED_LAYOUT_THEN_SAFE) == "SAFE TO CLEAR"
+        assert standing_block.disposition(FENCED_LAYOUT_THEN_SAFE) == "COMPLETE"
+        # Control: unfenced, the header is read, so the reader reaches the
+        # asks path — and the close after it voids the reading instead.
+        unfenced = FENCED_LAYOUT_THEN_SAFE.replace("```\n", "")
+        assert standing_block.clear_verdict(unfenced) is None
+
+    @pytest.mark.parametrize(
+        "quoted",
+        [
+            # A blockquote: `>` is stripped as decoration, so shape alone
+            # cannot tell the quoted close and header from real ones.
+            f"> {_DNC_CLOSE}\n\n> **Needs you:**\n> 1. {_ASK}",
+            # An indented code block.
+            f"    {_DNC_CLOSE}\n\n    **Needs you:**\n    1. {_ASK}",
+            # A four-backtick fence quoting a three-backtick one.
+            f"````\n```\n```\n{_DNC_CLOSE}\n\n**Needs you:**\n1. {_ASK}\n````",
+        ],
+        ids=["blockquote", "indented-code", "nested-fence"],
+    )
+    def test_a_close_after_a_quoted_layout_yields_no_verdict(self, quoted):
+        # The class R-1 named, not its one example: any way of quoting the
+        # layout followed by the turn's own close. No verdict is read, so the
+        # deferral never fires — the gates block as for any session end.
+        text = f"The new shape:\n\n{quoted}\n\n{SAFE_LINE}"
+        # The property, not one reading: the quoted RUNNING · DO NOT CLEAR is
+        # never the turn's verdict. (A nested fence happens to read the real
+        # SAFE close; the others read none. Neither defers.)
+        assert standing_block.clear_verdict(text) in (None, "SAFE TO CLEAR")
+        assert standing_block.disposition(text) in (None, "COMPLETE")
+
+    @pytest.mark.parametrize(
+        ("quote", "control"),
+        [
+            (lambda ln: f"> {ln}", lambda ln: ln),
+            (lambda ln: f"    {ln}", lambda ln: ln),
+        ],
+        ids=["blockquote", "indented-code"],
+    )
+    def test_a_quoted_layout_followed_by_prose_states_no_verdict(self, quote, control):
+        # No close after the header to give the quotation away: the header's
+        # own raw line has to say it is quoted, or the quoted close before it
+        # is read as the turn's.
+        body = [_DNC_CLOSE, "**Needs you:**", f"1. {_ASK}"]
+        quoted = "The new shape:\n\n" + "\n\n".join(quote(b) for b in body) + "\n\nDoes that read better?"
+        assert standing_block.clear_verdict(quoted) is None
+        assert standing_block.disposition(quoted) is None
+        # Control: the same lines unquoted ARE an asks turn, closed DO NOT CLEAR
+        # — the fixture reaches the path the quotation must not.
+        real = "Done.\n\n" + "\n\n".join(control(b) for b in body)
+        assert standing_block.clear_verdict(real) == "DO NOT CLEAR"
+
+    @pytest.mark.parametrize(
+        ("outer", "inner"),
+        [("````", "```"), ("~~~~", "~~~"), ("```", "~~~")],
+        ids=["longer-backticks", "longer-tildes", "other-character"],
+    )
+    def test_a_fence_closes_only_on_its_own_kind_and_length(self, outer, inner):
+        # An inner fence line inside the outer one is content, not a close: a
+        # reader that toggled on every fence line would leave the quoted close
+        # and header below it unquoted, and defer the gates on prose.
+        text = (f"The new shape:\n\n{outer}\n{inner}\n{_DNC_CLOSE}\n\n**Needs you:**\n1. {_ASK}\n"
+                f"{inner}\n{outer}\n\nDoes that read better?")
+        assert standing_block.clear_verdict(text) is None
+        assert standing_block.disposition(text) is None
+
+    def test_a_fence_with_an_info_string_closes_on_a_bare_fence(self):
+        text = f"Example:\n\n```text\nx\n```\n\n{DNC_ASKS}"
+        assert standing_block.clear_verdict(text) == "DO NOT CLEAR"
+
+    def test_a_real_asks_block_after_a_fenced_quotation_is_still_read(self):
+        text = f"Example:\n\n```\n{_DNC_CLOSE}\n\n**Needs you:**\n1. x\n```\n\n{DNC_ASKS}"
+        assert standing_block.clear_verdict(text) == "DO NOT CLEAR"
+        assert standing_block.verdict_line(text) == _DNC_CLOSE
+
+    def test_a_close_inside_a_fence_before_a_real_header_is_not_read(self):
+        # The fence line itself carries close-shaped text, and the reader
+        # strips backticks as decoration — so only the fence check stops it.
+        text = f"Done.\n\n```\nx = 1\n```{_DNC_CLOSE}\n**Needs you:**\n1. {_ASK}"
+        assert standing_block.clear_verdict(text) is None
+        # Control: the same line outside a fence is the close.
+        assert standing_block.clear_verdict(text.replace("```\nx = 1\n```", "")) == "DO NOT CLEAR"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # No header: the last line is an ask, so there is no close.
+            DNC_ASKS_NO_HEADER,
+            # Not the exact header.
+            _with_asks(_DNC_CLOSE, _ASK, header="## Needs you:"),
+            _with_asks(_DNC_CLOSE, _ASK, header="**needs you:**"),
+            _with_asks(_DNC_CLOSE, _ASK, header="**Needs you**"),
+            _with_asks(_DNC_CLOSE, _ASK, header="**Needs your input:**"),
+            _with_asks(_DNC_CLOSE, _ASK, header="Here is what **Needs you:**"),
+            # The close is not the line immediately before the header.
+            f"Done.\n\n{_DNC_CLOSE}\n\nOne more thing.\n\n**Needs you:**\n1. {_ASK}",
+            # The header opens the turn: nothing precedes it.
+            f"**Needs you:**\n1. {_ASK}\n\n{_DNC_CLOSE}",
+            # Two headers: which block is the asks is ambiguous.
+            f"Done.\n\n{_DNC_CLOSE}\n\n**Needs you:**\n1. {_ASK}\n\n**Needs you:**\n2. x",
+            # Both verdicts on the close before the block.
+            _with_asks("`RUNNING` · `DO NOT CLEAR` — not SAFE TO CLEAR yet.", _ASK),
+        ],
+        ids=["no-header", "heading-header", "lower-case-header", "no-colon",
+             "other-wording", "header-mid-line", "close-not-adjacent", "header-first",
+             "two-headers", "both-verdicts"],
+    )
+    def test_no_verdict_unless_the_close_immediately_precedes_the_header(self, text):
+        assert standing_block.clear_verdict(text) is None
+        assert standing_block.contradiction(text) is None
+
+    @pytest.mark.parametrize(
+        ("text", "verdict"),
+        [
+            # A close-shaped line as the asks block's last line: under the old
+            # reading it was the turn's last line, so it was THE close. Still
+            # never read from inside the block — and since a close after the
+            # header is also how a QUOTED layout followed by the turn's own
+            # close looks, the turn states no verdict at all (was SAFE TO CLEAR
+            # before the asks-last review round; both block the gates).
+            (_with_asks(_ASK_SAFE_CLOSE, _ASK) + "\n`RUNNING` · `DO NOT CLEAR` — quoted.",
+             None),
+            # A close-shaped line inside the block with no real close before it.
+            (f"Done.\n\n**Needs you:**\n1. {_ASK}\n`RUNNING` · `DO NOT CLEAR` — quoted.", None),
+            # The three-paragraph close followed by an asks block whose last
+            # paragraph leads with a clear label: the block is not read.
+            (_block("RUNNING", "DO NOT CLEAR") + "\n\n**Needs you:**\n1. x\n\n`DO NOT CLEAR` — y.",
+             None),
+        ],
+        ids=["close-shaped-ask-after-a-close", "close-shaped-ask-alone", "legacy-then-asks"],
+    )
+    def test_a_label_inside_the_asks_block_is_never_the_verdict(self, text, verdict):
+        assert standing_block.clear_verdict(text) == verdict
+        assert _on_event(
+            gates.turn_declares_in_flight, {"last_assistant_message": text}
+        ) == (False, None)
+
+    def test_the_three_paragraph_form_is_not_read_across_an_asks_block(self):
+        """Every reader skips the older form's block once an asks block is
+        present: its region would run into the asks."""
+        text = _block("RUNNING", "DO NOT CLEAR") + "\n\n**Needs you:**\n1. x\n\n`DO NOT CLEAR` — y."
+        assert standing_block.disposition(text) is None
+        assert standing_block.verdict_line(text) == ""
+        # Control: without the header, the same block is read.
+        bare = _block("RUNNING", "DO NOT CLEAR")
+        assert standing_block.disposition(bare) == standing_block.RUNNING
+
+    def test_a_handed_over_dnc_before_the_asks_contradicts(self):
+        text = _with_asks("`YOUR TURN` · `DO NOT CLEAR` — I need your decision.", _ASK)
+        assert standing_block.contradiction(text) == standing_block.YOUR_TURN
+
+    def test_the_reason_is_the_close_alone(self):
+        """An ask that happens to say 'this message' is not the close's
+        reason; a reason that cites the turn still is."""
+        sound = _with_asks(
+            "`YOUR TURN` · `SAFE TO CLEAR` — nothing is running.",
+            "The whole plan is in this message: approve it? I recommend yes.",
+        )
+        assert standing_block.self_citation(sound) is None
+        citing = _with_asks(
+            "`YOUR TURN` · `SAFE TO CLEAR` — the questions are in this message.", _ASK,
+        )
+        assert standing_block.self_citation(citing) == "are in this message"
+
+    def test_the_payload_ladder_sees_the_close_through_the_asks(self):
+        assert _on_event(
+            gates.turn_declares_in_flight, {"last_assistant_message": DNC_ASKS}
+        ) == (True, "DO NOT CLEAR")
+        assert _on_event(
+            gates.turn_declares_in_flight, {"last_assistant_message": DNC_ASKS_NO_HEADER}
+        ) == (False, None)
+
+
+class TestACloseThatPointsByPosition:
+    """The close's reason says what the asks are, or nothing — never where.
+    The owner's own example closed ``YOUR TURN`` · ``DO NOT CLEAR`` with "The
+    one ask above is for you." ``standing_block.positional_pointer_match``
+    finds such a reason under ANY disposition and verdict, so the Stop hook can
+    record it (``close-pointer``) without refusing it."""
+
+    @pytest.mark.parametrize(
+        ("close", "phrase", "kind"),
+        [
+            ("`YOUR TURN` · `DO NOT CLEAR` — the verify pass runs. The one ask above is for you.",
+             "above", "points-above"),
+            ("`YOUR TURN` · `SAFE TO CLEAR` — answer the questions above.", "above", "points-above"),
+            ("`RUNNING` · `DO NOT CLEAR` — the review runs; see above for the ask.",
+             "see above", "points-above"),
+            ("`COMPLETE` · `SAFE TO CLEAR` — the summary is above.", "above", "points-above"),
+            ("`RUNNING` · `DO NOT CLEAR` — the review runs; the asks below need you.",
+             "below", "points-below"),
+            ("`YOUR TURN` · `SAFE TO CLEAR` — two decisions below — the plan is in the notes.",
+             "below", "points-below"),
+            ("`YOUR TURN` · `SAFE TO CLEAR` — see below.", "see below", "points-below"),
+            # Both directions: the first pointer in the reason is the one named.
+            ("`YOUR TURN` · `SAFE TO CLEAR` — the decision below, not the notes above.",
+             "below", "points-below"),
+        ],
+        ids=["owner-example", "answer-above", "see-above", "complete-above", "asks-below",
+             "dash-after", "see-below", "first-of-two"],
+    )
+    def test_a_positional_reason_is_named(self, close, phrase, kind):
+        text = f"Did the work.\n\n{close}"
+        assert standing_block.positional_pointer_match(text) == (phrase, kind)
+        # The same close before an asks block is read through it.
+        assert standing_block.positional_pointer_match(_with_asks(close, _ASK)) == (phrase, kind)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Comparatives, not positions.
+            "Done.\n\n`COMPLETE` · `SAFE TO CLEAR` — coverage is above the floor.",
+            "Done.\n\n`RUNNING` · `DO NOT CLEAR` — the suite stays below 5 minutes; I re-check then.",
+            "Done.\n\n`COMPLETE` · `SAFE TO CLEAR` — the above-mentioned file is committed.",
+            # A sound reason.
+            _with_asks(_ASK_SAFE_CLOSE, _ASK),
+            # Positional words elsewhere in the turn, not in the close's reason.
+            "The asks are above.\n\n`YOUR TURN` · `SAFE TO CLEAR` — one decision on the flag.",
+            _with_asks(_ASK_SAFE_CLOSE, "The table above: keep it? I recommend yes."),
+            # No close the reader can place: the caller records a firing, so
+            # an uncertain reading names nothing.
+            "Done.\n\nThe ask above is for you.",
+            _with_asks("`RUNNING` · `DO NOT CLEAR` — not SAFE TO CLEAR; the ask above.", _ASK),
+            None,
+        ],
+        ids=["comparative-above", "comparative-below", "hyphenated", "sound-reason",
+             "body-text", "inside-asks", "no-close", "both-verdicts", "none"],
+    )
+    def test_nothing_else_is_named(self, text):
+        assert standing_block.positional_pointer_match(text) is None  # type: ignore[arg-type]
+
+    def test_the_kinds_are_every_kind_the_matcher_returns(self):
+        assert standing_block.POSITIONAL_POINTER_KINDS == ("points-above", "points-below")
+
+    @pytest.mark.parametrize(
+        ("stop_input", "expected"),
+        [
+            ({"last_assistant_message": _line("YOUR TURN", "DO NOT CLEAR", "the one ask above.")},
+             "points-above"),
+            ({"last_assistant_message": DNC_LINE}, None),
+            ({"last_assistant_message": None}, None),
+            ({}, None),
+            ("not a dict", None),
+        ],
+        ids=["pointer", "sound", "null", "empty", "str"],
+    )
+    def test_the_payload_ladder(self, stop_input, expected):
+        match = _on_event(gates.turn_positional_pointer, stop_input)
+        assert (match[1] if match else None) == expected
 
 
 class TestDisposition:
@@ -375,7 +793,8 @@ class TestTurnDeclaresInFlight:
         ids=["self-citing", "your-turn-safe", "your-turn-dnc", "null", "empty", "str"],
     )
     def test_self_citation_ladder(self, stop_input, expected):
-        assert _on_event(gates.turn_cites_itself_as_record, stop_input) == expected
+        match = _on_event(gates.turn_self_citation, stop_input)
+        assert (match[0] if match else None) == expected
 
     def test_transcript_is_not_a_fallback(self, tmp_path):
         """With the field absent, a transcript that DOES close on DO NOT CLEAR is
@@ -436,6 +855,79 @@ class TestStopDefersOnTheVerdict:
         assert "says RUNNING and closed on DO NOT CLEAR" in result.stderr
         assert "background task" not in result.stderr
         assert "deferred: [prawduct" in result.stderr and "critic-review" in result.stderr
+
+    def test_a_one_line_dnc_close_defers_both_gates(self, tmp_path):
+        """The close the digest now prescribes: one line, last."""
+        _plan_repo(tmp_path, reflected=False)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(DNC_LINE)
+        )
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "says RUNNING and closed on DO NOT CLEAR" in result.stderr
+        assert "gate: reflection" in result.stderr
+        assert "gate: critic-review" in result.stderr
+
+    def test_a_one_line_safe_close_defers_nothing(self, tmp_path):
+        """Control for the test above: the same fixture blocks on SAFE TO CLEAR."""
+        _plan_repo(tmp_path, reflected=False)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(SAFE_LINE)
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" not in result.stderr
+
+    def test_asks_after_a_dnc_close_still_defer_both_gates(self, tmp_path):
+        """The asks come last now; the close above them still defers."""
+        _plan_repo(tmp_path, reflected=False)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(DNC_ASKS)
+        )
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "says RUNNING and closed on DO NOT CLEAR" in result.stderr
+        assert "gate: reflection" in result.stderr
+        assert "gate: critic-review" in result.stderr
+
+    def test_a_fenced_quotation_of_the_layout_defers_nothing(self, tmp_path):
+        """A turn that quotes the close-then-asks layout in a fence and closes
+        COMPLETE · SAFE TO CLEAR is a session end: both gates still block."""
+        _plan_repo(tmp_path, reflected=False)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(FENCED_LAYOUT_THEN_SAFE)
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" not in result.stderr
+
+    def test_a_blockquoted_layout_then_a_safe_close_defers_nothing(self, tmp_path):
+        """The finding's class at the layer it was reported: a quoted layout
+        (here a blockquote, which no fence check sees) must not defer."""
+        _plan_repo(tmp_path, reflected=False)
+        text = f"The new shape:\n\n> {_DNC_CLOSE}\n\n> **Needs you:**\n> 1. {_ASK}\n\n{SAFE_LINE}"
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(text)
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" not in result.stderr
+
+    def test_a_blockquoted_layout_then_prose_defers_nothing(self, tmp_path):
+        """The case a close-after-the-header check cannot see: the quoted layout
+        is followed by prose, not by the turn's own close."""
+        _plan_repo(tmp_path, reflected=False)
+        text = (f"The new shape:\n\n> {_DNC_CLOSE}\n\n> **Needs you:**\n> 1. {_ASK}\n\n"
+                "Does that read better?")
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(text)
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" not in result.stderr
+
+    def test_the_same_asks_without_the_header_defer_nothing(self, tmp_path):
+        """Control for the test above: only the header opens the asks block."""
+        _plan_repo(tmp_path, reflected=False)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(DNC_ASKS_NO_HEADER)
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" not in result.stderr
 
     def test_dnc_defers_the_reflection_gate(self, tmp_path):
         # No build plan, so no Critic gate: reflection is the only blocker.
@@ -539,8 +1031,11 @@ class TestStopStillBlocks:
 
 
 class TestClearVerdictGate:
-    """A turn that hands the session over while saying DO NOT CLEAR is refused,
-    whatever else the Stop would do — and neither deferral can swallow it."""
+    """A turn that hands the session over while saying DO NOT CLEAR is recorded
+    but not refused (#1044). These run the hook against a
+    mock git, which has no evidence store, so what each firing RECORDS is
+    pinned in-process in `test_stop_block_facts.py`; here, only that nothing
+    blocks. The same holds for the clear-reason check below (#1131)."""
 
     @staticmethod
     def _quiet_repo(tmp_path: Path) -> None:
@@ -554,18 +1049,14 @@ class TestClearVerdictGate:
         [(ASK_DNC_TURN, "YOUR TURN"), (COMPLETE_DNC_TURN, "COMPLETE")],
         ids=["your-turn", "complete"],
     )
-    def test_blocks_on_a_clean_tree(self, tmp_path, message, label):
-        """No changes, so no other gate fires: the contradiction alone blocks."""
+    def test_does_not_block_on_a_clean_tree(self, tmp_path, message, label):
+        """No changes, so no other gate fires: the contradiction alone used to
+        block; now the Stop passes."""
         self._quiet_repo(tmp_path)
         result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(message))
-        assert result.returncode == 2, (result.stdout, result.stderr)
-        blocked = _blocked_section(result.stderr)
-        assert "gate: clear-verdict" in blocked
-        assert f"closes on `{label}` and `DO NOT CLEAR`" in blocked
-        assert ".prawduct/.handoff-notes.md" in blocked
-        # The belief behind most of this gate's fires in consumer repos: that a
-        # server or recorder the session started would die with a clear.
-        assert "a clear ends the conversation, not the process" in blocked
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "CLEAR VERDICT" not in result.stderr
+        assert "clear-verdict" not in result.stderr
 
     @pytest.mark.parametrize(
         "message",
@@ -587,52 +1078,86 @@ class TestClearVerdictGate:
         )
         assert result.returncode == 2, (result.stdout, result.stderr)
         blocked = _blocked_section(result.stderr)
-        assert "gate: clear-verdict" in blocked
+        assert "gate: clear-verdict" not in blocked
         assert "gate: critic-review" in blocked
         assert "gate: reflection" in blocked
         assert "GATES DEFERRED" not in result.stderr
 
-    def test_background_work_defers_the_gates_but_not_the_contradiction(self, tmp_path):
-        """In-flight work defers every session-end blocker; the message is still
-        wrong for the person reading it, so the contradiction still blocks."""
+    def test_background_work_defers_the_gates_and_the_contradiction_blocks_nothing(self, tmp_path):
+        """In-flight work defers every session-end blocker, and the
+        contradiction no longer blocks in their place."""
         _plan_repo(tmp_path, reflected=True)
+        stdin = _payload(
+            COMPLETE_DNC_TURN,
+            background_tasks=[{"id": "t-1", "type": "subagent", "agent_type": "Explore"}],
+        )
+        result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=stdin)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" in result.stderr
+        assert "CLEAR VERDICT" not in result.stderr
+
+    def test_your_turn_beside_observed_background_work_stands(self, tmp_path):
+        """The hold is true while work a clear would kill runs, and the ask is
+        the reader's either way: `YOUR TURN` + `DO NOT CLEAR` is not refused."""
+        self._quiet_repo(tmp_path)
         stdin = _payload(
             ASK_DNC_TURN,
             background_tasks=[{"id": "t-1", "type": "subagent", "agent_type": "Explore"}],
         )
-        result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=stdin)
-        assert result.returncode == 2, (result.stdout, result.stderr)
-        assert "GATES DEFERRED" in result.stderr
-        blocked = _blocked_section(result.stderr)
-        assert "gate: clear-verdict" in blocked
-        assert "gate: critic-review" not in blocked
+        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=stdin)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "CLEAR VERDICT" not in result.stderr
 
-    @pytest.mark.parametrize(("reason", "phrase"), SELF_CITING_REASONS[:3])
-    def test_a_self_citing_safe_to_clear_blocks(self, tmp_path, reason, phrase):
-        """The trial's phrasings: no other gate fires, so the reason alone blocks."""
+    def test_your_turn_beside_a_live_review_stands(self, tmp_path):
+        from lib import critic_marker
+
         self._quiet_repo(tmp_path)
-        message = _block("YOUR TURN", "SAFE TO CLEAR", reason)
-        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(message))
-        assert result.returncode == 2, (result.stdout, result.stderr)
-        blocked = _blocked_section(result.stderr)
-        assert "gate: clear-reason" in blocked
-        assert "gate: clear-verdict" not in blocked
-        assert f'("{phrase}")' in blocked
-        assert ".prawduct/.handoff-notes.md" in blocked
+        assert critic_marker.write_marker(tmp_path / ".prawduct")
+        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(ASK_DNC_TURN))
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "CLEAR VERDICT" not in result.stderr
 
-    def test_background_work_does_not_swallow_a_self_citation(self, tmp_path):
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            *(_block("YOUR TURN", "SAFE TO CLEAR", r) for r, _ in SELF_CITING_REASONS[:3]),
+            _line("YOUR TURN", "SAFE TO CLEAR", "the questions are in this message."),
+        ],
+        ids=["in-this-message", "message-holds", "above-below", "one-line"],
+    )
+    def test_a_self_citing_safe_to_clear_does_not_block(self, tmp_path, message):
+        """The trial's phrasings: no other gate fires, and the reason alone used
+        to block. It is recorded instead (pinned in `test_stop_block_facts.py`),
+        and the hook prints nothing about it on a Stop that passes."""
+        self._quiet_repo(tmp_path)
+        assert standing_block.self_citation(message), "fixture must self-cite"
+        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(message))
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "clear-reason" not in result.stderr
+        assert "CLEAR VERDICT" not in result.stderr
+
+    def test_a_self_citation_does_not_keep_a_deferred_stop_blocked(self, tmp_path):
+        """Background work defers every session-end blocker, and the
+        self-citation no longer blocks in their place."""
         _plan_repo(tmp_path, reflected=True)
         stdin = _payload(
             _block("YOUR TURN", "SAFE TO CLEAR", "the questions are in this message."),
             background_tasks=[{"id": "t-1", "type": "subagent", "agent_type": "Explore"}],
         )
         result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=stdin)
-        assert result.returncode == 2, (result.stdout, result.stderr)
-        assert "gate: clear-reason" in _blocked_section(result.stderr)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" in result.stderr
+        assert "clear-reason" not in _blocked_section(result.stderr)
 
-    def test_the_gates_have_registry_rows(self):
+    def test_neither_clear_check_has_a_registry_row(self):
+        """The registry lists gates that BLOCK; both clear checks observe."""
         registry = json.loads((PLUGIN / "hooks" / "gates.json").read_text())
-        assert {"clear-verdict", "clear-reason"} <= {g["id"] for g in registry["gates"]}
+        ids = {g["id"] for g in registry["gates"]}
+        assert ids, "the registry read came back empty"
+        assert "reflection" in ids  # control: a blocking gate is listed
+        assert "clear-reason" not in ids
+        assert "clear-verdict" not in ids
 
 
 # ---------------------------------------------------------------------------
@@ -652,23 +1177,64 @@ def _section(text: str, heading: str) -> str:
 
 class TestVocabularyHasOneHome:
     """The labels live in ``lib/standing_block``; the two prose surfaces that
-    teach the block must name exactly that set — no label missing, none extra —
+    teach the close must name exactly that set — no label missing, none extra —
     so a rename in either place fails here instead of drifting."""
 
-    def test_session_hygiene_template_states_exactly_the_vocabulary(self):
+    def test_session_hygiene_section_states_exactly_the_vocabulary(self):
         text = (_METHODOLOGY / "session-hygiene.md").read_text(encoding="utf-8")
-        fence = re.search(r"```\n(---.*?)```", text, re.S)
-        assert fence, "session-hygiene.md lost its fenced standing-block template"
-        assert set(_LABEL_TOKEN.findall(fence.group(1))) == set(standing_block.ALL_LABELS)
+        section = _section(text, "## The closing line")
+        assert set(_LABEL_TOKEN.findall(section)) == set(standing_block.ALL_LABELS)
+
+    def test_each_fenced_example_is_a_close_the_reader_reads(self):
+        """The guide's examples are what agents copy, so each must parse to
+        the disposition and verdict it shows — a separator the reader does not
+        accept would teach a close the Stop hook cannot see."""
+        text = (_METHODOLOGY / "session-hygiene.md").read_text(encoding="utf-8")
+        fences = re.findall(r"```\n(.*?)```", _section(text, "## The closing line"), re.S)
+        assert len(fences) == 2, fences
+        assert standing_block.disposition(fences[0]) == standing_block.RUNNING
+        assert standing_block.clear_verdict(fences[0]) == standing_block.DO_NOT_CLEAR
+        assert standing_block.disposition(fences[1]) == standing_block.YOUR_TURN
+        assert standing_block.clear_verdict(fences[1]) == standing_block.SAFE_TO_CLEAR
+        # The hand-over example opens on the line and ENDS with its asks,
+        # numbered, under the header — the asks are the last thing it shows.
+        lines = [line for line in fences[1].splitlines() if line.strip()]
+        assert lines[0] == standing_block.verdict_line(fences[1])
+        assert lines[1] == standing_block.ASKS_HEADER
+        assert [line[:3] for line in lines[2:]] == ["1. ", "2. "]
+        assert standing_block.self_citation(fences[1]) is None
+
+    @pytest.mark.parametrize(
+        ("guide", "heading"),
+        [("session-hygiene.md", "## The closing line"),
+         ("session-digest.md", "## Closing the turn")],
+    )
+    def test_each_carrier_names_exactly_the_asks_header(self, guide, heading):
+        """Both directions: the prose names the constant, and every bold
+        "Needs ...:" header the prose names is the constant — so a header
+        renamed in the code or in either carrier fails here."""
+        section = _section((_METHODOLOGY / guide).read_text(encoding="utf-8"), heading)
+        named = set(re.findall(r"\*\*Needs[^*\n]*\*\*", section))
+        assert named == {standing_block.ASKS_HEADER}, named
 
     def test_digest_closing_section_states_exactly_the_vocabulary(self):
         text = (_METHODOLOGY / "session-digest.md").read_text(encoding="utf-8")
         section = _section(text, "## Closing the turn")
         assert set(_LABEL_TOKEN.findall(section)) == set(standing_block.ALL_LABELS)
 
+    def test_the_guide_names_every_close_check_the_hook_records(self):
+        """The Stop-hook paragraph lists the checks that record a close without
+        refusing it; the pointer check is one of them."""
+        text = (_METHODOLOGY / "session-hygiene.md").read_text(encoding="utf-8")
+        para = text[text.index("**The Stop hook reads this verdict.**"):]
+        para = para[: para.index("\n")]
+        for check in ("`clear-verdict`", "`clear-reason`", "`close-pointer`"):
+            assert check in para, check
+
     def test_the_tuples_partition_the_vocabulary(self):
+        # `STATE` led the three-paragraph close's first paragraph. No reader
+        # keys on it, so it left the vocabulary with the paragraph (#1131).
         assert standing_block.ALL_LABELS == (
-            standing_block.STATE,
             *standing_block.DISPOSITION_LABELS,
             *standing_block.CLEAR_LABELS,
         )
@@ -691,19 +1257,45 @@ def _answer_line(stderr: str) -> str:
 
 def assert_block_says_how_to_answer(stderr: str) -> None:
     """A blocked turn's answer and close are already written: the block asks
-    for only what is missing, and says when a close is written again — when
-    the one above would now be wrong, because the gates read the close from
-    the last message only: an item faults it, or the turn must close
-    `RUNNING` / `DO NOT CLEAR` (keeping a deferral, or having just started
-    work a clear would kill)."""
+    for only what is missing, and says when the close is written again — only
+    when the turn must now close `RUNNING` · `DO NOT CLEAR`, because the
+    deferral reads the close from the last message only (keeping a deferral,
+    or having just started work a clear would kill). No gate faults the close
+    itself since `clear-reason` stopped blocking, so the block no longer says
+    one might."""
     line = _answer_line(stderr)
-    assert "Do not repeat your answer." in line, line
-    assert "Write a closing block again only if the one above would now be wrong" in line, line
-    assert "an item faults it" in line, line
-    assert "`RUNNING` / `DO NOT CLEAR` (to keep a deferral, or because what you just started" in line, line
+    assert "Do not repeat your answer" in line, line
+    assert (
+        "Write the closing line again only if you must now close `RUNNING` · `DO NOT CLEAR` "
+        "(to keep a deferral, or because what you just started"
+    ) in line, line
+    assert "an item faults it" not in line, line
+    # The one exception to not repeating (confirmed by the owner 2026-11-11,
+    # `.prawduct/owner-rulings.md`): a turn that ended with its asks ends with them again, so the
+    # asks stay the last thing the user sees after the block.
+    assert_the_asks_are_restated(line)
+
+
+def assert_the_asks_are_restated(text: str) -> None:
+    """``text`` tells a blocked turn to end with its asks block again, under
+    the header the reader reads past, unchanged and after any close."""
+    flat = " ".join(text.split())
+    assert standing_block.ASKS_HEADER in flat, flat
+    clause = flat[flat.index(standing_block.ASKS_HEADER):]
+    assert "again, unchanged" in clause, clause
 
 
 class TestABlockSaysHowToAnswerIt:
+    def test_the_guide_says_the_same_as_the_hook(self):
+        """The rule has two carriers — the hook's answer line and the guide's
+        "Answering a block" sentence — so both are read here: a rule reworded
+        in one is two rules."""
+        text = (_METHODOLOGY / "session-hygiene.md").read_text(encoding="utf-8")
+        sentence = text[text.index("**Answering a block:**"):]
+        sentence = sentence[: sentence.index("\n")]
+        assert_the_asks_are_restated(sentence)
+        assert "before the asks" in sentence, sentence
+
     def test_a_gate_block_says_it_before_the_items(self, tmp_path):
         _plan_repo(tmp_path, reflected=True)
         result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(SAFE_TURN))

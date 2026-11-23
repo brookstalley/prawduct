@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import cache, encode
-from .core import error, from_transport_error, log_diag, ok
+from .core import error, failure_text, from_transport_error, log_diag, ok
 from .encode import parse_iso
 from .query import all_issues
 from .transport import Transport, TransportError, Validator
@@ -70,7 +70,7 @@ def _recording(project_dir: Path, scope: str, run) -> dict:
 
         _record_attempt(project_dir, scope, scrub_secrets(f"{type(exc).__name__}: {exc}"))
         raise
-    _record_attempt(project_dir, scope, _failure_of(result))
+    _record_attempt(project_dir, scope, failure_text(result))
     return result
 
 
@@ -105,15 +105,6 @@ def _record_attempt(project_dir: Path, scope: str, failure: str | None) -> None:
             conn.close()
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- bookkeeping must never replace the failure it is recording; logged, never swallowed silently
         log_diag(f"could not record the sync attempt: {type(exc).__name__}: {exc}")
-
-
-def _failure_of(result) -> str | None:
-    """The failure text of a sync envelope, or ``None`` when it succeeded."""
-    if not isinstance(result, dict) or result.get("status") != "error":
-        return None
-    err = result.get("error") or {}
-    code, message = err.get("code"), err.get("message")
-    return f"{code}: {message}" if code and message else (message or code or "error")
 
 
 def full_rebuild(
@@ -199,9 +190,7 @@ def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> tuple[list[d
                 # the block, so they rebuild from the provider like everything
                 # else here. `affected` is stored in the block's own `[a, b]`
                 # spelling (`None` when empty, so a reader never has to tell `[]`
-                # from "no value") — which is what lets `cache._write_affected`
-                # re-derive the path index from the column instead of from a
-                # parallel field that could drift.
+                # from "no value").
                 #
                 # `tags` is the third and is deliberately NOT stored: no consumer
                 # query reads it from the cache and `list --tag` is served live
@@ -303,7 +292,7 @@ def absorb_issue(
     makes a mirrored row equal to the row a rebuild would write. The alternative
     shape — patching the one column the caller knows changed — is wrong twice: it
     silently skips every other column the provider moved (a status write also
-    moves ``updated_at``, and a body write moves the alias and path indexes), and
+    moves ``updated_at``, and a body write moves the alias index), and
     it makes the store an author rather than a mirror, which is the property
     rebuild-equivalence exists to deny.
 
@@ -343,18 +332,9 @@ def absorb_issue(
     """
     stamp = (now or datetime.now(timezone.utc)).isoformat()
 
-    # Tagged so a caller can tell "there is no mirror here" from "the mirror is
-    # broken" without matching on message text. The first is silent at the write
-    # site — every read already reports it, with the command that fixes it — and
-    # the second is worth saying, because a store that answers reads and refuses
-    # writes is the surprising case.
-    absent = cache.cache_path(project_dir)
-    if absent is None or not absent.exists():
-        return error(
-            "unavailable",
-            "the backlog cache has not been built yet; run `prawduct-hook backlog sync`",
-            details={"mirror": MIRROR_ABSENT},
-        )
+    absent = _mirror_absent(project_dir)
+    if absent is not None:
+        return absent
 
     try:
         rows, out_of_scope = _rows_from_issues([issue], owner, repo)
@@ -365,6 +345,65 @@ def absorb_issue(
         )
         return error("unavailable", "the backlog cache could not decode the written issue")
 
+    conn = _open_scoped_store(project_dir, owner, repo)
+    if isinstance(conn, dict):
+        return conn
+    try:
+        return cache.absorb_rows(conn, rows, fetched_at=stamp, evict=out_of_scope)
+    finally:
+        conn.close()
+
+
+def evict_gone(project_dir: Path, *, owner: str, repo: str, number: int) -> dict:
+    """Drop one item the provider has proven is **hard-deleted** from the store.
+
+    The one deletion signal the cache ever receives: incremental sync reads only
+    what changed since the watermark, and a deletion never shows up there (Cache
+    Spec §6 accepts having no deletion sweep). A single-id read that gets 410 Gone
+    is first-hand proof for exactly one id, so this evicts exactly that id and
+    nothing else, and touches neither the cursor nor the coverage stamp for the
+    reason :func:`cache.absorb_rows` gives. Never raises; shares the mirror's
+    store guards (absent / unsynced / out-of-scope) with :func:`absorb_issue`, so
+    the same three conditions answer the same way. ``data["evicted"]`` is the
+    number of rows actually removed (0 when the id was never cached)."""
+    absent = _mirror_absent(project_dir)
+    if absent is not None:
+        return absent
+    conn = _open_scoped_store(project_dir, owner, repo)
+    if isinstance(conn, dict):
+        return conn
+    try:
+        stamp = datetime.now(timezone.utc).isoformat()
+        return cache.absorb_rows(
+            conn, [], fetched_at=stamp, evict=[f"{owner}/{repo}#{number}"]
+        )
+    finally:
+        conn.close()
+
+
+def _mirror_absent(project_dir: Path) -> dict | None:
+    """The tagged "no store here" error, or ``None`` when a store file exists.
+
+    Tagged so a caller can tell "there is no mirror here" from "the mirror is
+    broken" without matching on message text. The first is silent at the write
+    site — every read already reports it, with the command that fixes it — and
+    the second is worth saying, because a store that answers reads and refuses
+    writes is the surprising case."""
+    absent = cache.cache_path(project_dir)
+    if absent is None or not absent.exists():
+        return error(
+            "unavailable",
+            "the backlog cache has not been built yet; run `prawduct-hook backlog sync`",
+            details={"mirror": MIRROR_ABSENT},
+        )
+    return None
+
+
+def _open_scoped_store(project_dir: Path, owner: str, repo: str):
+    """Open the store for a single-item local write, or return the dict that
+    answers instead: the open failure, an unreadable store, an unsynced store
+    (tagged absent), or the ok ``skipped: out-of-scope`` for a store that holds
+    some other scope. The caller owns closing a returned connection."""
     conn = cache.open_store(project_dir, create=False)
     if isinstance(conn, dict):
         return conn  # absent, unreadable, or schema-mismatched — say so, build nothing
@@ -375,9 +414,11 @@ def absorb_issue(
             # Readable enough to open, not readable enough to answer. Saying
             # "run a sync" here would send an operator to repair a store whose
             # problem a sync does not address.
+            conn.close()
             return error("unavailable", "the backlog cache could not be read")
         if scope not in covered:
             if not covered:
+                conn.close()
                 return error(
                     "unavailable",
                     "the backlog cache has not been synced yet; "
@@ -387,13 +428,16 @@ def absorb_issue(
             # The store is fine and this item simply is not its business.
             # Same key set as the mirror's other ok exits, plus the reason —
             # a consumer reading `written` must not have to know which exit it got.
-            return ok(
+            result = ok(
                 {"written": 0, "evicted": 0, "fts": cache.has_fts(conn),
                  "skipped": "out-of-scope"}
             )
-        return cache.absorb_rows(conn, rows, fetched_at=stamp, evict=out_of_scope)
-    finally:
+            conn.close()
+            return result
+    except BaseException:
         conn.close()
+        raise
+    return conn
 
 
 def _watermark_from(issues: list[dict], *, floor: str | None) -> str | None:
@@ -470,6 +514,23 @@ def _incremental_sync(
         # timestamp from. Either way there is no window to be incremental about.
         conn.close()
         return _full_rebuild(transport, project_dir=project_dir, owner=owner, repo=repo, now=now)
+    stranded = [other for other in (cache.cursor_scopes(conn) or []) if other != scope]
+    if stranded:
+        # A second watermark means an earlier plugin's rebuild of one scope
+        # discarded the other's items and left its cursor claiming them (#1195;
+        # `cache.replace_items` now drops it). Which watermark lies cannot be told
+        # from the store, and a window read over a stranded one fetches only what
+        # changed since — the rest stays missing for good. One rebuild settles it,
+        # and leaves a single watermark, so this runs once per affected store.
+        conn.close()
+        rebuilt = _full_rebuild(transport, project_dir=project_dir, owner=owner, repo=repo, now=now)
+        if rebuilt.get("status") == "ok":
+            rebuilt["warnings"] = [
+                f"rebuilt {scope}: the cache also held watermarks for {', '.join(stranded)}, "
+                "whose items an earlier rebuild had discarded, so its contents could not be trusted",
+                *rebuilt.get("warnings", []),
+            ]
+        return rebuilt
 
     try:
         validator = _revalidate(transport, owner, repo, since=since, etag=etag)
@@ -596,11 +657,9 @@ def spawn_sync(
     Until this existed, the only writer reachable from outside a test was a human
     typing ``prawduct-hook backlog sync``: nothing scheduled it and no hook spawned
     it, so every consumer's freshness had an owner in principle and none in
-    practice — age visible, nothing making it small. That gap is sharpest for the
-    consumers this trigger was added for, which are **restricted-tool agents** (the
-    Critic's reconciliation walk, the PR reviewer's checks): ``cachequery``'s
-    "run ``prawduct-hook backlog sync``" reaches a reader who cannot run anything
-    that writes.
+    practice — age visible, nothing making it small. That gap is sharpest for an
+    agent granted ``cache-query`` and not ``sync``: ``cachequery``'s "run
+    ``prawduct-hook backlog sync``" reaches a reader who cannot run it.
 
     Deliberately the same shape as ``snapshot.spawn_refresh`` — fire-and-forget,
     own session, ``PRAWDUCT_UNATTENDED=1``, returns immediately — rather than a new

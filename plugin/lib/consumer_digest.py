@@ -68,6 +68,10 @@ _VERSION_RE = re.compile(r"\d+\.\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.]+)?")
 _H2_RE = re.compile(r"^##[ \t]+(\S+)")
 _LINE_RE = re.compile(r"[^\r\n]*(?:\r\n|\n|\r)|[^\r\n]+\Z")
 _SAMPLE_FIELDS = {"version": "v0.0.0", "version_no_prefix": "0.0.0", "date": "2000-01-01"}
+#: A CommonMark list-item marker opening a line: a bullet, or an ordered number.
+_LIST_ITEM_RE = re.compile(r" {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)")
+#: Stands in for the note to find where a template places it.
+_NOTE_PROBE = "\x00note\x00"
 
 
 @dataclass(frozen=True)
@@ -625,18 +629,32 @@ def _default_type_order() -> list[str]:
     return preferred + [kind for kind in change_fragments.TYPES if kind not in preferred]
 
 
+def _opens_list(note: str) -> bool:
+    lines = note.splitlines()
+    return bool(lines) and _LIST_ITEM_RE.match(lines[0]) is not None
+
+
 def _entry_lines(template: str, fragment: change_fragments.Fragment, *, bullet: bool) -> list[str]:
-    rendered = template.format_map(
-        {
-            "note": fragment.consumer_text or "",
-            "scope": fragment.scope or "",
-            "type": fragment.type or "",
-            "title": fragment.title or "",
-        }
-    )
+    note = fragment.consumer_text or ""
+    fields = {
+        "note": note,
+        "scope": fragment.scope or "",
+        "type": fragment.type or "",
+        "title": fragment.title or "",
+    }
+    if not bullet and _opens_list(note):
+        # A list glued after a label renders its first item as the label's inline
+        # text, so a note that opens with an item starts a block of its own.
+        probe = template.format_map({**fields, "note": _NOTE_PROBE}).splitlines()
+        at = next(i for i, line in enumerate(probe) if _NOTE_PROBE in line)
+        lead = probe[at].split(_NOTE_PROBE, 1)[0]
+        if lead.strip():
+            lines = template.format_map({**fields, "note": "\n\n" + note}).splitlines()
+            lines[at] = lead.rstrip()
+            return lines
     # Lines are kept verbatim: trailing whitespace can be a Markdown hard break,
     # and prawduct's own sections have always carried notes exactly as written.
-    lines = rendered.splitlines()
+    lines = template.format_map(fields).splitlines()
     if not bullet:
         return lines
     # A bullet's continuation lines are indented under it, so a multi-line note

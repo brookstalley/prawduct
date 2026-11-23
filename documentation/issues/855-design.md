@@ -1,309 +1,391 @@
-# Issue #855 — Gates: Nothing Detects a Build Plan That Was Never Persisted: Design
+# Issue #855 — Nothing Detects a Build Plan That Was Never Persisted: Design
 
-`status: draft · stage: design · area: gates · added: 2026-09-22 · source: scheduled backlog
-session · issue: https://github.com/brookstalley/prawduct/issues/855`
+`status: draft · stage: design · area: gates · added: 2026-09-22 · reworked: 2026-11-22 ·
+issue: https://github.com/brookstalley/prawduct/issues/855`
 
-Related: #661 (the v3.6.0 close-out item #855 was split from — split rather than closed, per its
-own Evidence section); #843 (`documentation/issues/843-design.md`, the nearest structural
-precedent — a sibling `area:gates` "nothing detects X" item designed the same week, cited
-throughout below for its documented conventions); `buildplan_refs.unticked_committed_chunk_notice`
-(the existing, adjacent mechanism this design deliberately does not duplicate — see Grounding
-facts).
+**Reworked 2026-11-22 as an advisory.** The owner ruled: "#855 is reworked as an advisory, not a
+blocking Stop gate, to fit the 2026-09-19 tax ruling" (`.prawduct/owner-rulings.md`, 2026-11-22
+entry, ask 6). The earlier design was a blocking Stop gate. It is deleted here, not kept beside
+this one. The note under "Superseded" says why it was dropped.
 
-**No separate requirements doc exists for #855, and none is needed.** The issue's own body already
-carries the problem statement, the reported incident (a lost 7-chunk plan, re-pasted from terminal
-scrollback), the reason it is filed at `stage: design` rather than `stage: ready` (three named
-candidate triggers, "the cheapest honest trigger is not obvious"), and three acceptance criteria.
-That is what a requirements pass would otherwise produce; this document evaluates the three named
-candidates against the actual code, rules one of them out as insufficient (with a reason), folds
-the third into the first as a wiring detail rather than a separate mechanism, and turns what is
-left into a concrete build — the same convention #843's design states for itself, which itself
-cites `167-design.md`, `669-design.md`, `712-design.md`, `755-design.md` as prior instances of the
-same pattern.
+**The ruling this design has to fit.** On 2026-09-19 the owner turned down a freshness-gate change
+with these words: "We default to adding tax everywhere and it's become a problem … 1 helps, 2
+hinders both us and our consumers to fix a rare edge case." The ruling is recorded where it landed:
+`.prawduct/artifacts/build-plan-audit-guidance.md:55` ("No new gate"), and the #843 design's
+Decision 5. On #843, the same day, the owner asked for "a visible, dismissible signal, not a
+refusal" (`documentation/issues/843-design.md:212`; `plugin/lib/stranded_branch_probes.py:10-11`).
+The standing norm behind both: "proportionality ratchets both ways" (`nonfunctional-requirements.md`
+§ Direction). It says a new control names its expected yield and emits that yield where it can be
+seen. #855 is a rare failure. The issue reports one incident: a 7-chunk plan lost and re-pasted
+from scrollback. So the ruling's shape applies directly. Every governed repo would pay a blocking
+check at every session end to catch a rare loss. An advisory costs nothing to anyone the
+predicate does not fire for.
+
+Related: #661 (#855 was split from it); #843 (the advisory precedent for "nothing detects X");
+#1050 (the work-unit binding, which replaced the resolver the earlier design was built on).
 
 ## Grounding facts
 
-Re-verified against the current tree (`develop`, 2026-09-22):
+Re-verified against `develop` at `8b1847e2` on 2026-11-22. Much of what the 2026-09-22 design
+cited no longer exists.
 
-- **The three candidates named in the issue are not equally available.** The issue names: (a) "a
-  chunk-shaped commit subject with no resolvable plan", (b) "`active_build_plan` naming a missing
-  path", and (c) "a Stop-hook check." (b) already ships as a *different* control, doesn't cover the
-  reported failure, and fires too late even where it would apply — see next bullet. (c) is not a
-  standalone option; it is *where* (a) would have to be wired to satisfy the "before the session
-  ends" acceptance criterion, argued below. That leaves (a), argued as the trigger, wired per (c).
-- **(b) is already built, and it is a `SessionStart` briefing notice, not a gate — and it only
-  fires when the pointer was explicitly set.** `briefing.py:870-891` prints `⚠ active_build_plan
-  points at a MISSING file` when the scalar names a path that does not resolve. Two gaps against
-  #855's own acceptance criteria: it fires at the **next** `SessionStart`, after the session whose
-  context held the plan has already ended (fails "detected before the session ends" by
-  construction) — and it fires only when `active_build_plan` was *set* to a since-vanished path.
-  The reported incident is the opposite shape: the operator never got as far as writing a pointer
-  at all, because the plan itself was never written to a file. An unset scalar (`active_build_plan:
-  null`, the shipped default — `.prawduct/project-state.yaml:616`) produces no warning under this
-  check, by design (`core.py:834`, `"active_build_plan" is unset` is a *normal*, silent reading
-  everywhere it's consulted). Fixing this gap by widening (b) would mean warning on every ordinary
-  repo with no plan pointer — the exact "planless small work" nagging the issue's own acceptance
-  criteria rule out.
-- **The prior-order relationship to `unticked_committed_chunk_notice` (`buildplan_refs.py:963-
-  1065`) is the load-bearing fact for scoping (a).** That control already reports a chunk whose
-  work is committed but whose Status box is unticked — but it requires a plan file to exist in the
-  first place (`buildplan_refs.py:1021: if not plan_path.is_file(): return None`). #855 is the
-  question one step earlier: no plan file resolves *at all*. The two are complementary, not
-  overlapping — a fix for #855 must return `None` in every case `unticked_committed_chunk_notice`
-  already handles, and vice versa; the dividing line is exactly `plan_path.is_file()`.
-- **`unticked_committed_chunk_notice`'s own docstring states, and defends, the honest-partial-
-  coverage posture this design adopts wholesale.** Quoted directly because #855 inherits the same
-  shape and the same limitation: *"The honest summary is that this catches the mistake in repos
-  that already follow the convention and does nothing elsewhere; a signal independent of commit
-  subjects … is the obvious strengthening and is not attempted here."* (`buildplan_refs.py:1001-
-  1005`). A commit-subject trigger for #855 inherits precisely that ceiling — see Decision 1's
-  stated limitation.
-- **A transcript-based trigger — reading `transcript_path` from the Stop-hook payload to see a
-  plan drafted but never saved — is the one candidate that would close that ceiling, and it is
-  disqualified by this codebase's own stated invariant, not by cost.** `prawduct-hook`'s module
-  docstring states the constraint in its own words: *"Governing invariant (design §2): reads/
-  writes ONLY the governed repo's `.prawduct/` — the session's active git worktree … No mutable
-  state is shared between unrelated repos through the plugin."* (`plugin/bin/prawduct-hook:22-
-  24`). `transcript_path` (documented at `:2304-2305` as part of the Stop-hook stdin payload,
-  confirmed unread by any current `lib/` code — `git grep transcript_path` returns only that one
-  docstring line) names a file under Claude Code's own session-storage tree, outside the governed
-  repo and outside `.prawduct/` entirely. Reading it would be the first surface in this plugin to
-  cross that boundary — a bigger decision than #855 is chartered to make on its own, and disallowed
-  outright given the standing rule in `.claude/rules/learnings/core.md`: *"Verify the constraint
-  before adopting the recommendation"* and *"the 'canonical' mechanism for a capability can be
-  disqualified by a plugin's composability + always-on constraints."* Scoped out below, not
-  attempted, honestly, exactly as `unticked_committed_chunk_notice` scopes out its own stronger
-  alternative.
-- **`plan_backfill.py` is not a reusable "reconstruct a missing plan" primitive — checked and
-  ruled out, not assumed.** Its docstring (`plugin/lib/plan_backfill.py:1-16`) is explicit: it
-  moves *already-shipped* plans that exist on disk into `archive/`, keyed off change-log
-  `release=` tags. It has no code path that authors a plan file from git history; there is nothing
-  here for #855 to extend.
-- **The scope→plan lookup this design needs already exists, archive-inclusive, one call.**
-  `plan_index.build_scope_to_plan_map(artifacts_dir, include_archived=True)`
-  (`plugin/lib/plan_index.py:502-524`) returns `{scope: path}` for every plan (live or archived)
-  declaring a `scope:`. This is exactly what distinguishes the reported failure (no plan anywhere)
-  from the look-alike, non-failure case: a plan that governed the committed chunks, finished, and
-  was correctly archived after those commits landed — at which point `resolve_build_plan_path`
-  no longer resolves to it (archived plans are pruned from live resolution by design), but the work
-  was never lost. Without this check, a design keyed only on "does `resolve_build_plan_path` return
-  a file" would misfire on every branch that carries old chunk-shaped commits from a plan that
-  has since shipped and archived cleanly — the opposite of the intended failure.
-- **All the primitives this design needs are already imported siblings inside
-  `buildplan_refs.py`.** `_CHUNK_COMMIT_RE`, `_COMMIT_SCOPE_RE` (`:403-409`), `_commits_ahead_of_
-  base` (`:421-436`), `_committed_chunk_ids` (`:438-`, unscoped reading when no `plan_scope` is
-  passed — the correct call shape here, since there is no plan to scope by), `_resolve_base_branch`
-  (imported from `coverage.py` at module scope, `:58`), `resolve_build_plan_path` (imported from
-  `core.py`), and `plan_index` (imported at module scope, per the module's own docstring, `:13-25`).
-  No new cross-module dependency is introduced.
-- **The waiver mechanism this design's escape hatch reuses is a fixed, hand-maintained map, not a
-  registry.** `_WAIVER_KEY_BY_GATE` in `plugin/bin/prawduct-hook` maps a Stop-gate blocker id to its
-  `.gates-waived` key; `KNOWN_WAIVER_KEYS` is derived from it, and `_waiver_footer` renders the one
-  escape-hatch paragraph after the `BLOCKED` list from the ids that blocked. Adding a gate that
-  wants a waiver means adding one entry to that map and one `blockers.append(_attributed(...))`
-  call, exactly the shape of the existing `reflection` / `critic` / `pr` / `learnings-unmigrated`
-  blockers. The blocker carries no escape-hatch paragraph of its own.
-- **`_committed_chunk_ids`'s own docstring documents a real, cited case of a plan's commit-scope
-  diverging from its frontmatter `scope:`** ("on this very branch the continuity plan's commits
-  say `session-continuity` while its frontmatter says `session-handoff-continuity`",
-  `buildplan_refs.py:464-467`). This is directly relevant to Decision 2's false-positive shape:
-  a real, persisted plan can still produce commits whose conventional-commit scope does not match
-  any key in `build_scope_to_plan_map`, for the same reason.
+- **The resolver and the adjacent notice the old design reused are gone.**
+  `core.resolve_build_plan_path` was removed when #1050 shipped. `plugin/CHANGELOG.md:374` says the
+  shims "are removed, not kept for a release", and `tests/test_build_plan_resolution.py:590` pins
+  that they are absent. "Which plan governs this checkout" is now `work_unit.resolve(project_dir)`
+  (`plugin/lib/work_unit.py:200`). It returns a `Binding` whose `state` is `bound`, `unbound` or
+  `broken`, and a legacy-window case (pointer or conventional path) still counts as `bound`.
+  `buildplan_refs.unticked_committed_chunk_notice` was also retired, and its successor is
+  `plan_status.built_not_done_notice` (`plugin/CHANGELOG.md:250`;
+  `plugin/lib/plan_status.py:1783`). That successor returns `None` on any checkout that is not
+  `bound` (`:1798-1800`). So the line between the two controls is still exact, but it moved: from
+  "a plan file exists" to `binding.state == "bound"`. Built-not-done speaks only on a bound
+  checkout, and this advisory never speaks on one.
+- **The commit-subject primitives moved to `plan_status`, and they have one home there.**
+  `_CHUNK_COMMIT_RE` and `_COMMIT_SCOPE_RE` (`plugin/lib/plan_status.py:1424-1431`), `_named_ids`
+  (`:1444`, the unscoped reading), and `_log_commits` (`:1471`). `_log_commits` is "the one reader
+  every chunk-to-commit answer here takes its commits from". One `git log --name-only` call gives
+  each commit's subject and the paths it touched. The comment above `_CHUNK_COMMIT_RE` calls
+  `_subject_chunks` "the rules' one home". The detector therefore lives in `plan_status` and
+  exports its answer (learnings `hook-surface`: "Export the ANSWER, not the walker").
+- **`build_scope_to_plan_map(..., include_archived=True)` still exists, and it is not allowed on
+  this path.** It is at `plugin/lib/plan_index.py:652`. Its walker's docstring
+  (`iter_scoped_plan_candidates`, `:382-422`) says the archive is pruned at directory level because
+  "the walk runs at every session start and every session end". It also says to pass
+  `include_archived=True` "only from a cold path". #1050's NF1 says the same for every hot path,
+  session start included: "no network, and no cost that grows with the archive"
+  (`documentation/issues/1050-requirements.md:306-307`). An advisory probe runs at every session
+  start, so it is on a hot path. Measured on this repo (194 scopes, 186 archived files), the
+  archive-inclusive map took 46 ms (best of 5) against 13.5 ms for the live map. That cost grows
+  with every plan the repo ever finishes. The old design's clause D is replaced (Decision 2,
+  clauses D1-D3).
+- **The advisory channel already exists, has one composition root, and runs on every
+  SessionStart source.** Probes register through `advisory_store.register_probe` from a module's
+  `register()`. They are listed once, in `plugin/lib/probe_families.py:register_all`. The roster
+  runs inside `cmd_clear` (`plugin/bin/prawduct-hook:2134-2141`). That block is orientation, kind
+  (3) in `cmd_clear`'s docstring, so it also runs on a continuation. The hook matchers
+  (`plugin/hooks/hooks.json`) send `startup|clear` to `clear --session-start`, and
+  `resume|compact|fork` to `clear --session-start --brief-only`. Both forms reach the probe
+  roster. A plan lost to a compaction therefore triggers the advisory in the same conversation,
+  right after the compact.
+- **How an advisory reaches its readers.** `AdvisoryCandidate` (`plugin/lib/advisory_store.py:95-
+  139`) carries `evidence`, which hashes to a stable id; `trigger_summary`; `owner_action`, a
+  person's decision in prose with no command; `recommended_action`, exactly one command; and
+  `priority`. When a probe stops producing an advisory, the next sync marks it `resolved`.
+  `advisory dismiss` is sticky per clone (`plugin/skills/advisory/SKILL.md`). A probe returns `None`
+  when it could not look, so an open advisory is not resolved by a check that never ran
+  (`advisory_store.run_probes`, `:343-393`; #917). `tests/test_advisory_actionability.py` reads
+  every construction site and enforces the two-audience rules. It allows only `prawduct-hook` and
+  `git` as the first word of a `recommended_action` (`:59`, `:304-325`).
+- **The nearest existing probe is in the same family.** `work_unit_probes.probe_plan_unbound_legacy`
+  (`plugin/lib/work_unit_probes.py`, feature `work-unit`) is the binding's own advisory. It asks
+  "this checkout's plan governs through a route being retired". #855 asks the step before that:
+  "this branch's chunk work has no plan at all". Both questions are about the work unit, so both
+  advisories belong to that one module.
+- **A one-command remedy exists.** `prawduct-hook plan new [<scope>]` (`plugin/bin/prawduct-
+  hook:8372`; `plugin/lib/plan_mint.py:175`) writes `build-plan-<scope>.md` claiming the checked-out
+  branch, and writes its change-fragment stub. Once it runs, the checkout is `bound`, so the
+  advisory resolves on the next sync. It refuses on the base branch itself (`branch-is-base`),
+  a harness scratch branch, a branch another live plan already claims, or a scope that a live or archived plan already holds. The scope check walks the
+  archive, which is fine there because `plan new` is a cold path someone chose to run.
+- **Transcript-based detection is still ruled out.** The constraint the old design cited still
+  applies. `prawduct-hook` reads and writes only the governed repo's `.prawduct/`.
+  `transcript_path` would be the first read outside that boundary. See Scope-out.
+- **The `active_build_plan` dangling-pointer notice is a different channel.** It is a `⚠` line
+  that `briefing.render_briefing` prints (`plugin/lib/briefing.py:1015-1050`) every session while
+  a set pointer names no file on an unbound checkout. It cannot be dismissed, it is not in the
+  advisory store, and it fires on a configuration fault (a scalar naming a missing path) whose fix
+  is to unset or bind. It never fires on #855's case, where the pointer is unset
+  (`active_build_plan: null` is the shipped default). For whether the two should share one owner,
+  see Decision 6.
 
 ## Decisions
 
-**1. Trigger is git/filesystem composition — candidate (a) — never the transcript. Its ceiling is
-stated, not hidden.** A commit-subject-and-scope check answers #855's acceptance criteria for every
-case where at least one chunk's work was actually committed before the session that drafted the
-plan ended; it cannot catch a plan lost *before* any chunk was committed (the purely-conversational,
-zero-commits case, which the reported incident may or may not have been — the issue does not say).
-That gap is real and is left open (Scope-out), for the reason in Grounding facts: closing it needs a
-transcript read, which conflicts with this plugin's own stated `.prawduct/`-only invariant. Matching
-`unticked_committed_chunk_notice`'s own precedent, an honest partial control that is silent outside
-its stated shape is preferred over inventing a second, weaker "is this a plan" heuristic over
-conversation text.
+**1. Surface: the session-start advisory roster, as a second probe in `work_unit_probes`.**
+Type `plan-not-persisted`, feature `work-unit`, registered by that module's existing `register()`.
+`probe_families` needs no change, because it already calls `register_work_unit()`. There is no
+`gates.json` entry, no `_WAIVER_KEY_BY_GATE` key and nothing in `cmd_stop`. Choosing this channel
+over the other two:
 
-**2. The predicate — every clause named, because a false fire here is expensive (issue's own
-framing) and each clause exists to suppress one specific false positive:**
+- The Stop hook is a refusal (the tax ruling).
+- A briefing line cannot be dismissed. A deliberately planless branch would show the same `⚠`
+  in every session, and the ruling objects to exactly that cost.
+
+The roster is the one surface built for "visible, dismissible, self-resolving, checked on every
+sync" (#843 Decision 5).
+
+**2. The detector is `plan_status.unpersisted_plan_evidence(project_dir)`.** It returns an
+`UnpersistedPlan` (branch, chunk ids, the first subject carrying each id, and a suggested scope),
+or `None` for "nothing to report", or a cause string for "could not look". Each clause suppresses
+one named false positive. They run cheapest first, so the common case stops before any new git
+call:
 
 ```
-def unpersisted_plan_notice(project_dir: Path) -> str | None:
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    if resolve_build_plan_path(prawduct_dir).is_file():
-        return None                                    # clause A
-    base, _ = _resolve_base_branch(project_dir)
-    if not base or _commits_ahead_of_base(project_dir, base) <= 0:
-        return None                                    # clause B
-    chunk_ids = _committed_chunk_ids(project_dir, base)   # unscoped: no plan to scope by
-    if len(chunk_ids) < _MIN_UNPLANNED_CHUNK_IDS:          # clause C, = 2
-        return None
-    scope_map = plan_index.build_scope_to_plan_map(
-        prawduct_dir / "artifacts", include_archived=True
-    )
-    if _any_commit_scope_resolves(project_dir, base, scope_map):
-        return None                                    # clause D
-    return <message: chunk_ids, their carrying commit subjects, the would-be plan path>
+branch = gitstate.current_branch(root)
+if branch is None or gitstate.ephemeral_kind_of(root, branch) is not None:
+    return None                                   # clause S: detached, or a harness scratch tree
+if branch in plan_mint.integration_branches(root):
+    return None                                   # clause I: a branch that is never a unit's
+binding = work_unit.resolve(root, branch=branch)
+if binding.state != "unbound":
+    return None                                   # clause A: a plan governs (claim or legacy window),
+                                                  #   or the binding is broken (the briefing reports it)
+base, _ = coverage.repo_base_branch(root)         # an unbound checkout's base IS the repo's
+if base is None:
+    return "no base branch resolves"              # could not look
+commits = _log_commits(root, f"{base}..HEAD")     # ONE git call: subjects + touched paths
+if isinstance(commits, str):
+    return commits                                # could not look
+ids = _named_ids(c.subject for c in commits)      # clause B is implied: no commits, no ids
+if len(ids) < MIN_UNPLANNED_CHUNK_IDS:            # = 2
+    return None                                   # clause C
+scopes = {conventional scope of each id-carrying subject}
+if scopes & build_scope_to_plan_map(artifacts).keys():          # LIVE only
+    return None                                   # clause D1
+if any touched path under .prawduct/artifacts/ is a file now with has_build_plan_shape:
+    return None                                   # clause D2
+if any (artifacts / "archive" / f"build-plan-{s}.md").is_file() for s in scopes:
+    return None                                   # clause D3
+return UnpersistedPlan(...)
 ```
 
-- **Clause A (no plan resolves, live).** Reuses `resolve_build_plan_path` exactly as every other
-  gate does — the one resolver (`buildplan_refs.py:15-16`'s own module docstring: "there is one
-  resolver now, the hook's inline mirror of it having been retired"). A plan governing the branch,
-  by pointer, or at the conventional path all clear this and correctly suppress the notice.
-- **Clause B (commits exist ahead of base).** No commits, nothing to check — mirrors
-  `unticked_committed_chunk_notice`'s own guard (`buildplan_refs.py:1038-1039`) verbatim.
-- **Clause C (≥ 2 distinct chunk ids, unscoped reading).** This is the "planless small work is not
-  nagged" bound (acceptance criterion 2). A single `(Chunk 1)`-tagged commit in a repo with no
-  formal build-plan habit is indistinguishable from an informal, one-off use of the phrase; two or
-  more *distinct* ids on one branch, with no plan anywhere, is the actual signature of a plan that
-  was being executed chunk-by-chunk and never got written down. **Stated limitation**: a real
-  one-chunk plan that was never persisted is invisible to this predicate by construction — accepted
-  per Decision 1's honesty posture, and named again in Scope-out so it is not rediscovered as a
-  surprise later.
-- **Clause D (no commit's own scope already resolves to a plan, live or archived).** This is what
-  keeps the notice silent on a branch carrying old chunk-shaped commits from a plan that finished
-  and was correctly archived (Grounding facts) — the look-alike case that a plan-existence check
-  alone would misclassify as the bug. It also absorbs the documented commit-scope-vs-frontmatter-
-  scope divergence (Grounding facts, last bullet) in the SAFE direction: when scopes disagree, this
-  clause can under-suppress (fire when a plan genuinely exists but under a mismatched scope) rather
-  than over-suppress (stay silent when nothing exists) — the same asymmetry `_committed_chunk_ids`'s
-  own docstring accepts for the same reason ("the cost of not archiving is a plan that stays visible
-  one release longer; the cost of archiving wrongly is a live plan disappearing" — same shape,
-  applied to a notice rather than an archive move). A plan whose commit scope drifted this way and
-  who additionally triggers this notice is a one-line waiver away from silence (Decision 3); false
-  suppression down clause A/D is not recoverable in the same way, so the bias is deliberate.
-- **`_any_commit_scope_resolves` is one new, small helper** in `buildplan_refs.py`: walks the same
-  `base..HEAD` subject list `_committed_chunk_ids` already fetches (a second `git log`/`rev-list`
-  call rather than refactoring the existing one to return scopes too — refactoring a function three
-  other call sites depend on for one new caller's convenience is the wider, riskier change; an extra
-  local `git` subprocess is not a cost this codebase treats as worth avoiding — #843's Decision 4
-  budget-guards *network* calls specifically and leaves local git calls unbounded throughout
-  `cmd_stop`), applies `_COMMIT_SCOPE_RE`, and returns whether any extracted scope is a key in
-  `scope_map`.
+- **S and I** keep the probe silent where a plan would be wrong or impossible. A scratch tree's
+  coordinator governs it (`work_unit.resolve`, step 1). `integration_branches` is the `main` family
+  plus the repo's own integration branch, which are "branches that are never a unit's"
+  (`plan_mint.py:131-134`). `plan new` refuses to claim the base (`branch-is-base`), so on the base
+  the probe would recommend a command that cannot run.
+- **A** is the dividing line with `built_not_done_notice` (Grounding facts). A `broken` binding
+  stays silent, because whether a plan claims the branch is unknown, and the briefing already
+  prints the breakage.
+- **C** keeps the probe from nagging planless small work (acceptance criterion 2), the same bound
+  the old design used. Two or more distinct chunk ids on one branch with no plan is what a plan
+  executed chunk by chunk and never written down looks like. One `(Chunk 1)` commit could be
+  casual wording. The limitation is stated: a real one-chunk plan that was never written is
+  invisible to this check.
+- **D1** handles a plan that exists and binds nothing to this branch. For example, a plan claims
+  `feature/x`, and this checkout is an undeclared side branch whose commits carry `x`. The scope
+  map is the live one, with the archive pruned. That walk is already paid on every session-start
+  path.
+- **D2** replaces the old clause D's archive walk with a fact about the branch. If any commit in
+  `base..HEAD` added, edited, or archived a file that is a build plan now, the plan was persisted
+  (learnings `hook-surface`: "Observable beats stored"). Only files the range touched are read,
+  so the cost grows with the branch, not the archive. A plan that was written and then archived on
+  this branch is covered because the archive move is in the range. Renames show the new path under
+  git's default rename detection, and the shape test (`buildplan_refs.has_build_plan_shape`,
+  `:167`) needs positive evidence, so a design note in `artifacts/` does not count as a plan.
+- **D3** is one `stat` per distinct commit scope. It covers the case D2 cannot see: a plan
+  archived on the base after this branch was cut, with the branch then rebased. Archiving happens
+  at release, so that case is rare. The check is keyed on the name `plan new` writes
+  (`build-plan-<scope>.md`), not on frontmatter. A plan archived under some other name falls
+  through to a firing, which a dismissal answers (Decision 5). This is the deliberate trade for
+  never walking the archive.
+- **The bias, carried over from the old design and now cheaper.** When scopes disagree (a commit
+  scope that drifted from the frontmatter `scope:`; `_carries_scope`'s comment calls scope tags
+  "a convention, and drift"), D1 to D3 can fail to suppress. The probe then fires on a plan that
+  exists. They never suppress when nothing exists. As a gate, a false fire cost a blocked session
+  end. As an advisory it costs one dismissal.
 
-**3. Wired as a blocking Stop-hook gate, with a waiver escape hatch — not the advisory roster.**
-The advisory roster (`probe_families`/`advisory_store`, the surface #843's design uses) runs at
-`SessionStart`/`/clear` sync — the *next* session boundary, which is exactly the "too late" gap
-Grounding facts states against candidate (b). #855's own acceptance criterion is "detected **before
-the session ends**", which only a Stop-hook check can satisfy: it is the one point where blocking
-output still reaches the session that holds the plan in context, before that context is gone. This
-also matches the issue's own `area: gates` filing (not `area: probes`). Consequences accepted
-deliberately:
-  - It can block a session end on a false positive (Decision 2's stated residual cases). The
-    remedy is cheap by construction — write the missing plan file, or waive it — never a rewrite.
-  - It needs the same waiver mechanism every other blocking gate here already has:
-    `_WAIVER_KEY_BY_GATE` gains `"plan-not-persisted": "plan-not-persisted"`, and the shared
-    footer then names that key whenever this gate blocks.
-  - **Never auto-writes the missing plan.** Per Grounding facts (`plan_backfill.py`'s own stated
-    ruling — "only a session with the work in context may say which chunk is done" — and the
-    broader report-never-write posture the codebase applies to plan/checkbox state throughout),
-    the gate names the gap and asks the session to author the file; it does not attempt to
-    reconstruct plan content from commit diffs.
+**3. Lines, shaped like `stranded-branch` and `plan-unbound-legacy`.**
 
-**4. Message names the evidence, not a conclusion — same posture `unticked_committed_chunk_notice`
-uses.** The blocker cites the chunk ids found, the subject of the first commit carrying each
-(`_committed_chunk_ids` already returns this), and the path `resolve_build_plan_path` would have
-resolved to (the file the session should create) — enough for the agent to act without re-deriving
-anything, and enough for a human reviewing the block to independently confirm or dismiss it.
+- `evidence`: `(f"branch {branch}",)`, the branch alone. Following `finished-branch-unlanded`'s "the
+  id must survive new plans and the clock", the id stays stable while more chunk commits land.
+  One dismissal then covers the branch, and a new `Chunk 03` commit does not bring it back.
+- `trigger_summary`: `f"branch {branch} carries commits for {n} chunks ({ids}) and no build plan
+  covers them — not live, not committed on this branch, not archived; a plan that lives only in a
+  conversation is lost when that conversation ends"`. The first carrying subject per id goes in
+  the `advisory show` detail, capped at `EVIDENCE_CAP`, so the person can check the claim without
+  re-deriving it.
+- `owner_action`: "Approve writing down the plan this branch is being built against, now, while
+  this session or your terminal scrollback still holds it. If the branch is deliberately
+  planless, dismiss this with that reason." This contains no command.
+- `recommended_action`: `prawduct-hook plan new <scope>`. `<scope>` is the conventional scope most
+  of the chunk-carrying subjects share. With no such scope the argument is left out, and `plan new`
+  suggests one from the branch and prints it. The value is shell-quoted, the same treatment
+  `stranded_branch_probes` gives a branch name. The agent then fills the minted plan's chunks from
+  its context. The probe never writes the plan's contents. The old design's ruling still holds:
+  only a session with the work in context can say what the plan was.
+- `priority`: `warn`, the same as `stranded-branch`, because the failure is lost work. It is not
+  `urgent`, because nothing is irreversible yet.
+
+**4. How it clears.** The probe stops producing the advisory, and the next sync marks it
+`resolved`, when any of these happens:
+
+- the recommended `plan new` runs (clause A);
+- a plan whose `scope:` the commits carry is written live (D1) or committed on the branch (D2);
+- that plan is archived on the branch (D2) or on the base under its minted name (D3);
+- the branch merges or is reset onto its base, so no ids are left ahead of it.
+
+Each path gets a test that applies the action to a fixture and watches the advisory resolve
+(learnings `tests`: test an advisory's effect, not its object). A sync that could not look
+(Decision 2's cause strings) holds the open advisory where it is instead of resolving it.
+
+**5. Dismissal.** `advisory dismiss <id> --reason "..."` is per clone and sticky, keyed on the
+branch through the evidence hash. This is the answer for a deliberately planless branch, and for
+D3's archived-under-another-name residual. Undismiss restores it if the probe still fires. There is
+no committed "this branch is planless" fact. The tax ruling argues against adding new declared
+vocabulary for a rare case, and #843 made the same choice.
+
+**6. One owner with the pointer notice? No. They are one family, not one function.** The
+dangling-pointer line and this probe answer different questions:
+
+- The pointer line: a scalar names a missing file, so the binding route is misconfigured.
+- This probe: chunk work exists and no plan does, so the work itself is at risk.
+
+They have different remedies (unset the pointer or bind; versus mint and fill) and different
+channels (an undismissible briefing line versus a dismissible advisory). The pointer is also part
+of the legacy window #1050 is retiring, and building a new control on a retiring route would tie
+the two together. When both fire, a set pointer at a missing file on a branch with unplanned
+chunk work, both lines are true and their remedies agree. The owner #855 adds is
+`work_unit_probes`, the binding's advisory module, so both plan-binding advisories have one home.
+Moving the pointer line into the advisory store would make it dismissible. That is a separate
+question, not part of this item.
+
+## Cost
+
+The probe runs at every SessionStart, on all five sources, and also inside `advisory show`.
+Measured on this repo on 2026-11-22 with `develop` at `8b1847e2` (best of 5, warm cache):
+
+| Path | What it reads | Cost |
+|---|---|---|
+| Detached, scratch tree (S) | the branch name, which the briefing already reads | no new git call |
+| Integration branch (I) | `plan_mint.default_base`: one `project-state.yaml` read when `base_branch:` is set, which onboarding writes; otherwise `repo_base_branch`'s ref lookups | a file read, or the 16.2 ms lookup the later clauses need anyway (computed once) |
+| Bound or broken checkout (A) | `work_unit.resolve`: one walk of live plans, archive pruned | the same walk the briefing and the base resolver already make each session; the live scope map, a comparable walk, measured 13.5 ms |
+| Unbound feature branch, fewer than 2 ids (C) | + `repo_base_branch` (16.2 ms) + one `git log base..HEAD --name-only` | 34.5 ms for a 59-commit range, 79.3 ms for 940 commits. It grows with the branch, not with history or the archive |
+| About to fire (D1-D3) | + live scope map (13.5 ms) + reads of plan-shaped paths the range touched (2.8-11.5 ms) + one `stat` per commit scope | under 105 ms at the 940-commit extreme. It is paid only while the condition holds, dismissed or not |
+
+There are no network calls and no archive walk on any path. The archive-inclusive map the old
+design used measured 46.2 ms here, which is why D2 and D3 replace it. The precedent is that
+`stranded_branch_probes` already makes local git calls on every session start. The yield is
+observable: each firing is a stored advisory with an id, so `advisory list --state=all` counts
+firings, resolutions and dismissals. A probe that only ever ends dismissed is a retirement
+candidate under the proportionality norm.
+
+## What the advisory gives up versus the blocking gate
+
+A session can end with the plan still unpersisted. The advisory speaks at the **next**
+SessionStart, not before the current session ends:
+
+- After a compaction it fires in the same conversation, while the compact summary may still hold
+  the plan.
+- After a `/clear` or a fresh start it fires when the conversation that held the plan is gone, so
+  recovery depends on the operator's scrollback.
+- It can be dismissed and then ignored.
+
+The gate would have refused the session end while the plan was still in context. That was its one
+real advantage, and the ruling trades it for zero cost to every session the predicate never fires
+on, and for one dismissal instead of a blocked session end on a false fire. Acceptance criterion 1
+("detected before the session ends") is therefore **not met as written**. See the Owner fork.
+
+## Acceptance criteria: how each is met
+
+- **"A build plan that exists only in context is detected before the session ends."** It is
+  detected at the next SessionStart of any source, including a compact, once two or more chunk ids
+  are committed. It is not detected before session end (see above). It is never detected for a
+  plan lost before any chunk was committed (Scope-out).
+- **"A repo doing planless small work is not nagged."** Clause A (a resolvable plan silences it),
+  clause C (one incidental chunk tag is not a plan), clause I (integration branches), and a
+  sticky dismissal for deliberate planless chunk work.
+- **"The trigger is named and its false-positive shape stated."** Decision 2 names the trigger and
+  the suppression clauses, and states the residual false fires: scope drift, a plan archived under
+  a non-minted name, and a plan that lives only uncommitted in a sibling non-scratch worktree. Each
+  is answered by one dismissal.
+
+## Owner fork
+
+**Acceptance criterion 1 needs rewording to match the ruling.** The ruling chose an advisory, and
+an advisory cannot detect "before the session ends". Recommendation: reword it to *"a build plan
+that exists only in context is surfaced at the next session start, including after a compaction,
+once its chunks are committed"*. Also edit the issue body's "Expected" paragraph, which still
+describes the blocking gate. This document cannot make either edit (owner/issue text).
 
 ## What ships
 
-1. `plugin/lib/buildplan_refs.py`: `_MIN_UNPLANNED_CHUNK_IDS = 2` (module constant, beside
-   `UNTICKED_CHUNK_TOKEN`); `_any_commit_scope_resolves(project_dir, base, scope_map) -> bool` (new
-   private helper); `unpersisted_plan_notice(project_dir) -> str | None` (new public function,
-   Decision 2's algorithm, docstring mirroring `unticked_committed_chunk_notice`'s stated-limitation
-   style).
-2. `plugin/bin/prawduct-hook`: `cmd_stop` gains a new blocking check calling
-   `buildplan_refs.unpersisted_plan_notice`, gated the same way the existing gates are (only spends
-   the filesystem check `resolve_build_plan_path(...).is_file()` up front — the common case, a repo
-   with a live plan, never reaches a git call); on a non-`None` result and no matching waiver, append
-   to `blockers` via `_attributed("plan-not-persisted", …)`. `_WAIVER_KEY_BY_GATE` gains
-   `"plan-not-persisted"`, which is what puts it in `KNOWN_WAIVER_KEYS` and the waiver footer.
-3. `plugin/hooks/gates.json`: new entry, `id: "plan-not-persisted"`, `name:
-   "plan-not-persisted"`, `summary: "chunk-shaped commits exist on this branch but no build plan
-   file resolves anywhere, live or archived — the plan was never written down"`, `since` filled in
-   at the release that ships it (not asserted here — `.prawduct/project-state.yaml` currently opens
-   `3.6.1-dev.1`, per `git log`, but which release actually carries this build is a build-time fact,
-   not a design-time one).
-4. Tests (mirroring `tests/test_stop_gate_defer.py` / the codebase's per-gate test convention): the
-   four suppression clauses (A: live plan present; B: no commits ahead of base; C: single chunk id;
-   D: commit scope resolves via `build_scope_to_plan_map`, live and archived cases both), the firing
-   case, the waiver, and message content (chunk ids + subjects + would-be path all present).
+One chunk. The detector and the probe are small and are tested together through the probe.
 
-## Acceptance criteria — how each is met
+1. `plugin/lib/plan_status.py`: `MIN_UNPLANNED_CHUNK_IDS = 2`, an `UnpersistedPlan` dataclass, and
+   `unpersisted_plan_evidence(project_dir) -> UnpersistedPlan | str | None` (Decision 2). Its
+   docstring states the stated ceiling and the cost table's claim (no archive walk, one git call).
+2. `plugin/lib/work_unit_probes.py`: `probe_plan_not_persisted`, which renders Decision 3's lines
+   from the evidence, returns `None` with a stderr `NOTE` on a cause string (the #917 convention),
+   and is registered in `register()`. The module docstring gains the second probe.
+3. Tests (below).
+4. A change fragment for the work unit. Consumer note: a new `warn` advisory, which speaks only on
+   an unplanned branch carrying two or more chunk-tagged commits, and can be dismissed.
 
-- **"A build plan that exists only in context is detected before the session ends"** — for the
-  case where at least one chunk was committed before session end: Decisions 1-3, wired into
-  `cmd_stop`. **Not met** for a plan lost before any commit landed — Decision 1's stated ceiling,
-  the transcript-invariant conflict in Grounding facts, and Scope-out.
-- **"A repo doing planless small work is not nagged"** — Decision 2, clause A (a resolvable plan,
-  however small, is fully silent) and clause C (a single incidental "(Chunk N)" commit is not
-  evidence of an unpersisted *plan*).
-- **"The trigger is named and its false-positive shape stated"** — this document: the trigger is
-  candidate (a), wired per (c) (Decision 1); the false-positive/false-suppression shapes are named
-  per clause in Decision 2, plus the accepted asymmetry (favors under-suppression risk over
-  over-suppression risk, stated and justified) and the zero-commits blind spot (Decision 1, Scope-
-  out).
+Not shipped: any `gates.json`, `cmd_stop`, `_WAIVER_KEY_BY_GATE` or briefing change.
 
-## Scope-out (this item)
+## Test plan
 
-- **Transcript-based detection of a plan drafted but never committed at all.** The strictly
-  complete answer to the reported incident, and the one candidate this design does not attempt —
-  Grounding facts states the specific invariant it would cross (`prawduct-hook`'s own `.prawduct/`-
-  only reads/writes boundary) and why relaxing that boundary is a decision bigger than this item, not
-  a cost this item declined to pay. A follow-on item, if this gap proves to matter in practice, needs
-  its own owner-level decision to widen that invariant — not a design smuggled in here.
-- **A single-chunk plan that was never persisted.** Excluded by Decision 2 clause C's threshold,
-  for the reason stated there (indistinguishable from incidental commit-message phrasing without a
-  second signal this design does not have). Not solved by raising an alternative, weaker signal —
-  matching the issue's own instruction ("do not solve it by … adding a gate" applied by analogy from
-  #847's adjacent framing: a weak signal should not be made to carry more than it can).
-- **Auto-authoring the missing plan file from commit history.** Decision 3's explicit "never auto-
-  writes" — `plan_backfill.py`'s own ruling and the report-never-write posture on plan/checkbox
-  state both argue against it, and it is not what the issue asks for (it asks for *detection*).
-- **A configurable chunk-count threshold, or a preferences row for this control.** Ships as the
-  hardcoded module constant `_MIN_UNPLANNED_CHUNK_IDS = 2` (Decision 2); matches #843's own Decision
-  2 precedent for the same reason — a guessed default is a smaller commitment than new declared
-  vocabulary, and #820's live triage thread already records a standing owner caution against adding
-  framework-read vocabulary without a reason (Grounding facts of that item, cited for the same
-  caution here, not re-litigated).
-- **Retiring or merging this control with `unticked_committed_chunk_notice`.** They stay separate
-  functions with a stated, mutually-exclusive dividing line (`plan_path.is_file()`) rather than one
-  function branching on it — matching this codebase's stated aversion to re-deriving a second,
-  parallel classifier for a question an existing one already answers (`plugin/lib/coverage.py:1063`,
-  "a prose copy is the fourth classifier this function shipped once already" — cited in #843's
-  design for the same reason, there at a since-shifted line number, re-verified here against HEAD).
+These go in `tests/test_work_unit_probes.py`, using its existing `_repo`/`_plan` git fixtures, and
+port its case structure (learnings `tests`: copy the precedent's test file first). Every case is
+written and seen **red** before the code exists. Each suppression clause is then mutation-checked:
+delete that clause, watch its test go red, and restore it by inverting that exact edit.
 
-## Evidence / references
+1. **Fires**: an unbound `feat/work` branch with `feat(lost): Chunk 01 …` and `feat(lost): Chunk
+   02 …` commits and no plan. One candidate: type `plan-not-persisted`, evidence exactly `("branch
+   feat/work",)`, priority `warn`, and a summary naming both ids.
+2. **Silent and its control, per clause.** Each is the fire fixture plus one change, so the only
+   difference is the clause:
+   - S: a detached HEAD, and an `agent-*` scratch worktree.
+   - I: the same commits on the integration branch.
+   - A: a plan claiming the branch; the legacy conventional `build-plan.md`; and a `broken`
+     binding (two claimants).
+   - C: one chunk id; and zero commits ahead.
+   - D1: a live plan with `scope: lost` claiming another branch.
+   - D2: a commit in range adding a plan-shaped file; that file then `git mv`'d to `archive/`; and
+     a non-plan design note in range, which must **not** suppress.
+   - D3: `archive/build-plan-lost.md` present but outside the range; and the same plan archived
+     under another name, which must still fire (the stated residual).
+3. **Could not look**: a configured `base_branch:` that resolves no ref returns `None` and prints
+   a `NOTE`. An already-active advisory stays active through that sync and is not resolved.
+4. **Effect of the remedy**: sync, take `recommended_action` from the store, run it through
+   `plugin/bin/prawduct-hook`, then sync again. The advisory is `resolved` and the binding is
+   `bound`. An unapplied sibling repo stays `active` as the control. The second case is a subject
+   with no conventional scope, giving `plan new` with no argument and a branch-suggested scope.
+5. **Clearing without the command**: commit a hand-written plan with `scope: lost`. It resolves.
+6. **Dismissal is sticky across new chunk commits**: dismiss, commit `Chunk 03`, sync. The
+   advisory is still dismissed and the id is unchanged.
+7. **Cost asserts the costly operation, not a proxy.** Monkeypatch `plan_index._archive_roots`
+   to raise, and run the firing and every D-clause case: none of them touch it. Wrap
+   `plan_status._log_commits` with a counter: zero calls for S, I and A, and exactly one for C and
+   for the firing case.
+8. **Roster and lint**: `probe_families.register_all()` registers `("work-unit",
+   "plan-not-persisted")`. `test_advisory_actionability` already picks up the new construction
+   site, so assert it is counted among the sites it read. Its `recommended_action` must be
+   statically readable or join the counted-skip set deliberately.
+9. **Real-corpus check**: run `_named_ids` over a captured sample of this repo's real chunk-carrying
+   subjects, as a fixture file. Clause C's id count must match a hand count, so the threshold is
+   checked against the subjects products actually write, not only fixtures written to match it.
 
-- `plugin/methodology/building.md:76` ("Persist plans immediately … an uncommitted amendment is
-  invisible to [a delegate]") and `plugin/methodology/reflection.md:59-74` ("Step 6: Persistence and
-  Boundary Check" — "anything not in a file is lost") — the standing, unenforced instructions #855's
-  own Problem statement cites as guidance-only.
-- `plugin/lib/briefing.py:870-891` — the existing `active_build_plan` dangling-pointer warning
-  (candidate (b)), and why it does not close this gap (Grounding facts).
-- `plugin/lib/buildplan_refs.py:963-1065` (`unticked_committed_chunk_notice`, its docstring's
-  stated honest-partial-coverage posture at `:1001-1005`), `:403-409` (`_CHUNK_COMMIT_RE`,
-  `_COMMIT_SCOPE_RE`), `:421-436` (`_commits_ahead_of_base`), `:438-` (`_committed_chunk_ids`,
-  its base-commits guard at `:1039`, and its documented commit-scope-vs-frontmatter-scope
-  divergence example at `:464-467`) — the primitives this design reuses verbatim, and the
-  precedent it follows for stating its own limitation.
-- `plugin/lib/core.py:666-693` (`pointer_plan_path`), `:855-875` (`resolve_build_plan_path`), and
-  `:834` (an unset `active_build_plan` reads as normal, not a warning) — the one resolver this
-  design reuses for clause A.
-- `plugin/lib/plan_index.py:502-524` (`build_scope_to_plan_map`, `include_archived=True`) — the
-  archive-inclusive lookup Decision 2's clause D depends on.
-- `plugin/lib/plan_backfill.py:1-16` — read and ruled out as a reuse target (Grounding facts,
-  Decision 3).
-- `plugin/bin/prawduct-hook:22-24` (module docstring, the `.prawduct/`-only governing invariant),
-  `:2304-2305` (`transcript_path` documented, confirmed unread elsewhere by `git grep`) — the
-  citation for ruling out transcript-based detection (Grounding facts, Decision 1, Scope-out).
-- `plugin/bin/prawduct-hook`: `_WAIVER_KEY_BY_GATE` (the gate-to-key map that `KNOWN_WAIVER_KEYS`,
-  every gate's waiver check and the `_waiver_footer` escape-hatch paragraph all read) — the waiver
-  convention Decision 3 extends by one key.
-- `plugin/hooks/gates.json` — the gate registry this design adds one entry to, and its own stated
-  purpose (new-gate attribution for the version-delta banner and Stop-hook blocking messages).
-- Issue #843's design document (`documentation/issues/843-design.md`) — the structural precedent
-  cited throughout: "no separate requirements doc" framing, per-decision reuse-over-reinvention
-  posture, and the "fourth classifier" anti-pattern citation this document reapplies in Scope-out.
-- Issue #855's own body (2026-09-20) — the three named candidate triggers this document evaluates,
-  the three acceptance criteria mapped above, and the split-from-#661 provenance.
+Verification ceiling for the builder: the two touched test files plus
+`tests/test_advisory_actionability.py` and `tests/test_advisory_store.py`. The full suite runs
+at the PR boundary.
+
+## Superseded: blocking gate
+
+The 2026-09-22 design wired this detector as a blocking Stop-hook gate, `plan-not-persisted`,
+with a `.gates-waived` key, a `gates.json` row and a `cmd_stop` blocker. The argument was that
+only the Stop hook can act "before the session ends". The owner dropped it on 2026-11-22 to fit
+the 2026-09-19 tax ruling, for three reasons:
+
+- It would have charged every session end in every governed repo for a failure reported once.
+- A false fire would have cost a blocked session end instead of a dismissal.
+- Its precision clause walked the plan archive on the hot path, which NF1 and `plan_index`'s own
+  contract forbid.
+
+The backlog-ROI wave of 2026-11-18 had already excluded #855 as "blocking tax against the
+2026-09-19 ruling" (`.prawduct/artifacts/build-plan-backlog-roi-2026-11-18.md:62`).
+
+## Scope-out
+
+- **Transcript-based detection of a plan drafted but never committed at all.** This would be the
+  complete answer. It needs a read outside the governed repo's `.prawduct/` (Grounding facts), and
+  that is an owner-level decision to widen the invariant, not part of this item.
+- **A one-chunk plan that was never persisted.** Clause C excludes it, for the reason given there.
+- **Auto-writing the plan's contents.** The probe recommends minting an empty plan claiming the
+  branch. Only the session holding the work can fill it.
+- **A configurable threshold, or a committed "planless branch" fact.** Neither is added. The
+  constant and the per-clone dismissal are enough, and the tax ruling argues against new
+  vocabulary for a rare case.
+- **Moving the `active_build_plan` pointer line into the advisory store** (Decision 6). This is a
+  separate question.

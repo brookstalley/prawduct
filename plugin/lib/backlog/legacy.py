@@ -177,10 +177,10 @@ class BacklogItem:
 
     @property
     def revisit(self) -> str | None:
-        """Exception/stopgap expiry marker (``revisit:``), or ``None``.
+        """Exception/stopgap expiry or dated re-check (``revisit:``), or ``None``.
 
         Canonical optional field for norm exceptions and stopgaps
-        (``docs/norms.md`` § Exceptions expire). Two honestly-split forms:
+        (``docs/norms.md`` § Exceptions expire), and for dated re-checks. Two honestly-split forms:
         ``revisit: YYYY-MM-DD`` is machine-fired — a past date raises the
         ``revisit-due`` advisory while the item is open (``lib/norm_probes.py``);
         ``revisit: <event trigger text>`` is walked by the janitor Norm Health

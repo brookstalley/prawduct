@@ -14,12 +14,6 @@
       "summary": "composed review coverage (evidence-store facts) must span this session's changes with zero unresolved blocking findings"
     },
     {
-      "id": "pr",
-      "name": "pr-review",
-      "since": "1.0.0",
-      "summary": "PR review evidence is required before a PR merges"
-    },
-    {
       "id": "learnings-unmigrated",
       "name": "learnings-unmigrated",
       "since": "3.6.0",
@@ -48,18 +42,6 @@
       "name": "learnings-rule-body",
       "since": "3.7.0",
       "summary": "learnings rules carry no body lines; the story behind a rule belongs in the session reflection"
-    },
-    {
-      "id": "clear-verdict",
-      "name": "clear-verdict",
-      "since": "3.7.0",
-      "summary": "a turn that hands the session over (`YOUR TURN` or `COMPLETE`) must close `SAFE TO CLEAR`; `DO NOT CLEAR` belongs only to a `RUNNING` turn"
-    },
-    {
-      "id": "clear-reason",
-      "name": "clear-reason",
-      "since": "3.7.1",
-      "summary": "a `SAFE TO CLEAR` reason must point at something a clear leaves behind (notes, a commit, a file, an issue), never at the turn itself (\"the questions are in this message\")"
     },
     {
       "id": "host",

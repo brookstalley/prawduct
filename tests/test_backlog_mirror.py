@@ -143,9 +143,8 @@ class TestWritesReachTheCache:
         assert _cached(repo_dir, f"{SCOPE}#1")["status"] == "shipped"
         assert f"{SCOPE}#1" not in _open_ids(repo_dir)
 
-    def test_update_reflects_fields_and_the_derived_path_index(self, fake, repo_dir):
-        """`affected` is the one field with a derived index behind it, so it is the
-        one that would silently keep answering the old intersection."""
+    def test_update_reflects_its_fields(self, fake, repo_dir):
+        """The mirror carries every field the update set, `affected` included."""
         core.file_item(fake, owner=OWNER, repo=REPO_NAME,
                        title="backlog: the item under test here", body="b")
         _warm(repo_dir, fake)
@@ -160,12 +159,7 @@ class TestWritesReachTheCache:
         assert code == 0
         row = _cached(repo_dir, f"{SCOPE}#1")
         assert row["stage"] == "ready"
-        affecting = cachequery.items_affecting(
-            repo_dir, scope=SCOPE, now=_now(),
-            changed_paths=["plugin/lib/backlog/sync.py"], open_only=True,
-        )
-        assert affecting["status"] == "ok"
-        assert f"{SCOPE}#1" in [item["id"] for item in affecting["data"]["items"]]
+        assert row["affected"] == "[plugin/lib/backlog]"
 
     def test_link_related_is_mirrored_and_the_native_edges_are_not(self, fake, repo_dir):
         """`related` lives in the body block, which the store holds and indexes.
@@ -185,6 +179,8 @@ class TestWritesReachTheCache:
             fake,
         ) == 0
         assert f"{SCOPE}#2" in _cached(repo_dir, f"{SCOPE}#1")["body"]
+        # `related` is written on both items (#835), so both rows move.
+        assert f"{SCOPE}#1" in _cached(repo_dir, f"{SCOPE}#2")["body"]
 
         # A native edge changes nothing the store holds, so the body must not move.
         after_related = _cached(repo_dir, f"{SCOPE}#1")["body"]
@@ -195,6 +191,32 @@ class TestWritesReachTheCache:
         ) == 0
         assert _cached(repo_dir, f"{SCOPE}#1")["body"] == after_related
         assert before_blocked != after_related, "the `related` write must have moved the body"
+
+    def test_a_partial_related_link_reports_through_the_cli_and_mirrors_what_landed(
+        self, fake, repo_dir, capsys
+    ):
+        """#835 end to end: the target write fails retryably after the source
+        landed. The CLI envelope names the half-written edge and exits retryable,
+        and the cache carries the source row that did land, not the target that
+        did not."""
+        core.file_item(fake, owner=OWNER, repo=REPO_NAME,
+                       title="backlog: the first item under test", body="b")
+        core.file_item(fake, owner=OWNER, repo=REPO_NAME,
+                       title="backlog: the second item under test", body="b")
+        _warm(repo_dir, fake)
+        fake.fail_at_mutation(2, code="unavailable")
+
+        code = _run(
+            repo_dir,
+            ["link", f"{SCOPE}#1", "--edge", "related", "--to", f"{SCOPE}#2", "--json"],
+            fake,
+        )
+        payload = json.loads(capsys.readouterr().out)
+
+        assert code == 6, payload
+        assert payload["error"]["details"]["partial"] is True
+        assert f"{SCOPE}#2" in _cached(repo_dir, f"{SCOPE}#1")["body"]
+        assert f"{SCOPE}#1" not in _cached(repo_dir, f"{SCOPE}#2")["body"]
 
     def test_merge_mirrors_the_source_it_closes_and_redirects(self, fake, repo_dir):
         """`migrate.merge` calls `core.set_status` itself, so it does not inherit

@@ -202,6 +202,10 @@ def _store_lines(repo: Path) -> list[str]:
 
 FAKE_REVIEW_ID = "rev-test-0001"
 
+#: A store holding no facts, for rendering a review fact that nothing resolved:
+#: `fact_to_cache_record` reads its waivers from the store, so it takes one.
+_NO_FACTS = {"facts": []}
+
 from conftest import V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home for the shape
 
 
@@ -297,7 +301,7 @@ class TestValidatePartial:
     def test_finding_files_all_blank_accepted(self):
         # ``files: [""]`` — the exact live trigger — must consolidate, not abort.
         p = _partial("correctness", "abc", findings=[
-            {"name": "Learnings cross-check", "goal": "g", "severity": "note",
+            {"name": "File-less finding", "goal": "g", "severity": "warning",
              "recommendation": "y", "files": [""]}
         ])
         ok, reason = cc.validate_partial(p)
@@ -623,7 +627,7 @@ class TestObservationsReachTheBuilder:
                 ],
             },
         }
-        record = cc.fact_to_cache_record(fact)
+        record = cc.fact_to_cache_record(fact, store=_NO_FACTS)
         assert record["observations"] == [{
             "oid": "O-1", "goal": "Nothing Is Unintended",
             "summary": "the helper reads as a verb but returns a value",
@@ -641,15 +645,32 @@ class TestObservationsReachTheBuilder:
                 ],
             },
         }
-        record = cc.fact_to_cache_record(fact)
+        record = cc.fact_to_cache_record(fact, store=_NO_FACTS)
         assert record["summary"].startswith("0 blocking, 0 warning, 0 note")
         assert "Changes ready to proceed." in record["summary"]
+
+    def test_an_old_fact_with_note_findings_still_renders_and_counts(self):
+        """Facts are immutable: a review recorded before `note` stopped being a
+        finding severity keeps its notes, and the cache still renders them —
+        counted, listed, and named in the next action."""
+        record = cc.fact_to_cache_record({
+            "id": "rev-old",
+            "ts": "2026-09-16T00:00:00Z",
+            "body": {
+                "findings": [{"fid": "R-1", "goal": "g", "severity": "note",
+                              "title": "old note", "recommendation": "r"}],
+                "counts": {"blocking": 0, "warning": 0, "note": 1},
+            },
+        }, store=_NO_FACTS)
+        assert record["summary"].startswith("0 blocking, 0 warning, 1 note")
+        assert [f["severity"] for f in record["findings"]] == ["note"]
+        assert "1 note(s) gate nothing" in record["next_action"]
 
     def test_a_fact_with_no_observations_renders_an_empty_list(self):
         record = cc.fact_to_cache_record({
             "ts": "2026-09-16T00:00:00Z",
             "body": {"findings": [], "counts": {"blocking": 0, "warning": 0, "note": 0}},
-        })
+        }, store=_NO_FACTS)
         assert record["observations"] == []
 
 
@@ -732,7 +753,7 @@ class TestMergeFindings:
                  "severity": "blocking", "recommendation": "Fix it"}])])
         fact = {"schema": 1, "kind": "review", "id": manifest["id"],
                 "ts": "2026-07-13T00:00:00Z", "body": body}
-        record = cc.fact_to_cache_record(fact)
+        record = cc.fact_to_cache_record(fact, store=_NO_FACTS)
         p = tmp_path / "f.json"
         p.write_text(json.dumps(record))
         assert gates.validate_critic_findings(p)
@@ -939,8 +960,10 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         import ast  # noqa: PLC0415
 
         src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        # `_consolidate` holds the body; `consolidate` wraps it to report a
+        # moved HEAD on every exit.
         fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef) and n.name == "consolidate")
+                  if isinstance(n, ast.FunctionDef) and n.name == "_consolidate")
         args = {a.arg for a in fn.args.args} | {a.arg for a in fn.args.kwonlyargs}
         bound_at: dict[str, int] = {}
         for node in ast.walk(fn):
@@ -976,7 +999,8 @@ class TestNextActionLine:
     ``methodology/building.md`` states the rule but is reached only by entering
     a build plan; ``review-cycle.md`` is read by nobody building; and
     ``_BATCH_FIX_DIRECTIVE`` prints wherever ``critic-consolidate`` runs, which
-    on the always-single-pass modes is the reviewing FORK. Measured on the
+    on the always-single-pass modes is a reviewer's context — the reviewing
+    FORK, or the SubagentStop hook for a review it handed off. Measured on the
     consumer branch that ran ten rounds: zero reads of either prose file, zero
     occurrences of the directive in the builder's context against seven inside
     reviewer forks — and the builder did read the findings. So the field must
@@ -1097,7 +1121,7 @@ class TestNextActionLine:
         """
         priced = "One more round costs about 5 min here (median of 9 rounds)."
         line = cc.next_action_line("rev-9", 3, 2, 1, priced)
-        assert 'prawduct-hook disposition rev-9 <fid|oid> --accept "<reason>"' in line
+        assert 'prawduct-hook disposition rev-9 <fid> --accept "<reason>"' in line
         assert "moves no tree" in line
         assert priced in line
 
@@ -1148,17 +1172,19 @@ class TestNextActionLine:
             assert "if more judgeable work is coming on this branch" in line.lower(), counts
             assert "`.prawduct/.handoff-notes.md`" in line, counts
 
-    def test_the_clean_arm_names_the_observations_it_can_answer(self):
-        """`verify-resolutions` demotes everything below BLOCKING, so "0
-        findings, N observations" is that mode's MODAL close — the shape this
-        arm prints most often. Saying "nothing to disposition" there
-        contradicts the reviewer's own `### Observations` report in the same
-        message, and leaves the accept-on-the-record route unused on the path
-        that produces most of the items it was built for."""
+    def test_the_clean_arm_names_the_observations_and_asks_no_answer(self):
+        """Renegotiated contract (#1128): this arm used to ask the builder to
+        answer each observation on the record with `disposition <oid>
+        --accept`. An observation needs no disposition, so the arm names them
+        and where they are, and asks nothing. The control is the warnings arm,
+        which still names the disposition command for findings."""
         line = cc.next_action_line("rev-9", 0, 0, 0, observations=3)
-        assert "nothing to disposition" not in line
-        assert "Its 3 observation(s) gate nothing" in line
-        assert 'prawduct-hook disposition rev-9 <oid> --accept "<reason>"' in line
+        assert "Its 3 observation(s) gate nothing and need no answer" in line
+        assert "`observations` in `.critic-findings.json`" in line
+        assert "prawduct-hook disposition" not in line
+        assert "prawduct-hook disposition rev-9 <fid>" in cc.next_action_line(
+            "rev-9", 0, 1, 0, observations=3
+        )
 
     def test_the_observations_close_prices_fixing_like_the_warnings_close(self):
         """The observations-only close is the one clean close that still
@@ -1190,8 +1216,10 @@ class TestNextActionLine:
         # Findings and observations arrive together on a verify close; an arm
         # that itemizes one and not the other teaches that the other is not
         # answerable.
+        # Renegotiated (#1128): the clause names them and asks no answer.
         line = cc.next_action_line("rev-9", 0, 2, 1, observations=4)
-        assert "nor do its 4 observation(s) (answer them by `O-n` id)" in line
+        assert "nor do its 4 observation(s), which need no answer" in line
+        assert "O-n" not in line and "<fid|oid>" not in line
 
     def test_no_observations_reads_exactly_as_it_did(self):
         # Every non-verify mode passes 0, and demotion is a verify-mode rule —
@@ -1201,19 +1229,21 @@ class TestNextActionLine:
                 "rev-9", *counts, observations=0
             ), counts
 
-    def test_the_relayed_line_uses_the_widened_id_domain(self):
-        """The one carrier the `<fid>` → `<fid|oid>` sweep left standing.
-
-        `dispositions._RECORD_USAGE` and `review-cycle.md` were corrected
-        because a refused invocation is when a builder needs to know an
-        observation id is legal. This line is stronger than either: it is the
-        text the reviewer relays verbatim, and on the single-pass path it is the
-        ONLY text that reaches the builder at all."""
+    def test_the_relayed_line_asks_for_finding_dispositions_only(self):
+        """Renegotiated contract (#1128): the relayed line used to name the
+        widened `<fid|oid>` domain so a builder knew an observation could be
+        answered. An observation now needs no answer, so the line — the ONLY
+        text that reaches the builder on the single-pass path — names `<fid>`.
+        `prawduct-hook disposition` still accepts an `O-n` id; that capability
+        is the usage string's to state, not this line's to ask for."""
+        seen = 0
         for counts in ((0, 0, 0), (0, 4, 7), (2, 1, 1)):
-            line = cc.next_action_line("rev-9", *counts)
+            line = cc.next_action_line("rev-9", *counts, observations=2)
             if "disposition rev-9" in line:
-                assert "disposition rev-9 <fid|oid>" in line, counts
-                assert "disposition rev-9 <fid> " not in line, counts
+                seen += 1
+                assert "disposition rev-9 <fid> " in line, counts
+                assert "<fid|oid>" not in line and "<oid>" not in line, counts
+        assert seen == 2
 
     def test_the_clean_pass_is_not_offered_a_route_for_findings_it_lacks(self):
         # 0/0/0 has nothing to carry anywhere; a deferral route on a review with
@@ -1227,9 +1257,9 @@ class TestNextActionLine:
         assert "gate nothing" in line
         # The command arrives with this review's own id already substituted —
         # an operator who has to go find the id is one who will not run it.
-        # `<fid|oid>`, not `<fid>`: the id domain is findings PLUS observations,
-        # and this is the line a verify-mode builder actually reads.
-        assert "prawduct-hook disposition rev-abc <fid|oid> --accept" in line
+        # `<fid>`: an observation needs no answer (#1128). The note count is
+        # an OLD fact's — a note was a finding severity before — and still reads.
+        assert "prawduct-hook disposition rev-abc <fid> --accept" in line
         assert "4 warning(s) and 7 note(s)" in line
         # And the stale-gate-output trap is named where the decision is made.
         assert "Judge by the gate after the commit" in line
@@ -1444,7 +1474,7 @@ class TestSpanClause:
         # would leave no way to tell which was computed.
         clause = cc.span_clause(self.UNCOVERED, 12)
         fact = {"id": "rev-1", "body": {"counts": {"blocking": 0, "warning": 1, "note": 0}}}
-        record = cc.fact_to_cache_record(fact, None, None, clause)
+        record = cc.fact_to_cache_record(fact, None, None, clause, store=_NO_FACTS)
         assert record["next_action"] == cc.next_action_line(
             "rev-1", 0, 1, 0, None, carried=None, span=clause
         )
@@ -1516,7 +1546,7 @@ class TestFindingFixCost:
             ])])
         fact = {"schema": 1, "kind": "review", "id": manifest["id"],
                 "ts": "2026-07-13T00:00:00Z", "body": body}
-        record = cc.fact_to_cache_record(fact)
+        record = cc.fact_to_cache_record(fact, store=_NO_FACTS)
         costs = [f["fix_cost"] for f in record["findings"]]
         assert costs == [cc.FIX_COST_FREE, cc.FIX_COST_CHARGED, cc.FIX_COST_UNKNOWN]
         # Additive only: the record must still satisfy the schema its readers
@@ -1693,9 +1723,10 @@ class TestIncompleteNoopLiveness:
         assert "NOT evidence" not in msg
 
     def test_single_pass_young_says_fork_consolidates_itself(self):
-        # Roster ["reviewer"]: the reviewer IS the dispatching fork — no
-        # SubagentStop trigger will ever land it, so the message must not
-        # tell the coordinator-roster story.
+        # Roster ["reviewer"] reviewed inline: the reviewer IS the dispatching
+        # fork — no SubagentStop trigger will ever land it, so the message must
+        # not tell the background story. (A handed-off single-pass review takes
+        # that story: `tests/test_reviewer_handoff.py`.)
         msg = cc._incomplete_noop_message(["reviewer"], 0, 1, self._fresh_id(2))
         assert "0/1 partials present" in msg
         assert "consolidates when it finishes" in msg
@@ -2358,23 +2389,20 @@ class TestResolutionIsAClaimDirective:
     def test_delivery_is_upstream_of_the_claim(self):
         """WHERE this prints is the chunk's substance, so it is pinned here.
 
-        `verify-resolutions` is always single-pass, so the reviewing fork
-        writes its `resolutions` into the partial and only THEN runs
-        consolidate. Emitting there — beside `_BATCH_FIX_DIRECTIVE`, the
-        obvious slot — would reach an agent that has already made the claim and
-        is one step from exiting, and would never reach the builder at all
-        (the Critic skill is `context: fork`, and `goals-1-3.md`'s report-back
-        enumerates findings and a summary, not consolidate's stdout).
+        The reviewer writes its `resolutions` into the partial and only THEN
+        is consolidation run — by the reviewing fork, or by the SubagentStop
+        hook for a reviewer the fork handed the review to. Emitting there —
+        beside `_BATCH_FIX_DIRECTIVE`, the obvious slot — would reach an agent
+        that has already made the claim, or nobody, and would never reach the
+        builder at all (the Critic skill is `context: fork`, and
+        `goals-1-3.md`'s report-back enumerates findings and a summary, not
+        consolidate's stdout).
 
-        Asserted against the modules rather than the docstring: `critic-begin`
-        must reference it, `consolidate` must not.
+        Asserted against the modules rather than the docstring: the dispatch
+        renderer must carry it and `critic-begin` must print what it renders;
+        `consolidate` must not.
         """
-        begin_src = HOOK.read_text(encoding="utf-8")
-        assert "RESOLUTION_IS_A_CLAIM_DIRECTIVE" in begin_src, (
-            "the dispatch command no longer emits the directive — it is "
-            "delivered at critic-begin precisely because that is the last "
-            "moment before the reviewer writes its resolutions"
-        )
+        _assert_rendered_at_dispatch("RESOLUTION_IS_A_CLAIM_DIRECTIVE")
         consolidate_src = (
             ROOT / "lib" / "critic_consolidate.py"
         ).read_text(encoding="utf-8")
@@ -2386,6 +2414,22 @@ class TestResolutionIsAClaimDirective:
             "cannot change the claim it is about. Delete it, or move the "
             "delivery deliberately and rewrite this test's rationale."
         )
+
+
+def _assert_rendered_at_dispatch(name: str) -> None:
+    """The directive is rendered by `dispatch_directives`, which `begin_review`
+    calls, and `critic-begin` prints every directive it was handed — dispatch
+    is the only moment before the reviewer writes what the directive governs."""
+    src = (ROOT / "lib" / "critic_consolidate.py").read_text(encoding="utf-8")
+    renderer = src.split("def dispatch_directives(", 1)[1].split("\ndef ", 1)[0]
+    assert name in renderer, f"the dispatch renderer no longer carries {name}"
+    begin = src.split("def begin_review(", 1)[1].split("\ndef ", 1)[0]
+    assert "dispatch_directives(" in begin, "begin_review no longer renders the directives"
+    hook_src = HOOK.read_text(encoding="utf-8")
+    begin_cmd = hook_src.split("def cmd_critic_begin(", 1)[1].split("\ndef ", 1)[0]
+    assert 'result.get("directives")' in begin_cmd, (
+        "critic-begin no longer prints the directives it was handed"
+    )
 
 
 class TestVerifyRatesBlockingOnlyDirective:
@@ -2644,15 +2688,19 @@ class TestVerifyRatesBlockingOnlyDirective:
         treadmill: fixing one bought the next verify round. Paid by cutting
         "the builder still reads your observations", which the scoping made
         false.
+
+        811 -> 807: "record-lint entries included" went, because no reviewer
+        rates a record-lint result any more — consolidation records each. The
+        ceiling came down by the same amount.
         """
         tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
 
-        assert tokens == 811, (
+        assert tokens == 807, (
             f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
-            f"says 811. Update it to {tokens} and say in the docstring what paid "
+            f"says 807. Update it to {tokens} and say in the docstring what paid "
             f"for the change — the ceiling below is not a budget to spend."
         )
-        assert tokens < 865, (
+        assert tokens < 861, (
             f"the directive is ~{tokens} tokens. It is delivered on every verify "
             f"dispatch and competes with the review for attention. Trim, or move "
             f"a clause to the protocol file that owns it."
@@ -2731,15 +2779,11 @@ class TestVerifyRatesBlockingOnlyDirective:
 
     def test_delivery_is_upstream_of_the_rating(self):
         """WHERE this prints is its substance: the reviewer must meet it before
-        it assigns a severity, not after. `verify-resolutions` is single-pass,
-        so the fork runs consolidate itself AFTER writing its findings —
-        emitting there would reach an agent that has already rated everything.
+        it assigns a severity, not after. Consolidation runs AFTER the reviewer
+        writes its findings — emitting there would reach an agent that has
+        already rated everything, or nobody.
         """
-        begin_src = HOOK.read_text(encoding="utf-8")
-        assert "VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE" in begin_src, (
-            "the dispatch command no longer emits the narrowing — dispatch is "
-            "the only moment before the reviewer rates the delta"
-        )
+        _assert_rendered_at_dispatch("VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE")
         consolidate_src = (
             ROOT / "lib" / "critic_consolidate.py"
         ).read_text(encoding="utf-8")
@@ -3563,7 +3607,7 @@ class TestConsolidateIntegration:
         # A finding has to exist for the close to carry a cost lead at all.
         _full_roster_partials(repo, head, findings_by_role={
             "correctness": [{"name": "Nit", "goal": "Nothing Is Broken",
-                             "severity": "note", "recommendation": "tweak",
+                             "severity": "warning", "recommendation": "tweak",
                              "files": ["src/app.py"]}],
         })
         result = _run_consolidate(repo)
@@ -3694,8 +3738,8 @@ class TestConsolidateIntegration:
 
     def test_consolidated_with_findings_carries_the_fix_strategy(self, tmp_path):
         """A review that lands findings states the fix strategy in the same
-        breath. This is the single-pass path's delivery: the reviewing fork
-        runs consolidate itself, so this stdout IS what the builder reads."""
+        breath. This is the inline single-pass path's delivery: the reviewing
+        fork runs consolidate itself, so this stdout IS what the builder reads."""
         repo = tmp_path / "r"
         _init_repo(repo)
         head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -4066,6 +4110,312 @@ class TestConsolidateIntegration:
 # ---------------------------------------------------------------------------
 
 
+def _run_validate_partial(repo: Path, path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(HOOK), "validate-partial", str(path)],
+        cwd=str(repo), capture_output=True, text=True,
+        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+    )
+
+
+def _partial_file(repo: Path, role: str) -> Path:
+    return _partials_dir(repo) / f"{role}.{FAKE_REVIEW_ID}.json"
+
+
+def _write_unescaped_quote_partial(repo: Path, role: str, head: str) -> Path:
+    """A partial a reviewer wrote with a `"` inside a JSON string, unescaped —
+    the observed field failure."""
+    text = json.dumps(_partial(role, head, summary="PLACEHOLDER"))
+    path = _partial_file(repo, role)
+    path.write_text(text.replace("PLACEHOLDER", 'it said "hello" and stopped'))
+    return path
+
+
+class TestOneUnreadablePartialCostsOneReviewer:
+    """A partial that fails its check fails consolidation closed, and the
+    message says which role to send back and that the rest are kept."""
+
+    def _three_roles_one_bad(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _write_partial(repo, "correctness", head)
+        _write_partial(repo, "design", head)
+        bad = _write_unescaped_quote_partial(repo, "sustainability", head)
+        return repo, head, bad
+
+    def test_the_fixture_really_is_unparseable(self, tmp_path):
+        repo, head, bad = self._three_roles_one_bad(tmp_path)
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(bad.read_text())
+
+    def test_stderr_names_the_role_the_kept_partials_and_the_cheap_remedy(self, tmp_path):
+        repo, head, bad = self._three_roles_one_bad(tmp_path)
+        kept = {r: _partial_file(repo, r).read_bytes() for r in ("correctness", "design")}
+        result = _run_consolidate(repo)
+        assert result.returncode == 1
+        err = result.stderr
+        assert "partial 'sustainability' unreadable" in err
+        assert re.search(r"line \d+ column \d+", err), err
+        assert "The other 2 partial(s) passed and are kept" in err
+        assert "re-dispatch the `sustainability` `critic-reviewer` alone" in err
+        assert "same manifest and the same dispatch prompt" in err
+        assert str(bad) in err
+        assert "SubagentStop re-runs consolidation" in err
+        assert "Do not run `critic-begin` or `critic-discard`" in err
+        # Nothing was persisted, and the valid partials are untouched.
+        assert not (repo / FINDINGS_REL).is_file()
+        for role, before in kept.items():
+            assert _partial_file(repo, role).read_bytes() == before
+
+    def test_rewriting_only_the_bad_partial_consolidates_without_a_new_begin(self, tmp_path):
+        repo, head, bad = self._three_roles_one_bad(tmp_path)
+        assert _run_consolidate(repo).returncode == 1
+        manifest_before = (_partials_dir(repo) / "manifest.json").read_bytes()
+        _write_partial(repo, "sustainability", head)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, result.stderr
+        assert "consolidated:" in result.stdout
+        assert len(_store_facts(repo, "review")) == 1
+        # The manifest this review was dispatched under is the one consolidated;
+        # no `critic-begin` replaced it in between.
+        assert json.loads(manifest_before)["id"] == FAKE_REVIEW_ID
+
+    def test_the_message_is_derived_from_the_disk(self, tmp_path):
+        """A role still in flight is not 'passed', and a second bad partial is named."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _write_partial(repo, "correctness", head)
+        _write_unescaped_quote_partial(repo, "design", head)
+        # sustainability: not written yet.
+        err = _run_consolidate(repo).stderr
+        assert "The other 1 partial(s) passed and are kept on disk (correctness)" in err
+        assert "Not yet written: sustainability" in err
+        _write_partial(repo, "sustainability", "deadbeefdeadbeef")  # wrong commit
+        err = _run_consolidate(repo).stderr
+        assert "Also failing: reviewer 'sustainability' reviewed deadbeefdead" in err
+        assert "re-dispatch the `design` and `sustainability` `critic-reviewer`" in err
+        assert "Not yet written" not in err
+
+    def test_an_inline_single_pass_review_is_told_to_rewrite_not_re_dispatch(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, roster=["reviewer"])
+        _partial_file(repo, "reviewer").write_text('{"role": "reviewer", "summary": "a "b""}')
+        err = _run_consolidate(repo).stderr
+        assert "rewrite" in err and "re-run `prawduct-hook critic-consolidate`" in err
+        assert "re-dispatch" not in err
+        assert "Do not run `critic-begin` or `critic-discard`" in err
+
+    def test_a_handed_off_single_pass_reviewer_is_re_dispatched(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, roster=["reviewer"], reviewer_model="sonnet")
+        _partial_file(repo, "reviewer").write_text("{not json")
+        err = _run_consolidate(repo).stderr
+        assert "re-dispatch the `reviewer` `critic-reviewer` alone" in err
+
+
+class TestValidatePartialVerb:
+    """`prawduct-hook validate-partial <path>` and `consolidate` share ONE verdict."""
+
+    def _case(self, tmp_path, kind):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, roster=["reviewer"])
+        path = _partial_file(repo, "reviewer")
+        good = _partial("reviewer", head)
+        if kind == "malformed":
+            path.write_text(json.dumps(good).replace("reviewer review complete.", 'a "b" c'))
+            return repo, path
+        if kind == "schema":
+            good["findings"] = [{"name": "x", "goal": "g", "severity": "showstopper",
+                                 "recommendation": "y"}]
+        elif kind == "wrong-role":
+            good["role"] = "design"
+        elif kind == "wrong-dispatch":
+            good["dispatch_id"] = "rev-other"
+        elif kind == "wrong-commit":
+            good["commit_reviewed"] = "deadbeefdeadbeef"
+        else:
+            assert kind == "valid", kind
+        path.write_text(json.dumps(good))
+        return repo, path
+
+    @pytest.mark.parametrize(
+        "kind", ["valid", "malformed", "schema", "wrong-role", "wrong-dispatch", "wrong-commit"]
+    )
+    def test_verb_and_consolidate_reach_the_same_verdict(self, tmp_path, kind):
+        repo, path = self._case(tmp_path, kind)
+        verb = _run_validate_partial(repo, path)
+        cons = _run_consolidate(repo)
+        assert (verb.returncode == 0) == (cons.returncode == 0), (verb, cons)
+        if kind == "valid":
+            assert verb.returncode == 0 and verb.stdout.strip() == "ok"
+        else:
+            assert verb.returncode == 1
+            reason = verb.stderr.strip().removeprefix("validate-partial: ")
+            assert reason and reason in cons.stderr, (reason, cons.stderr)
+
+    def test_a_parse_error_reports_line_and_column(self, tmp_path):
+        repo, path = self._case(tmp_path, "malformed")
+        verb = _run_validate_partial(repo, path)
+        assert verb.returncode == 1
+        assert re.search(r"line \d+ column \d+", verb.stderr), verb.stderr
+
+    def test_a_schema_violation_names_the_field(self, tmp_path):
+        repo, path = self._case(tmp_path, "schema")
+        assert "severity" in _run_validate_partial(repo, path).stderr
+
+    def test_a_relative_path_resolves_against_the_project_not_the_cwd(self, tmp_path):
+        repo, path = self._case(tmp_path, "valid")
+        result = _run_validate_partial(repo, path.relative_to(repo))
+        assert result.returncode == 0, result.stderr
+
+    def test_a_wrong_name_in_the_review_is_the_callers_to_fix(self, tmp_path):
+        repo, path = self._case(tmp_path, "valid")
+        stray = _partials_dir(repo) / "reviewer.json"
+        stray.write_text(path.read_text())
+        result = _run_validate_partial(repo, stray)
+        assert result.returncode == 1
+        assert "not a partial of review" in result.stderr
+
+    def test_a_partial_keyed_to_another_review_cannot_be_checked(self, tmp_path):
+        """A straggler, or a review this one replaced: no edit makes it this
+        review's, so the answer is stop (3), never fix-and-rerun (1)."""
+        repo, path = self._case(tmp_path, "valid")
+        stray = _partials_dir(repo) / "reviewer.rev-other.json"
+        stray.write_text(path.read_text())
+        result = _run_validate_partial(repo, stray)
+        assert result.returncode == cc.VALIDATE_PARTIAL_CANNOT_CHECK == 3
+        assert "not keyed to the pending review" in result.stderr
+
+    def test_no_pending_review_cannot_be_checked(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        result = _run_validate_partial(repo, repo / ".prawduct" / "x.json")
+        assert result.returncode == 3
+        assert "no readable review manifest" in result.stderr
+
+    def test_a_review_that_consolidated_meanwhile_is_stop_not_fix(self, tmp_path):
+        """A sibling reviewer's SubagentStop can consolidate the roster between
+        this reviewer's Write and its check, removing the manifest. The file
+        was fine; the reviewer must stop, not rewrite it into a gone review."""
+        repo, path = self._case(tmp_path, "valid")
+        (_partials_dir(repo) / "manifest.json").unlink()
+        result = _run_validate_partial(repo, path)
+        assert result.returncode == 3, result.stderr
+        assert "stop" in result.stderr
+
+    def test_the_review_comes_from_the_partials_own_checkout(self, tmp_path):
+        """A reviewer whose process resolves another checkout still checks its
+        own file: the absolute path names the review, not the cwd."""
+        repo, path = self._case(tmp_path, "valid")
+        elsewhere = tmp_path / "other"
+        _init_repo(elsewhere)
+        _commit_file(elsewhere, "README.md", "x\n", "init")
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "validate-partial", str(path)],
+            cwd=str(elsewhere), capture_output=True, text=True,
+            env={**_git_env(elsewhere), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "ok"
+
+    def test_it_is_read_only(self, tmp_path):
+        repo, path = self._case(tmp_path, "valid")
+        before = sorted((p.name, p.read_bytes()) for p in _partials_dir(repo).iterdir())
+        _run_validate_partial(repo, path)
+        after = sorted((p.name, p.read_bytes()) for p in _partials_dir(repo).iterdir())
+        assert before == after
+        assert not (repo / FINDINGS_REL).is_file()
+
+    def test_a_missing_path_is_a_usage_error(self, tmp_path):
+        repo, _ = self._case(tmp_path, "valid")
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "validate-partial"], cwd=str(repo),
+            capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert result.returncode == 2
+
+
+class TestTheReviewerIsToldToCheckItsPartial:
+    """The grant and the instruction travel together: an instruction to run a
+    verb the reviewer may not run is a prompt nobody can answer."""
+
+    @staticmethod
+    def _agent_tools() -> str:
+        agent = (ROOT / "agents" / "critic-reviewer.md").read_text(encoding="utf-8")
+        return re.search(r"^tools:(.*)$", agent, re.M).group(1)
+
+    def test_the_agent_and_the_critic_skill_grant_both_spellings(self):
+        skill = re.search(
+            r"^allowed-tools:(.*)$", _CRITIC_SKILL.read_text(encoding="utf-8"), re.M
+        ).group(1)
+        for grants in (self._agent_tools(), skill):
+            assert "Bash(prawduct-hook validate-partial*)" in grants
+            assert "Bash(python3 plugin/bin/prawduct-hook validate-partial*)" in grants
+
+    def test_the_grant_covers_the_instructed_call_and_reaches_no_data_plane_write(self):
+        patterns = [
+            p[:-1] for p in re.findall(r"Bash\(([^)]*)\)", self._agent_tools()) if p.endswith("*")
+        ]
+        call = "prawduct-hook validate-partial /x/.prawduct/.critic-partials/design.rev.json"
+        assert any(call.startswith(p) for p in patterns)
+        for op in sorted(_load_hook()._DATA_PLANE_COMMANDS):
+            assert not any(
+                f"prawduct-hook {op}".startswith(p) for p in patterns
+                if p.startswith("prawduct-hook validate")
+            ), op
+
+    def test_the_write_step_carries_the_check_and_the_exit_rule(self):
+        agent = (ROOT / "agents" / "critic-reviewer.md").read_text(encoding="utf-8")
+        assert (
+            "Then run `prawduct-hook validate-partial <your partial path>`: exit 0, you are "
+            "done; exit 1, fix the file and run it again; exit 3, nothing can check it (the "
+            "review consolidated, or is not yours): stop."
+        ) in " ".join(agent.split())
+
+    def test_each_surface_that_meets_a_refusal_follows_its_own_remedy(self):
+        """Renegotiated by the review-round-cost Critic (R-8): the remedy goes
+        where the refusal is MET. The coordinator stops before consolidation and
+        never sees one, so it carries none; the fork meets only its own inline
+        consolidate's refusal, whose remedy is to rewrite its partial; the main
+        session meets the rest (building.md, the Stop backstop's blocker), and
+        each defers to the refusal's printed remedy rather than offering a fresh
+        review — which `critic-begin` refuses over a complete roster anyway.
+        The remedy's wording has one home, `_partial_failure_message`."""
+        def flat(path):
+            return " ".join(path.read_text(encoding="utf-8").split())
+
+        coordinator = flat(ROOT / "skills" / "critic" / "coordinator.md")
+        assert "consolidation refuses" not in coordinator
+        assert "rewrite that partial and re-run consolidate" in flat(_CRITIC_SKILL)
+        building = flat(ROOT / "methodology" / "building.md")
+        assert "follow the remedy the refusal prints" in building
+        assert "re-invoke" not in building
+        hook = (ROOT / "bin" / "prawduct-hook").read_text(encoding="utf-8")
+        start = hook.index("CRITIC REVIEW (consolidation failed)") - 1  # its opening quote
+        literals = re.findall(r'"((?:[^"\\]|\\.)*)"', hook[start:hook.index("))", start)])
+        blocker = " ".join("".join(literals).replace("\\n", " ").split())
+        assert "Follow the remedy it names" in blocker, blocker
+        assert "re-run the review" not in blocker, blocker
+        assert "is refused while this complete roster is on disk" in blocker, blocker
+
+
 def _seed_prior_review_with_blocker(repo: Path, head: str, **overrides) -> str:
     """Run a full consolidation that leaves one blocking finding in the store
     and the cache pointing at its fact. Returns the prior review's fact id.
@@ -4147,19 +4497,15 @@ class TestResolutionFacts:
         assert "verify-resolutions" in result.stderr
         assert len(_store_facts(repo, "resolution")) == 0
 
-    def test_observations_at_the_boundary_fail_closed(self, tmp_path):
-        """The mirror of the rule above, and it closes a laundering path rather
-        than a weakening one. Demotion is a STAGE rule (`nonfunctional-
-        requirements.md` § Direction, *Review rigor is stage-keyed*): at the
-        boundary every item the reviewer rates is a finding, and findings are
-        what `counts` counts. An array outside `findings` that the boundary
-        could write would let a cumulative reviewer file nine warnings where
-        nothing counts them and consolidate a 0/0/0 review.
-
-        Renegotiated 2026-09-17 (review-stages Chunk 02): this pin used to hold
-        `final` to the same refusal, because demotion was a verify-mode rule.
-        `final` is an inner-stage review now and carries observations like
-        `chunk` does (the test below); the boundary keeps the refusal."""
+    def test_observations_at_the_boundary_persist(self, tmp_path):
+        """Renegotiated contract (#1128): this pin used to REFUSE an
+        `observations` array from a boundary dispatch, because the boundary
+        rated every item it found as a finding — NOTE included — and an array
+        outside `findings` there read as severity laundering. NOTE is no longer
+        a finding severity at any stage, so what a boundary reviewer would have
+        rated NOTE has exactly one home: `observations`. BLOCKING and WARNING
+        still cannot go there — a WARNING is a finding at the boundary, and
+        `_validate_observations` refuses a `blocking` one outright."""
         repo = tmp_path / "r"
         _init_repo(repo)
         head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -4173,9 +4519,100 @@ class TestResolutionFacts:
              "recommendation": "Tighten it"}
         ])
         result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert [o["title"] for o in fact["body"]["observations"]] == [
+            "Prose could be tighter"
+        ]
+        assert fact["body"]["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+
+    @pytest.mark.parametrize("mode,stage,promoted", [
+        (CUMULATIVE_MODE, "boundary", True), (FINAL_MODE, "inner", False),
+    ])
+    def test_a_warning_rated_observation_keeps_its_rating_at_the_boundary(
+        self, tmp_path, mode, stage, promoted
+    ):
+        """At the boundary a WARNING is a finding, so an observation its
+        reviewer rated `warning` is promoted into `findings` at that severity —
+        the stricter reading — rather than having the rating silently dropped
+        and the review closing 0/0. At the inner stage a WARNING is an
+        observation by the stage rule, so it stays one."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-rated-obs-1", mode=mode, stage=stage)
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "design", head, observations=[
+            {"name": "Coupling", "goal": "The Design Is Sound", "severity": "warning",
+             "recommendation": "Split the module", "files": ["src/app.py"]},
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        body = _store_facts(repo, "review")[0]["body"]
+        if promoted:
+            assert [(f["title"], f["severity"]) for f in body["findings"]] == [
+                ("Coupling", "warning")]
+            assert body["observations"] == []
+            assert "promoted" in result.stderr
+        else:
+            assert body["findings"] == []
+            assert [o["title"] for o in body["observations"]] == ["Coupling"]
+
+    def test_a_blocking_observation_at_the_boundary_still_fails_closed(self, tmp_path):
+        """What stays refused once the boundary accepts observations: an item
+        its reviewer rated BLOCKING. Nothing gates on an observation, so one
+        recorded there would read as handled while blocking nothing."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-cumul-0003", mode=CUMULATIVE_MODE,
+                        stage="boundary")
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "correctness", head, observations=[
+            {"name": "Auth bypass", "goal": "Nothing Is Broken",
+             "severity": "blocking", "recommendation": "Fix it"}
+        ])
+        result = _run_consolidate(repo)
         assert result.returncode == 1
-        assert "boundary" in result.stderr
+        assert "finding, never an observation" in result.stderr
         assert len(_store_facts(repo, "review")) == 0
+
+    @pytest.mark.parametrize("mode,stage", [
+        (CUMULATIVE_MODE, "boundary"), (FINAL_MODE, "inner"),
+    ])
+    def test_a_note_finding_is_recorded_as_an_observation(self, tmp_path, mode, stage):
+        """NOTE is not a finding severity at any stage (#1128), and a partial
+        carrying one is not refused: a reviewer on an older protocol still
+        writes one, and a refusal would cost a whole round to move an item that
+        gates nothing. The item is recorded as an observation, minus its
+        rating, and the run says so. The control: a WARNING in the same partial
+        stays a finding, so this is not a blanket demotion."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        item = {"name": "Wording", "goal": "Everything Is Coherent",
+                "recommendation": "Tighten it"}
+        kept = {"name": "Stale artifact", "goal": "Everything Is Coherent",
+                "recommendation": "Update it", "severity": "warning"}
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-note-0001", mode=mode, stage=stage)
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "design", head, findings=[{**item, "severity": "note"}, kept])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "rated `note` as observations" in result.stderr
+        [fact] = _store_facts(repo, "review")
+        severities = [f["severity"] for f in fact["body"]["findings"]]
+        assert "note" not in severities
+        if stage == "boundary":
+            assert severities == ["warning"]
+        observed = [o.get("title") or o.get("name") for o in fact["body"]["observations"]]
+        assert "Wording" in observed
+        assert all("severity" not in o for o in fact["body"]["observations"])
 
     def test_observations_from_an_inner_stage_final_persist(self, tmp_path):
         """The half the old pin forbade: an inner-stage `final` demotes what it
@@ -4204,13 +4641,13 @@ class TestResolutionFacts:
             "Error path untested", "Substring assertion",
         ]
 
-    def test_a_manifest_without_a_stage_is_gated_by_its_mode(self, tmp_path):
-        """A manifest written before the field existed (a restored archive, a
-        leftover the backstop consolidates) carries no `stage`; the same
-        function that would have written it answers from the mode, so an old
-        `cumulative` still refuses the array and an old `final` still takes it.
-        Both arms, because a gate that read `None` as "not boundary" would
-        launder at exactly the boundary."""
+    def test_a_manifest_without_a_stage_consolidates_observations(self, tmp_path):
+        """Renegotiated contract: a manifest written before the `stage` field
+        existed (a restored archive, a leftover the backstop consolidates) used
+        to be gated by its mode — an old `cumulative` refused the array. The
+        array is accepted from every stage now that `note` is no longer a
+        finding severity, so both old manifests consolidate, and the fact
+        records the absent stage as absent rather than inventing one."""
         repo = tmp_path / "r"
         _init_repo(repo)
         head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -4223,8 +4660,9 @@ class TestResolutionFacts:
         assert "stage" not in manifest
         _full_roster_partials(repo, head)
         _write_partial(repo, "design", head, observations=obs)
-        assert _run_consolidate(repo).returncode == 1
-        assert _store_facts(repo, "review") == []
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert len(_store_facts(repo, "review")[0]["body"]["observations"]) == 1
 
         cc.remove_partials(repo / ".prawduct")
         _set_marker(repo)
@@ -4233,7 +4671,7 @@ class TestResolutionFacts:
         _write_partial(repo, "design", head, observations=obs)
         result = _run_consolidate(repo)
         assert result.returncode == 0, f"stderr={result.stderr!r}"
-        fact = _store_facts(repo, "review")[0]
+        fact = next(f for f in _store_facts(repo, "review") if f["id"] == "rev-old-final")
         assert fact["body"]["stage"] is None  # recorded as absent, never invented
         assert len(fact["body"]["observations"]) == 1
 
@@ -4291,6 +4729,527 @@ class TestResolutionFacts:
         assert len(_store_facts(repo, "resolution")) == 0
         # Manifest left in place for the corrected retry.
         assert (repo / PARTIALS_REL / "manifest.json").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Integration: an inherited red baseline is waived by consolidate (#900)
+# ---------------------------------------------------------------------------
+
+
+class TestFailedTestsOnAFinding:
+    def _with(self, value) -> dict:
+        return _partial("reviewer", "abc", findings=[
+            {"name": "Suite red", "goal": "Nothing Is Broken", "severity": "blocking",
+             "recommendation": "Fix", "failed_tests": value}
+        ])
+
+    @pytest.mark.parametrize("value", [["t1"], ["t1", "t2"], [], None])
+    def test_a_list_of_ids_or_nothing_is_valid(self, value):
+        ok, reason = cc.validate_partial(self._with(value))
+        assert ok, reason
+
+    @pytest.mark.parametrize("value", ["t1", [""], ["t1", "  "], ["t1", 5], {"t1": 1}, 5])
+    def test_anything_else_fails_validation(self, value):
+        ok, reason = cc.validate_partial(self._with(value))
+        assert not ok
+        assert "failed_tests" in reason
+
+    def test_the_ids_reach_the_review_fact(self):
+        partial = self._with(["t1"])
+        (finding,) = cc.merge_findings([partial])
+        assert finding["failed_tests"] == ["t1"]
+        (bare,) = cc.merge_findings([self._with(None)])
+        assert "failed_tests" not in bare
+
+
+class TestAnInheritedFailureIsWaivedByConsolidate:
+    """A branch whose base is already red is not charged a verify round for it.
+
+    The finding stays BLOCKING on the review fact. Consolidate writes a
+    `waived` resolution fact with `origin: inherited-baseline` only when the
+    newest test-run on the merge-base TREE lists every id the finding names —
+    and in every other case writes nothing, so the finding blocks as before.
+    """
+
+    def _blocker(self, tests=("t1",)) -> dict:
+        finding = {"name": "Suite red", "goal": "Nothing Is Broken",
+                   "severity": "blocking", "recommendation": "Fix the failing test",
+                   "files": ["src/app.py"]}
+        if tests is not None:
+            finding["failed_tests"] = list(tests)
+        return finding
+
+    def _branch(self, tmp_path) -> tuple[Path, str]:
+        """`main` is the base; `feat/work` is cut from it. Returns the repo and
+        the merge-base's tree."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "seed")
+        base_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _git(repo, "checkout", "-b", "feat/work", "--quiet")
+        return repo, base_tree
+
+    def _run_on(self, repo, tree, failed_tests=None, **extra) -> str:
+        body = {"tree": tree, "passed": 3, "failed": len(failed_tests or []),
+                "skipped": 0, "duration_seconds": 1.0, "source": "run", **extra}
+        if failed_tests:
+            body["failed_tests"] = list(failed_tests)
+        out = evidence.append_test_run(repo, body)
+        assert out["status"] == "appended", out
+        return out["id"]
+
+    _AUTO = object()
+
+    def _review(self, repo, findings, *, head_failed=_AUTO, content="x = 2\n",
+                head_extra=None) -> tuple[subprocess.CompletedProcess, dict]:
+        """Dispatch a chunk review of ``content``, record the reviewed tree's
+        own suite run, and consolidate ``findings``.
+
+        ``head_failed`` is that run's failing ids — by default exactly the ids
+        the BLOCKING findings name, the honest run the reviewer copied them
+        from — or ``None`` for no run on the reviewed tree at all."""
+        (repo / "src/app.py").write_text(content)
+        begin = _run_begin(repo, "--mode", "chunk")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["roster"] == ["reviewer"]
+        if head_failed is self._AUTO:
+            head_failed = sorted({t for f in findings if f.get("severity") == "blocking"
+                                  for t in f.get("failed_tests") or []})
+        if head_failed is not None:
+            self._run_on(repo, manifest["head_tree"], head_failed, **(head_extra or {}))
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=findings)
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, f"stderr={done.stderr!r}"
+        return done, manifest
+
+    def _waivers(self, repo) -> list[dict]:
+        return [f for f in _store_facts(repo, "resolution")
+                if (f.get("body") or {}).get("origin") == cc.INHERITED_BASELINE_ORIGIN]
+
+    def _commit(self, repo) -> None:
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "the reviewed work", "--quiet")
+
+    def test_a_failure_the_base_run_lists_is_waived_and_the_gate_passes(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        run_id = self._run_on(repo, base_tree, ["t1"])
+        done, manifest = self._review(repo, [self._blocker()])
+
+        review = _store_facts(repo, "review")[-1]
+        (finding,) = review["body"]["findings"]
+        assert finding["severity"] == "blocking"  # the rating stays
+        assert finding["failed_tests"] == ["t1"]
+        assert review["body"]["counts"]["blocking"] == 1
+
+        (waiver,) = self._waivers(repo)
+        rid = manifest["id"]
+        assert waiver["id"] == f"{rid}:{rid}:{finding['fid']}"
+        body = waiver["body"]
+        assert body["finding"] == {"review_id": rid, "fid": finding["fid"]}
+        assert body["disposition"] == "waived"
+        assert body["verified_by"] == rid
+        assert body["at_tree"] == manifest["head_tree"]
+        assert body["base_run"] == run_id
+        assert run_id in body["rationale"] and "t1" in body["rationale"]
+        assert f"waived {finding['fid']}" in done.stderr
+
+        # The builder's carriers do not send it to fix what it did not cause.
+        cache = json.loads((repo / FINDINGS_REL).read_text())
+        assert "waived as inherited" in cache["next_action"]
+        assert "0 blocking" in cache["next_action"]
+        assert "must be resolved" not in cache["summary"]
+        assert "waived as inherited" in done.stdout
+
+        self._commit(repo)
+        assert gates.branch_coverage_verdict(repo)["status"] == "covered"
+        assert gates.session_review_verdict(repo)["status"] == "covered"
+        gate = subprocess.run(
+            [sys.executable, str(HOOK), "check-cumulative-critic"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert gate.returncode == 0, f"stdout={gate.stdout!r} stderr={gate.stderr!r}"
+
+    def _assert_no_waiver_and_still_blocks(self, repo, done, why=None,
+                                           gate="blocked") -> None:
+        """No waiver is written and the finding blocks as before. ``why`` is a
+        fragment of the one stderr line that says why the waiver did not fire
+        (``None`` for a finding that never asked for one: it names no test).
+        ``gate`` is the branch verdict expected after committing — ``blocked``,
+        or a stricter refusal the fixture itself causes; ``None`` on ``main``,
+        where the branch span is empty and the verdict says nothing."""
+        assert self._waivers(repo) == []
+        assert _store_facts(repo, "resolution") == []
+        assert "critic-consolidate: waived " not in done.stderr
+        refusals = [ln for ln in done.stderr.splitlines() if "not waived as inherited" in ln]
+        cache = json.loads((repo / FINDINGS_REL).read_text())
+        not_waived = [f["not_waived"] for f in cache["findings"] if "not_waived" in f]
+        if why is None:
+            assert refusals == [], done.stderr
+            assert not_waived == [], cache
+        else:
+            (line,) = refusals
+            assert why in line, line
+            # The reason rides the cache entry too: on a roster, consolidation
+            # runs inside SubagentStop and its stderr reaches nobody.
+            (reason,) = not_waived
+            assert why in reason, reason
+        assert cache["next_action"].startswith("1 BLOCKING")
+        if gate is not None:
+            self._commit(repo)
+            assert gates.branch_coverage_verdict(repo)["status"] == gate
+
+    def test_an_id_the_base_run_lacks_is_not_waived(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        done, _ = self._review(repo, [self._blocker(("t1", "t2"))])
+        self._assert_no_waiver_and_still_blocks(repo, done, why="t2")
+
+    def test_no_run_on_the_merge_base_tree_waives_nothing(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        other = _git(repo, "rev-parse", "HEAD~1^{tree}").stdout.strip()
+        self._run_on(repo, other, ["t1"])  # the control: a red run, on another tree
+        done, _ = self._review(repo, [self._blocker()])
+        self._assert_no_waiver_and_still_blocks(repo, done, why=base_tree[:12])
+        # Recording the base run now cannot reach back to this finding, so the
+        # reason names the round that clears it rather than inviting a re-record.
+        (entry,) = json.loads((repo / FINDINGS_REL).read_text())["findings"]
+        assert "clears through verify-resolutions" in entry["not_waived"], entry
+
+    def test_the_reason_reaches_the_cache_when_subagent_stop_consolidates(self, tmp_path):
+        """On a roster, `critic-consolidate` runs inside SubagentStop, which
+        exits 0 and whose stderr nobody reads. The reason must still reach the
+        builder, on the finding's cache entry."""
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        (repo / "src/app.py").write_text("x = 2\n")
+        begin = _run_begin(repo, "--mode", "chunk")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        self._run_on(repo, manifest["head_tree"], ["t1", "t2"])
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"],
+                       findings=[self._blocker(("t1", "t2"))])
+        hook = subprocess.run(
+            [sys.executable, str(HOOK), "subagent-stop"],
+            input=json.dumps({"cwd": str(repo), "agent_type": "prawduct:critic-reviewer"}),
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert hook.returncode == 0, hook.stderr
+        assert self._waivers(repo) == []
+        (entry,) = json.loads((repo / FINDINGS_REL).read_text())["findings"]
+        assert "t2" in entry.get("not_waived", ""), entry
+
+    def test_a_newer_green_run_on_the_base_tree_supersedes_an_older_red_one(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        green = self._run_on(repo, base_tree)  # green, and newer
+        done, _ = self._review(repo, [self._blocker()])
+        self._assert_no_waiver_and_still_blocks(repo, done, why=green)
+
+    def test_a_finding_naming_no_tests_is_not_waived(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        done, _ = self._review(repo, [self._blocker(tests=None)])
+        self._assert_no_waiver_and_still_blocks(repo, done)
+
+    def test_a_run_on_the_base_head_with_a_different_tree_proves_nothing(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        dirty = _git(repo, "rev-parse", "HEAD~1^{tree}").stdout.strip()
+        self._run_on(repo, dirty, ["t1"], head=head)
+        done, _ = self._review(repo, [self._blocker()])
+        self._assert_no_waiver_and_still_blocks(repo, done, why=base_tree[:12])
+
+    # -- R-1: the "base" must be before the reviewed work ----------------------
+
+    def test_work_committed_on_the_base_branch_is_not_its_own_baseline(self, tmp_path):
+        """HEAD on `main`, base `main`, and the reviewed interval holds a commit
+        made straight onto `main` (an interval that starts at an earlier
+        reviewed state — the shape a frontier or verify-resolutions interval
+        takes): the merge-base IS HEAD, so the builder's own red record of
+        HEAD's tree would read as the base's run of the work that broke t1.
+
+        The manifest is written by hand because `critic-begin` on `main` never
+        starts a chunk interval behind the merge-base today; the guard is on
+        the property, not on which begin path can produce it."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        start = _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "seed")
+        head = _commit_file(repo, "src/other.py", "y = 1\n", "the work that broke t1, on main")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        self._run_on(repo, head_tree, ["t1"])  # the builder's own red record
+        (repo / "src/app.py").write_text("x = 3\n")
+        reviewed = evidence.capture_tree(repo)["tree"]
+        assert reviewed != head_tree  # isolates this guard from the tree-equality one
+        self._run_on(repo, reviewed, ["t1"])
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, roster=["reviewer"], base_commit=start,
+            base_tree=_git(repo, "rev-parse", f"{start}^{{tree}}").stdout.strip(),
+            head_tree=reviewed,
+        )
+        _write_partial(repo, "reviewer", head, findings=[self._blocker()])
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, done.stderr
+        self._assert_no_waiver_and_still_blocks(repo, done, why="merge-base is HEAD", gate=None)
+
+    def test_uncommitted_work_on_the_base_branch_keeps_its_waiver(self, tmp_path):
+        """The control, and the ordinary case: on `main` the merge-base is HEAD
+        too, but a chunk review of uncommitted work starts its interval AT
+        HEAD, so HEAD's tree genuinely is the tree before the reviewed work."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head = _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "seed")
+        self._run_on(repo, _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip(), ["t1"])
+        _, manifest = self._review(repo, [self._blocker()])
+        assert manifest["base_commit"] == head
+        assert len(self._waivers(repo)) == 1
+
+    def test_a_reviewed_tree_equal_to_the_base_tree_is_not_its_own_baseline(self, tmp_path):
+        """The branch moved (merge-base is not HEAD) but the reviewed tree is the
+        base tree byte for byte: the base run is a run of the reviewed work."""
+        repo, base_tree = self._branch(tmp_path)
+        _commit_file(repo, "src/app.py", "x = 2\n", "the work")
+        self._run_on(repo, base_tree, ["t1"])
+        done, manifest = self._review(repo, [self._blocker()], content="x = 1\n")
+        assert manifest["head_tree"] == base_tree  # the precondition, not a skip
+        self._assert_no_waiver_and_still_blocks(repo, done, why="is the reviewed tree")
+
+    def test_the_moving_head_parent_fallback_is_not_a_baseline(self, tmp_path):
+        """No `origin/main`, no `main`, no `base_branch:` — the base falls through
+        to `HEAD~1`, so the "base" is this branch's own previous commit."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "seed")
+        _git(repo, "branch", "-m", "master")
+        parent_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _commit_file(repo, "src/other.py", "y = 1\n", "the work that broke t1")
+        assert coverage.resolve_merge_base_tree(repo)["moving"] is True
+        self._run_on(repo, parent_tree, ["t1"])
+        done, _ = self._review(repo, [self._blocker()])
+        self._assert_no_waiver_and_still_blocks(repo, done, why="HEAD~1")
+
+    # -- R-2: the reviewed tree's own run must be wholly accounted for --------
+
+    def test_no_suite_run_on_the_reviewed_tree_waives_nothing(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        done, manifest = self._review(repo, [self._blocker()], head_failed=None)
+        self._assert_no_waiver_and_still_blocks(repo, done, why=manifest["head_tree"][:12])
+
+    def test_a_capped_failure_list_on_the_reviewed_tree_waives_nothing(self, tmp_path):
+        """120 failures, 100 ids recorded: the hidden 20 may be new ones the
+        branch caused, so the visible ids matching the base proves nothing."""
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        done, _ = self._review(repo, [self._blocker()], head_failed=["t1"],
+                               head_extra={"failed": 120})
+        self._assert_no_waiver_and_still_blocks(repo, done, why="120")
+
+    def test_a_new_failure_no_blocker_names_keeps_the_inherited_one_blocking(self, tmp_path):
+        """The reviewer named only the inherited subset of a mixed red suite:
+        t2 is new, and nothing else on the record answers for it."""
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        done, _ = self._review(repo, [self._blocker()], head_failed=["t1", "t2"])
+        self._assert_no_waiver_and_still_blocks(repo, done, why="t2")
+
+    def test_a_new_failure_another_blocker_names_leaves_the_inherited_one_waived(self, tmp_path):
+        """The control: the same mixed suite, with t2 on the record as its own
+        unwaived BLOCKING finding — t1 is waived, t2 still blocks, and the line
+        says why t2's finding was not."""
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        new = {**self._blocker(("t2",)), "name": "A new failure"}
+        done, manifest = self._review(repo, [self._blocker(), new])
+        (waiver,) = self._waivers(repo)
+        rid = manifest["id"]
+        assert waiver["body"]["finding"] == {"review_id": rid, "fid": "R-1"}
+        (line,) = [ln for ln in done.stderr.splitlines() if "not waived as inherited" in ln]
+        assert "R-2" in line and "t2" in line
+        cache = json.loads((repo / FINDINGS_REL).read_text())
+        assert cache["next_action"].startswith("1 BLOCKING finding(s) (R-1)")
+        self._commit(repo)
+        assert gates.branch_coverage_verdict(repo)["status"] == "blocked"
+
+    # -- R-4: the fail-closed error paths ---------------------------------------
+
+    def test_a_test_run_from_a_newer_schema_waives_nothing(self, tmp_path):
+        """That fact may be the newest run on the base tree — a green one."""
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        with open(evidence.store_path(repo), "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "schema": 99, "kind": "test-run", "id": "run-future",
+                "ts": "2030-01-01T00:00:00Z", "body": {"tree": base_tree},
+            }) + "\n")
+        done, _ = self._review(repo, [self._blocker()])
+        # The gate refuses a store it cannot fully read, which is stricter still.
+        self._assert_no_waiver_and_still_blocks(repo, done, why="newer plugin",
+                                                gate="store-precheck")
+
+    def test_a_failed_waiver_append_fails_closed_and_a_retry_heals(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        (repo / "src/app.py").write_text("x = 2\n")
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        self._run_on(repo, manifest["head_tree"], ["t1"])
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"],
+                       findings=[self._blocker()])
+        partial = _partials_dir(repo) / f"reviewer.{manifest['id']}.json"
+
+        real_append = evidence.append_fact
+
+        def refuse_resolutions(project_dir, kind, fact_id, body):
+            if kind == "resolution":
+                return {"status": "error", "reason": "disk full (injected)"}
+            return real_append(project_dir, kind, fact_id, body)
+
+        monkeypatch.setattr(evidence, "append_fact", refuse_resolutions)
+        assert cc.consolidate(repo, trigger="explicit") == 1
+        assert "could not append the inherited-baseline waiver" in capsys.readouterr().err
+        assert self._waivers(repo) == []
+        assert partial.is_file()  # kept, so a retry has something to consolidate
+
+        monkeypatch.setattr(evidence, "append_fact", real_append)
+        assert cc.consolidate(repo, trigger="explicit") == 0
+        (waiver,) = self._waivers(repo)
+        assert waiver["body"]["finding"]["review_id"] == manifest["id"]
+        assert not partial.exists()
+
+    # -- R-3 / R-5: every renderer reads the waiver from the facts -------------
+
+    def test_an_ingesting_clone_renders_the_waiver_as_consolidation_does(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        self._review(repo, [self._blocker()])
+        consolidated = json.loads((repo / FINDINGS_REL).read_text())
+        (repo / FINDINGS_REL).unlink()  # the clone has the facts, not the view
+
+        facts = evidence.read_facts(repo)["facts"]
+        review = _store_facts(repo, "review")[-1]
+        anchor = evidence.review_anchor(review["body"])
+        derived = cc.derive_branch_cache(repo / ".prawduct", facts, [anchor])
+        assert derived["status"] == "derived", derived
+        cache = json.loads((repo / FINDINGS_REL).read_text())
+        assert cache["fact_id"] == consolidated["fact_id"]
+        assert "must be resolved" not in cache["summary"]
+        assert cache["next_action"].startswith("1 BLOCKING finding(s) (R-1)")
+        assert "waived as inherited" in cache["next_action"]
+        # Each carrier marks the entry, so a verify reviewer reading the prior
+        # record can tell a waived blocker from an open one.
+        for record in (consolidated, cache):
+            (entry,) = record["findings"]
+            assert entry["waived"] == cc.INHERITED_BASELINE_ORIGIN
+
+    # -- R-11: the census and review-stats tell an inherited waiver apart ------
+
+    def test_review_stats_counts_an_inherited_waiver_apart_from_a_judged_one(self, tmp_path):
+        from lib import stats  # noqa: PLC0415
+
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        _, manifest = self._review(repo, [self._blocker()])
+        rid = manifest["id"]
+        store = evidence.read_facts(repo)
+        assert _dispositions_mod.resolution_detail_index(store)[(rid, "R-1")] == (
+            _dispositions_mod.STATE_WAIVED_INHERITED
+        )
+        assert stats.finding_outcome(store)((rid, "R-1")) == "waived_inherited"
+        # The control: a verify pass's judged waiver of the same finding shape.
+        judged = {"facts": [*store["facts"], {
+            "kind": "resolution", "id": "judged",
+            "body": {"finding": {"review_id": "rev-other", "fid": "R-1"},
+                     "disposition": "waived", "verified_by": "rev-v",
+                     "rationale": "accepted by the reviewer"},
+        }]}
+        assert stats.finding_outcome(judged)(("rev-other", "R-1")) == "waived"
+        report = subprocess.run(
+            [sys.executable, str(HOOK), "review-stats", "--json"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert report.returncode == 0, report.stderr
+        by_outcome = json.loads(report.stdout)["overall"]["dispositions"]["by_outcome"]
+        assert by_outcome["waived_inherited"] == 1, by_outcome
+        assert by_outcome["waived"] == 0, by_outcome
+
+    def test_a_base_run_recorded_by_test_evidence_record_is_the_one_matched(self, tmp_path):
+        """No injected fact: the run `building.md` asks for — `test-evidence
+        record` in a clean checkout of the merge-base, here a detached worktree
+        — is the one the waiver finds, because the store is clone-shared."""
+        repo, base_tree = self._branch(tmp_path)
+        base_wt = tmp_path / "base-wt"
+        _git(repo, "worktree", "add", "--detach", "--quiet", str(base_wt), "main")
+        # The record ignored, as a product repo's managed .gitignore has it: the
+        # attempt's in-progress stub (#1178 R-8) is written before the tree is
+        # captured, so an unignored one would make the run's tree not the base's.
+        (repo / ".git" / "info" / "exclude").write_text(".prawduct/.test-evidence.json\n")
+        report = tmp_path / "report.xml"  # outside both checkouts, so not in the tree
+        report.write_text(
+            '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="s" time="1">'
+            '<testcase classname="c" name="t1"><failure/></testcase>'
+            '<testcase classname="c" name="ok"/></testsuite></testsuites>'
+        )
+        from test_plugin_runtime import as_just_run  # noqa: PLC0415
+
+        as_just_run(report)  # the run starts after the worktree it reads
+        recorded = subprocess.run(
+            [sys.executable, str(HOOK), "test-evidence", "record", "--from-junit", str(report)],
+            cwd=str(base_wt), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        )
+        (run,) = evidence.facts_of_kind(evidence.read_facts(repo), "test-run")
+        assert run["body"]["tree"] == base_tree, recorded.stderr
+        (failing,) = run["body"]["failed_tests"]
+
+        self._review(repo, [self._blocker((failing,))])
+        (waiver,) = self._waivers(repo)
+        assert waiver["body"]["base_run"] == run["id"]
+
+    def test_a_newer_narrowed_run_does_not_supersede_the_suite_run(self, tmp_path):
+        """A scratch worktree's run of a few files is not the suite: it must
+        not overrule the base's real run, as the freshness reader ignores it."""
+        repo, base_tree = self._branch(tmp_path)
+        run_id = self._run_on(repo, base_tree, ["t1"])
+        self._run_on(repo, base_tree, narrowed=True, ceiling="pytest tests/x.py")
+        self._review(repo, [self._blocker()])
+        (waiver,) = self._waivers(repo)
+        assert waiver["body"]["base_run"] == run_id
+
+    def test_a_warning_naming_a_base_failure_gets_no_waiver(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        self._review(repo, [{**self._blocker(), "severity": "warning"}])
+        assert self._waivers(repo) == []
+
+    def test_re_running_consolidate_appends_no_second_waiver(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        _, manifest = self._review(repo, [self._blocker()])
+        assert len(self._waivers(repo)) == 1
+        lines_before = len(_store_lines(repo))
+        # Replay the whole consolidation (the crash window): same manifest,
+        # same partial, so the same deterministic ids.
+        _set_marker(repo)
+        (_partials_dir(repo) / "manifest.json").write_text(json.dumps(manifest))
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"],
+                       findings=[self._blocker()])
+        again = _run_consolidate(repo)
+        assert again.returncode == 0, f"stderr={again.stderr!r}"
+        assert len(self._waivers(repo)) == 1
+        assert len(_store_lines(repo)) == lines_before
+        # The replay still tells the builder the finding is waived.
+        assert "waived as inherited" in again.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -4542,7 +5501,7 @@ class TestCriticBeginCLI:
         (repo / "src/app.py").write_text("x = 2\n")  # the chunk's dirty diff
         status_before = _git(repo, "status", "--porcelain").stdout
         result = _run_begin(repo, "--mode", "chunk", "--chosen-by", "rule-4 chunk",
-                            "--chunk", "03", "--scope", "demo")
+                            "--chunks", "03", "--scope", "demo")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         ok, reason = cc.validate_manifest(manifest)
@@ -4558,11 +5517,10 @@ class TestCriticBeginCLI:
         # Renegotiated in the open (#1051, ST8): a chunk id is now validated
         # against the plan it names a chunk OF, and `--scope demo` resolves to
         # no plan file here — so there is nothing `03` could be a chunk of, and
-        # the review records `chunks: []` / `chunk: null` and says why in a
-        # note, rather than carrying an id no reader can place. The scope still
-        # rides through.
+        # the review records `chunks: []` and says why in a note, rather than
+        # carrying an id no reader can place. The scope still rides through.
         assert manifest["scope"] == "demo"
-        assert (manifest["chunks"], manifest["chunk"]) == ([], None)
+        assert manifest["chunks"] == []
         assert "no build plan resolves for this review, so the declared chunk(s) 03" in result.stderr
         # The marker is set (the session-mutation guard rides the dispatch).
         assert (repo / MARKER_REL).is_file()
@@ -4733,7 +5691,7 @@ class TestStageReachesEveryReader:
             "- [ ] Chunk 01: The chunk\n\n## Chunk 01: The chunk\n\n"
             "- **Type:** doc-only\n- **Description:** words.\n- **Deliverables:** `src/app.py`\n"
         )
-        result = _run_begin(repo, "--mode", "chunk", "--scope", "demo", "--chunk", "01")
+        result = _run_begin(repo, "--mode", "chunk", "--scope", "demo", "--chunks", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = self._manifest(repo)
         assert manifest["record_lint"]["plan_graded"].endswith("build-plan-demo.md")
@@ -4793,12 +5751,16 @@ class TestStageReachesEveryReader:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
 
         fact = _store_facts(repo, "review")[0]
-        (finding,) = fact["body"]["findings"]
+        # `--scope demo` names no plan, so record-lint's cannot-run entry rides
+        # in beside the reviewer's finding; the join is about the reviewer's.
+        (finding,) = [f for f in fact["body"]["findings"] if f["title"] == "Missing test"]
         events = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines()
                   if '"review.critic"' in ln]
         assert len(events) == 1
         assert events[0]["review"]["fact_id"] == fact["id"]
-        assert [f.get("fid") for f in events[0]["review"]["findings"]] == [finding["fid"]]
+        assert [f.get("fid") for f in events[0]["review"]["findings"]] == [
+            f["fid"] for f in fact["body"]["findings"]
+        ]
 
         env = {**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
         filed = subprocess.run(
@@ -4819,7 +5781,7 @@ class TestStageReachesEveryReader:
     def test_the_fact_body_and_cache_carry_a_null_stage_for_an_old_manifest(self):
         body = cc.build_fact_body(_manifest_dict(), [_partial("reviewer", "abc123")])
         assert "stage" in body and body["stage"] is None
-        record = cc.fact_to_cache_record({"ts": "2026-09-17T00:00:00Z", "body": body})
+        record = cc.fact_to_cache_record({"ts": "2026-09-17T00:00:00Z", "body": body}, store=_NO_FACTS)
         assert "stage" in record and record["stage"] is None
 
 
@@ -5493,9 +6455,12 @@ class TestVerifyResolutionsDispatch:
         # The half above survived an edit that replaced "commit (or stash) the
         # fix and re-run verify-resolutions" — a superfluous round, and wrong on
         # the merits, since the commit carries the very tree this pass vouched
-        # for. An unpinned rule is what the next trim deletes first.
-        assert "Commit this tree VERBATIM and no further pass is needed" in result.stderr
-        assert "Only a selective or further-edited commit leaves a gap" in result.stderr
+        # for. An unpinned rule is what the next trim deletes first. Since #723
+        # the note carries the rule's one home, `gates.POST_FIX_COVERAGE`, so
+        # the rule is pinned through it: the constant itself, and the verbatim
+        # clause it must still say.
+        assert gates.POST_FIX_COVERAGE in result.stderr
+        assert "commit that tree verbatim and no further pass is owed" in result.stderr
 
     def _seed_dirty_tree_review_with_blocker(
         self, repo: Path
@@ -5846,14 +6811,23 @@ class TestVerifyResolutionsDispatch:
 
     def test_a_missing_anchor_on_a_healthy_store_stays_exit_one(self, tmp_path):
         """The control for exit 6: a genuinely absent anchor is the demotable
-        case, so it keeps exit 1 and the skill's re-dispatch route."""
+        case, so it keeps exit 1 and the skill's re-dispatch route.
+
+        Renegotiated: a pointer naming a fact the store lacks now defers to
+        this branch's own review (`test_verify_resolutions_lineage.py`
+        `TestAMissingPointerIsAStaleViewToo`), so "genuinely absent" means
+        the branch has no review either — the only one in the store is a
+        sibling's, off this lineage."""
         repo = tmp_path / "r"
         _init_repo(repo)
-        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
-        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "--quiet", "-b", "sibling")
+        sibling_tip = _commit_file(repo, "src/app.py", "x = 99  # sibling\n", "sibling")
+        sibling_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
         _seed_prior_review_with_blocker(
-            repo, head, head_tree=head_tree, head_commit=head
+            repo, sibling_tip, head_tree=sibling_tree, head_commit=sibling_tip
         )
+        _git(repo, "checkout", "--quiet", "main")
         (repo / "src/app.py").write_text("x = 2  # my fix\n")
         cache = repo / ".prawduct" / ".critic-findings.json"
         data = json.loads(cache.read_text())
@@ -6490,9 +7464,13 @@ class TestRecordLintInManifest:
         assert "record-lint" in result.stdout
         assert "src/never_built.py" in result.stdout
 
-    def test_lint_findings_do_not_gate(self, tmp_path):
-        """Advice, not authority: a lint finding never blocks dispatch and never
-        reaches the fact's severity counts."""
+    def test_a_lint_finding_never_blocks_dispatch_and_consolidation_rates_it(self, tmp_path):
+        """Renegotiated contract: this pin used to say a lint finding never
+        reaches the fact's counts, because a REVIEWER relayed it as a finding
+        and that relay was where its blocking force came from. Consolidation
+        now delivers it at the severity record-lint assigns, so the missing
+        deliverable blocks from the fact with no partial mentioning it.
+        Dispatch still never refuses on it."""
         plan = (
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
             "### Chunk 01: do it\n\n"
@@ -6502,8 +7480,8 @@ class TestRecordLintInManifest:
         assert result.returncode == 0
         assert manifest["record_lint"]["findings"], "the finding exists…"
         body = cc.build_fact_body(manifest, [])
-        assert body["counts"] == {"blocking": 0, "warning": 0, "note": 0}
-        assert body["findings"] == []
+        assert body["counts"] == {"blocking": 1, "warning": 0, "note": 0}
+        assert "src/never_built.py" in body["findings"][0]["recommendation"]
 
     def test_the_fact_carries_the_yield(self, tmp_path):
         """The observable-yield obligation: a control born after 2026-07-29
@@ -6518,6 +7496,346 @@ class TestRecordLintInManifest:
         _repo, manifest, _res = self._dispatch(tmp_path)
         manifest.pop("record_lint")
         assert cc.build_fact_body(manifest, [])["record_lint"] is None
+
+
+def _lint(findings=(), unchecked=()) -> dict:
+    """A `record_lint` manifest block with the given results."""
+    return {
+        "records": [], "chunk_graded": "01", "chunks_graded": ["01"],
+        "plan_graded": "p.md", "findings": list(findings),
+        "unchecked": list(unchecked), "counts": {},
+    }
+
+
+def _lint_finding(check: str, path: str = ".prawduct/artifacts/p.md", line=None,
+                  detail: str = "the detail") -> dict:
+    return {"check": check, "path": path, "line": line, "detail": detail}
+
+
+class TestRecordLintReachesTheReview:
+    """Record-lint results reach the review from the code that computed them.
+
+    A reviewer used to relay each one as a finding, and that relay was the only
+    route by which a blocking record result reached `unresolved_blocking`: the
+    manifest's `record_lint` rides into the fact as data and no gate reads it.
+    Consolidation now converts each result itself, at the severity record-lint
+    assigns for the review's stage, so no partial has to mention it."""
+
+    def _consolidate(self, tmp_path, lint, *, mode=CUMULATIVE_MODE, stage="boundary",
+                     roster=None):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        roster = roster or ["correctness", "design", "sustainability"]
+        _write_manifest(repo, head, mode=mode, stage=stage, roster=roster,
+                        record_lint=lint)
+        for role in roster:
+            _write_partial(repo, role, head, findings=[])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        return repo, _store_facts(repo, "review")[-1], result
+
+    def test_a_blocking_record_result_blocks_with_no_partial_mentioning_it(self, tmp_path):
+        repo, fact, result = self._consolidate(tmp_path, _lint(findings=[
+            _lint_finding("chunk-ref-missing", path="chunk 01", line=12,
+                          detail="declared deliverable `src/x.py` does not exist"),
+        ]))
+        [finding] = fact["body"]["findings"]
+        assert finding["severity"] == "blocking"
+        assert finding["goal"] == "Nothing Is Missing"
+        assert "chunk-ref-missing" in finding["title"]
+        assert "`src/x.py`" in finding["recommendation"]
+        # The gate's own predicate, not a proxy: the fact blocks.
+        assert ca_mod.unresolved_blocking(fact, set()) == [finding]
+        assert "NEXT-ACTION: 1 BLOCKING finding(s)" in result.stdout
+
+    def test_a_clean_lint_and_clean_partials_consolidate_clean(self, tmp_path):
+        """No backlog walk and no learnings cross-check: a review whose
+        reviewers raise nothing and whose lint found nothing records nothing."""
+        _repo, fact, _result = self._consolidate(tmp_path, _lint())
+        assert fact["body"]["findings"] == []
+        assert fact["body"]["observations"] == []
+        assert fact["body"]["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+
+    def test_an_old_manifest_without_record_lint_adds_nothing(self, tmp_path):
+        _repo, fact, _result = self._consolidate(tmp_path, None)
+        assert fact["body"]["findings"] == []
+
+    def test_the_boundary_rates_every_check_at_its_table_severity(self, tmp_path):
+        _repo, fact, _result = self._consolidate(tmp_path, _lint(findings=[
+            _lint_finding("learnings-over-budget", path=".claude/rules/learnings/core.md"),
+            _lint_finding("governed-by-gap"),
+            _lint_finding("suite-total-claim", path="README.md", line=3),
+        ]))
+        severities = {f["title"].split(":")[0]: f["severity"] for f in fact["body"]["findings"]}
+        assert severities == {
+            "record-lint learnings-over-budget": "blocking",
+            "record-lint governed-by-gap": "warning",
+        }
+        [obs] = fact["body"]["observations"]
+        assert "suite-total-claim" in obs["title"]
+        assert obs["files"] == ["README.md"]
+
+    def test_the_inner_stage_keeps_only_the_inner_blocking_set(self, tmp_path):
+        """At `inner` only a missing declared deliverable (a dropped
+        requirement) stays a finding; the learnings budget rows that block at
+        the boundary, and every WARNING row, are observations."""
+        _repo, fact, _result = self._consolidate(tmp_path, _lint(findings=[
+            _lint_finding("chunk-ref-missing", path="chunk 01"),
+            _lint_finding("learnings-over-budget", path=".claude/rules/learnings/core.md"),
+            _lint_finding("governed-by-gap"),
+        ]), mode=FINAL_MODE, stage="inner")
+        assert [f["severity"] for f in fact["body"]["findings"]] == ["blocking"]
+        assert "chunk-ref-missing" in fact["body"]["findings"][0]["title"]
+        assert len(fact["body"]["observations"]) == 2
+
+    def test_a_verify_pass_carries_only_the_blocking_results(self, tmp_path):
+        """A verify pass keeps only observations that judge a named fix; a lint
+        result judges none, so below the inner BLOCKING set it is dropped —
+        the boundary review re-reads it."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-verify-lint", mode=VERIFY_MODE,
+                        stage="inner", roster=["reviewer"], record_lint=_lint(findings=[
+                            _lint_finding("chunk-ref-missing", path="chunk 01"),
+                            _lint_finding("governed-by-gap"),
+                        ]))
+        _write_partial(repo, "reviewer", head, findings=[])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[-1]
+        assert [f["severity"] for f in fact["body"]["findings"]] == ["blocking"]
+        assert fact["body"]["observations"] == []
+
+    def test_two_results_of_one_check_at_one_place_keep_both_details(self, tmp_path):
+        """Several missing deliverables on one `**Deliverables:**` line report
+        against the same chunk; titled by check and place alone they merged into
+        one finding and every detail but the first was lost, so the builder met
+        one item per round. One finding per (check, place) now lists them all."""
+        _repo, fact, _result = self._consolidate(tmp_path, _lint(findings=[
+            _lint_finding("chunk-ref-missing", path="chunk 01", line=7,
+                          detail="declared deliverable `a.py` does not exist"),
+            _lint_finding("chunk-ref-missing", path="chunk 01", line=7,
+                          detail="declared deliverable `b.py` does not exist"),
+        ]))
+        [finding] = fact["body"]["findings"]
+        assert "`a.py`" in finding["recommendation"]
+        assert "`b.py`" in finding["recommendation"]
+
+    def test_two_chunks_whose_check_could_not_run_keep_both_reasons(self, tmp_path):
+        _repo, fact, _result = self._consolidate(tmp_path, _lint(unchecked=[
+            "chunk-ref-missing unchecked — chunk 01's deliverable check did not run",
+            "chunk-ref-missing unchecked — chunk 02's deliverable check did not run",
+        ]))
+        [finding] = fact["body"]["findings"]
+        assert finding["severity"] == "blocking"
+        assert "chunk 01's" in finding["recommendation"]
+        assert "chunk 02's" in finding["recommendation"]
+
+    @pytest.mark.parametrize("entry,expected", [
+        ("chunk-ref-missing unchecked — the plan is unreadable", "blocking"),
+        ("chunk-ref-missing no-subject — no plan; the change-log declares it", None),
+        ("chunk-ref-missing graded chunk 01 of p.md: chunk 01 was inferred", None),
+        ("learnings-over-budget unchecked — git could not resolve the base", "warning"),
+        ("learnings-over-budget, learnings-budget-unreasoned unchecked — unparseable", "warning"),
+        ("governed-by-gap unchecked on p.md — unreadable", None),
+        ("unknown-reopen-target unchecked on f.md — the change log is unreadable", None),
+    ])
+    def test_an_unchecked_entry_takes_its_shape_severity(self, tmp_path, entry, expected):
+        """`unchecked` is not a pass: an entry inherits one step below its
+        check's severity, except the three `chunk-ref-missing` shapes — a check
+        that could not run blocks, while a plan-less scope and an inferred
+        subject are assumptions, never failures."""
+        _repo, fact, _result = self._consolidate(tmp_path, _lint(unchecked=[entry]))
+        findings, observations = fact["body"]["findings"], fact["body"]["observations"]
+        if expected is None:
+            assert findings == [] and len(observations) == 1
+            assert entry in observations[0]["recommendation"]
+        else:
+            assert [f["severity"] for f in findings] == [expected]
+            assert entry in findings[0]["recommendation"]
+            assert observations == []
+
+
+class TestAnAnsweredRecordLintResultIsNotReRaised:
+    """A reviewer told `prior_dispositions` would decline to re-raise an
+    accepted finding; consolidation records record-lint results itself, so it
+    has to honour the same answers or every round re-asks them.
+
+    Identity is the result itself — check, place and every detail — so a
+    materially changed result is a new one. A WARNING is answered by an
+    accept or a file. A BLOCKING result is answered only by what the gate
+    already accepts as clearing a blocker: a `waived` resolution fact. An
+    owner-ruled accept does not clear a blocker at the gate, so it does not
+    stop a re-raise either; a second, weaker route would be worse."""
+
+    def _repo(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        return repo, head
+
+    def _review(self, repo, head, review_id, lint, *, mode=CUMULATIVE_MODE, stage="boundary"):
+        _set_marker(repo)
+        _write_manifest(repo, head, id=review_id, mode=mode, stage=stage,
+                        record_lint=lint)
+        for role in ("correctness", "design", "sustainability"):
+            _write_partial(repo, role, head, findings=[])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        return next(f for f in _store_facts(repo, "review") if f["id"] == review_id)
+
+    GAP = _lint_finding("governed-by-gap", detail="data-model carries 8 norms, plan disposes 7")
+    MISSING = _lint_finding("chunk-ref-missing", path="chunk 01",
+                            detail="declared deliverable `x.py` does not exist")
+
+    def test_an_accepted_warning_is_not_re_raised(self, tmp_path):
+        repo, head = self._repo(tmp_path)
+        first = self._review(repo, head, "rev-lint-0001", _lint(findings=[self.GAP]))
+        [finding] = first["body"]["findings"]
+        assert _dispositions_mod.record(
+            repo, "rev-lint-0001", finding["fid"], _dispositions_mod.ACCEPT,
+            reason="the eighth norm is out of scope",
+        )["status"] == "recorded"
+
+        second = self._review(repo, head, "rev-lint-0002", _lint(findings=[self.GAP]))
+        assert second["body"]["findings"] == []
+        [obs] = second["body"]["observations"]
+        assert f"rev-lint-0001/{finding['fid']}" in obs["recommendation"]
+        assert "the eighth norm is out of scope" in obs["recommendation"]
+
+    def test_a_filed_warning_is_not_re_raised(self, tmp_path):
+        repo, head = self._repo(tmp_path)
+        first = self._review(repo, head, "rev-lint-0001", _lint(findings=[self.GAP]))
+        fid = first["body"]["findings"][0]["fid"]
+        assert _dispositions_mod.record(
+            repo, "rev-lint-0001", fid, _dispositions_mod.FILE, backlog_id="#42",
+        )["status"] == "recorded"
+        second = self._review(repo, head, "rev-lint-0002", _lint(findings=[self.GAP]))
+        assert second["body"]["findings"] == []
+
+    def test_an_accepted_warning_whose_line_moved_is_not_re_raised(self, tmp_path):
+        """Plans and fragments are edited all through a build, so the line a
+        result sits on moves while the result stays the same. The control is the
+        changed-detail case below: the file and details decide, the line does
+        not."""
+        repo, head = self._repo(tmp_path)
+        at_10 = {**self.GAP, "line": 10}
+        first = self._review(repo, head, "rev-lint-0001", _lint(findings=[at_10]))
+        _dispositions_mod.record(
+            repo, "rev-lint-0001", first["body"]["findings"][0]["fid"],
+            _dispositions_mod.ACCEPT, reason="out of scope",
+        )
+        at_14 = {**self.GAP, "line": 14}
+        second = self._review(repo, head, "rev-lint-0002", _lint(findings=[at_14]))
+        assert second["body"]["findings"] == []
+        other_file = {**self.GAP, "line": 10, "path": ".prawduct/artifacts/q.md"}
+        third = self._review(repo, head, "rev-lint-0003", _lint(findings=[other_file]))
+        assert [f["severity"] for f in third["body"]["findings"]] == ["warning"]
+
+    def test_a_fixed_disposition_does_not_answer_a_result_still_reported(self, tmp_path):
+        """`--fixed` says the builder fixed it; the lint reporting the identical
+        result again is the evidence it was not, so it is raised."""
+        repo, head = self._repo(tmp_path)
+        first = self._review(repo, head, "rev-lint-0001", _lint(findings=[self.GAP]))
+        assert _dispositions_mod.record(
+            repo, "rev-lint-0001", first["body"]["findings"][0]["fid"],
+            _dispositions_mod.FIXED, paths=[".prawduct/artifacts/p.md"],
+        )["status"] == "recorded"
+        second = self._review(repo, head, "rev-lint-0002", _lint(findings=[self.GAP]))
+        assert [f["severity"] for f in second["body"]["findings"]] == ["warning"]
+
+    def test_an_answer_under_another_scope_suppresses_nothing(self, tmp_path):
+        """The evidence store is shared by every branch of a clone. An accept
+        recorded for one unit of work must not silence the same result in
+        another; the control is the same accept under the same scope."""
+        repo, head = self._repo(tmp_path)
+
+        def review(review_id, scope):
+            _set_marker(repo)
+            _write_manifest(repo, head, id=review_id, mode=CUMULATIVE_MODE,
+                            stage="boundary", record_lint=_lint(findings=[self.GAP]),
+                            scope=scope)
+            for role in ("correctness", "design", "sustainability"):
+                _write_partial(repo, role, head, findings=[])
+            result = _run_consolidate(repo)
+            assert result.returncode == 0, f"stderr={result.stderr!r}"
+            return next(f for f in _store_facts(repo, "review") if f["id"] == review_id)
+
+        first = review("rev-lint-0001", "unit-a")
+        _dispositions_mod.record(
+            repo, "rev-lint-0001", first["body"]["findings"][0]["fid"],
+            _dispositions_mod.ACCEPT, reason="out of scope for unit-a",
+        )
+        other = review("rev-lint-0002", "unit-b")
+        assert [f["severity"] for f in other["body"]["findings"]] == ["warning"]
+        same = review("rev-lint-0003", "unit-a")
+        assert same["body"]["findings"] == []
+
+    def test_a_changed_detail_is_a_new_result(self, tmp_path):
+        repo, head = self._repo(tmp_path)
+        first = self._review(repo, head, "rev-lint-0001", _lint(findings=[self.GAP]))
+        _dispositions_mod.record(
+            repo, "rev-lint-0001", first["body"]["findings"][0]["fid"],
+            _dispositions_mod.ACCEPT, reason="out of scope",
+        )
+        changed = {**self.GAP, "detail": "data-model carries 9 norms, plan disposes 7"}
+        second = self._review(repo, head, "rev-lint-0002", _lint(findings=[changed]))
+        assert [f["severity"] for f in second["body"]["findings"]] == ["warning"]
+
+    def test_a_blocker_accepted_under_an_owner_ruling_still_blocks(self, tmp_path):
+        """An owner-ruled accept is a disposition, and no disposition clears a
+        blocker at the gate (`coverage_algebra` reads resolution facts), so the
+        next review re-raises the result rather than inventing a weaker way."""
+        repo, head = self._repo(tmp_path)
+        first = self._review(repo, head, "rev-lint-0001", _lint(findings=[self.MISSING]))
+        fid = first["body"]["findings"][0]["fid"]
+        assert _dispositions_mod.record(
+            repo, "rev-lint-0001", fid, _dispositions_mod.ACCEPT,
+            reason="built elsewhere", owner_ruling="owner, 2026-11-10",
+        )["status"] == "recorded"
+        second = self._review(repo, head, "rev-lint-0002", _lint(findings=[self.MISSING]))
+        assert [f["severity"] for f in second["body"]["findings"]] == ["blocking"]
+        assert ca_mod.unresolved_blocking(second, set())
+
+    def test_a_blocker_waived_by_a_resolution_does_not_re_block(self, tmp_path):
+        """A `waived` resolution is what the gate accepts as clearing a blocker,
+        so an identical result after one is carried as an observation naming it."""
+        repo, head = self._repo(tmp_path)
+        first = self._review(repo, head, "rev-lint-0001", _lint(findings=[self.MISSING]))
+        fid = first["body"]["findings"][0]["fid"]
+        evidence.append_fact(repo, "resolution", f"rev-verify-0001:rev-lint-0001:{fid}", {
+            "finding": {"review_id": "rev-lint-0001", "fid": fid},
+            "disposition": "waived", "verified_by": "rev-verify-0001",
+            "at_tree": "headtree000000000000", "rationale": "owner ruled it out",
+        })
+        second = self._review(repo, head, "rev-lint-0002", _lint(findings=[self.MISSING]))
+        assert second["body"]["findings"] == []
+        [obs] = second["body"]["observations"]
+        assert f"rev-lint-0001/{fid}" in obs["recommendation"]
+
+    def test_a_reviewer_finding_with_the_same_title_answers_nothing(self, tmp_path):
+        """Only a result consolidation itself recorded can answer a later one —
+        a reviewer naming a finding like a lint result must not suppress it."""
+        repo, head = self._repo(tmp_path)
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-lint-0001", mode=CUMULATIVE_MODE,
+                        stage="boundary", record_lint=_lint())
+        _write_partial(repo, "correctness", head, findings=[{
+            "name": f"record-lint governed-by-gap: {self.GAP['path']}",
+            "goal": cc.RECORD_LINT_GOAL, "severity": "warning",
+            "recommendation": self.GAP["detail"], "files": [self.GAP["path"]],
+        }])
+        _write_partial(repo, "design", head, findings=[])
+        _write_partial(repo, "sustainability", head, findings=[])
+        assert _run_consolidate(repo).returncode == 0
+        _dispositions_mod.record(repo, "rev-lint-0001", "R-1", _dispositions_mod.ACCEPT,
+                                 reason="spoof")
+        second = self._review(repo, head, "rev-lint-0002", _lint(findings=[self.GAP]))
+        assert [f["severity"] for f in second["body"]["findings"]] == ["warning"]
 
 
 #: Every value a new manifest may write as ``scope_chosen_by``: the dispatch's
@@ -6574,7 +7892,7 @@ class TestScopeAttribution:
         the pointer — that read is where the misattribution enters.
         """
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = self._manifest(repo)
         assert manifest["scope"] == "mine"
@@ -6585,7 +7903,7 @@ class TestScopeAttribution:
 
     def test_an_explicit_scope_still_wins(self, tmp_path):
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01", "--scope", "other")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "01", "--scope", "other")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = self._manifest(repo)
         assert manifest["scope"] == "other"
@@ -6603,7 +7921,7 @@ class TestScopeAttribution:
         did, which is the thing record-lint exists to refuse.
         """
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "record-lint graded chunk 01 of" in result.stdout
         assert "build-plan-mine.md" in result.stdout
@@ -6640,7 +7958,7 @@ class TestScopeAttribution:
         The control is the claimed branch, whose scope reaches every record.
         """
         repo = self._repo_with_scoped_plan(tmp_path, "fix/unrelated-name")
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = self._manifest(repo)
         assert manifest["scope"] is None
@@ -6671,7 +7989,7 @@ class TestScopeAttribution:
         """The control for the #1049 shape: the same fixture on the branch
         `mine` claims puts `mine` on the manifest, the fact and the event."""
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = self._manifest(repo)
         _write_partial(repo, "reviewer", manifest["commit_reviewed"])
@@ -7106,7 +8424,7 @@ class TestDeterministicCycleEndToEnd:
             {
                 "name": "A clean review's census renders a truncated sentence",
                 "goal": "Nothing Is Broken",
-                "severity": "note",
+                "severity": "warning",
                 "recommendation": "guard the summary clause",
                 "files": ["src/app.py"],
             }
@@ -7120,7 +8438,7 @@ class TestDeterministicCycleEndToEnd:
                 {
                     "name": "A clean review renders a malformed census summary line",
                     "goal": "The Design Is Sound",
-                    "severity": "note",
+                    "severity": "warning",
                     "recommendation": "guard the summary clause",
                     "files": ["src/app.py"],
                 }
@@ -7133,7 +8451,7 @@ class TestDeterministicCycleEndToEnd:
         # Both findings are kept — advisory detection never drops one.
         fact = _store_facts(repo, "review")[0]
         assert len(fact["body"]["findings"]) == 2
-        assert fact["body"]["counts"]["note"] == 2
+        assert fact["body"]["counts"]["warning"] == 2
         # ...and the count is reported alongside an honest distinct count.
         assert "~1 distinct" in result.stdout
         assert "likely-duplicate group(s): R-1+R-2" in result.stdout
@@ -7899,6 +9217,338 @@ class TestCarriedBlockersReachTheirReaders:
         assert "NOT DONE" not in result.stdout
 
 
+class TestAnEarlierRoundsBlockerIsNamedAgain:
+    """#334, the write side. A blocker left on round 1 of a branch, with a
+    clean round 2 after it: the verify pass anchors to round 2, so the roll-call
+    and the `NOT DONE` line named only round 2's blockers — none — and the gate
+    routed round 1's to a whole spanning `cumulative`. The roll-call now names
+    every blocker the gate still counts at the anchor's tree, so a `fixed`
+    resolution for round 1's finding clears it with no further round.
+
+    A real feature branch — the ordinary PR shape — and real trees, so the
+    roll-call and the gate compose over the same facts.
+    """
+
+    FIRST = "rev-first-0001"
+    SECOND = "rev-second-0002"
+
+    def _two_rounds(self, repo: Path) -> "tuple[str, str]":
+        """Round 1 at the branch's first commit with one blocker; round 2,
+        clean, at its second. Returns (second commit, its tree)."""
+        _init_repo(repo)
+        _commit_file(repo, ".gitignore", ".prawduct/\n", "ignore review bookkeeping")
+        merge_base_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _git(repo, "checkout", "--quiet", "-b", "feature")
+        rounds = (
+            (self.FIRST, "src/app.py", {"correctness": [
+                {"name": "One round back", "goal": "Nothing Is Broken",
+                 "severity": "blocking", "recommendation": "fix",
+                 "files": ["src/app.py"]},
+            ]}),
+            (self.SECOND, "src/more.py", {}),
+        )
+        base_tree = merge_base_tree
+        for rid, path, findings in rounds:
+            head = _commit_file(repo, path, "v = 1\n", f"feat: {path}")
+            tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+            _set_marker(repo)
+            _write_manifest(
+                repo, head, id=rid, base_tree=base_tree, head_tree=tree,
+                head_commit=head, files_changed=[path], files_reviewed=[path],
+            )
+            _full_roster_partials(repo, head, findings_by_role=findings)
+            assert _run_consolidate(repo).returncode == 0, rid
+            base_tree = tree
+        return head, base_tree
+
+    def test_the_gate_routes_it_to_verify_resolutions(self, tmp_path, capsys):
+        """Acceptance: no "no verify-resolutions pass will name again" for a
+        blocker inside the branch set — that is no longer true of it."""
+        repo = tmp_path / "r"
+        self._two_rounds(repo)
+
+        rc = gates.check_cumulative_critic(repo)
+        err = capsys.readouterr().err
+
+        assert rc == 1, "a superseded blocker still blocks"
+        assert f"{self.FIRST}/R-1" in err
+        assert "name again" not in err, err
+        assert "its roll-call names these" in err, err
+        assert "/prawduct:critic cumulative" not in err, err
+
+    def test_the_verify_roll_call_names_it(self, tmp_path):
+        repo = tmp_path / "r"
+        self._two_rounds(repo)
+        (repo / "src/more.py").write_text("v = 2  # a fix in flight\n")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "must come back with a verdict" in result.stdout
+        assert f"{self.FIRST}/R-1" in result.stdout
+
+    def test_with_nothing_changed_the_pass_is_still_dispatched(self, tmp_path):
+        """The anchor is clean and the tree has not moved, which read as
+        "nothing to verify" (exit 3) — refusing the one pass that can clear the
+        blocker the gate now routes to it."""
+        repo = tmp_path / "r"
+        self._two_rounds(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert f"{self.FIRST}/R-1" in result.stdout
+
+    def _verify(self, repo: Path, head: str, tree: str, resolutions: list) -> subprocess.CompletedProcess:
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-verify-0003", mode=VERIFY_MODE, roster=["reviewer"],
+            base_tree=tree, head_tree=tree, head_commit=head,
+        )
+        _write_partial(repo, "reviewer", head, resolutions=resolutions)
+        return _run_consolidate(repo)
+
+    def test_a_fixed_resolution_clears_it_with_no_cumulative(self, tmp_path, capsys):
+        repo = tmp_path / "r"
+        head, tree = self._two_rounds(repo)
+
+        result = self._verify(repo, head, tree, [
+            {"review_id": self.FIRST, "fid": "R-1", "disposition": "fixed"},
+        ])
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "NOT DONE" not in result.stdout
+        facts = _store_facts(repo)
+        first = next(f for f in facts if f.get("id") == self.FIRST)
+        assert ca_mod.unresolved_blocking(first, ca_mod.resolution_index(facts)) == []
+        rc = gates.check_cumulative_critic(repo)
+        out = capsys.readouterr()
+        assert rc == 0, out.err
+        assert "satisfied" in out.out
+
+    def test_a_pass_that_skips_it_is_not_done(self, tmp_path):
+        """The control: the consolidation side of the same set. Naming nothing
+        must not read as the review being over."""
+        repo = tmp_path / "r"
+        head, tree = self._two_rounds(repo)
+
+        result = self._verify(repo, head, tree, [])
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "NOT DONE" in result.stdout
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        assert f"{self.FIRST}/R-1" in record["next_action"]
+
+
+class TestABlockerTheGateRoutedAroundIsNotOpen:
+    """The Chunk 04 fix round (R-3/R-6): ONE predicate for "open blocker".
+
+    Round 1 left a blocker with no resolution fact; round 2 is clean; then a
+    clean `cumulative` spans the whole branch (merge base → round 2's tree).
+    The gate composes over that spanning edge, never stands at round 1's tree,
+    and passes. Every surface that reports open blockers must agree with it —
+    the set-based reading ("no resolution fact = open") put round 1's blocker
+    in the verify roll-call, counted it actionable so `no-review-needed` was
+    suppressed and a round manufactured, wrote a NOT DONE the gate contradicts,
+    and reported it open in the session briefing and the bare census.
+
+    Each test carries its control: the same surface with the cumulative absent
+    still names round 1's blocker (`TestAnEarlierRoundsBlockerIsNamedAgain`
+    pins the rest of that side), so a surface that went quiet for an unrelated
+    reason cannot pass here.
+    """
+
+    FIRST = TestAnEarlierRoundsBlockerIsNamedAgain.FIRST
+    SECOND = TestAnEarlierRoundsBlockerIsNamedAgain.SECOND
+    SPANNING = "rev-spanning-0003"
+
+    def _two_rounds(self, repo: Path) -> "tuple[str, str]":
+        return TestAnEarlierRoundsBlockerIsNamedAgain._two_rounds(self, repo)
+
+    def _spanned(self, repo: Path) -> "tuple[str, str]":
+        """The two rounds, then a clean `cumulative` over the whole branch.
+        Returns (head commit, its tree)."""
+        head, tree = self._two_rounds(repo)
+        resolved = coverage.resolve_merge_base_tree(repo)
+        assert resolved["status"] == "ok", resolved
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id=self.SPANNING, mode=CUMULATIVE_VERBOSE,
+            base_commit=resolved["merge_base"], base_tree=resolved["tree"],
+            head_tree=tree, head_commit=head,
+            files_changed=["src/app.py", "src/more.py"],
+            files_reviewed=["src/app.py", "src/more.py"],
+        )
+        _full_roster_partials(repo, head, findings_by_role={})
+        assert _run_consolidate(repo).returncode == 0
+        return head, tree
+
+    def test_the_premise_round_ones_blocker_has_no_resolution_and_the_gate_passes(
+        self, tmp_path, capsys
+    ):
+        repo = tmp_path / "r"
+        self._spanned(repo)
+        facts = _store_facts(repo)
+        first = next(f for f in facts if f.get("id") == self.FIRST)
+        assert ca_mod.unresolved_blocking(first, ca_mod.resolution_index(facts)), (
+            "premise: no resolution fact lifted round 1's blocker"
+        )
+        assert gates.check_cumulative_critic(repo) == 0, capsys.readouterr().err
+
+    def test_no_verify_round_is_manufactured(self, tmp_path):
+        """`begin_review`'s actionable count: nothing changed, nothing the gate
+        counts → no-review-needed (exit 3), not a dispatched round."""
+        repo = tmp_path / "r"
+        self._spanned(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 3, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert self.FIRST not in result.stdout
+
+    def test_a_verify_pass_carries_nothing_and_is_not_told_not_done(self, tmp_path):
+        repo = tmp_path / "r"
+        head, tree = self._spanned(repo)
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-verify-0004", mode=VERIFY_MODE, roster=["reviewer"],
+            base_tree=tree, head_tree=tree, head_commit=head,
+        )
+        _write_partial(repo, "reviewer", head, resolutions=[])
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "NOT DONE" not in result.stdout
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        assert f"{self.FIRST}/R-1" not in record["next_action"]
+        # The dispatch roll-call and the derived record ask the same adapter.
+        facts = _store_facts(repo)
+        assert cc.gate_counted_blockers(repo, facts, tree) == []
+        verify = next(f for f in facts if f.get("id") == "rev-verify-0004")
+        assert f"{self.FIRST}/R-1" not in cc.branch_review_record(
+            repo / ".prawduct", verify, facts
+        )["next_action"]
+
+    def test_the_control_without_the_spanning_review_still_carries_it(self, tmp_path):
+        repo = tmp_path / "r"
+        _, tree = self._two_rounds(repo)
+
+        counted = cc.gate_counted_blockers(repo, _store_facts(repo), tree)
+
+        assert [(c["review_id"], c["fid"]) for c in counted] == [(self.FIRST, "R-1")]
+
+    def _briefing_line(self, repo: Path) -> str:
+        from lib import briefing  # noqa: PLC0415
+
+        return briefing._branch_findings_line(repo, lambda: evidence.read_facts(repo))
+
+    def test_the_briefing_labels_its_fact_count_and_names_the_gate(self, tmp_path):
+        """Renegotiated at integration: the briefing does NOT compose the gate's
+        answer (a cold verdict memo measured ~75s at SessionStart), so a blocker
+        a spanning review routed around still counts there. What it owes is to
+        say what it counted and where the gate's answer is, so the line never
+        reads as the gate's verdict. The census and the roll-call keep the
+        gate's answer (the tests above)."""
+        spanned, control = tmp_path / "s", tmp_path / "c"
+        self._spanned(spanned)
+        self._two_rounds(control)
+
+        for repo in (spanned, control):
+            line = self._briefing_line(repo)
+            assert ": 1 open blocking with no resolution fact" in line, line
+            assert "`prawduct-hook check-cumulative-critic` gives the gate's count" in line, line
+
+    def _census(self, repo: Path) -> dict:
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "render-dispositions", "--json"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)["summary"]
+
+    def test_the_bare_census_reports_zero_open_blocking(self, tmp_path):
+        spanned, control = tmp_path / "s", tmp_path / "c"
+        self._spanned(spanned)
+        self._two_rounds(control)
+
+        summary = self._census(spanned)
+        assert summary["open_blocking"] == 0, summary
+        assert summary["open_blocking_basis"] == "gate"
+        assert self._census(control)["open_blocking"] == 1
+
+
+class TestTheEmptySpanFallbackIsBounded:
+    """R-2: with no commits in `merge_base..HEAD` (trunk after a push, a branch
+    cut and not yet committed to), the branch set fell back to EVERY review
+    this worktree ever recorded — all scopes, all branches, all time. An old
+    blocker from earlier, integrated work then reached the census, the
+    handoff and (through them) the builder as open debt. The owner now bounds
+    the fallback: by the scope when one is asked (the budget), else by the
+    chain of reviews linked to HEAD's tree."""
+
+    def _trunk_with_history(self, tmp_path: Path) -> "tuple[Path, str]":
+        repo, head = _trunk_repo(tmp_path)
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        # Earlier work, recorded from THIS worktree under another scope, at
+        # trees HEAD's tree never links to — with a blocker nobody resolved.
+        evidence.append_fact(
+            repo, "review", "rev-old-blocked",
+            {"base_tree": "a" * 40, "head_tree": "b" * 40, "mode": CUMULATIVE_VERBOSE,
+             "head_commit": head, "scope": "old-scope",
+             "findings": [{"fid": "R-1", "severity": "blocking", "title": "old",
+                           "goal": "Nothing Is Broken", "files": ["src/app.py"]}]},
+        )
+        # The work in flight: a dirty-tree review started from HEAD's tree.
+        (repo / "src" / "app.py").write_text("x = 2\n")
+        dirty = evidence.capture_tree(repo)["tree"]
+        evidence.append_fact(
+            repo, "review", "rev-now",
+            {"base_tree": head_tree, "head_tree": dirty, "mode": cc.MODE_TOKEN_TO_VERBOSE["chunk"],
+             "head_commit": None, "dispatch_commit": head, "scope": "now-scope",
+             "files_changed": ["src/app.py"], "files_reviewed": ["src/app.py"],
+             "findings": []},
+        )
+        return repo, head
+
+    def test_the_branch_set_excludes_unlinked_history(self, tmp_path):
+        repo, _ = self._trunk_with_history(tmp_path)
+        facts = evidence.read_facts(repo)["facts"]
+
+        assert coverage.branch_review_ids(repo, facts) == {
+            "status": "ok", "review_ids": ["rev-now"], "bound": cc.BOUND_WORKTREE,
+        }
+
+    def test_no_consumer_sees_the_old_blocker(self, tmp_path):
+        repo, _ = self._trunk_with_history(tmp_path)
+        from lib import briefing  # noqa: PLC0415
+
+        line = briefing._branch_findings_line(repo, lambda: evidence.read_facts(repo))
+        assert line is not None and "1 review round(s)" in line, line
+        assert ": 0 open blocking," in line, line
+
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "render-dispositions", "--json"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        report = json.loads(result.stdout)
+        assert [r["review_id"] for r in report["reviews"]] == ["rev-now"]
+        assert report["summary"]["open_blocking"] == 0
+
+    def test_the_budget_still_counts_its_scope_in_this_worktree(self, tmp_path):
+        """The scope bound is the budget's: its rounds count whatever tree they
+        stood at (the trunk-shape pins depend on it)."""
+        repo, _ = self._trunk_with_history(tmp_path)
+        facts = evidence.read_facts(repo)["facts"]
+
+        assert coverage.branch_review_ids(repo, facts, scope="old-scope")["review_ids"] == [
+            "rev-old-blocked"
+        ]
+
+
 class TestWideningBoundCountsTheCostSubset:
     """The scope-widening threshold counts the COST subset on both sides, and
     the prior side must be re-narrowed even though it is already a subject set.
@@ -8224,6 +9874,48 @@ class TestRoundBudgetOnTheTrunkShape:
         assert cc._round_budget_verdict(
             branch, branch / ".prawduct", "budgeted"
         )["bound"] == cc.BOUND_LINEAGE
+
+    def test_the_budget_narrows_the_branch_set_by_scope_on_both_bounds(self, tmp_path):
+        """The extraction's refactor guard (#334). `coverage.branch_review_ids`
+        is the set; the budget's `review_ids` are exactly its answer for the
+        budget's scope, in order, under each bound — so the census and this
+        refusal cannot disagree about which reviews are this branch's.
+
+        Renegotiated in the Chunk 04 fix round (R-2). The scope is now passed
+        INTO the owner, because on the worktree bound it is the bound: without
+        one, the fallback is the chain linked to HEAD's tree, and these
+        fixtures' fake trees link to nothing — so the unscoped worktree set is
+        empty here, where it used to be every review this worktree recorded.
+        The lineage bound's unscoped set is unchanged."""
+        trunk, head = _trunk_repo(tmp_path, budget="9")
+        sibling = tmp_path / "sibling"
+        _git(trunk, "worktree", "add", "--quiet", "-b", "other", str(sibling))
+        _seed_round(trunk, "rev-t-in", head, "budgeted")
+        _seed_round(trunk, "rev-t-other-scope", head, "elsewhere")
+        _seed_round(sibling, "rev-t-sibling", head, "budgeted")
+        _seed_round(trunk, "rev-t-in-2", head, "budgeted")
+
+        branch, bhead = _budget_repo(tmp_path / "b", 0, budget="9")
+        _seed_round(branch, "rev-b-in", bhead, "budgeted")
+        _seed_round(branch, "rev-b-other-scope", bhead, "elsewhere")
+        _seed_round(branch, "rev-b-off-lineage", "f" * 40, "budgeted")
+        _seed_round(branch, "rev-b-in-2", bhead, "budgeted")
+
+        for repo, bound, branch_set, in_scope in (
+            (trunk, cc.BOUND_WORKTREE, [], ["rev-t-in", "rev-t-in-2"]),
+            (branch, cc.BOUND_LINEAGE,
+             ["rev-b-in", "rev-b-other-scope", "rev-b-in-2"], ["rev-b-in", "rev-b-in-2"]),
+        ):
+            facts = evidence.read_facts(repo)["facts"]
+            assert coverage.branch_review_ids(repo, facts) == {
+                "status": "ok", "review_ids": branch_set, "bound": bound,
+            }
+            assert coverage.branch_review_ids(repo, facts, scope="budgeted") == {
+                "status": "ok", "review_ids": in_scope, "bound": bound,
+            }
+            verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+            assert verdict["review_ids"] == in_scope, verdict
+            assert verdict["bound"] == bound and verdict["spent"] == 2, verdict
 
     def test_critic_begin_actually_refuses_on_a_trunk_repo(self, tmp_path):
         """The gate, not the count.
@@ -8596,7 +10288,7 @@ class TestTheCostLeadReachesBothCarriers:
                 "body": {"counts": {"blocking": 0, "warning": 2, "note": 1},
                          "findings": [], "roster": [{"model": "m"}]}}
         lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
-        record = cc.fact_to_cache_record(fact, None, None, None, lead)
+        record = cc.fact_to_cache_record(fact, None, None, None, lead, store=_NO_FACTS)
         assert record["next_action"].startswith(lead), (
             "`.critic-findings.json` is the carrier that HAS a reader in the "
             "builder role — dropping the lead here guts Chunk 01 on the "
@@ -8617,7 +10309,7 @@ class TestTheCostLeadReachesBothCarriers:
                 "body": {"counts": {"blocking": 0, "warning": 1, "note": 0},
                          "findings": [], "roster": [{"model": "m"}]}}
         lead = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []})
-        persisted = cc.fact_to_cache_record(fact, None, None, None, lead)["next_action"]
+        persisted = cc.fact_to_cache_record(fact, None, None, None, lead, store=_NO_FACTS)["next_action"]
         assert "At review time" in persisted
         assert "Re-derive with `prawduct-hook cost-of-commit`" in persisted
         for present_tense in ("You are ALREADY", "You are NOT currently",
@@ -8640,8 +10332,10 @@ class TestTheCostLeadReachesBothCarriers:
         import ast  # noqa: PLC0415
 
         src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        # `_consolidate` holds the body; `consolidate` wraps it to report a
+        # moved HEAD on every exit.
         fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef) and n.name == "consolidate")
+                  if isinstance(n, ast.FunctionDef) and n.name == "_consolidate")
         calls = [c for c in ast.walk(fn) if isinstance(c, ast.Call)]
 
         def _name(call):
@@ -8656,17 +10350,328 @@ class TestTheCostLeadReachesBothCarriers:
             "commit_cost must be asked about the WORKING TREE (one arg); passing "
             "paths answers what fixing THOSE would cost, a different question"
         )
-        for carrier in ("fact_to_cache_record", "next_action_line"):
-            hits = [c for c in calls if _name(c) == carrier]
-            assert hits, f"consolidate no longer calls {carrier}"
-            assert any(
-                any(isinstance(a, ast.Name) and a.id == "cost_sentence" for a in c.args)
-                or any(k.arg == "cost" for k in c.keywords)
-                for c in hits
-            ), (
-                f"{carrier} no longer receives the cost lead — the two carriers of "
-                f"one sentence would disagree, and nothing else would go red"
+        hits = [c for c in calls if _name(c) == "fact_to_cache_record"]
+        assert hits, "consolidate no longer calls fact_to_cache_record"
+        assert any(
+            any(isinstance(a, ast.Name) and a.id == "cost_sentence" for a in c.args)
+            or any(k.arg == "cost" for k in c.keywords)
+            for c in hits
+        ), "fact_to_cache_record no longer receives the cost lead"
+        # The printed carrier is the record's own sentence, so the two cannot
+        # disagree by construction (the review-round-cost Critic, R-3/R-5: a
+        # second render that took its inputs separately is how the waivers went
+        # missing from one carrier). Contract renegotiated from "both calls
+        # receive the lead" to "there is one render, and the print relays it".
+        assert not [c for c in calls if _name(c) == "next_action_line"], (
+            "consolidate renders the NEXT-ACTION sentence a second time — the "
+            "printed line and the cache record can then disagree"
+        )
+        relayed = [
+            c for c in calls if _name(c) == "print"
+            and any(
+                isinstance(s, ast.Subscript)
+                and isinstance(s.value, ast.Name) and s.value.id == "record"
+                and isinstance(s.slice, ast.Constant) and s.slice.value == "next_action"
+                for a in c.args for s in ast.walk(a)
             )
+        ]
+        assert relayed, "the printed NEXT-ACTION line is not the record's `next_action`"
+
+
+_ROUND_BLOCKER = {"name": "Broken invariant", "goal": "Nothing Is Broken",
+                  "severity": "blocking", "recommendation": "Fix it"}
+
+
+class TestRoundTallyReachesTheBuilder:
+    """#815: the branch's round count rides `next_action`, where the builder
+    decides whether to buy the next round — not only the coverage gate, which
+    the builder meets after the round is bought.
+
+    The count is `count_branch_rounds` over the store consolidation re-reads
+    after appending this review, so it INCLUDES the review just consolidated:
+    after a branch's second round the clause says "recorded 2 review rounds"
+    and asks what round 3 will do differently. That is the issue's Decided
+    threshold ("the note first appears as round 3 is being decided"), and it
+    is the number the coverage gate prints for the same branch a moment later
+    — a count that excluded the current review would say "round 3" about a
+    round already spent, and disagree with the gate by one.
+    """
+
+    def _consolidate(self, repo, head, findings, capsys, **manifest):
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-tally-0001", roster=["reviewer"], **manifest)
+        _write_partial(repo, "reviewer", head, findings=findings)
+        assert cc.consolidate(repo, trigger="explicit") == 0
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        relayed = [ln for ln in capsys.readouterr().out.splitlines()
+                   if ln.startswith("NEXT-ACTION: ")]
+        return record, relayed
+
+    @pytest.mark.parametrize("prior", [1, 2])
+    def test_a_branch_past_its_first_round_names_the_next_one(self, tmp_path, capsys, prior):
+        repo, head = _budget_repo(tmp_path, prior)
+        record, relayed = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
+        recorded = prior + 1
+        line = record["next_action"]
+        assert line.startswith("1 BLOCKING finding(s) gate this work."), line
+        assert f"recorded {recorded} review rounds since the merge-base" in line, line
+        assert f"name what round {recorded + 1} will do differently before you spend it" in line
+        # The two carriers of one sentence are byte-identical.
+        assert relayed == ["NEXT-ACTION: " + line]
+
+    def test_a_branchs_first_round_carries_no_tally(self, tmp_path, capsys):
+        """Round 1 → 2 is the ordinary verify of a first review; a note on
+        every consolidation trains the reader to skip it."""
+        repo, head = _budget_repo(tmp_path, 0)
+        record, _ = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
+        assert record["next_action"].startswith("1 BLOCKING finding(s)")
+        assert "review rounds since the merge-base" not in record["next_action"]
+        assert "Round count unavailable" not in record["next_action"]
+
+    def test_the_trunk_shape_carries_no_tally(self, tmp_path, capsys):
+        """An empty span attributes no round to anything — absent by property,
+        however many reviews the store holds at HEAD."""
+        repo, head = _trunk_repo(tmp_path)
+        for i in range(3):
+            _seed_round(repo, f"rev-trunk-{i}", head, "budgeted")
+        resolved = coverage.resolve_merge_base_tree(repo)
+        assert coverage.count_branch_rounds(
+            repo, [], resolved["merge_base"])["span_commits"] == 0, "premise: empty span"
+        record, _ = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
+        assert record["next_action"].startswith("1 BLOCKING finding(s)")
+        assert "review round" not in record["next_action"]
+        assert "Round count unavailable" not in record["next_action"]
+
+    def test_an_underivable_count_says_so(self, tmp_path, capsys, monkeypatch):
+        """Advice fails soft, not silent: a vanished tally reads as round one."""
+        repo, head = _budget_repo(tmp_path, 3)
+        monkeypatch.setattr(
+            coverage, "resolve_merge_base_tree",
+            lambda _p: {"status": "error", "step": "resolve-base",
+                        "reason": "no base branch (injected)"},
+        )
+        record, relayed = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
+        assert record["next_action"].endswith(
+            " Round count unavailable (no base branch (injected))."
+        ), record["next_action"]
+        assert relayed == ["NEXT-ACTION: " + record["next_action"]]
+
+    def test_a_verify_resolutions_close_carries_the_tally(self, tmp_path, capsys):
+        """The path #716 observed: verify rounds were never shown a count."""
+        repo, head = _budget_repo(tmp_path, 0)
+        prior_id = _seed_prior_review_with_blocker(repo, head)  # round 1, on the branch
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+                        roster=["reviewer"])
+        _write_partial(repo, "reviewer", head, findings=[_ROUND_BLOCKER], resolutions=[
+            {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"}
+        ])
+        assert cc.consolidate(repo, trigger="explicit") == 0
+        line = json.loads((repo / FINDINGS_REL).read_text())["next_action"]
+        assert line.startswith("1 BLOCKING finding(s) gate this work."), line
+        assert "recorded 2 review rounds since the merge-base" in line
+        assert "name what round 3 will do differently before you spend it" in line
+        # The note sits after the remedy that names the verify pass, so it
+        # never reads as making that pass optional.
+        assert line.index("verify-resolutions") < line.index("recorded 2 review rounds")
+
+    def test_the_lineage_walk_is_paid_once_per_consolidation(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        repo, head = _budget_repo(tmp_path, 2)
+        real = coverage.count_branch_rounds
+        calls = []
+
+        def counted(*args, **kwargs):
+            calls.append(args)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(coverage, "count_branch_rounds", counted)
+        record, _ = self._consolidate(repo, head, [_ROUND_BLOCKER], capsys)
+        assert "recorded 3 review rounds" in record["next_action"]
+        assert len(calls) == 1
+
+    def test_a_verify_consolidation_walks_the_lineage_once_too(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """The whole consolidation, on the close that also composes the carried
+        blockers (the native review's finding (b)): the carried blockers'
+        composition and the rounds clause share ONE merge-base resolution and
+        ONE lineage walk. A carried blocker is in play (the prior's R-1 is left
+        unresolved), so the composition really runs."""
+        repo, head = _budget_repo(tmp_path, 0)
+        base_tree = coverage.resolve_merge_base_tree(repo)["tree"]
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        # Real trees, so the carried blockers' composition has a path to walk.
+        _seed_prior_review_with_blocker(
+            repo, head, base_tree=base_tree, head_tree=head_tree, head_commit=head,
+        )
+        walks, resolutions = [], []
+        real_count, real_resolve = coverage.count_branch_rounds, coverage.resolve_merge_base_tree
+        monkeypatch.setattr(
+            coverage, "count_branch_rounds",
+            lambda *a, **k: walks.append(a) or real_count(*a, **k),
+        )
+        monkeypatch.setattr(
+            coverage, "resolve_merge_base_tree",
+            lambda *a, **k: resolutions.append(a) or real_resolve(*a, **k),
+        )
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+                        roster=["reviewer"], base_tree=head_tree, head_tree=head_tree,
+                        head_commit=head)
+        _write_partial(repo, "reviewer", head, findings=[], resolutions=[])
+        assert cc.consolidate(repo, trigger="explicit") == 0
+        line = json.loads((repo / FINDINGS_REL).read_text())["next_action"]
+        assert "NOT DONE" in line, "premise: the composition carried the prior's blocker"
+        assert len(walks) == 1, walks
+        assert len(resolutions) == 1, resolutions
+
+
+class TestBranchRoundsClause:
+    """`coverage.branch_rounds_clause` — the renderer, and the arms of
+    `next_action_line` that carry it."""
+
+    @staticmethod
+    def _tally(rounds, span=3, measured=None):
+        return {
+            "status": "counted", "rounds": rounds, "span_commits": span,
+            "measured": {"rounds": 1 if measured else 0, "seconds": measured},
+            "estimated": {"rounds": 0, "seconds": None}, "reviews": [],
+        }
+
+    def test_below_two_rounds_it_is_empty(self):
+        assert coverage.branch_rounds_clause(self._tally(0)) == ""
+        assert coverage.branch_rounds_clause(self._tally(1)) == ""
+
+    def test_an_empty_span_is_empty(self):
+        assert coverage.branch_rounds_clause(self._tally(0, span=0)) == ""
+        # Keyed on the span, not only the count: no round can be attributed.
+        assert coverage.branch_rounds_clause(self._tally(4, span=0)) == ""
+
+    def test_two_rounds_render_the_challenge(self):
+        assert coverage.branch_rounds_clause(self._tally(2)) == (
+            " This branch has recorded 2 review rounds since the merge-base; name "
+            "what round 3 will do differently before you spend it."
+        )
+
+    def test_the_spend_is_the_gates_own_clause(self):
+        tally = self._tally(2, measured=600.0)
+        clause = coverage.branch_rounds_clause(tally)
+        assert coverage._format_branch_spend(tally, 2) in clause
+        assert "dispatch clock" in clause
+
+    def test_unavailable_says_so(self):
+        assert coverage.branch_rounds_clause(
+            {"status": "unavailable", "reason": "no merge-base to count from"}
+        ) == " Round count unavailable (no merge-base to count from)."
+        assert coverage.branch_rounds_clause(None) == " Round count unavailable (unknown)."
+
+    CLAUSE = " This branch has recorded 2 review rounds — CLAUSE."
+
+    def test_the_blocking_arm_ends_on_it(self):
+        line = cc.next_action_line("rev-x", 1, 0, 0, "PRICE.", rounds_clause=self.CLAUSE)
+        assert line.endswith("PRICE." + self.CLAUSE)
+
+    def test_the_fix_tail_carries_it(self):
+        line = cc.next_action_line("rev-x", 0, 2, 0, "PRICE.", rounds_clause=self.CLAUSE)
+        assert line.endswith("PRICE." + self.CLAUSE)
+        obs = cc.next_action_line("rev-x", 0, 0, 0, None, observations=2,
+                                  rounds_clause=self.CLAUSE)
+        assert obs.endswith(self.CLAUSE)
+
+    def test_a_clean_close_does_not(self):
+        line = cc.next_action_line("rev-x", 0, 0, 0, "PRICE.", rounds_clause=self.CLAUSE)
+        assert line.startswith("0 blocking, 0 other findings")
+        assert self.CLAUSE not in line
+
+    def test_a_fix_that_rides_the_next_review_does_not(self):
+        line = cc.next_action_line("rev-x", 0, 2, 0, "PRICE.", rides_next_review="x",
+                                   rounds_clause=self.CLAUSE)
+        assert line.startswith(cc._RIDES_NEXT_REVIEW_LEAD.strip()[:30])
+        assert self.CLAUSE not in line
+
+    def test_the_carried_arm_does_not(self):
+        line = cc.next_action_line(
+            "rev-x", 1, 0, 0, "PRICE.",
+            carried=[{"review_id": "rev-p", "fid": "R-1"}], rounds_clause=self.CLAUSE,
+        )
+        assert line.startswith("NOT DONE.")
+        assert self.CLAUSE not in line
+
+
+class TestControlCheckIsPersisted:
+    """#548: a control's firing persists a structured `check`, derived at
+    consolidation from the title token (`lib/control_checks`), on the review
+    fact, the findings cache and the `review.critic` ledger row that copies it.
+    """
+
+    TITLES = {
+        "Scope-Trace: x": "scope-trace",
+        "foo.py: cross-component-contract — y": "cross-component-contract",
+        "rule-unenforced x": "rule-unenforced",
+        "Off-by-one in the span walk": None,
+    }
+
+    def _consolidate(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, roster=["reviewer"])
+        _write_partial(
+            repo, "reviewer", head,
+            findings=[
+                {"name": t, "goal": "Nothing Is Broken", "severity": "warning",
+                 "recommendation": "r"}
+                for t in self.TITLES
+            ],
+            observations=[
+                {"name": "read-cost: walks the store", "goal": "The Design Is Sound",
+                 "recommendation": "r"},
+                {"name": "an untokened observation", "goal": "The Design Is Sound",
+                 "recommendation": "r"},
+            ],
+        )
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        return repo
+
+    @staticmethod
+    def _by_title(items, key):
+        return {i[key]: i for i in items}
+
+    def test_the_fact_carries_check_and_an_untokened_finding_has_no_key(self, tmp_path):
+        repo = self._consolidate(tmp_path)
+        [fact] = _store_facts(repo, "review")
+        findings = self._by_title(fact["body"]["findings"], "title")
+        assert set(findings) == set(self.TITLES)
+        for title, slug in self.TITLES.items():
+            if slug is None:
+                assert "check" not in findings[title], "absent, never null"
+            else:
+                assert findings[title]["check"] == slug
+        observations = self._by_title(fact["body"]["observations"], "title")
+        assert observations["read-cost: walks the store"]["check"] == "read-cost"
+        assert "check" not in observations["an untokened observation"]
+
+    def test_the_cache_and_the_ledger_row_carry_it(self, tmp_path):
+        repo = self._consolidate(tmp_path)
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        rows = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines()
+                if ln.strip()]
+        [row] = [r for r in rows if r.get("event") == "review.critic"]
+        for findings in (record["findings"], row["review"]["findings"]):
+            by = self._by_title(findings, "summary")
+            for title, slug in self.TITLES.items():
+                if slug is None:
+                    assert "check" not in by[title]
+                else:
+                    assert by[title]["check"] == slug
+        for observations in (record["observations"], row["review"]["observations"]):
+            by = self._by_title(observations, "summary")
+            assert by["read-cost: walks the store"]["check"] == "read-cost"
+            assert "check" not in by["an untokened observation"]
 
 
 class TestIntervalExtension:
@@ -9329,27 +11334,32 @@ def _st8_manifest(repo: Path) -> dict:
 
 
 class TestTheReviewNamesItsChunks:
-    """`begin_review(chunks=…)` (the `--chunks` flag's library half; `--chunk`
-    stays as its one-element alias) — the manifest and the review fact carry
-    `chunks`, `chunks_proposed`, and `chunk = chunks[0]`, so
-    `plan_status.chunk_states` can certify every chunk one review covered."""
+    """`begin_review(chunks=…)` (the `--chunks` flag's library half) — the
+    manifest and the review fact carry `chunks` and `chunks_proposed`, so
+    `plan_status.chunk_states` can certify every chunk one review covered.
+    Neither carries the singular `chunk` any more: its one-release shim is
+    retired, and its last reader, the ledger event, reads `chunks[0]`."""
 
-    def test_a_fact_names_two_chunks_and_chunk_is_the_first(self, tmp_path):
+    def test_a_fact_names_two_chunks_and_the_ledger_event_the_first(self, tmp_path):
         repo = _st8_repo(tmp_path)
         result = cc.begin_review(repo, "chunk", chunks=["01", "03"])
         assert result["status"] == "ok", result
         manifest = _st8_manifest(repo)
         assert manifest["chunks"] == ["01", "03"]
         assert manifest["chunks_proposed"] == ["01", "03"]
-        assert manifest["chunk"] == "01"
+        assert "chunk" not in manifest
         _write_partial(repo, "reviewer", manifest["commit_reviewed"])
         done = _run_consolidate(repo)
         assert done.returncode == 0, done.stderr
         (fact,) = _store_facts(repo, "review")
         body = fact["body"]
-        assert (body["chunks"], body["chunk"], body["chunks_proposed"]) == (
-            ["01", "03"], "01", ["01", "03"]
-        )
+        assert (body["chunks"], body["chunks_proposed"]) == (["01", "03"], ["01", "03"])
+        assert "chunk" not in body
+        # The ledger event keeps its `chunk` field (its own schema, read by
+        # `review-stats`), now taken from the manifest's `chunks`.
+        events = [json.loads(line) for line in (repo / LEDGER_REL).read_text().splitlines()]
+        (event,) = [e for e in events if e.get("event") == "review.critic"]
+        assert event["chunk"] == "01", event
         # And the one reader certifies both, and only both.
         from lib import plan_status
 
@@ -9367,7 +11377,7 @@ class TestTheReviewNamesItsChunks:
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
         assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
-        assert manifest["chunk"] == "01"
+        assert "chunk" not in manifest
         assert "WARNING: declared chunk" not in result.stderr
 
     def test_final_proposes_the_chunks_its_interval_built_not_every_open_one(self, tmp_path):
@@ -9380,17 +11390,17 @@ class TestTheReviewNamesItsChunks:
         manifest = _st8_manifest(repo)
         assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
 
-    def test_the_chunk_alias_is_one_element_and_normalized_to_the_plan(self, tmp_path):
-        """`--chunk 1` against a plan printing `01`: recorded as the plan prints it."""
+    def test_a_declared_id_is_normalized_to_the_plan(self, tmp_path):
+        """`--chunks 1` against a plan printing `01`: recorded as the plan prints it."""
         repo = _st8_repo(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "1")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "1")
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
-        assert (manifest["chunks"], manifest["chunk"]) == (["01"], "01")
+        assert manifest["chunks"] == ["01"]
 
     def test_a_declared_chunk_outside_the_proposal_warns_and_is_recorded(self, tmp_path):
         repo = _st8_repo(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "02")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "02")
         assert result.returncode == 0, result.stderr
         assert "WARNING: declared chunk(s) 02 are not in the proposal" in result.stderr
         manifest = _st8_manifest(repo)
@@ -9398,7 +11408,7 @@ class TestTheReviewNamesItsChunks:
         assert manifest["chunks_proposed"] == ["01", "03"]
         # Control: declaring inside the proposal says nothing.
         _abandon(repo)
-        inside = _run_begin(repo, "--mode", "chunk", "--chunk", "03")
+        inside = _run_begin(repo, "--mode", "chunk", "--chunks", "03")
         assert inside.returncode == 0, inside.stderr
         assert "WARNING: declared chunk" not in inside.stderr
 
@@ -9407,12 +11417,12 @@ class TestTheReviewNamesItsChunks:
         lib = cc.begin_review(repo, "chunk", chunks=["01", "09"])
         assert lib["status"] == "error" and lib["kind"] == cc.UNKNOWN_CHUNK_KIND, lib
         assert "09" in lib["reason"] and "declares 01, 02, 03" in lib["reason"]
-        cli = _run_begin(repo, "--mode", "chunk", "--chunk", "09")
+        cli = _run_begin(repo, "--mode", "chunk", "--chunks", "09")
         assert cli.returncode == 1, cli.stderr
         assert "chunk id(s) 09 are not chunks of" in cli.stderr
         assert not (repo / PARTIALS_REL / "manifest.json").exists()
         # Control: the same dispatch naming a real chunk is accepted.
-        assert _run_begin(repo, "--mode", "chunk", "--chunk", "01").returncode == 0
+        assert _run_begin(repo, "--mode", "chunk", "--chunks", "01").returncode == 0
 
     def test_a_rejected_heading_key_is_not_a_chunk_id(self, tmp_path):
         repo = _st8_repo(tmp_path, plan=_ST8_PLAN + "\n#### Chunk 4x: oops\n")
@@ -9430,15 +11440,24 @@ class TestTheReviewNamesItsChunks:
         result = cc.begin_review(repo, "chunk")
         assert result["status"] == "ok", result
         manifest = _st8_manifest(repo)
-        assert (manifest["chunks"], manifest["chunks_proposed"], manifest["chunk"]) == ([], [], None)
+        assert (manifest["chunks"], manifest["chunks_proposed"]) == ([], [])
 
     def test_an_unbound_checkout_drops_a_declared_chunk_and_says_so(self, tmp_path):
         repo = _st8_repo(tmp_path, plan=None)
-        result = cc.begin_review(repo, "chunk", chunk="01")
+        result = cc.begin_review(repo, "chunk", chunks=["01"])
         assert result["status"] == "ok", result
         manifest = _st8_manifest(repo)
-        assert (manifest["chunks"], manifest["chunk"]) == ([], None)
+        assert manifest["chunks"] == []
         assert any("no build plan resolves for this review" in n for n in result["notes"]), result["notes"]
+
+    def test_the_one_element_chunk_alias_is_gone_from_the_library(self, tmp_path):
+        """The library half of the retired `--chunk` flag: `begin_review` takes
+        `chunks` only, so a caller still passing `chunk=` fails loudly rather
+        than having its declaration silently dropped."""
+        repo = _st8_repo(tmp_path)
+        with pytest.raises(TypeError, match="chunk"):
+            cc.begin_review(repo, "chunk", chunk="01")
+        assert not (repo / PARTIALS_REL / "manifest.json").exists()
 
 
 class TestTheDispatchProposalLeavesOutTheStubAndSaysWhyItNamedFewer:
@@ -9540,7 +11559,7 @@ class TestRecordLintGradesTheChunksTheFactNames:
 
     def test_an_explicit_chunk_grades_that_chunk(self, tmp_path):
         repo = self._repo_touching_two_and_three(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk", "--chunk", "03")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "03")
         assert result.returncode == 0, result.stderr
         lint = _st8_manifest(repo)["record_lint"]
         assert (lint["chunks_graded"], lint["chunk_graded"]) == (["03"], "03"), lint
@@ -9598,11 +11617,22 @@ class TestManifestChunkFields:
         bad, why = cc.validate_manifest(_manifest_dict(chunks_proposed=[""]))
         assert not bad and "'chunks_proposed'" in why
 
-    def test_chunk_must_be_the_first_of_chunks(self):
-        bad, why = cc.validate_manifest(_manifest_dict(chunks=["03", "01"], chunk="01"))
-        assert not bad and "first of 'chunks'" in why
-        ok, _ = cc.validate_manifest(_manifest_dict(chunks=[], chunk=None))
-        assert ok
+    def test_a_manifest_with_chunks_carries_no_chunk_and_none_is_cross_checked(self):
+        """Renegotiated from "`chunk` must be the first of `chunks`": the
+        manifest no longer writes `chunk`, and where `chunks` is present
+        nothing reads `chunk` (`plan_status.fact_chunks` prefers the list), so
+        a cross-check would guard a field with no reader. A legacy `chunk`
+        beside `chunks` is ignored, not refused."""
+        manifest = _manifest_dict(chunks=["03", "01"])
+        del manifest["chunk"]
+        assert cc.validate_manifest(manifest) == (True, "")
+        assert cc.validate_manifest(_manifest_dict(chunks=["03", "01"], chunk="01"))[0]
+        body = cc.build_fact_body(
+            _manifest_dict(chunks=["03", "01"], chunk="01"), [_partial("reviewer", "abc123")]
+        )
+        assert body["chunks"] == ["03", "01"] and "chunk" not in body
+        # Still typed when present: a legacy manifest's bare `chunk` is read.
+        assert not cc.validate_manifest(_manifest_dict(chunk=3))[0]
 
     def test_a_manifest_without_chunks_keeps_the_bare_chunk(self):
         """A manifest from before `chunks` existed still validates, and its fact
@@ -9613,11 +11643,67 @@ class TestManifestChunkFields:
         body = cc.build_fact_body(manifest, [_partial("reviewer", "abc123")])
         assert body["chunk"] == "01" and "chunks" not in body and "chunks_proposed" not in body
 
-    def test_the_fact_body_writes_all_three(self):
+    def test_the_fact_body_writes_chunks_not_the_singular_chunk(self):
         manifest = _manifest_dict(chunks=["02", "03"], chunks_proposed=["03"], chunk="02")
         body = cc.build_fact_body(manifest, [_partial("reviewer", "abc123")])
-        assert (body["chunks"], body["chunks_proposed"], body["chunk"]) == (["02", "03"], ["03"], "02")
+        assert (body["chunks"], body["chunks_proposed"]) == (["02", "03"], ["03"])
+        assert "chunk" not in body
         empty = cc.build_fact_body(
             _manifest_dict(chunks=[], chunks_proposed=[], chunk=None), [_partial("reviewer", "abc123")]
         )
-        assert (empty["chunks"], empty["chunk"]) == ([], None)
+        assert empty["chunks"] == [] and "chunk" not in empty
+        # absence is tolerated by the one reader, and a legacy bare-`chunk` fact still reads
+        from lib import plan_status
+        assert plan_status.fact_chunks(body) == ["02", "03"]
+        assert plan_status.fact_chunks(empty) == []
+        assert plan_status.fact_chunks({"chunk": "04"}) == ["04"]
+
+
+class TestBranchReviewRecordComposesThroughTheMemo:
+    """The paired review of the #334 fix round: `branch_review_record` asked the
+    gate's composition with no `read`, so it skipped the verdict memo and paid
+    the walk cold (a minute and more on a large store) wherever it was reached:
+    the SessionStart briefing, mode inference, and the cache writer. A caller
+    holding the read passes it, and the composition is handed that read over
+    that read's own list, the shape `coverage.open_blockers` memoizes."""
+
+    def _verify_fact(self):
+        return {
+            "id": "rev-v", "kind": "review", "schema": evidence.SCHEMA_VERSION,
+            "body": {"mode": cc._VERBOSE_VERIFY_RESOLUTIONS, "base_tree": "t1", "head_tree": "t2",
+                     "findings": [], "counts": {}},
+        }
+
+    def _capture(self, monkeypatch):
+        seen = []
+
+        def _open_blockers(project_dir, facts, target_tree, *, resolved=None, read=None):
+            seen.append((facts, read))
+            return {"status": "ok", "blockers": []}
+
+        monkeypatch.setattr(coverage, "open_blockers", _open_blockers)
+        monkeypatch.setattr(cc, "fact_to_cache_record", lambda fact, **kw: {"fact_id": fact["id"]})
+        return seen
+
+    def test_a_caller_holding_the_read_composes_through_it(self, tmp_path, monkeypatch):
+        seen = self._capture(monkeypatch)
+        facts = [self._verify_fact()]
+        read = {"status": "ok", "facts": facts}
+        cc.branch_review_record(tmp_path / ".prawduct", facts[0], facts, read=read)
+        assert len(seen) == 1
+        got_facts, got_read = seen[0]
+        assert got_read is read and got_facts is read["facts"]
+
+    def test_without_a_read_it_composes_cold_on_this_readers_facts(self, tmp_path, monkeypatch):
+        seen = self._capture(monkeypatch)
+        facts = [self._verify_fact()]
+        cc.branch_review_record(tmp_path / ".prawduct", facts[0], facts)
+        assert len(seen) == 1 and seen[0][1] is None
+
+    def test_a_non_verify_fact_composes_nothing(self, tmp_path, monkeypatch):
+        seen = self._capture(monkeypatch)
+        fact = self._verify_fact()
+        fact["body"]["mode"] = "chunk"
+        facts = [fact]
+        cc.branch_review_record(tmp_path / ".prawduct", fact, facts, read={"facts": facts})
+        assert seen == []

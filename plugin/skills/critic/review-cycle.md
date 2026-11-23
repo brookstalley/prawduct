@@ -13,7 +13,7 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | **Medium** (new feature, refactor) — non-chunked | One `final` review, mandatory after completion. |
 | **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). **A short plan** — at most 3 chunks, no `Critic mode:` declared on any chunk, nothing the branch changed a risk surface — owes no per-chunk review at all: the one `cumulative` at its last chunk is every chunk's review. Inference answers `deferred` mid-chunk (dispatch nothing), and the Stop gate WARNS instead of blocking on a non-final chunk, naming that boundary review; on the last chunk it blocks as ever. |
 | **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (on a `cumulative-final` plan it doubles as the last chunk's review, not a second pass). |
-| **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Falls through to `chunk`/`final` when the anchor is missing or scope widens past the demotion threshold. |
+| **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Demotes to the mode its refusal names when the anchor is unusable or scope widens past the demotion threshold. |
 
 The stop hook enforces review for code changes when a build plan exists: it asks whether composed review coverage spans the session's base tree → the current working tree with zero unresolved blocking findings (facts in the shared evidence store; see "Evidence and Composition" below). It also surfaces an advisory WARNING when no chunk is open (`prawduct-hook plan status`) but the latest review fact is neither `final` nor `cumulative` — run `/prawduct:critic final` before pushing.
 
@@ -23,7 +23,7 @@ The stop hook enforces review for code changes when a build plan exists: it asks
 
 Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical caller is `/prawduct:critic` (no args) — the SKILL forwards any invocation arguments verbatim to `prawduct-hook infer-critic-mode`, which owns the full precedence and records `mode_chosen_by` as its verbatim rationale string. Three precedence layers, highest first, all implemented inside the helper:
 
-1. **Per-invocation override** — an explicit mode argument (`/prawduct:critic chunk` etc.). Rationale: `"explicit-args"` — except a named `chunk`/`final` on a clean tree, whose interval is provably empty: the helper answers `cumulative`, rationale `explicit-args <token> redirected: …` — the operator's word survives into `mode_chosen_by`. Not mid-plan (below): there the token stands.
+1. **Per-invocation override** — an explicit mode argument (`/prawduct:critic chunk` etc.). `cumulative full` (or `full`) answers `cumulative` with rationale `explicit-args full`, which `critic-begin` reads as a request for the whole bundle. Rationale: `"explicit-args"` — except a named `chunk`/`final` on a clean tree, whose interval is provably empty: the helper answers `cumulative`, rationale `explicit-args <token> redirected: …` — the operator's word survives into `mode_chosen_by`. Not mid-plan (below): there the token stands.
 2. **Plan-level override** — the active build plan's current chunk's `Critic mode:` field (the current chunk is the plan's first open chunk). A valid value wins over inference with rationale `plan-override: <mode>`; an absent, blank, or unrecognized value is ignored.
 3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`), with the short-plan deferral between the second and third: an eligible plan with code in flight answers `deferred` (rationale `short-plan deferral: …`), which dispatches nothing; a fix-in-progress still gets rule 1's review, and a committed bundle rule 2's at the boundary. **Mid-plan** (2+ open chunks of the branch's own plan), a clean tree answers `chunk` over the unreviewed interval, or `deferred` (nothing unreviewed, or a short plan).
 
@@ -52,12 +52,12 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 | **Protocol read** (SKILL step 2; `final`/`cumulative` also load `cross-checks.md` and `framework-checks.md`) | `goals-1-3.md` | `review-protocol.md` | `review-protocol.md` | `goals-1-3.md` |
 | **Stage** (derived by `critic-begin` from the mode's interval, recorded in the manifest as `stage`) | `inner` | `inner` | `boundary` | `inner` |
 | **Goals run** | 1, 2, 3 | All 7 goals | All 7 goals | 1, 2, 3 |
-| **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Records Pass; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
-| **New findings rated** | The inner BLOCKING set only — every other rated item is an OBSERVATION (see "Severity is stage-keyed") | Same as `chunk`, Goals 4–7 included | Every severity | **BLOCKING only**, and only from the inner set — anything lesser is an OBSERVATION in the reviewer's report, never a `findings` entry (see "A re-review does not manufacture work") |
-| **Review interval** (derived by `critic-begin`, recorded in the manifest) | Last blocker-free reviewed tree (else the merge-base if nothing judgeable is uncommitted, else HEAD's) → captured working tree | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
+| **Goals skipped** | 4-7; Records Pass; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
+| **New findings rated** | The inner BLOCKING set only — every other rated item is an OBSERVATION (see "Severity is stage-keyed") | Same as `chunk`, Goals 4–7 included | BLOCKING and WARNING; anything lesser is an OBSERVATION | **BLOCKING only**, and only from the inner set — anything lesser is an OBSERVATION in the reviewer's report, never a `findings` entry (see "A re-review does not manufacture work") |
+| **Review interval** (derived by `critic-begin`, recorded in the manifest) | Last blocker-free reviewed tree (else the merge-base if nothing judgeable is uncommitted, else HEAD's) → captured working tree | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle; bounded to the last clean boundary review's tree → HEAD when one stands on this branch and base (manifest `span`) | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
 | **Execution** (roster derived by `critic-begin`) | Always single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Always single-pass |
 | **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min | 1-2 min |
-| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to `chunk`/`final` when no usable prior fact exists or scope widens past the threshold. |
+| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to the mode its refusal names when no usable prior fact exists or scope widens past the threshold. |
 
 **Risk surface** = a changed path matching this repo's `risk_surfaces:` in `project-state.yaml` — the
 same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo that declares none runs
@@ -76,11 +76,11 @@ Read short, write verbose — the persisted JSON stays self-documenting in brief
 
 The norm is `nonfunctional-requirements.md` § Direction, *Review rigor is stage-keyed*. The **inner
 stage** is any review of an uncommitted or delta interval (`chunk`, `final`, `verify-resolutions`);
-the **boundary stage** is the committed bundle (`cumulative`) and the PR review. At the inner stage a
+the **boundary stage** is the committed bundle (`cumulative`). At the inner stage a
 finding is one of the **inner BLOCKING set** — a test failure in the evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped requirement; exploitable security in changed code; a cross-component contract break; a norm departure without a recorded decision; an unlisted dependency — and every other verdict the tables rate is an
-observation: reported, recorded in the partial's `observations` array, answerable on the record,
-never a `findings` entry. At the boundary the tables stand as written and consolidation refuses an
-`observations` array. `critic-begin` derives `stage` from the mode (one home: `critic_consolidate.stage_of`), writes it
+observation: reported, recorded in the partial's `observations` array, owed no disposition,
+never a `findings` entry. At the boundary the tables stand as written; at neither stage is `note` a
+finding severity. `critic-begin` derives `stage` from the mode (one home: `critic_consolidate.stage_of`), writes it
 on the manifest with `judgeable_files`, `chunk_type` and the code-rendered `signals` line every
 reviewer is handed, and it rides the review fact, the findings cache and the
 `review.critic` ledger event — `review-stats` groups on it (`by_stage`), which is the yield query the
@@ -97,13 +97,16 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 - A rebase or amend changes the tree → a gap composition cannot close (the transfer below closes one case). A squash-merge preserves the tree, so squashed PRs stay covered.
 - A **selective commit** (only part of the reviewed state) produces a tree nobody reviewed — a gap. `/prawduct:critic verify-resolutions` reviews that delta and closes it.
 - Blocking findings don't die with re-runs: they stay on the path until a `verify-resolutions` pass appends resolution facts for them.
+- **Except an inherited test failure:** when every id in a BLOCKING finding's `failed_tests` failed in the newest run on the merge-base *tree* (a base before the reviewed work, and each new failure of the reviewed tree's own run named by an unwaived finding), consolidation (any mode) appends a `waived` resolution citing that run (`origin: inherited-baseline`), or records why not as the finding's `not_waived` in `.critic-findings.json`. The finding stays BLOCKING on the record; no verify round is owed.
 - Review and resolution facts reach other clones as notes on `refs/notes/prawduct`, pushed by `/prawduct:pr` (`evidence sync`) and ingested at session start. A clone lacking a fact's tree reads that interval as a gap, so only reviews of committed trees — the PR gate's `cumulative` among them — count in every clone.
 
 ### Cumulative mode and the PR gate
 
-`cumulative` is the only mode whose head is committed state, not the working tree: `critic-begin` resolves the base branch via `prawduct-hook resolve-base` (it honors a configured `base_branch:`, falling back to `origin/main`/`main` — the **single source of truth** the PR gate uses too, so reviewer and gate never diff different ranges) and derives the interval merge-base tree → HEAD's tree — deliberately spanning every commit on the branch, so cross-chunk integration cracks surface even when every per-chunk review was clean.
+`cumulative` is the only mode whose head is committed state, not the working tree: `critic-begin` resolves the base branch via `prawduct-hook resolve-base` (it honors a configured `base_branch:`, falling back to `origin/main`/`main` — the **single source of truth** the PR gate uses too, so reviewer and gate start from one merge-base) and derives the interval merge-base tree → HEAD's tree: every commit on the branch, so cross-chunk integration cracks surface even when every per-chunk review was clean. A repeat bounds it (below), trading that second look at earlier work for the delta; `cumulative full` buys the look back, which is worth it before a risky merge.
 
-`/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open the PR if the gate fails. Its stderr names the remedy: `uncovered` → run `/prawduct:critic cumulative`; `blocking` → fix, then `/prawduct:critic verify-resolutions` — no full re-review. A blocker marked `Superseded:` is the exception — a verify pass anchors only to the most recent review, so it clears only through a spanning `cumulative`. WARNING and NOTE are advisory at the PR gate — they do not block, matching the PR reviewer's severity contract.
+**A repeat cumulative is bounded.** When an earlier `cumulative` on this branch reviewed the same base, sits on HEAD's history and has a clean path from the merge-base (`gates.boundary_frontier`), the interval starts at its tree instead (`span: bounded`, `bounded_from` its fact id). The fact composes with that review's to the same PR-gate verdict. The rest of the bundle reaches the reviewer as `files_context`, never rated on its own merits (`review-protocol.md` "Subject and oracle"), while record-lint and the chunk proposal still grade the whole bundle. Any failed condition falls back to the full span, and the dispatch says why (`span_reason`). A blocker on the path to that review is one of those conditions, so it forces the full span; one recorded after that review lies inside the bounded interval, which spans it. `/prawduct:critic cumulative full` asks for the whole bundle.
+
+`/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open the PR if the gate fails. Its stderr names the remedy: `uncovered` → run `/prawduct:critic cumulative`; `blocking` → fix, then `/prawduct:critic verify-resolutions` — no full re-review. A `Superseded:` blocker the verify roll-call does not name is the exception: only a spanning `cumulative` clears it. Everything below BLOCKING is advisory at the PR gate — it does not block.
 
 `uncovered` caused only by the **base advancing** transfers instead of buying a round, at BOTH gates: `coverage.diagnose_base_advance_transfer` grants it when the branch's own diff is byte-identical across both spans and a suite run has met the tree that gate vouches for. A denial on that condition alone says so: the remedy is a run, not a review.
 
@@ -111,28 +114,29 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 ### Verify-resolutions anchoring and demotion
 
-`verify-resolutions` is the only mode anchored to a *prior* review fact rather than HEAD. It exists to cut re-review latency after a round flags 1-2 BLOCKING findings and the builder fixes them — a full `chunk`/`final` re-run walks the whole diff again for a localized change. Its consolidation is also the only path that may append **resolution facts** (the judgment that unblocks a prior blocking finding); a `resolutions` payload in any other mode fails consolidation closed.
+`verify-resolutions` is the only mode anchored to a *prior* review fact rather than HEAD. It exists to cut re-review latency after a round flags 1-2 BLOCKING findings and the builder fixes them — a full `chunk`/`final` re-run walks the whole diff again for a localized change. Its consolidation is also the only path that may append **resolution facts** for a *prior* review's findings (the judgment that unblocks a prior blocking finding); a `resolutions` payload in any other mode fails consolidation closed.
 
 **Anchoring.** `critic-begin --mode verify-resolutions` locates the prior review fact via the findings cache's `fact_id` pointer and derives the interval: prior fact's `head_tree` → the captured working tree. Scope = the prior `files_reviewed` plus the delta, split into subject and oracle — all computed in code and recorded in the manifest. Tree keying makes a dirty-tree verify sound: no commit needs to precede the pass, and the resulting fact extends coverage to whatever tree it saw.
 
 The head end moves to **committed HEAD** instead when committed content differs from the reviewed tree — that is the PR gate's target, and anchoring there keeps a stray uncommitted file from leaving the gate `uncovered` after a successful pass (the WIP is noted and excluded). "Differs" is a **tree** comparison, and two readings of it are wrong in opposite directions: the vouching commit above materializes the reviewed tree verbatim, so it changes no content and is not a change of intent; and a prior review of a **dirty** tree (its fact records `head_commit: null`) leaves the anchor *ahead* of committed HEAD, which read as a committed delta inverts the edge and anchors the resolution facts to a tree the fixes are absent from. So the head end moves only when the trees differ **and** a commit actually landed — HEAD no longer standing where the prior review dispatched. (Both exclusions are code; `critic_consolidate.begin_review` carries the derivation.)
 
-The anchor must also be an **ancestor of HEAD**. The findings cache is single-slot and survives a branch switch, and worktrees of one clone share an object store, so a sibling branch's anchor still resolves — resolving is not evidence it belongs to this lineage, and a cross-branch anchor yields phantom findings. Not-an-ancestor and any git failure both demote.
+The anchor must also be **this branch's**. The findings cache is single-slot and survives a branch switch, and worktrees of one clone share an object store, so a sibling branch's anchor still resolves. A cached anchor off this lineage, a sibling's at the shared merge base, or a missing one (the cache is per-worktree, the store clone-shared) yields to this branch's newest review (as ingest derives it) and the cache is re-pointed; with none, the pass demotes.
 
 **Demotion** (all detected by `critic-begin`, fail-closed — it refuses to anchor rather than silently shrinking the review):
 
-**Every row is governed by the demotion property** (`SKILL.md` step 4) — a demotion must name a mode whose interval can SEE the work. Rows flagged **Committed** are by construction the case `chunk`/`final` cannot cover.
+**Every refusal names the mode to re-dispatch in** — one whose interval can SEE the work (`SKILL.md` step 4's demotion property), computed by `critic-begin`.
 
 | Trigger (exit code) | Why it demotes |
 |---|---|
-| No readable findings cache, no `fact_id` in it, or the fact is gone from the store (1) | Nothing to anchor against — fall back per the property above, record `mode_chosen_by: "fallback-no-prior-findings"`. |
-| The prior tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. **Committed.** |
-| The prior fact's anchor commit is not an ancestor of HEAD (1) | Another lineage — a branch switch, or rewritten history; the delta would span the divergence. Same fallback. **Committed.** |
+| No readable findings cache, no `fact_id` in it, or the fact is gone from the store, and this branch has no review (1) | Nothing to anchor against — re-dispatch in the named mode, recording `mode_chosen_by: "fallback-no-prior-findings"`. |
+| The prior fact records no `head_tree`, or its tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. |
+| The prior fact's anchor commit is not an ancestor of HEAD, and this branch has no review (1) | Another lineage — a branch switch, or rewritten history; the delta would span the divergence. Same fallback. |
 | Delta > 2 × the prior count + 5 (2) | Scope widened beyond the prior surface — a partial review would mislead. Both counts are coverage-priced (the judgeable subset of each subject set, not the subject set), so prose riding along on a fix cannot demote the pass. Re-dispatch in the mode the refusal names, recording `mode_chosen_by: "fallback-scope-widened"`. |
 
 **Not a demotion.** Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it
 reviewed: **exit 3, no review needed — stop.** There is no wider mode to fall back to, and
-re-dispatching one spends a full round on a bundle the gate already passes.
+re-dispatching one spends a full round on a bundle the gate already passes. Nor is stale or red
+saved test evidence: **exit 7** — its printed remedy, then this mode again (no evidence never refuses).
 
 **When NOT to use verify-resolutions.** Not as a chunk's first review (it's a re-review mode). Not after long drift unrelated to the original findings — the scope-widening threshold exists for exactly that.
 
@@ -140,7 +144,7 @@ re-dispatching one spends a full round on a bundle the gate already passes.
 
 1. Builder completes a chunk's implementation and tests.
 2. Critic reviews using the goal-based approach (see SKILL.md).
-3. **If BLOCKING findings exist:** builder fixes; Critic re-reviews (`verify-resolutions`), specifically watching for **fix-by-fudging** — weakening a test to make it pass, changing a spec to match wrong implementation, a workaround where the finding named the root cause. Each is a **BLOCKING** finding in its own right *and* grounds to withhold the resolution: the finding was not fixed, so leaving it out of `resolutions` keeps it blocking, which is the answer that fails closed. Repeat until no blocking findings remain. Only the resolution facts a verify pass records unblock a blocking finding — the gate keeps blocking until then.
+3. **If BLOCKING findings exist:** builder fixes; Critic re-reviews (`verify-resolutions`), specifically watching for **fix-by-fudging** — weakening a test to make it pass, changing a spec to match wrong implementation, a workaround where the finding named the root cause. Each is a **BLOCKING** finding in its own right *and* grounds to withhold the resolution: the finding was not fixed, so leaving it out of `resolutions` keeps it blocking, which is the answer that fails closed. Repeat until no blocking findings remain. Only the resolution facts a verify pass records unblock a blocking finding (bar the inherited-failure waiver) — the gate keeps blocking until then.
 4. Every review persists through `critic-consolidate` — a review fact in the store plus the regenerated `.prawduct/.critic-findings.json`. A clean pass records an empty findings array; there is no review without a record.
 5. **If no BLOCKING findings:** chunk complete; proceed.
 
@@ -149,7 +153,7 @@ re-dispatching one spends a full round on a bundle the gate already passes.
 **Once a pass returns zero BLOCKING, the review is over.** That is the exit condition, not a judgment
 call, and it is what keeps step 3's "repeat until" from being unbounded.
 
-**But "the review is over" is not "add it to the backlog."** Every remaining WARNING/NOTE gets exactly
+**But "the review is over" is not "add it to the backlog."** Every remaining WARNING gets exactly
 one of three dispositions, and **FILE is the narrowest, never the default**:
 
 - **ACCEPT** — won't fix. Record the disposition and its reason as a *fact* (`prawduct-hook
@@ -209,8 +213,7 @@ is never a first review (`critic-begin` demotes when no usable prior fact exists
 *beneath* the fix was fully reviewed — but the fix delta's own content was not, and post-cumulative
 fixes route here too, and an observation judging no named fix is dropped (counted on the fact as
 `observations_dropped`) — the boundary review re-reads that delta. A kept one the builder meets twice:
-in the report, and on the fact under an `O-n` id, which makes it **answerable**
-(`disposition <review-id> O-1 --accept "<reason>"`).
+in the report, and on the fact under an `O-n` id; neither asks for an answer.
 
 *Yield is emitted on both arms.* `review-stats` shows under-firing as B/W/N and over-firing — real
 work suppressed — as the `observations` count beside it, derived from the items riding the review
@@ -223,9 +226,9 @@ machine-readable trace — the resolution fact a `verify-resolutions` pass recor
 a FIX that bought no round record theirs with:
 
 ```
-prawduct-hook disposition <review-id> <fid|oid> --accept "<reason>"      # won't fix, reason recorded
-prawduct-hook disposition <review-id> <fid|oid> --file <backlog-id>      # deferred, item carries the work
-prawduct-hook disposition <review-id> <fid|oid> --fixed <path>[,<path>…] # fixed for free, no round bought
+prawduct-hook disposition <review-id> <fid> --accept "<reason>"      # won't fix, reason recorded
+prawduct-hook disposition <review-id> <fid> --file <backlog-id>      # deferred, item carries the work
+prawduct-hook disposition <review-id> <fid> --fixed <path>[,<path>…] # fixed for free, no round bought
 ```
 
 **`--fixed` exists because the cheapest correct action was the only one the record could not see.** A
@@ -238,7 +241,7 @@ The command validates that the finding exists before it records anything, and re
 BLOCKING finding without `--owner-ruling "<text>"` — the severity rule below, enforced in code rather
 than remembered. Re-dispositioning appends a newer fact; the older one stays as history, and an
 identical re-run is a reported no-op. **A disposition never satisfies a gate**: a BLOCKING finding
-stays blocking until a verify pass records a real resolution, so recording one costs you nothing and
+stays blocking until a real resolution is recorded, so recording one costs you nothing and
 protects nothing you shouldn't want protected.
 
 **Then render the census — never author it:**
@@ -270,14 +273,13 @@ to skip.
 undisposed. If you are filing more than two or three, you are using the backlog to avoid deciding —
 go back and sort them into ACCEPT and FIX.
 
-**Severity does not exempt.** BLOCKING, WARNING and NOTE all take a disposition; only the bar for
-ACCEPT differs (a NOTE is often a one-clause accept; a BLOCKING cannot be accepted at all without an
-explicit owner decision, since gates compose on it). Exempting NOTE just moves the pump, because
-NOTE is the most common severity.
+**Every finding takes a disposition; an observation takes none.** BLOCKING and WARNING both take
+one; only the bar for ACCEPT differs (a BLOCKING cannot be accepted at all without an explicit owner
+decision, since gates compose on it).
 
 Reviewers are told never to name the backlog as a finding's destination (`cross-checks.md`).
 
-Why it has to be a rule. WARNING and NOTE **gate nothing** — the PR gate and the Stop gate both
+Why it has to be a rule. WARNINGs and observations **gate nothing** — the PR gate and the Stop gate both
 require only *coverage* plus *zero unresolved BLOCKING*. An agent that fixes them anyway commits
 each fix; the commit extends HEAD; coverage no longer reaches HEAD; another pass runs; that pass reviews the records
 just written and finds something true about them.
@@ -327,25 +329,25 @@ findings with the budget as their reason, and renders the census. It never count
 `verify-resolutions` pass, and never sweeps a BLOCKING finding — so **it can end a review loop and
 can never open a gate**. `--force` buys one anyway; needing that every time means the number is wrong.
 
-**Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over `merge-base...HEAD`, a scope that already contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` answers `deferred` (commit first); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta. **A short plan gets this sequencing without the declaration**, on every chunk: mid-chunk `/prawduct:critic` answers `deferred` rather than `final`, and the boundary review that follows the last commit is the plan's whole review record. The eligibility is re-asked at every inference and every Stop against the branch's actual paths, so a later chunk that lands on a risk surface owes its review like any other.
+**Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over the bundle, or its delta since an earlier boundary review — either contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` answers `deferred` (commit first); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta. **A short plan gets this sequencing without the declaration**, on every chunk: mid-chunk `/prawduct:critic` answers `deferred` rather than `final`, and the boundary review that follows the last commit is the plan's whole review record. The eligibility is re-asked at every inference and every Stop against the branch's actual paths, so a later chunk that lands on a risk surface owes its review like any other.
 
 ## Reviewer Cross-Checks
 
-The Final-Mode Cross-Checks (Learnings Cross-Check, Backlog Reconciliation, Records Pass,
-Record-Lint and Governing-Artifact Reconciliation) are in `cross-checks.md`, the file every
+The Final-Mode Cross-Checks (Records Pass and Governing-Artifact Reconciliation), and the
+record-lint results consolidation records itself, are in `cross-checks.md`, the file every
 `final`/`cumulative` reviewer loads.
 
 ## Recording Reviews
 
 Every review cycle must produce a record — governance without an audit trail is documentation fiction. Every mode records the same way: `critic-begin` writes the dispatch manifest (code), the reviewer(s) write partials, and `prawduct-hook critic-consolidate` appends the review fact to the evidence store and regenerates `.prawduct/.critic-findings.json` from it. No model writes the manifest, the findings file, the store, or the ledger — a clean pass persists an empty findings array through the same path (see `review-protocol.md` "Review Execution").
 
-**Dispatch manifest** (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`; schema/validators in `lib/critic_consolidate.py`). Keys: review `id`, `mode` (verbose string), `mode_chosen_by` (the `infer-critic-mode` rationale, relayed via `--chosen-by`), `roster` + `roster_chosen_by`, `rendezvous` (each role's resolved partial + started paths, derived from `partial_path`/`started_path`, which own the shape — recorded here so no instruction surface spells a filename), `commit_reviewed` (HEAD at dispatch), the review interval (`base_tree`/`head_tree` + commits), `files_changed` plus its subject/oracle split (`files_reviewed`/`files_oracle`), all derived from the interval, the review `stage` with `judgeable_files`, `chunk_type` and the rendered `signals` line ("Severity is stage-keyed"), and the relayed telemetry `tier`, `scope`, `chunk`, `base_reviewed`. `critic-consolidate` refuses to persist unless every roster role reported a valid partial at the manifest's `commit_reviewed`, carrying the manifest's `id` as its `dispatch_id` — the binding that stops a straggler from a displaced review consolidating as this one. `dispatch_tree` (the whole working tree at dispatch) arms the same refusal for a tree changed since ("Prep work" above).
+**Dispatch manifest** (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`; schema/validators in `lib/critic_consolidate.py`). Keys: review `id`, `mode` (verbose string), `mode_chosen_by` (the `infer-critic-mode` rationale, relayed via `--chosen-by`), `roster` + `roster_chosen_by`, `rendezvous` (each role's resolved partial + started paths, derived from `partial_path`/`started_path`, which own the shape — recorded here so no instruction surface spells a filename), `commit_reviewed` (HEAD at dispatch), the review interval (`base_tree`/`head_tree` + commits), `files_changed` plus its subject/oracle split (`files_reviewed`/`files_oracle`), all derived from the interval, a cumulative's `span`/`bounded_from`/`span_reason` with `files_context` (the rest of the bundle when bounded), the review `stage` with `judgeable_files`, `chunk_type` and the rendered `signals` line ("Severity is stage-keyed"), the relayed telemetry `tier`, `scope`, `chunks`/`chunks_proposed`, `base_reviewed`, and `reviewer_model` (from `--session-model`): when set, the fork reviews nothing and dispatches every roster role on it, the single-pass `reviewer` included, which reads `dispatch_directives`. `native_review` (development builds: each `cumulative`, sampled `chunk`/`verify-resolutions`): the paired native review's wrapper, dispatched from `critic-begin`'s printed line; no roster role, never awaited. `critic-consolidate` refuses to persist unless every roster role reported a valid partial at the manifest's `commit_reviewed`, carrying the manifest's `id` as its `dispatch_id` — the binding that stops a straggler from a displaced review consolidating as this one. `dispatch_tree` (the whole working tree at dispatch) arms the same refusal for a tree changed since ("Prep work" above).
 
-**The findings cache is a derived view.** `.prawduct/.critic-findings.json` is regenerated from the newest review fact and carries its `fact_id`; builders and briefings read it for *content*, and no gate reads it — gates compose over the store.
+**The findings cache is a derived view.** `.prawduct/.critic-findings.json` is regenerated from the newest review fact and carries its `fact_id`; builders read it for *content*, and no gate reads it — gates compose over the store.
 
 ### The Governance-Event Ledger
 
-The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only telemetry history: every consolidation path appends one `review.critic` event naming itself as `trigger` (the PR skill appends `review.pr`). `lib.ledger` is the **single writer** (`ledger-append` for reviews, in-process for `learning.*`) — it validates the record and computes the envelope; agents never hand-author JSONL. No gate reads it; `review-stats` aggregates it.
+The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is per-worktree telemetry of reviews, never their outcomes (`prawduct-hook render-dispositions` shows those): every consolidation path appends one `review.critic` event naming itself as `trigger`. `lib.ledger` is its **single writer**; agents never hand-author JSONL. No gate reads it; `review-stats` aggregates it.
 
 Its `scope` comes from the dispatch manifest, where `critic-begin` recorded it — **taken in code** from the checkout's work-unit binding (`prawduct-hook plan resolve` prints it), or `null` when the checkout is bound to no plan, or passed explicitly as an override. Do not derive scope yourself and pass it — `SKILL.md` step 4 owns why.
 

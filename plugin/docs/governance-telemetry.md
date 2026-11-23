@@ -11,7 +11,11 @@ decisions need. Telemetry is **pulled, not pushed** — no hook nags about it;
 `.prawduct/.governance-ledger.jsonl` (gitignored) — one JSON event per line,
 written ONLY by `lib.ledger` — `prawduct-hook ledger-append` for review events,
 the Stop hook and `critic-consolidate` in-process for `learning.*` (agents never
-hand-author JSONL; the one append validates the record and computes the envelope).
+hand-author JSONL; the one append validates the record and computes the envelope). It is per worktree and
+records that a review happened and what it raised, never a finding's outcome: a
+`resolution` or `disposition` fact in the evidence store holds that, and
+`prawduct-hook render-dispositions` shows it. Resolutions reach other clones on
+`refs/notes/prawduct` (`evidence sync`); dispositions stay in their clone.
 
 Every event shares the **envelope**; the kind-specific payload nests beneath a
 kind-named key (`review` for `review.*`):
@@ -45,11 +49,23 @@ kind-named key (`review` for `review.*`):
   without one) because the three leave identical state, so a dead trigger covered by another looks
   like a working one. Lines written before the field existed lack it. `review-stats` counts it as
   `consolidated_by`, where a dead path reads as a zero beside the paths covering for it.
-- `review.critic` (the Critic, after writing its findings file) and
-  `review.pr` (the `/prawduct:pr` skill after the PR review, via
-  `--findings <evidence-path>` — required for `review.pr`, rejected for
-  `review.critic`, whose only trusted source is the canonical
-  `.critic-findings.json`).
+- `review.critic` (the Critic, after writing its findings file, whose only trusted source is the
+  canonical `.critic-findings.json`). A ledger may also hold `review.pr` events, which `stats` and
+  `review-stats` read and `ledger-append` refuses to write.
+- `native.review` (role `native`; a development build's paired native review, #1130), written only
+  by `native-review record` once the wrapper has saved the review's text, one per Critic review it
+  was paired with (`native.critic_review_id`). Its `native` payload carries the range, the level,
+  each finding's `file` and `line` — never its text, which stays in `.prawduct/.native-reviews/` —
+  and `findings_parsed` (false when the text held nothing countable); the paired review's `mode`
+  and `stage`; `synthetic_range` (true when the range was named by unreachable commits because the
+  interval had no commit at one end); and `tree_moved` (true when a file in the reviewed interval,
+  outside `.prawduct/`, differed in the working tree by the time the run was recorded, `null` when
+  it could not be told; always false for a run that read its own worktree at the reviewed head,
+  the way every run is dispatched since #1177). `dispatched_at` is the time
+  `critic-begin` stamped. The kind sits outside `review.` and the payload under `native`, so a
+  reader that takes `review.*` events as Critic reviews (older builds of this plugin included)
+  skips it as unknown; `review-stats` reports it in its own `native_review` block, in no Critic
+  total. `ledger-append` refuses to write it.
 - `learning.written`, `learning.fired` and `learning.compacted` — the learning loop, below.
 - **Consumers skip unknown event kinds and unknown fields** — that contract is
   what lets producers grow without migrating the ledger.
@@ -99,7 +115,13 @@ All three nest under a `learning` key, under the same envelope:
 - **The span is the session's work, not its uncommitted work.** The Stop hook
   reaches `learning.written` off `gates.session_work_span`, which diffs the
   session's base tree against the working tree, less history a pull, merge or
-  branch switch brought in — so a rule written and
+  branch switch brought in and less commits another session in the same
+  checkout made while this one had no tool call or `!` command running, in
+  files this one did not write — none named by its edit tools (Edit, Write,
+  MultiEdit, NotebookEdit), and none last written while one of its tool calls or
+  `!` commands ran and before the commit was made, which covers Bash, delegate and background writes (each
+  dropped commit named on the Stop hook's stderr and recorded once as an
+  `other-session-commit` observation, below) — so a rule written and
   committed in one turn is still counted at that turn's Stop. Without the
   marker there is no base to diff, and then nothing is recorded and the Stop
   hook says so on stderr; that one missing state is also why the budget check
@@ -141,7 +163,7 @@ The format is lock-in, so the queries came before the fields:
    as a floor, not a census:** a rule fires only when a reviewer QUOTES it, so
    a rule that shaped a finding without being quoted reads here as never fired.
    The instruction to quote lives with the reviewers (`agents/critic-reviewer.md`,
-   and `cross-checks.md` for the cross-check), but nothing enforces it — so this
+   and `cross-checks.md` for a single-pass review), but nothing enforces it — so this
    answer under-counts by however often reviewers paraphrase.
 4. **All of the above across a fleet** — key by the envelope's `project`.
 
@@ -159,11 +181,20 @@ worktrees get deleted.
   with `guard` = `stop-gate:<gate id>`. It uses the same sink as every other
   control firing, so `prawduct-hook evidence list --kind guard-refusal` lists
   them beside guard refusals. A deferred gate did not block and records nothing.
+- **A Stop-hook check that observes without blocking** appends one
+  `guard-refusal` fact per firing, with `guard` = `stop-observed:<check id>`,
+  through `append_stop_observation`, carrying the same `reason` and `observed`
+  a block of that check would. `clear-verdict` (#1044), `clear-reason`
+  (#1131) and `close-pointer` (owner ruling 2026-11-11, asks come last) are the three such checks; no Stop
+  gate blocks on the close's wording.
+  `stats` scores these with the block verdict
+  rules and reports them as *observed only*, never as Stops blocked or guard
+  refusals.
 - **A session boundary** (startup or `/clear`) appends one `session-start` fact,
   the denominator for per-session rates.
 
-Their writers are `lib/evidence.py`'s `append_stop_block` and
-`append_session_start`. Neither is read by any gate. A failed append prints a `NOTE:` and changes
+Their writers are `lib/evidence.py`'s `append_stop_block`,
+`append_stop_observation` and `append_session_start`. None is read by any gate. A failed append prints a `NOTE:` and changes
 nothing else.
 
 **Why a control fired.** Any control firing, blocking or not, may carry two
@@ -182,12 +213,14 @@ Each firing records what was observed, never a judgment of it. A reader derives 
 judgment (below), so a revised definition re-reads every recorded firing. A
 control that records neither is counted as `unspecified`.
 
-The Stop gates that record a reason today:
+The Stop checks that record a reason (all observe without blocking):
 
 | Gate | `reason` | `observed` |
 |---|---|---|
-| `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: harness background tasks in flight, or a live Critic review. `notes_present`: a non-empty `.handoff-notes.md` |
-| `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same two |
+| `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: a live Critic review, or harness background tasks in flight while `.handoff-notes.md` is empty. `notes_present`: a non-empty `.handoff-notes.md`. `session_changed`: the session authored a non-metadata change, committed or not (`gates.session_work_span`) |
+| `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same three |
+| `close-pointer` | `points-above`, `points-below`: which way the close's reason points at the turn by position, under any disposition (`standing_block.POSITIONAL_POINTER_KINDS`); the phrase itself is not recorded. A `SAFE TO CLEAR` reason saying "is above" can fire this and `clear-reason` both | the same three |
+| `other-session-commit` | `idle-and-unwritten`: a commit left out of the session's span as another session's, made while this one ran nothing and touching no file it wrote before the commit (`gates.record_dropped_commits`). One fact per commit per session, deduped on the session's transcript path (never stored: it is hashed into the id) and the sha, so a commit the span keeps leaving out is not re-counted at every Stop and two sessions dropping one commit are two facts; a Stop with no transcript records none | `commit`: the sha. `files`: how many files it touched; their names are not recorded |
 
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
@@ -226,15 +259,26 @@ window           {since, until} — the bounds in force, stated even when both
                  are null so a slice is never mistaken for the whole corpus
 dispositions     {status: available, as_of} or {status: unavailable, reason}
                  — whether the evidence store could be joined (below)
-events_total     reportable review.* events
+events_total     reportable review.* events (Critic reviews; native.review is
+                 not one)
+native_review    {runs, duration_measured, countable_runs, findings, by_stage}
+                 — a development build's paired native review runs (#1130),
+                 counted in no other key: a second instrument, not a review.
+                 by_stage (schema 14) holds the same four figures per stage of
+                 the paired Critic review (an event with no stage counts as
+                 boundary)
 skipped          {corrupt_lines, unknown_kinds, invalid_payloads}
 overall          one stat block (below)
 by_role_model_mode  [{role, model, mode, ...stat block}]
 by_scope         [{scope, ...stat block}]
 by_stage         [{stage, ...stat block}] — `inner` / `boundary` / null
+by_span          [{span, ...stat block}] — `bounded` / `full`, cumulatives
+                 only; the `full` entry adds `reasons` {decline code: count}
 consolidated_by  {subagent-stop, explicit, session-end-backstop, unrecorded}
                  — review.critic events per `trigger`, every path listed even
                  at zero; `unrecorded` is events without a known value
+above_reviewer_ceiling  {reviews, model_unrecorded} — reviews recorded on a
+                 model above the reviewer ceiling (below)
 top_files        [{path, actionable_findings, findings}]
 files_attributed_total  count behind the top_files cap
 learning         {written, fired, units_written, units_fired, units_uncited}
@@ -259,7 +303,7 @@ neither; schema 6 added them — the human line leads with the first and labels 
 estimate), `findings`
 (`{blocking, warning, note, other}`), `remedies` (below), `findings_per_review`,
 `actionable_rate` (0–1; severity-labelled — the human line calls it `severity-actionable`),
-`dispositions` (below), `observations` (items an inner-stage pass demoted —
+`dispositions` (below), `observations` (items a reviewer rated below a finding —
 never counted in `findings`), `reviews_recording_observations`
 (reviews whose event carried the array; events written before it existed are
 excluded, so `observations: 0` over `0` recording reviews means *not measured*,
@@ -270,7 +314,7 @@ fix plan: `{findings, with_remedy, blank_remedy, no_remedy_field, rate, median_w
 label says what a finding is worth and the remedy beside it is what makes it read as work, so the two
 can disagree — a NOTE carrying a finished fix plan is indistinguishable from a WARNING at the moment
 the builder decides what to do. Three outcomes are counted, not two: **absent** (no `recommendation`
-key at all) is a different claim from **blank**, because the PR reviewer's findings carry
+key at all) is a different claim from **blank**, because a `review.pr` event's findings carry
 `{goal, severity, file, line, summary}` and have no remedy field in their schema. `rate` is over
 findings whose schema HAS the field, and is `null` when none does — reporting 0% there would be a
 claim about a population's behaviour that its schema cannot support. Schema 7 added the key.
@@ -289,8 +333,9 @@ finding's outcome comes from `stats.finding_outcome`, the rule `prawduct-hook st
   `review.pr` event carries no `fact_id`, so it is always unjoined, and so is an event whose fact
   is not in this clone's store. The rate is over the joined reviews only.
 - `by_outcome`: blocking and warning findings of the joined reviews, by `stats`'s outcome names
-  (`fixed`, `fixed_unreviewed`, `filed`, `accepted`, `waived`, `undispositioned`, `other`). A
-  finding with no `fid` is `other`.
+  (`fixed`, `fixed_unreviewed`, `filed`, `accepted`, `waived`, `waived_inherited`,
+  `undispositioned`, `other`). A finding with no `fid` is `other`. Schema 12 added
+  `waived_inherited`.
 - `answered` and `acted_on_rate`: the same definition as `stats` (§ below, through the one
   helper `stats.acted_on`). `acted_on_rate` is `null` when nothing was answered.
 
@@ -317,13 +362,20 @@ instruments grade a before/after split identically.
 `boundary` (`cumulative`), stamped by `critic-begin` and carried through the fact and the findings
 cache onto `review.critic` events. It is **read, never derived from the mode**: an event written
 before the field existed groups under `null` (rendered "(unrecorded)"), and so does a `review.pr`
-event, which carries no stage yet. Schema 5 added the key. This is the yield-by-stage query the
+event, which carries none. Schema 5 added the key. This is the yield-by-stage query the
 stage-keyed rigor norm (`nonfunctional-requirements.md` § Direction) was drawn to answer.
 
+`by_span` groups `cumulative` reviews by the record's `span`: `bounded` (the delta since an earlier
+boundary review) or `full` (the whole bundle). Both are listed even at zero. A cumulative event
+written before the field reads `full`, which is true, because nothing was bounded then; its reason
+is `unrecorded`. The `full` entry's `reasons` counts each recorded decline code (`gates.SPAN_FULL_*`),
+so why a repeat ran full is a query. Other modes carry no span and are not grouped. Schema 11 added
+the key. This is the bounded-cumulative lever's yield, read against its falsifier
+(`.prawduct/artifacts/bounded-cumulative-design.md`).
+
 Mode keys are the short tokens (`chunk` / `final` / `cumulative` /
-`verify-resolutions`), derived from the persisted verbose strings. PR-review
-events carry `pr` (release-readiness scope — code soundness is certified by
-the composition gate before the reviewer is dispatched).
+`verify-resolutions`), derived from the persisted verbose strings. `review.pr`
+events carry `pr`.
 
 Model keys are **folded to a family label** (`opus` / `sonnet` / `haiku` /
 `fable`): one model is recorded under several id strings (`opus`,
@@ -332,7 +384,18 @@ key collapses the aliases — otherwise the reviewer-model dimension fragments
 into noise. An unfamiliar id passes through verbatim (never bucketed
 under a known family). This folds **values, not keys**, so `schema_version`
 holds; the raw id stays in each ledger line untouched, so the fold is a
-read-time view, not a rewrite.
+read-time view, not a rewrite. The fold is `lib/model_tier.py`'s, the one the
+reviewer ceiling applies.
+
+A reviewer runs on the session's model up to Opus-class and on Opus-class above
+it, so the model dimension shows the sessions' models, capped there.
+`above_reviewer_ceiling.reviews` counts the reviews in the window recorded on a
+model the dispatch would have capped — a stronger family, or an id nobody
+recognises — judged by the dispatch's own function (`reviewer_model_for`), so the
+count and the cap cannot disagree about a model. A review with no recorded model
+is not counted as above; `model_unrecorded` says how many there were. After the
+cap the count should only fall, and one that grows is a dispatch passing no model
+on a session above the ceiling. Schema 10 added the key.
 
 ## `prawduct-hook stats [--json] [--by-build] [--since <stamp>] [--until <stamp>]`
 
@@ -385,13 +448,39 @@ The definitions (their one home):
     absent or `null`. The rules can be revised, because they are applied at read
     time:
     - `clear-reason` is a slip when `notes_present`: the content had a home, and
-      the reason only failed to name it. Otherwise a clear would have lost what
-      only the turn held, which is a catch.
+      the reason only failed to name it. It is a catch when notes were absent
+      and `session_changed`: a clear would have lost what only the turn held
+      about work the session did. In a session that changed nothing, the turn
+      is an answer its reader has just read, and whether clearing it loses
+      anything is a judgment no observation makes, so it is unclassified, as is
+      a firing recorded before `session_changed` existed
+      (`stats.CATCH_REQUIRES_OBSERVED`). Its firings are observations, not
+      blocks, since #1131 (counts across that change do not compare: a block
+      forced a rewrite, so one bad close fired once, while an observation
+      fires once per Stop that carries it), scored by this same rule under
+      *observed only*.
     - `clear-verdict` is a slip when `work_live`: the hold was right, and only
-      the disposition label was wrong. Otherwise a reader was told to keep a
-      session open for nothing, which is a catch. An unreaped delegate is not
-      observable, so this rule leans towards catch, which is the direction
-      that keeps a gate.
+      the disposition label was wrong. Since `clear-gate-telemetry` the gate no
+      longer fires on `YOUR TURN` with `work_live`, so its slips are only
+      `COMPLETE` turns, and its counts on either side of that release do not
+      compare. Nor do `clear-reason`'s catches, which then began to require
+      `session_changed`. Otherwise a reader was told to keep a
+      session open for nothing, which is a catch. `work_live` is a live Critic
+      review, or harness background work while the forward notes are empty:
+      since `clear-verdict-delegates` a clear is known to stop no background
+      agent, so background work beside written notes is a hold for nothing, and
+      `work_live` counts on either side of that release do not compare. Whether
+      the notes describe that work, and a finished delegate whose output was
+      never read, are not observable, so this rule leans towards catch, which
+      is the direction that keeps a gate. Its firings are now observations, not blocks
+      (counts across that change do not compare), scored by this same rule
+      under *observed only*.
+    - `close-pointer` has no rule: a reason that points by position is the
+      defect whatever the session's state, so no observation separates a catch
+      from a slip. Its firings are counted by kind only.
+- **observed only**: firings of a Stop check that records without blocking
+  (`stop-observed:` facts), by check, with the verdicts above. Never counted
+  in stops blocked or guard refusals.
 - **guard refusals**: control firings other than Stop blocks, per recorded
   session (the same rule), by guard, and by guard and reason
   (`by_guard_reason`). A base-advance transfer grant shares their sink, but it
@@ -405,12 +494,14 @@ The definitions (their one home):
   - A resolution outranks any disposition; among dispositions, the newest
     wins.
   - Outcomes are fixed (a verify pass confirmed it), fixed_unreviewed (recorded
-    fixed with no review), filed, accepted, waived and undispositioned. Anything
-    else lands in `other`, including a state a later plugin adds or a malformed
-    finding.
+    fixed with no review), filed, accepted, waived, waived_inherited
+    (consolidation waived a failure the base tree already had; schema 4) and
+    undispositioned. Anything else lands in `other`, including a state a later
+    plugin adds or a malformed finding.
   - *acted on* = (fixed + fixed_unreviewed + filed) / (those + accepted +
-    waived). Undispositioned findings are left out of the rate and reported
-    beside it. The denominator is exported as `answered`.
+    waived). Undispositioned and waived_inherited findings are left out of the
+    rate (the latter is a fact about the base, not an answer to the finding)
+    and reported beside it. The denominator is exported as `answered`.
 - **blocking fixed by goal**, and **blocking and warnings fixed per scope**.
   Both kinds of fixed count.
 - **red suite runs**: recorded suite runs with a failure.
@@ -419,7 +510,7 @@ The definitions (their one home):
 
 Rates with no denominator print as `-` (`null` in `--json`), never as zero.
 `--json` carries `schema_version`, `project`, `generated_at`, `window`,
-`schema_ahead` (facts a newer plugin wrote, not counted) and `by_version`, keyed
+`schema_ahead` (facts a newer plugin wrote, not counted) and `by_version` (each version carries `stop_observations` beside `stop_blocks` from schema 3), keyed
 by `major.minor` (`unknown` when a fact names no version).
 
 `--by-build` splits each version by the plugin build that wrote the fact

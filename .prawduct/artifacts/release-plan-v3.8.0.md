@@ -1,8 +1,7 @@
 # Release Plan — v3.8.0
 
-**Status:** DRAFT, opened 2026-10-25 to record a release requirement before the cut. Phase 0 has
-not run. The classification below is incomplete by design: the cut-and-publish runbook's Phase 1
-completes it, row by row, against `prawduct-hook check-releasability --release v3.8.0`.
+**Status:** COMPLETE as measured 2026-10-30: `main` promoted at `94f0e0c5`, tag and Release `v3.8.0` published in one call, `check-released v3.8.0` verified 3 of 3, develop reopened on `3.8.1-dev`. Re-derive rather than reading this as a measurement:
+`prawduct-hook check-released v3.8.0`, `git log --oneline origin/main -1`.
 
 **Version:** v3.8.0, a **minor**, provisionally. `plugin/VERSION` reads `3.8.0-dev` on `develop`
 (2026-10-25), and the release requirement below adds a project-state key (`consumer_digest:`) and
@@ -27,6 +26,9 @@ the requirement. The cut does not decide it.
 - **`host-seam`**: #1037 (owner ruling 2026-10-21, "before 3.8"; confirmed for this release
   2026-10-28). One module owns what the hooks read from and write to their harness, so #1038's
   Codex adapter builds against a seam rather than patching each site.
+- **`changelog-list-notes`** (owner, 2026-10-30). The `paragraphs` layout put a list note's first
+  item on the label line as plain text: 16 of this release's 29 notes would have rendered that
+  way, and the cut writes this release's public changelog.
 
 **How this is enforced, not just stated.** Each requirement has a `ships` row in the table below
 before its work merges. Until the scope's fragment reaches `develop`, `check-releasability
@@ -45,3 +47,31 @@ Every row must account for one release-pending scope. Phase 1 adds the rest.
 | host-seam | ships | |
 | crlf-preserve | ships | |
 | block-append | ships | |
+| second-clone-evidence | ships | |
+| changelog-list-notes | ships | |
+| branch-claimed-plan-no-fallback | ships | |
+| briefing-banner | ships | |
+| build-stamp | ships | |
+| chunk-proposal-silence | ships | |
+| chunk-state-table | ships | |
+| chunk-status | ships | |
+| clear-gate-telemetry | ships | |
+| evidence-transport | ships | |
+| flaky-rerun | ships | |
+| merged-plan-chunk-state | ships | |
+| plan-archive-scope-name | ships | |
+| python-floor | ships | |
+| refusal-reasons | ships | |
+| release-v3.7.2 | ships | |
+| review-stats-dispositions | ships | |
+| scope-record-no-clock | ships | |
+| session-authored-span | ships | |
+| skew-note-harness-hooks | ships | |
+| stop-deferral-quiet | ships | |
+| stub-not-built | ships | |
+| testament-cacheability-advisory | ships | |
+| unloaded-tripwire | ships | |
+| unmigrated-file-sync | ships | |
+| untracked-verbatim-commit | ships | |
+| version-dev-2 | ships | |
+| work-unit-binding | ships | |

@@ -316,7 +316,9 @@ def _candidates(project_dir: Path, words: list[str]) -> "list[str] | None":
     for word in sorted(set(words)):
         args += ["-e", word]
     try:
-        proc = subprocess.run(args, capture_output=True, text=True, timeout=60)
+        proc = subprocess.run(
+            args, capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=60
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     if proc.returncode == 1:

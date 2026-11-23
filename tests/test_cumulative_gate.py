@@ -445,8 +445,10 @@ class TestStillBlocks:
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 1
         assert "uncovered" in err
-        # The selective-commit caveat (D3): the message names the v-r remedy.
+        # The selective-commit caveat (D3): the message names the v-r remedy,
+        # composed from the post-fix rule's one home (#723).
         assert "verify-resolutions" in err
+        assert gates.POST_FIX_COVERAGE in err
 
     def test_protected_md_tail_still_blocks(self, tmp_path, capsys):
         # CRT-5D8Q pin at the PR boundary: skills/ prose is judgeable, so the
@@ -2042,10 +2044,12 @@ class TestBlockingRemedyLines:
         extends HEAD, so every one buys a fresh round. The order (batch the
         fixes, hold the commit, run exactly one verify) is composed from its one
         home rather than worded here, and the remedy adds the half the order
-        does not state: commit the tree that passed, verbatim."""
+        does not state — commit the tree that passed, verbatim — from ITS one
+        home, `gates.POST_FIX_COVERAGE` (#723)."""
         text = self._text([{"fid": "R-1"}])
         assert gates.FIX_ORDER in text
-        assert "Commit the tree it verified verbatim" in text
+        assert gates.POST_FIX_COVERAGE in text
+        assert "commit that tree verbatim" in gates.POST_FIX_COVERAGE
 
     def test_mixed_set_keeps_the_standard_remedy_and_adds_the_exception(self):
         lines = gates.blocking_remedy_lines(
@@ -2076,6 +2080,70 @@ class TestBlockingRemedyLines:
     def test_reads_naturally_for_one_and_for_many(self):
         assert "the blocker above sits" in self._text([{"superseded": True}])
         assert "all 3 blockers above sit" in self._text([{"superseded": True}] * 3)
+
+    # -- #334: a superseded blocker the roll-call's composition counts is reachable
+
+    @staticmethod
+    def _branch_with_rounds(tmp_path) -> "tuple[Path, str, str]":
+        """A blocked review on the branch's lineage and one off it. Returns
+        (repo, the on-lineage review id, the off-lineage one).
+
+        Renegotiated in the Chunk 04 fix round: the on-lineage review now
+        CARRIES the blocker its entry names. Reachability used to be set
+        membership, so a review with no findings stood in; it is now the gate's
+        own composition at the branch's newest review (what the roll-call
+        names), which counts only a blocker the store actually holds."""
+        repo = _branch_repo(tmp_path)
+        on = _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"],
+                   head_commit=_head(repo),
+                   findings=[{"fid": "R-1", "severity": "blocking", "title": "on"}])
+        off = _fact(repo, "a" * 40, "b" * 40, ["feature.py"],
+                    findings=[{"fid": "R-1", "severity": "blocking", "title": "off"}])
+        return repo, on, off
+
+    def test_an_in_set_superseded_blocker_takes_the_verify_route(self, tmp_path):
+        """The verify roll-call names every blocker the gate's composition
+        counts at the pass's anchor, so "no verify-resolutions pass will name
+        again" is false of it."""
+        repo, on, _ = self._branch_with_rounds(tmp_path)
+
+        lines = gates.blocking_remedy_lines(
+            [{"review_id": on, "superseded": True}], repo
+        )
+        text = " ".join(lines)
+
+        assert lines[0].startswith("Fix them: make the fixes in the working tree")
+        assert "its roll-call names these" in text
+        assert "name again" not in text
+        assert "/prawduct:critic cumulative" not in text
+
+    def test_an_off_set_superseded_blocker_still_needs_the_spanning_review(self, tmp_path):
+        """Control: the composition is what makes it reachable. A review off
+        this branch's path is counted by no roll-call, so the old route
+        stands."""
+        repo, on, off = self._branch_with_rounds(tmp_path)
+
+        text = self._text_at(repo, [{"review_id": off, "superseded": True}])
+        assert "no verify-resolutions pass will name again" in text
+        assert "/prawduct:critic cumulative" in text
+
+        mixed = self._text_at(repo, [
+            {"review_id": on, "superseded": True},
+            {"review_id": off, "superseded": True},
+        ])
+        assert "1 finding above sits on an earlier review round of this" in mixed
+        assert "Superseded: 1 finding above belongs" in mixed
+
+    def test_without_a_project_dir_the_advice_is_the_pre_334_one(self, tmp_path):
+        """The Stop hook's caller passes none yet; it must not be told a route
+        nothing has checked."""
+        _, on, _ = self._branch_with_rounds(tmp_path)
+
+        assert "name again" in self._text([{"review_id": on, "superseded": True}])
+
+    @staticmethod
+    def _text_at(repo, unresolved):
+        return " ".join(gates.blocking_remedy_lines(unresolved, repo))
 
 
 # ---------------------------------------------------------------------------

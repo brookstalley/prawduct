@@ -15,7 +15,10 @@ a "successive override," and this is where it is read (CRT-3M8Q). Only when neit
 does :func:`infer_mode` walk four inference rules in precedence order and
 return the first that fires:
 
-  1. ``verify-resolutions`` — prior ``.critic-findings.json`` has
+  1. ``verify-resolutions`` — the prior review the verify dispatch would
+     anchor to (:func:`_verify_prior_record`: the findings cache's review when
+     it is this branch's, else this branch's newest, asked read-only of the
+     dispatch's owner — rule 1b reads the same record) has
      BLOCKING/WARNING findings + ``commit_reviewed`` anchor resolves **and is
      an ancestor of HEAD** + uncommitted diff is non-empty AND its judgeable
      subset is within prior ``files_reviewed`` (the review's subject set,
@@ -34,7 +37,8 @@ return the first that fires:
      recommendation no longer needs to propagate anchors.)
   2. ``cumulative`` — working tree is clean (no uncommitted code) AND
      branch is ≥2 commits ahead of the detected base branch AND no
-     ``cumulative``-mode findings file exists for current HEAD. Signal:
+     ``cumulative``-mode findings file exists for current HEAD AND the PR
+     gate's composed coverage does not already pass. Signal:
      builder has shipped chunks and is at the ``/pr create`` precondition
      point. **Not mid-plan** (the branch's own plan still owes a later
      review): there a clean tree means the builder committed the chunk
@@ -63,7 +67,9 @@ return the first that fires:
   4. ``cumulative`` when the tree is clean and a committed bundle is
      dispatchable, since a ``chunk``/``final`` interval ends at the working
      tree and, with nothing unreviewed behind HEAD, would be empty (and
-     ``critic-begin`` answers an empty interval without a review) — except mid-plan, which answers as rule 2 does; otherwise ``chunk`` —
+     ``critic-begin`` answers an empty interval without a review) — except
+     mid-plan, which answers as rule 2 does, and on a branch the PR gate
+     already passes, which answers ``deferred``; otherwise ``chunk`` —
      grounded on the plan when one exists, and the bare default when none
      does. ``final`` is never a default: the stage-keyed rigor norm
      (`nonfunctional-requirements.md` § Direction) says unsure defaults to the
@@ -102,11 +108,10 @@ consumes them.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from . import buildplan_refs, coverage_algebra, gitstate, plan_status, risk, work_unit
 from .coverage import _resolve_base_branch
@@ -128,6 +133,18 @@ _VALID_ARG_MODES = frozenset({
     "cumulative",
     "verify-resolutions",
 })
+
+#: The word that asks a ``cumulative`` for the whole bundle rather than the
+#: delta since the last boundary review — ``/prawduct:critic cumulative full``,
+#: or ``full`` alone. A cumulative is bounded by default (bounded-cumulative
+#: design, Decision 1); this is the explicit route back to the full span.
+FULL_SPAN_TOKEN = "full"
+
+#: The rationale :func:`infer_mode` answers for that request. It reaches
+#: ``critic-begin`` as ``--chosen-by``, which the skill forwards verbatim, and
+#: ``critic_consolidate.begin_review`` reads it there, so the override needs no
+#: flag and no skill step of its own.
+FULL_SPAN_RATIONALE = "explicit-args full"
 
 # The chunk field this module reads, built from the shared field grammar in
 # ``buildplan_refs`` — the same factories the ``**Type:**`` reader uses. Hand
@@ -234,7 +251,10 @@ def infer_mode(
     if args is not None:
         stripped = args.strip()
         if stripped:
-            token = stripped.split()[0]
+            words = stripped.split()
+            token = words[0]
+            if token == FULL_SPAN_TOKEN or words[:2] == ["cumulative", FULL_SPAN_TOKEN]:
+                return "cumulative", FULL_SPAN_RATIONALE
             if token in _VALID_ARG_MODES:
                 return _explicit_mode(token, prawduct_dir, project_dir)
 
@@ -310,7 +330,12 @@ def infer_mode(
         # now, not one to defer to.
         return None if clean_tree and kind == OWED_BOUNDARY else why
 
-    if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
+    # Asked once: rules 1 and 1b judge the same record, and deriving it re-reads
+    # the findings cache, walks history (`verify_anchor`) and may read the fact
+    # store, none of which changes between the two rules.
+    prior_record = _verify_prior_record(prawduct_dir, project_dir, progress)
+
+    if _rule_verify_resolutions_fires(prawduct_dir, project_dir, progress, prior_record):
         ext = _extension()
         if ext:
             return MODE_DEFERRED, f"extension-deferred (fix in progress): {ext}"
@@ -321,13 +346,17 @@ def infer_mode(
             "subset of prior files_reviewed (builder is mid-fix)"
         )
 
-    postfix_reason = _rule_postfix_fix_fires(prawduct_dir, project_dir)
+    postfix_reason = _rule_postfix_fix_fires(
+        prawduct_dir, project_dir, progress, prior_record
+    )
     if postfix_reason:
         return "verify-resolutions", (
             f"rule-1b verify-resolutions (post-cumulative fix): {postfix_reason}"
         )
 
-    cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir)
+    cumulative_reason = _rule_cumulative_fires(
+        prawduct_dir, project_dir, _facts_for(project_dir, progress)
+    )
     if cumulative_reason:
         ext = _extension(clean_tree=True)
         if ext:
@@ -399,7 +428,16 @@ def infer_mode(
             )
             if mid:
                 return mid
-            return "cumulative", f"rule-4 cumulative: {redirect}"
+            if not _branch_already_covered(project_dir, _facts_for(project_dir, progress)):
+                return "cumulative", f"rule-4 cumulative: {redirect}"
+            # A covered branch on a clean tree owes nothing: `chunk` would dispatch
+            # an empty interval, and `cumulative` would buy a review the PR gate
+            # does not need.
+            return MODE_DEFERRED, (
+                "rule-4 deferred: the working tree is clean and the PR gate already "
+                "passes for this branch (`prawduct-hook check-cumulative-critic`), so "
+                "no review is owed now"
+            )
     if total > 0:
         return "chunk", (
             f"rule-4 chunk: {_plan_relation_note(project_dir, plan)}, prior chunks "
@@ -439,9 +477,11 @@ def _explicit_mode(
 
     **Only where the redirect works.** :func:`_clean_tree_redirect` returns ""
     when `cumulative` would refuse in its own way (no resolvable base, nothing
-    committed beyond it, or a fresh cumulative record already covering HEAD).
-    Then the token stands and the operator gets the honest empty-interval
-    refusal instead of a redirect to a second one — the same rule rule 4 keeps.
+    committed beyond it, or a fresh cumulative record already covering HEAD),
+    and the token also stands on a branch the PR gate already passes
+    (:func:`_branch_already_covered`), where a ``cumulative`` would buy nothing.
+    Then the operator gets the honest empty-interval refusal instead of a
+    redirect to a second one — the same rule rule 4 keeps.
 
     **Nor mid-plan, where the interval is not empty.** A clean tree mid-plan
     still holds unreviewed commits when the builder committed the chunk before
@@ -473,7 +513,8 @@ def _explicit_mode(
                     f"explicit-args {token} (mid-plan, not redirected): "
                     f"{_mid_plan_note(project_dir, plan, progress)}; {_interval_note(start)}"
                 )
-            return "cumulative", f"explicit-args {token} redirected: {redirect}"
+            if not _branch_already_covered(project_dir, _facts_for(project_dir, progress)):
+                return "cumulative", f"explicit-args {token} redirected: {redirect}"
     return token, "explicit-args"
 
 
@@ -540,19 +581,39 @@ def _fresh_cumulative_covers_head(prawduct_dir: Path, project_dir: Path) -> bool
 
     One home for the question: rule 2 skips on it, and rule 4's clean-tree
     redirect must not undo that skip by routing to the mode rule 2 just declined.
+    Whether the branch is already covered some other way is a separate question
+    (:func:`_branch_already_covered`), asked only where a ``cumulative`` would
+    be named: mid-plan, the redirect still has to reach :func:`_mid_plan_answer`.
     """
     head_sha = gitstate._git_head_sha(project_dir)
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not head_sha or not findings_path.is_file():
+    if not head_sha:
         return False
-    try:
-        data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return False
-    return (
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
+
+    # The one reader: an absent, undecodable or malformed cache answers "no
+    # record", never a traceback out of inference.
+    data = critic_consolidate.read_findings_cache(prawduct_dir).record
+    return data is not None and (
         data.get("commit_reviewed") == head_sha
         and data.get("mode") == _MODE_CUMULATIVE_VERBOSE
     )
+
+
+def _branch_already_covered(project_dir: Path, read: "dict | None") -> bool:
+    """True when the PR gate's own answer (:func:`gates.branch_coverage_verdict`)
+    is ``covered`` or ``transferred`` — so naming a ``cumulative`` would buy a
+    review the gate does not need.
+
+    The findings cache cannot answer this: it holds one review, so after a
+    cumulative and a clean verify pass it holds the verify, and a clone whose
+    reviews arrived as notes may have none. ``read`` is the inference's one
+    store read (:func:`_facts_for`). Failures come back as statuses
+    (``no-base``, ``store-precheck``, ...), and every one but these two leaves
+    the cumulative named, as before."""
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    answer = gates.branch_coverage_verdict(project_dir, read=read)
+    return answer.get("status") in ("covered", "transferred")
 
 
 class PlanProgress(NamedTuple):
@@ -889,16 +950,75 @@ def _mid_plan_answer(
 # ---------------------------------------------------------------------------
 
 
+def _verify_prior_record(
+    prawduct_dir: Path, project_dir: Path, progress=None
+) -> "dict | None":
+    """The prior-review record rules 1 and 1b judge — the review a
+    ``verify-resolutions`` dispatch would anchor to, rendered as the findings
+    cache would hold it — or ``None`` when there is none.
+
+    **Not whatever the single-slot cache names.** The cache survives a branch
+    switch, so after one it names the other branch's review; both rules used to
+    refuse that as off-lineage and fall through, while the
+    ``verify-resolutions`` dispatch they feed would have anchored on this
+    branch's own review (#1150). So this asks the dispatch's own question,
+    ``critic_consolidate.verify_anchor`` (one owner: ``select_branch_review``),
+    whatever the cache holds — a pointer to another review, or none (no cache,
+    as in a fresh worktree of a reviewed branch; an unreadable one; no
+    ``fact_id``) — and a re-derived answer is rendered through
+    ``critic_consolidate.branch_review_record``, the renderer the dispatch's
+    cache write and the briefing use. When the dispatch would refuse, so does
+    this — except over a record written before the evidence store (no
+    ``fact_id``) when the store holds no review of this branch either: that
+    record is judged as written, as before, being the only prior record such
+    a repo has.
+
+    **Read-only, deliberately.** The dispatch re-points the cache when it
+    re-anchors; inference does not. Inference is a question asked before a
+    dispatch that may not follow — it can answer ``deferred`` or another mode,
+    and the skill then dispatches nothing or something else — and a question
+    that moved the builder's view of "the latest findings" would change what
+    the briefing shows over a review nobody ran. Nothing is lost by not
+    writing: when ``verify-resolutions`` does dispatch, it writes the same
+    answer, because it selects through the same function.
+    """
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
+
+    data = critic_consolidate.read_findings_cache(prawduct_dir).record
+    read = _facts_for(project_dir, progress)
+    answer = critic_consolidate.verify_anchor(project_dir, prawduct_dir, read)
+    if answer["fact"] is None:
+        fact_id = data.get("fact_id") if data is not None else None
+        if data is not None and not (isinstance(fact_id, str) and fact_id.strip()):
+            # A record written before the evidence store, and no review in the
+            # store to replace it: judged as written, as it always was. The
+            # store holds nothing this record could be checked against.
+            return data
+        return None  # the dispatch would refuse; inferring it buys an exit 1
+    if answer["rederived"]:
+        return critic_consolidate.branch_review_record(
+            prawduct_dir, answer["fact"], read.get("facts") or [], read=read
+        )
+    # Not re-derived: the cache's own pointer is this branch's review.
+    return data
+
+
+_UNSET: Any = object()  # "no precomputed prior record": derive it
+
+
 def _rule_verify_resolutions_fires(
-    prawduct_dir: Path, project_dir: Path
+    prawduct_dir: Path, project_dir: Path, progress=None, prior_record: Any = _UNSET
 ) -> bool:
-    """Rule 1: prior findings + anchor resolves + diff ⊆ prior scope."""
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not findings_path.is_file():
-        return False
-    try:
-        data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError):
+    """Rule 1: prior findings + anchor resolves + diff ⊆ prior scope. The prior
+    findings are :func:`_verify_prior_record`'s — the review the dispatch would
+    anchor to, asked read-only; ``infer_mode`` derives it once and passes it in
+    as ``prior_record``."""
+    data = (
+        _verify_prior_record(prawduct_dir, project_dir, progress)
+        if prior_record is _UNSET
+        else prior_record
+    )
+    if data is None:
         return False
 
     commit_reviewed = data.get("commit_reviewed")
@@ -977,11 +1097,14 @@ def _cumulative_anchor(data: dict) -> str | None:
     return None
 
 
-def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
+def _rule_postfix_fix_fires(
+    prawduct_dir: Path, project_dir: Path, progress=None, prior_record: Any = _UNSET
+) -> str:
     """Rule 1b (CRT-4J8W): a committed fix after a cumulative review.
 
-    Fires when the working tree is clean, the prior record is a
-    ``cumulative`` review (see :func:`_cumulative_anchor`), its
+    Fires when the working tree is clean, the prior record
+    (:func:`_verify_prior_record`, the review the verify dispatch would anchor
+    to) is a ``cumulative`` review (see :func:`_cumulative_anchor`), its
     ``commit_reviewed`` resolves, and the committed delta since it holds at
     least one judgeable file while staying under the verify-resolutions
     widening threshold, measured on the judgeable subset of both sides —
@@ -1002,12 +1125,14 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     """
     if _get_uncommitted_code_files(project_dir):
         return ""
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not findings_path.is_file():
-        return ""
-    try:
-        data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError):
+    # The review the verify dispatch would anchor to, as rule 1 reads it — not
+    # whatever the slot last named on another branch.
+    data = (
+        _verify_prior_record(prawduct_dir, project_dir, progress)
+        if prior_record is _UNSET
+        else prior_record
+    )
+    if data is None:
         return ""
     anchor = _cumulative_anchor(data)
     if anchor is None:
@@ -1055,7 +1180,7 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
 
 
 def _rule_cumulative_fires(
-    prawduct_dir: Path, project_dir: Path
+    prawduct_dir: Path, project_dir: Path, read: "dict | None" = None
 ) -> str:
     """Rule 2: no code in flight + ≥2 commits ahead + no fresh cumulative record.
 
@@ -1088,11 +1213,13 @@ def _rule_cumulative_fires(
     # field, so a record carrying it is v2-era state the gates ignore.)
     if _fresh_cumulative_covers_head(prawduct_dir, project_dir):
         return ""
+    if _branch_already_covered(project_dir, read):
+        return ""
 
     return (
         f"branch is {commits_ahead} commits ahead of {base_branch}, "
         "working tree clean, no fresh cumulative-mode record for "
-        "current HEAD"
+        "current HEAD, and no composed review coverage spans the branch"
     )
 
 
@@ -1218,7 +1345,7 @@ def _progress_at_head(
     with tempfile.TemporaryDirectory(prefix="prawduct-plan-at-head-") as scratch:
         copy = Path(scratch) / Path(plan_path).name
         try:
-            copy.write_text(text, encoding="utf-8")
+            copy.write_text(text, encoding="utf-8", errors="backslashreplace")
         except OSError:
             return None
         return progress_of(copy, facts, repo_dir=Path(project_dir))
@@ -1593,56 +1720,53 @@ def boundary_cumulative_still_owed(
 
 
 def _newest_branch_review(project_dir: Path, facts: "dict | None" = None) -> "dict | None":
-    """The most recent ``review`` fact recorded on the checked-out branch, or ``None``.
+    """The newest review covering this branch's lineage, or ``None`` when no
+    review settles that — the review the deferral and the boundary check stand
+    on.
 
-    Read from the clone-wide store and filtered by the ``actor.branch`` each fact
-    carries, so a sibling worktree's reviews of another branch never answer for
-    this one. Its tree need not be committed: a review of uncommitted work is
-    exactly the case where the tree it judged exists nowhere in the history.
-    ``facts`` is the caller's ``read_facts`` result; read here when absent.
+    The answer is ``critic_consolidate.select_branch_review``'s, the one owner
+    of "which review is this branch's", which the findings cache, the verify
+    dispatch and mode inference also choose by — asked through
+    ``settled_branch_review``, which keeps it only when it settles the
+    question. Both callers RELAX on it (a fix defers to a later review; a
+    standing ``cumulative`` discharges the boundary), so every case the owner
+    leaves in doubt — no branch range, no review anchored on it, or only its
+    merge-base fallback to a review recorded elsewhere — reads as no review,
+    and the review stays owed. Its tree need not be committed: a dirty-tree
+    review anchors on the commit it was dispatched from. ``facts`` is the
+    caller's ``read_facts`` result; read here when absent.
     """
-    branch = gitstate.current_branch(project_dir)
-    if not branch:
-        return None
     read = _facts_for(project_dir, None, facts)
     if read.get("status") == "error":
         return None
-    reviews = [
-        f for f in read.get("facts") or []
-        if f.get("kind") == "review" and (f.get("actor") or {}).get("branch") == branch
-    ]
-    # The store is append-only, so its order IS the recording order; `ts` has
-    # one-second resolution and two reviews can share it. Position breaks the
-    # tie — a timestamp alone picks arbitrarily between same-second reviews.
-    return reviews[-1] if reviews else None
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
+
+    return critic_consolidate.settled_branch_review(project_dir, read.get("facts") or [])
 
 
 def review_chain(facts: list[dict], newest: dict) -> list[dict]:
     """Every review fact on the chain ``newest`` stands on, newest first.
 
     The chain is structural: each review's ``base_tree`` is the ``head_tree`` of
-    the review before it (the link ``critic_consolidate.carried_blocking`` reads
-    one hop of). EVERY review standing at a linked tree is included, not only
-    the newest there, because a second review of an unchanged tree must not hide
-    the first; the walk steps back through the newest of them. Walked to the
-    end, because a chain can be several passes long.
+    a review recorded before it — ``coverage_algebra.linked_reviews``, the one
+    link rule the verify roll-call's anchor and ``plan_status``'s extended
+    line follow too. EVERY review standing at a linked tree is included, not
+    only the newest there, because a second review of an unchanged tree must
+    not hide the first; the walk steps back through the newest of them. Walked
+    to the end, because a chain can be several passes long.
     """
-    reviews = [f for f in facts if f.get("kind") == "review"]
     # Append order is recording order (the store is append-only); `ts` has
     # one-second resolution, so it cannot order two reviews in the same second.
-    position = {f.get("id"): i for i, f in enumerate(reviews)}
+    reviews = [f for f in facts if f.get("kind") == "review"]
     chain: list[dict] = []
     seen: set[str] = set()
     current: "dict | None" = newest
     while current is not None and current.get("id") not in seen:
         seen.add(current.get("id"))
         chain.append(current)
-        base = (current.get("body") or {}).get("base_tree")
-        here = position.get(current.get("id"), len(reviews))
         earlier = [
-            f for f in reviews
-            if f.get("id") not in seen and (f.get("body") or {}).get("head_tree") == base
-            and position[f.get("id")] < here
+            f for f in coverage_algebra.linked_reviews(reviews, current)
+            if f.get("id") not in seen
         ]
         for other in earlier[:-1]:
             seen.add(other.get("id"))
@@ -1974,7 +2098,8 @@ def _working_tree_is_empty(project_dir: Path) -> bool:
             ["git", "status", "--porcelain", "--untracked-files=all"],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
@@ -1991,7 +2116,8 @@ def _head_tree(project_dir: Path) -> str | None:
             ["git", "rev-parse", "HEAD^{tree}"],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
@@ -2017,7 +2143,8 @@ def _get_uncommitted_code_files(project_dir: Path) -> set[str]:
         ["git", "status", "--porcelain", "--untracked-files=all"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=10,
     )
     if proc.returncode != 0:
@@ -2039,7 +2166,8 @@ def _committed_files_since(project_dir: Path, sha: str) -> set[str]:
         ["git", "diff", "--name-only", f"{sha}..HEAD"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=10,
     )
     if proc.returncode != 0:
@@ -2058,7 +2186,8 @@ def _commit_resolves(project_dir: Path, sha: str) -> bool:
         ["git", "rev-parse", "--verify", f"{sha}^{{commit}}"],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         timeout=10,
     )
     return proc.returncode == 0
@@ -2083,7 +2212,8 @@ def _commit_is_ancestor(project_dir: Path, sha: str) -> bool:
             ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):

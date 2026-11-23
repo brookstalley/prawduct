@@ -144,10 +144,13 @@ class TestGitignoreCrossReference:
 
     def test_janitor_points_contract_to_doctor(self):
         src = _read("skills/janitor/themes.md")  # the theme taxonomy's companion file
-        assert "Health-Check #8" in src, (
+        # Named, not numbered: doctor's list renumbers, and an ordinal then routes the
+        # reader to the wrong check while this assertion stays green.
+        assert "*Gitignore contract* check" in src, (
             "janitor themes.md's Version Control Hygiene theme must route the prawduct gitignore "
-            "contract to /prawduct:doctor Health-Check #8"
+            "contract to /prawduct:doctor's Gitignore contract check, by name"
         )
+        assert "Health-Check #8" not in src
 
     def test_the_health_check_grades_on_the_dry_run(self):
         """A read-only report must not be graded by a command that writes (#666).

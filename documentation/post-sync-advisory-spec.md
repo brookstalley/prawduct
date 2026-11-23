@@ -427,7 +427,7 @@ Each feature's `lib/probes/<feature>.py` calls `register_probe(...)` at import t
 - **Deterministic**: same inputs → same `AdvisoryCandidate` list (including evidence hash).
 - **Cheap**: probes run on every sync. Read-only file scans; no expensive operations. Cache where possible.
 - **Specific**: prefer many narrow probes over one omnibus probe. Each probe maps to one `type`.
-- **Versioned**: declare `probe_version: int`. Bump when trigger logic or evidence shape changes; the framework supersedes old advisories automatically.
+- **Versioned**: declare `probe_version: int`. Bump when trigger logic or evidence shape changes; the framework supersedes old advisories automatically. A type that has never shipped needs no bump, since no released id can go stale. `tests/test_advisory_evidence_pins.py` fails when a candidate's literal evidence changes under an unchanged version.
 - **Two conditions, not one**: each probe declares both a **trigger condition** (when to fire) and a **resolution condition** (when to clear). These are distinct:
   - The **trigger condition** is "we should ask about this" — e.g., vendor SDK imports present.
   - The **resolution condition** is "the user has answered" — e.g., `uses_llm_inference: true` in `project-state.yaml`.
@@ -549,9 +549,11 @@ shared predicate is `backlog_probes.post_cutover`.
 `dead-why` and `stalled-transition` were on the retirement list above until the backlog read-through
 cache gave them a live store to resolve citations against; they read the markdown file before the
 cutover and the cache after it. Anyone adding a guard on `post_cutover` should decide which of the
-two shapes they are writing. **`revisit-due` stays retired on the far side and the cache does not
-change that** — `revisit:` records intent (*granted until date X*), which no age-based query can
-reconstruct, so what it waits on is a *write* path for the field, not a read path.
+two shapes they are writing. **Amended 2026-11-10: `revisit-due` is the third.** It stayed dark
+because `revisit:` records intent (*granted until date X*), which no age-based query can
+reconstruct, so what it waited on was a *write* path for the field. #564 shipped that path, so it
+now reads each open item's `revisit:` from the cached issue body on the far side, and reports an
+unreadable store with the same advisory as its two siblings.
 
 **Retirement is not silence (GV8), and the advisory that enforced that has now retired itself.**
 Cutover retires those probes' *premises*, not the checks they stood for, so from 2026-07-19 one
@@ -561,8 +563,7 @@ and was **removed with the last of them (W1, 2026-08-07)**: the readers it enume
 backlog cache and each reports an unreadable store *at the point of use*, which says the same thing
 closer to the reader who needs it. Removal rather than rewording was the intended end state.
 
-Two checks stay dark, and neither is something an advisory could restore. **`revisit-due`** waits on
-a *write* path for the field (above). The **janitor's neglected-hygiene sweep** waits on the
+One check stays dark, and it is not something an advisory could restore. The **janitor's neglected-hygiene sweep** waits on the
 `promoted` status value having no Issues equivalent, so the query has nothing to ask for; it states
 that in its own block rather than reporting clean.
 

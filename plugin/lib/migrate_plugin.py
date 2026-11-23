@@ -920,7 +920,9 @@ def ensure_marker_gitignored(project_dir: Path) -> bool:
     """Add the version marker to ``.gitignore`` when not already ignored."""
     gitignore = Path(project_dir) / ".gitignore"
     content = gitignore.read_text(encoding="utf-8") if gitignore.is_file() else ""
-    if VERSION_MARKER in content.splitlines():
+    # Covered by a broader shared rule (a wholesale `.prawduct/`, #762) counts too:
+    # a literal line beside it is redundant, and there is nothing to un-ignore.
+    if core.gitignore_covers(Path(project_dir), VERSION_MARKER):
         return False
     parts: list[str] = []
     if content and not content.endswith("\n"):
@@ -929,7 +931,7 @@ def ensure_marker_gitignored(project_dir: Path) -> bool:
         parts.append("\n")
     parts.append("# Prawduct plugin version marker (per-repo last-seen)\n")
     parts.append(VERSION_MARKER + "\n")
-    gitignore.write_text(content + "".join(parts), encoding="utf-8")
+    gitignore.write_text(content + "".join(parts), encoding="utf-8", errors="backslashreplace")
     return True
 
 
@@ -954,13 +956,13 @@ def _git_untrack_kept(project_dir: Path, rel: str) -> bool:
     try:
         check = subprocess.run(
             ["git", "ls-files", "--error-unmatch", rel],
-            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+            capture_output=True, encoding="utf-8", errors="surrogateescape", cwd=str(project_dir), timeout=10,
         )
         if check.returncode != 0:
             return False
         rm = subprocess.run(
             ["git", "rm", "--cached", "--quiet", rel],
-            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+            capture_output=True, encoding="utf-8", errors="surrogateescape", cwd=str(project_dir), timeout=10,
         )
         return rm.returncode == 0
     except (OSError, subprocess.SubprocessError):

@@ -559,7 +559,7 @@ def archive_plan(
     # never started.
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        with destination.open("w", encoding="utf-8", newline="") as handle:
+        with destination.open("w", encoding="utf-8", newline="", errors="backslashreplace") as handle:
             handle.write(stamped)
     except OSError as exc:
         return {"status": "refused", "reason": f"cannot archive {plan_path}: {exc}"}

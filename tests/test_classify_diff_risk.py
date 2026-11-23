@@ -336,7 +336,7 @@ class TestFailureAsymmetry:
 
     def test_fail_closed_with_declared_surfaces(self, tmp_path):
         # Not a git repo, surfaces declared: declared risk + unverifiable
-        # diff must NOT get the standard-tier reviewer.
+        # diff must NOT classify standard.
         repo = tmp_path / "repo"
         (repo / ".prawduct").mkdir(parents=True)
         _declare_surfaces(repo, "risk_surfaces:\n  - src/core/\n")

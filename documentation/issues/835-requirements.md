@@ -3,8 +3,8 @@
 `status: draft · stage: requirements · area: backlog-service · added: 2026-09-28 · source: scheduled
 backlog session · issue: https://github.com/brookstalley/prawduct/issues/835`
 
-Related: #836 (closed sibling from the same 2026-09-18 investigation, already shipped
-— `documentation/issues/836-requirements.md` — no overlap: that item is `get`'s missing
+Related: #836 (open sibling from the same 2026-09-18 investigation, at stage ready; only its
+requirements doc has landed — `documentation/issues/836-requirements.md` — no overlap: that item is `get`'s missing
 `updated_at`, this one is `related`'s one-sided write). #724 (the item this bug was found
 against; load-bearing evidence below, no `documentation/issues/` doc of its own). #751
 ("backlog-service: merge has no inverse" — a different asymmetry in the same relationship

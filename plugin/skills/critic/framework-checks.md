@@ -21,7 +21,7 @@ These checks apply only when reviewing skill files, template files, or framework
 - Enumerated concern that doesn't generalize → **blocking**
 - Plan that assumes one product type where a general principle would serve better → **warning**
 - General principle worded to favor one product type → **warning**
-- Slight specificity that doesn't harm generality → **note**
+- Slight specificity that doesn't harm generality → observation
 
 ### Check 8: Instruction Clarity
 
@@ -39,7 +39,7 @@ These checks apply only when reviewing skill files, template files, or framework
 **Severity guide:**
 - Ambiguous instruction that could produce wrong behavior → **warning**
 - One of those three structural defects → **warning**
-- Slightly unclear wording, unlikely to cause problems → **note**
+- Slightly unclear wording, unlikely to cause problems → observation
 
 ### Check 9: Cumulative Health
 
@@ -59,7 +59,7 @@ These checks apply only when reviewing skill files, template files, or framework
 - Sections contradict each other → **warning**
 - Key instructions buried in paragraphs → **warning**
 - Voice inconsistency within the same section → **warning**
-- Overall length growing without clear justification → **note**
+- Overall length growing without clear justification → observation
 
 ### Check 10: Pipeline Coverage
 
@@ -78,10 +78,10 @@ If any dimension is missing, flag it as a warning.
 
 **Registry cross-check:** When a change modifies a cross-cutting concern (adds, removes, or changes coverage), verify that the concern's row in `.prawduct/cross-cutting-concerns.md` is accurate. If the registry doesn't reflect the change, flag it as a warning.
 
-**Completeness prompt:** At the end of framework reviews, ask: "Is there a cross-cutting concern missing from the registry that this change reveals?" New concerns discovered during review should be flagged as notes for registry addition.
+**Completeness prompt:** At the end of framework reviews, ask: "Is there a cross-cutting concern missing from the registry that this change reveals?" New concerns discovered during review should be flagged as observations for registry addition.
 
 **Severity guide:**
 - New artifact/dimension with no corresponding Critic check → **warning**
 - Registry row inaccurate after a coverage change → **warning**
-- Missing concern discovered during review → **note**
-- Minor coverage gap in a non-critical dimension → **note**
+- Missing concern discovered during review → observation
+- Minor coverage gap in a non-critical dimension → observation

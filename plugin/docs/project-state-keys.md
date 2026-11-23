@@ -204,6 +204,9 @@ The dry run prints the exact section, which you can paste into a release PR as t
 
 Quote `heading` and `entry`: YAML reads an unquoted `#` as the start of a comment.
 
+Under `paragraphs`, a note that opens with a list item starts below the template's text on its
+line, after a blank line: a list glued after a label renders its first item as plain text.
+
 **With another release tool** (release-please, semantic-release, a script that dates or tags), run
 the cut first and the tool after it. The cut writes a finished section and never needs a heading
 renamed.
@@ -226,8 +229,15 @@ consumer_digest:
 ## coverage_required (opt-in, default false)
 
 When true, the Critic requires every changed file the verifier can judge to appear in
-`.test-evidence.json`'s `changes_referenced` list (files it can't judge — non-code, symbol-less,
-deleted — are declared in `changes_unjudged` and reported, not gated) and scales severity language
+`.test-evidence.json`'s `changes_referenced` list. Files it cannot vouch for are reported, never
+gated, in two distinct buckets: `changes_out_of_remit` (changed paths outside the producing
+verifier's remit — files it never reads, with `changes_out_of_remit_reason` stating why in the
+record — out of scope by construction, **not** missing evidence) and `changes_unjudged` (files the
+verifier read and found nothing to judge). For the symbol-grep floor, out of remit is every
+non-Python file and unjudged is symbol-less Python and deleted files; a stronger verifier draws its
+own remit and says so in the reason. With `changes_referenced` and `changes_unreferenced` the four
+partition the changed set. A floor record written before the split lists non-Python files in
+`changes_unjudged`; the gate reads both. The Critic also scales severity language
 to the declared `coverage_level` (`referenced` floor vs. `executed` real). The reference verifier
 at `bin/test-reference-verify` emits the floor; products with non-trivial coverage concerns should
 plug in a stronger verifier. See `/prawduct:methodology building` "Test Discipline". Default off —
@@ -248,6 +258,14 @@ outside quotes begins a comment — quote it (`-k "not #slow"`) or wrap the invo
 ```yaml
 test_command: uv run pytest --junit-xml={junit_xml} -q
 ```
+
+A repo whose tests run on testament (`.testament.toml` at its root) declares
+`test_command: testament run --junit-xml {junit_xml}` (or makes that command the `test_commands` entry
+for the suite testament runs), so
+the recorder records the testament run rather than running the suite a second time locally. A
+declared command that runs an in-repo shell script which runs `testament run` counts too, given the
+`{junit_xml}` argument to pass on. Where no declared command runs testament, as far as prawduct can
+read, the session-start advisory `testament-evidence:declared-command-skips-testament` says so.
 
 **`test_commands:`** — the multi-environment form (backend + web + mobile): one canonical
 invocation per environment, each run under the same rules as `test_command:` (shlex-split,
@@ -353,10 +371,15 @@ live-integration changes that automated tests can't fully cover. Drain via
 `/prawduct:pr create --accept-pending-verification "rationale"`. Default off — opt in by setting
 `operator_verification_required: true`.
 
+An absent file or key reads as off. A `project-state.yaml` that exists but cannot be read (no
+permission, not UTF-8) does NOT read as off: `check-operator-verification` refuses with exit 3 and
+names the file, so a repo that opted in is never told its gate is off. An unreadable queue file
+refuses the same way instead of crashing. Same rule for `coverage_required`.
+
 ## review_round_budget (on by default, 6)
 
 The most full review rounds one body of work may buy before `critic-begin` refuses another (exit
-4). `verify-resolutions` is never refused and never counted — it is how a BLOCKING finding clears,
+4). `verify-resolutions` is never refused by the budget and never counted — it is how a BLOCKING finding clears,
 so a ceiling that ate it would strand findings with no command that resolves them.
 
 The unit is the build-plan SCOPE, not the branch: a branch may carry two scopes (one would charge
@@ -390,6 +413,27 @@ reading.
 
 Set to `null` to disable it entirely; raise it if this repo genuinely reviews more. A budget that
 gets `--force`d past every time is a budget set wrong.
+
+## native_review_pairing (development builds only, on by default)
+
+Only a development build of the plugin (a `-dev` version) reads this key. There, every
+`cumulative` review, and one in six `chunk` and `verify-resolutions` reviews (chosen by review id),
+also starts the host's native `/code-review` over the same interval, at `high`, so the two
+reviews can be compared before any Critic goal is handed to it (#1130, #1166). The Critic is
+unchanged: the native review runs beside its reviewers, blocks and rates nothing, and
+consolidation never waits for it. A boundary review's `NEXT-ACTION` names the native list; an
+inner one's does not, because a second unrated list beside an inner pass would manufacture
+rounds. Its text is kept per clone in `.prawduct/.native-reviews/`. An inner review of a working
+tree is handed to the native review as a range whose working-tree end (and base, when no commit
+holds it) is an unreachable commit over the reviewed tree; recording the run pins both reviewed
+trees under `refs/prawduct/native-trees/` until the experiment stops. The native review runs in a
+worktree of its own, detached at the reviewed head, and never moves this checkout's HEAD, index or
+files (#1177). If HEAD leaves its branch during a review anyway, the review's `NEXT-ACTION` and
+`critic-consolidate` say so, with the command that puts the work back on the branch.
+
+Set `native_review_pairing: false` to opt this repo out. Only an explicit `false` does: the
+pairing is the development build's default, so a misspelt value keeps it running rather than
+silently ending the measurement. A released build ignores the key and never pairs.
 
 ## oversized_file_threshold_kb, evidence_store_threshold_mb (opt-in overrides)
 

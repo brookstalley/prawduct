@@ -71,12 +71,14 @@ def _review_fact(
     scope: str | None = None,
     chunk: str | None = None,
     files: "list[str] | None" = None,
+    head_commit: "str | None" = None,
 ) -> None:
     """Append a review fact carrying ``(fid, severity)`` findings.
 
     ``files`` sets every finding's attribution — the axis
     ``prior_dispositions`` scopes on, so a test about it must be able to set
-    it."""
+    it. ``head_commit`` places the review on a lineage — what makes it one of a
+    branch's reviews (``coverage.branch_review_ids``)."""
     body = {
         "base_tree": "a" * 40,
         "head_tree": "b" * 40,
@@ -95,6 +97,8 @@ def _review_fact(
             for fid, severity in findings
         ],
     }
+    if head_commit is not None:
+        body["head_commit"] = head_commit
     result = evidence.append_fact(repo, "review", review_id, body)
     assert result["status"] == "appended", result
 
@@ -684,6 +688,17 @@ class TestMarkdownRendering:
         assert "scope `alpha`" in text
         assert "chunk 01" in text
         assert "**2 findings** (2 note)" in text
+
+    def test_the_undispositioned_line_names_only_verbs_that_exist(self, tmp_path):
+        """#606's wording defect: the line said every finding takes "an ACCEPT,
+        FIX or FILE", but `disposition` has no `--fix`. A fix is verified by a
+        verify pass or recorded with `--fixed`; the line names both routes."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+        text = dispositions.render_markdown(dispositions.census(evidence.read_facts(repo)))
+        line = next(ln for ln in text.splitlines() if "undispositioned**" in ln)
+        assert "ACCEPT, FIX or FILE" not in line
+        assert "`disposition --fixed <paths>`" in line and "verify-resolutions" in line
 
     def test_owner_ruled_accept_is_labelled_distinctly(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -1703,3 +1718,109 @@ class TestTheCensusReadsObservations:
             dispositions.census(evidence.read_facts(repo))
         )
         assert "Observations" not in md
+
+
+# ---------------------------------------------------------------------------
+# A bare render composes the BRANCH's reviews, not the newest one (#334)
+# ---------------------------------------------------------------------------
+
+
+def _feature_branch(base: Path) -> "tuple[Path, str, str, str]":
+    """``main`` with one commit, ``feature`` with two on top. Returns
+    ``(repo, merge_base, first, second)`` — the commits a review anchors on."""
+    repo = base / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / "code.py").write_text("x = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "c1")
+    merge_base = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "feature")
+    commits = []
+    for i in (1, 2):
+        (repo / f"f{i}.py").write_text(f"y = {i}\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", f"f{i}")
+        commits.append(_git(repo, "rev-parse", "HEAD"))
+    return repo, merge_base, commits[0], commits[1]
+
+
+class TestABareRenderComposesTheBranch:
+    """`render-dispositions` with no selector rendered the NEWEST review only,
+    so an earlier round's undispositioned findings were invisible while the
+    census read clean — observed live, R-10..R-14 never dispositioned and three
+    still unfixed at head. It now renders the branch's review set
+    (`coverage.branch_review_ids`), the one the round budget and the verify
+    roll-call compose over."""
+
+    def _two_rounds(self, tmp_path):
+        repo, merge_base, first, second = _feature_branch(tmp_path)
+        _review_fact(
+            repo, "rev-old", [("R-1", "warning"), ("R-2", "blocking")],
+            head_commit=first,
+        )
+        _review_fact(repo, "rev-new", [("R-1", "note")], head_commit=second)
+        return repo, merge_base
+
+    def test_both_rounds_are_listed_and_counted(self, tmp_path):
+        repo, _ = self._two_rounds(tmp_path)
+
+        proc = _hook(repo, "render-dispositions", "--json")
+
+        assert proc.returncode == 0, proc.stderr
+        payload = json.loads(proc.stdout)
+        assert [r["review_id"] for r in payload["reviews"]] == ["rev-old", "rev-new"]
+        summary = payload["summary"]
+        assert summary["findings"] == 3
+        assert summary["undispositioned"] == 3
+        assert summary["open_blocking"] == 1
+        assert summary["undispositioned_warning"] == 1
+        # No fallback was taken, so nothing is said about one.
+        assert "newest review only" not in proc.stderr
+
+    def test_the_markdown_census_names_the_earlier_round(self, tmp_path):
+        repo, _ = self._two_rounds(tmp_path)
+
+        proc = _hook(repo, "render-dispositions")
+
+        assert proc.returncode == 0, proc.stderr
+        assert "**rev-old**" in proc.stdout and "**rev-new**" in proc.stdout
+        assert "| R-2 | blocking | undispositioned |" in proc.stdout
+
+    def test_a_review_off_this_branch_is_not_swept_in(self, tmp_path):
+        """The store is clone-wide; the set is bounded by lineage. A review
+        anchored at the merge base (a sibling's, or the base branch's) is not
+        this branch's — the census would otherwise report debt it does not owe."""
+        repo, merge_base = self._two_rounds(tmp_path)
+        _review_fact(repo, "rev-elsewhere", [("R-9", "blocking")], head_commit=merge_base)
+
+        payload = json.loads(_hook(repo, "render-dispositions", "--json").stdout)
+
+        assert [r["review_id"] for r in payload["reviews"]] == ["rev-old", "rev-new"]
+        assert payload["summary"]["open_blocking"] == 1
+
+    def test_an_explicit_selector_is_unchanged(self, tmp_path):
+        repo, _ = self._two_rounds(tmp_path)
+
+        payload = json.loads(
+            _hook(repo, "render-dispositions", "--review", "rev-new", "--json").stdout
+        )
+
+        assert [r["review_id"] for r in payload["reviews"]] == ["rev-new"]
+
+    def test_with_no_branch_set_it_falls_back_to_the_newest_and_says_so(self, tmp_path):
+        """No review anchors on this branch's lineage, so there is no set to
+        render. The newest review stands in — and ONE stderr line says so,
+        because a newest-review census silently standing in for the branch is
+        the defect this replaces."""
+        repo, _, _, _ = _feature_branch(tmp_path)
+        _review_fact(repo, "rev-a", [("R-1", "warning")])
+        _review_fact(repo, "rev-b", [("R-1", "note")])
+
+        proc = _hook(repo, "render-dispositions", "--json")
+
+        assert proc.returncode == 0, proc.stderr
+        assert [r["review_id"] for r in json.loads(proc.stdout)["reviews"]] == ["rev-b"]
+        said = [ln for ln in proc.stderr.splitlines() if "newest review only" in ln]
+        assert len(said) == 1, proc.stderr
+        assert "no review anchors on this branch" in said[0]

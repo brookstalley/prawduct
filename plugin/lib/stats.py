@@ -37,7 +37,7 @@ from . import dispositions, evidence, gitstate
 from .review_dispatch import fact_interval_seconds
 from .timewindow import in_window, is_usable_bound
 
-REPORT_SCHEMA_VERSION = 2
+REPORT_SCHEMA_VERSION = 4  # 3: `stop_observations` per version; 4: the `waived_inherited` outcome
 
 #: Severities whose findings a review is expected to act on.
 _ACTIONABLE = ("blocking", "warning")
@@ -50,6 +50,11 @@ _OUTCOME_OF_STATE = {
     dispositions.STATE_FILED: "filed",
     dispositions.STATE_ACCEPTED: "accepted",
     dispositions.STATE_WAIVED: "waived",
+    # Consolidation's own waiver of a failure the base tree already had. Apart
+    # from ``waived`` because no reviewer weighed it, and in neither count of
+    # :func:`acted_on`: it is not an answer to this work's finding but a fact
+    # about the base, so it would dilute the rate either way it was counted.
+    dispositions.STATE_WAIVED_INHERITED: "waived_inherited",
     dispositions.STATE_OPEN: "undispositioned",
 }
 #: Public: ``review-stats`` reports the same names, in this order.
@@ -62,14 +67,23 @@ LOOP_THRESHOLD = 3
 
 #: A firing whose control recorded no reason, or one this reader cannot use.
 UNSPECIFIED = "unspecified"
-#: Per Stop gate, the observation that says the harm the gate guards against
-#: was already handled when it fired. True: a slip (the turn's words were wrong,
-#: the situation was not). False: a catch. Absent or unreadable: unclassified.
-#: The verdict is derived here and never stored, so a revised rule re-reads
-#: every recorded firing. Rationale per rule: ``docs/governance-telemetry.md``.
+#: Per Stop check, blocking or observing, the observation that says the harm
+#: it guards against was already handled when it fired. True: a slip (the
+#: turn's words were wrong, the situation was not). False: a catch, unless the
+#: check also names a precondition below that is not observed True. Absent or
+#: unreadable: unclassified. The verdict is derived here and never stored, so a revised
+#: rule re-reads every recorded firing. Rationale per rule:
+#: ``docs/governance-telemetry.md``.
 SLIP_WHEN_OBSERVED = {
     "clear-reason": evidence.OBSERVED_NOTES_PRESENT,
     "clear-verdict": evidence.OBSERVED_WORK_LIVE,
+}
+#: Per Stop gate, the observation that must be True for a non-slip to count as
+#: a catch: without it the harm was not observable. A ``clear-reason`` firing
+#: in a session that changed nothing is an answer its reader has just read, and
+#: whether clearing it loses anything is a judgment no observation makes.
+CATCH_REQUIRES_OBSERVED = {
+    "clear-reason": evidence.OBSERVED_SESSION_CHANGED,
 }
 VERDICTS = ("catch", "slip", "unclassified")
 
@@ -160,8 +174,8 @@ def acted_on(counts) -> "tuple[int, int, float | None]":
     """``(acted, answered, rate)`` over outcome counts keyed by this report's
     outcome names. The one definition of the rate, which ``review-stats``
     reports per grouping as well: two reports reading one store must not
-    disagree about what "acted on" means. ``undispositioned`` and ``other``
-    are in neither count."""
+    disagree about what "acted on" means. ``undispositioned``,
+    ``waived_inherited`` and ``other`` are in neither count."""
     acted = sum(counts.get(o, 0) for o in _FIXED) + counts.get("filed", 0)
     answered = acted + counts.get("accepted", 0) + counts.get("waived", 0)
     return acted, answered, _rate(acted, answered)
@@ -200,6 +214,9 @@ def _new_bucket() -> dict:
         "blocks_by_session": defaultdict(Counter),
         "reasons_by_gate": defaultdict(Counter),
         "verdicts_by_gate": defaultdict(Counter),
+        "observed_by_gate": Counter(),  # non-blocking Stop checks that fired
+        "observed_reasons_by_gate": defaultdict(Counter),
+        "observed_verdicts_by_gate": defaultdict(Counter),
         "guard_refusals": [],  # (guard, session)
         "reasons_by_guard": defaultdict(Counter),
         "transfer_grants": [],  # (guard, session)
@@ -215,10 +232,13 @@ def _reason(body: dict) -> str:
 
 def _verdict(gate: str, body: dict) -> str:
     observed = body.get("observed")
-    seen = observed.get(SLIP_WHEN_OBSERVED[gate]) if isinstance(observed, dict) else None
+    if not isinstance(observed, dict):
+        return "unclassified"
+    seen = observed.get(SLIP_WHEN_OBSERVED[gate])
     if seen is True:
         return "slip"
-    if seen is False:
+    required = CATCH_REQUIRES_OBSERVED.get(gate)
+    if seen is False and (required is None or observed.get(required) is True):
         return "catch"
     return "unclassified"
 
@@ -270,6 +290,14 @@ def aggregate(facts: list[dict], since=None, until=None, bucket=None) -> dict:
                 b["reasons_by_gate"][gate][_reason(body)] += 1
                 if gate in SLIP_WHEN_OBSERVED:
                     b["verdicts_by_gate"][gate][_verdict(gate, body)] += 1
+            elif isinstance(guard, str) and guard.startswith(evidence.STOP_OBSERVED_PREFIX):
+                # A Stop check that fired and let the Stop through: scored by
+                # the same verdict rules as a block, never counted as one.
+                gate = guard[len(evidence.STOP_OBSERVED_PREFIX):]
+                b["observed_by_gate"][gate] += 1
+                b["observed_reasons_by_gate"][gate][_reason(body)] += 1
+                if gate in SLIP_WHEN_OBSERVED:
+                    b["observed_verdicts_by_gate"][gate][_verdict(gate, body)] += 1
             elif guard == evidence.TRANSFER_GRANT_GUARD:
                 b["transfer_grants"].append((guard, session))
             elif isinstance(guard, str) and guard:
@@ -404,6 +432,15 @@ def _finish(b: dict) -> dict:
             },
             "loops": loops,
         },
+        "stop_observations": {
+            "total": sum(b["observed_by_gate"].values()),
+            "by_gate": dict(b["observed_by_gate"].most_common()),
+            "by_gate_reason": _counts(b["observed_reasons_by_gate"]),
+            "verdicts": {
+                gate: {v: counter[v] for v in VERDICTS}
+                for gate, counter in b["observed_verdicts_by_gate"].items()
+            },
+        },
         "guard_refusals": {
             "total": len(b["guard_refusals"]),
             "per_session": _per_session(b["guard_refusals"], sessions),
@@ -455,6 +492,21 @@ def _reason_lines(stop_blocks: dict) -> list:
     return lines
 
 
+def _observed_lines(obs: dict) -> list:
+    """One line per non-blocking Stop check that fired, with its verdicts.
+    Nothing when none fired, so a version from before any check observed
+    instead of blocking renders as it always did."""
+    lines = []
+    for gate, n in obs["by_gate"].items():
+        line = f"{gate} {n}"
+        verdicts = obs["verdicts"].get(gate)
+        if verdicts is not None:
+            line += " (" + ", ".join(f"{k} {verdicts[k]}" for k in VERDICTS) + ")"
+        label = "observed only" if not lines else ""
+        lines.append(f"    {label:<19}{line}")
+    return lines
+
+
 def _labelled_buckets(report: dict) -> list:
     """``(heading, body)`` per block of the human report: one per version, or,
     when the report carries ``by_build``, one per build of each version."""
@@ -498,6 +550,7 @@ def render_human(report: dict) -> str:
                 if sb["by_gate"] else ""
             ),
             *_reason_lines(sb),
+            *_observed_lines(v["stop_observations"]),
             f"    guard refusals     {v['guard_refusals']['total']} "
             f"({_fmt(v['guard_refusals']['per_session'])} per recorded session)",
             "  benefit",
@@ -507,7 +560,8 @@ def render_human(report: dict) -> str:
             lines.append(
                 f"    {severity:<9} raised {s['raised']}: fixed {s['fixed']} "
                 f"(+{s['fixed_unreviewed']} unreviewed), filed {s['filed']}, "
-                f"accepted {s['accepted']}, waived {s['waived']}, "
+                f"accepted {s['accepted']}, waived {s['waived']} "
+                f"(+{s['waived_inherited']} inherited from the base), "
                 f"undispositioned {s['undispositioned']} (acted on {_fmt(s['acted_on_rate'])})"
             )
         lines.append(

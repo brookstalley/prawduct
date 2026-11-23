@@ -247,6 +247,9 @@ class TestWorktrees:
         wt = self._finished_worktree(clone, tmp_path, "done")
         p = plan(clone)
         assert targets(p, REMOVE_WORKTREE) == {str(wt.resolve())}
+        # No submodule, so no `--force`: git's own dirty-tree refusal stays a guard.
+        [removal] = [a for a in p.actions if a.kind == REMOVE_WORKTREE]
+        assert removal.command == ("git", "worktree", "remove", removal.target)
         [branch] = [a for a in p.actions if a.kind == DELETE_BRANCH]
         assert branch.target == "feat/done"
         assert "worktree removed first" in branch.proof

@@ -54,6 +54,10 @@ _TAIL = (
     "## Build Chunks\n\n### Chunk 01: one\n\nBody.\n\n### Chunk 02: two\n\nBody.\n\n"
     "### Chunk 03: three\n\nBody.\n"
 )
+#: Chunk definitions kept as `###` subsections of `## Status` itself, with the
+#: next `## ` heading only after them: the reader's bounds run past every one.
+_SPECS = "### Chunk 01: one\n\nBody.\n\n### Chunk 02: two\n\nDone when: it works.\n\n"
+_AFTER = "## Verification\n\nRun it.\n"
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -219,8 +223,13 @@ class TestRemoveBlock:
             (_HEAD + _STATUS + "<!-- banner for the next section -->\n\n" + _TAIL,
              "status-block-trailing-comment"),
             (_HEAD + _STATUS + "```\n## Status\n```\n\n" + _TAIL, "status-block-ambiguous"),
+            (_HEAD + _STATUS + _SPECS + _AFTER, "status-block-undelimited"),
+            (_HEAD + _STATUS + "# Appendix\n\nNotes.\n\n" + _TAIL, "status-block-undelimited"),
         ],
-        ids=["to-eof", "fence", "unclosed-comment", "trailing-banner", "duplicate-heading"],
+        ids=[
+            "to-eof", "fence", "unclosed-comment", "trailing-banner", "duplicate-heading",
+            "chunk-specs-under-status", "h1-under-status",
+        ],
     )
     def test_an_undelimitable_block_is_refused_and_nothing_is_written(
         self, tmp_path, capsys, plan, code
@@ -233,6 +242,26 @@ class TestRemoveBlock:
         assert f"refused: {code}:" in err
         assert (repo / REL).read_bytes() == plan_before
         assert _store_bytes(repo) == store_before  # refused BEFORE any fact
+
+    def test_a_subsection_refusal_names_its_line_and_keeps_the_open_chunk(self, tmp_path, capsys):
+        """The section runs past a `###` heading by the reader's rule, so the
+        span would take every chunk definition under it, open ones included."""
+        plan = _HEAD + _STATUS + _SPECS + _AFTER
+        repo = _repo(tmp_path, plan)
+        rc, _out, err = _run(repo, capsys, REL, "--apply", "--remove-block")
+        assert rc == 1
+        line = plan.splitlines().index("### Chunk 01: one") + 1
+        assert f"a heading at line {line} " in err
+        assert "### Chunk 02: two\n\nDone when: it works." in (repo / REL).read_text()
+
+    def test_a_hash_that_is_not_a_heading_does_not_refuse(self, tmp_path, capsys):
+        """Control for the heading refusal: an issue number or a tag inside the
+        block is block text, and the removal still goes through."""
+        status = _STATUS.replace("Context: two of three landed.", "#12 tracks the third.\n\n#later")
+        repo = _repo(tmp_path, _HEAD + status + _TAIL)
+        rc, out, _err = _run(repo, capsys, REL, "--apply", "--remove-block")
+        assert rc == 0, out
+        assert (repo / REL).read_text() == _HEAD + _TAIL
 
     def test_the_same_plan_imports_fine_without_remove_block(self, tmp_path, capsys):
         """Control for the refusals: they are about deleting, not importing."""

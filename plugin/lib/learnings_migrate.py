@@ -580,7 +580,7 @@ class OutputFile:
 
     @property
     def size(self) -> int:
-        return len(self.content.encode("utf-8"))
+        return len(self.content.encode("utf-8", "surrogateescape"))
 
 
 @dataclass(frozen=True)
@@ -637,7 +637,8 @@ def _git(project_dir: Path | str, *args: str) -> subprocess.CompletedProcess | N
             ["git", *args],
             cwd=str(project_dir),
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
@@ -871,7 +872,7 @@ def _resume_state(root: Path, outputs: list[OutputFile]) -> bool:
     to hand-merge a 160KB corpus.
     """
     rules_dir = root / learnings_files.RULES_DIR_REL
-    planned = {o.rel: o.content.encode("utf-8") for o in outputs}
+    planned = {o.rel: o.content.encode("utf-8", "surrogateescape") for o in outputs}
     existing = {
         p.relative_to(root).as_posix(): p.read_bytes()
         for p in sorted(rules_dir.rglob("*.md"))
@@ -1106,7 +1107,7 @@ def apply(project_dir: str | Path, migration: Plan) -> list[str]:
         path = root / output.rel
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(output.content, encoding="utf-8")
+            path.write_text(output.content, encoding="utf-8", errors="backslashreplace")
         except OSError as exc:
             raise MigrateInterrupted(f"writing {output.rel}: {exc}", changed) from exc
         changed.append(output.rel)

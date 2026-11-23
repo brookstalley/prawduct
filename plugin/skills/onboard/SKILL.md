@@ -50,7 +50,7 @@ For Issues, onboard provisions the labels — two steps, in order:
 
 ### Either way
 
-- The committed install *reference* (project scope) in `.claude/settings.json` is the only prawduct content the repo commits, beside one SessionStart hook in the same file: the **unloaded-plugin tripwire**. `init-product` writes both for new repos, and `/prawduct:migrate` for existing file-sync ones; `/prawduct:doctor` Check #1 grades them.
+- The committed install *reference* (project scope) in `.claude/settings.json` is the only prawduct content the repo commits, beside one SessionStart hook in the same file: the **unloaded-plugin tripwire**. `init-product` writes both for new repos, and `/prawduct:migrate` for existing file-sync ones; `/prawduct:doctor`'s *Install reference* check grades them.
 
   On first trusted open, Claude Code adds the marketplace from this reference without prompting — but it **does not install the plugin**, because it never auto-installs one sourced from a repository. So tell the owner plainly: **every contributor runs `claude plugin install prawduct@prawduct` once**, and until they do, their clone runs with no prawduct hooks, no `/prawduct:*` and no gates. The tripwire is what says so: it is a project hook, so it runs without the plugin, and it prints a warning into the session when the install record has no entry for the repo (nothing when it has one). The governance anchor (in `AGENTS.md`, imported by `CLAUDE.md`) says the same for a session that has no tripwire — do not describe onboarding as making governance automatic for the next person, because it does not.
 - **Integration base branch.** When the target's `origin/HEAD` names a branch outside `main`/`master` — a repo whose remote default is `develop` — the scaffold (and `/prawduct:migrate`) records `base_branch: <b>` in `project-state.yaml`, and reports it as `base_branch` in the JSON result. That scalar is what every diff-base gate anchors to: coverage, the cumulative Critic, and the PR gates. A trunk repo gets no key and needs none; a branch the remote names but has never fetched is deliberately not recorded (an unresolvable `base_branch:` fails those gates closed). **The remote's default is a good guess, not the truth.** If features merge onto a branch the remote does not default to — `origin/HEAD` says `main` while the team integrates on `develop`, the case detection cannot see — say so and have the owner set `base_branch:` by hand. Unset, the gates guess `main`, and a gitflow repo then reviews the whole `develop..main` promotion delta on every feature.
@@ -64,7 +64,7 @@ For Issues, onboard provisions the labels — two steps, in order:
 Writing the install reference is *not* what loads the plugin. The harness also needs a
 `prawduct@prawduct` record whose `projectPath` is the target, and a repo missing one starts every
 session with **no banner, no `/prawduct:*` skills, and no Stop-hook gates** — and unless its
-governance anchor (in `AGENTS.md`, which `CLAUDE.md` imports) carries the plugin-absent notice (`/prawduct:doctor` Check #4 brings an older one
+governance anchor (in `AGENTS.md`, which `CLAUDE.md` imports) carries the plugin-absent notice (`/prawduct:doctor`'s *Static governance anchor* check brings an older one
 up to date), nothing tells the agent so and it proceeds ungoverned. This is the one failure the target
 repo cannot detect about itself: the probes
 and `/prawduct:doctor` that would report it are delivered by the plugin that did not load. **This
@@ -93,7 +93,7 @@ session, run `/prawduct:backlog decline-migration <reason>` first — it writes
 (below) and ask once. On yes, commit them
 as one commit (`chore: onboard to Prawduct`). The commit holds onboarding's own paths only: the
 result's `created` and `edited` lists (`.gitignore` among them when it changed), and any path in its `unignored` list that exists
-on disk (a stale ignore line was stripped, so the file is now meant to be tracked). `git -C <target>
+on disk (a stale ignore line was stripped, so the file is now meant to be tracked). If the result's `ignored_by_rule` is non-empty, a rule of the owner's own (a wholesale `.prawduct/`) hides files a plugin-governed repo commits (`project-state.yaml`, `changes/`, `artifacts/`, `.claude/settings.json`, …); onboarding does not edit it. Show the owner the sentence the dry run printed (`cannot fix automatically:`, with the exact lines), and let them decide before the commit, since those files would not enter it. `git -C <target>
 add -- <paths>`, then `git -C <target> commit -m "…" -- <paths>`. The trailing pathspec keeps
 anything the owner had already staged out of the commit. A pathspec commit takes each named file
 whole, though, so if the dry-run step found any `edited` path not clean, say that the owner's own
@@ -107,7 +107,7 @@ refspec (the pattern `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*`, so a
 still works while the remote has no notes) and `notes.rewriteRef` — two keys in `.git/config`,
 nothing committed. Run it only when this session runs in the target: the hook acts on the repo the
 session is in, so onboarding from another directory would configure the wrong clone. Then skip it,
-and say in the report that the target's first `/prawduct:doctor` offers it (Health Check #25).
+and say in the report that the target's first `/prawduct:doctor` offers it (its *Notes transport configured* check).
 
 It decides the rest itself. `nothing to change — <reason>` (a target with no remote has nowhere for
 notes to go, and it says so) means it wrote nothing; put that reason in the report. A non-zero exit

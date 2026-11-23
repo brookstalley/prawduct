@@ -53,7 +53,14 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import evidence, stats
-from .core import PREF_ROW_PRESENT, PREF_ROW_UNREADABLE, atomic_write_text, read_preference_row
+from .core import (
+    DEV_VERSION_MARKER,
+    PREF_ROW_PRESENT,
+    PREF_ROW_UNREADABLE,
+    atomic_write_text,
+    is_dev_version,
+    read_preference_row,
+)
 from .timewindow import parse_instant
 
 SCHEMA_PATH = Path(__file__).with_name("contribution_schema.json")
@@ -70,7 +77,9 @@ STALE_LOCK_SECONDS = 600
 MAX_WEEKS = 8
 #: How long after a week ends before it is offered.
 SETTLE_DAYS = 7
-_DEV_SUFFIX = "-dev"
+#: The bucket's dev tag reuses the version marker, so a bucket reads like the
+#: versions it holds.
+_DEV_SUFFIX = DEV_VERSION_MARKER
 #: Where reports go: prawduct's collector (`collector/`), deployed on the
 #: owner's Cloudflare account. A plugin constant and never configuration, so no
 #: setting can point a product's reports anywhere else. An empty endpoint
@@ -178,7 +187,7 @@ def contribution_bucket(fact: dict) -> str:
     actor = fact.get("actor")
     plugin = actor.get("plugin") if isinstance(actor, dict) else None
     bucket = stats.version_bucket(plugin)
-    if bucket != "unknown" and isinstance(plugin, str) and _DEV_SUFFIX in plugin:
+    if bucket != "unknown" and is_dev_version(plugin):
         return bucket + _DEV_SUFFIX
     return bucket
 

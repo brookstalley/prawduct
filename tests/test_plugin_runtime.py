@@ -38,6 +38,44 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 
+
+def as_just_run(report: Path) -> Path:
+    """Date a hand-written JUnit report as a run that STARTED just now — after
+    every file the fixture wrote — and ended its stated duration later.
+
+    The ingest bounds the tree by the run's start, read as the report's mtime
+    less its duration (#848, native finding at `report_predates_tree`). A report
+    written in the same instant as the fixture's files and claiming a run of a
+    second or more would have started before those files existed, so its stamp
+    is rightly withheld. Real runs start after their files; this makes the
+    fixture's report say so. The duration is read here independently of the
+    reader: the `<testsuites>` `time`, else the sum of the `<testsuite>` times."""
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+
+    root = ET.parse(report).getroot()
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+    total = root.get("time") if root.tag == "testsuites" else None
+    duration = float(total) if total else sum(float(s.get("time") or 0) for s in suites)
+    end = datetime.now(timezone.utc).timestamp() + duration + 0.05
+    os.utime(report, (end, end))
+    return report
+
+
+def _assert_only_the_attempts_stub(repo: Path) -> None:
+    """A refused record attempt persisted no evidence: only the void stub it
+    wrote ahead of its run (#1178 R-8), carrying no counts and refused by every
+    reader. Renegotiated from "no `.test-evidence.json` at all": the stub is
+    what lets `test-status` show a first run in progress, and it can never
+    vouch — the invariant those tests protected."""
+    record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+    assert record.get("void") and record.get("degraded"), record
+    assert (record["passed"], record["failed"], record["skipped"]) == (0, 0, 0), record
+    assert "evidence_tree" not in record and "failed_tests" not in record, record
+    status = _run_in(repo, "test-status")
+    assert status.returncode == 1, status.stdout
+    assert status.stdout.startswith("stale (interrupted):"), status.stdout
+
+
 class TestPluginHookStructure:
     def test_hook_exists_and_executable(self):
         assert HOOK.is_file(), "bin/prawduct-hook must exist"
@@ -743,7 +781,13 @@ class TestPluginRuntimeNamespacing:
         # ...and the namespaced forms ARE present (the sweep replaced, not deleted).
         assert "`/prawduct:critic`" in src, "stop-hook Critic gate must name /prawduct:critic"
         assert "/prawduct:critic cumulative" in src, "pr-create gate must name /prawduct:critic cumulative"
-        assert "Run /prawduct:pr to invoke" in src, "stop-hook PR gate must name /prawduct:pr"
+        # The Stop hook's PR gate named `/prawduct:pr` until it was retired with
+        # the PR reviewer (#1129); the refusal for the retired commands is the
+        # runtime message that names the skill now.
+        assert "Run /prawduct:pr to invoke" not in src, "the retired Stop-hook PR gate is back"
+        assert "/prawduct:pr no longer dispatches one" in src, (
+            "the retired-command refusal must name /prawduct:pr"
+        )
 
 
 class TestPluginDocsNamespacing:
@@ -767,7 +811,6 @@ class TestPluginDocsNamespacing:
         "methodology/planning.md",
         "methodology/reflection.md",
         *sorted(f"skills/critic/{p.name}" for p in (ROOT / "skills" / "critic").glob("*.md")),
-        "skills/pr/review-protocol.md",
     )
     # A genuine command-invocation token: a `/` that starts a command (NOT preceded
     # by a word/path char — so paths like `skills/critic/…`, `.prawduct/backlog.md`,
@@ -1395,7 +1438,7 @@ class TestDocOnlyProtectedPaths:
 
     Fork-skill prose is behavioral logic in this framework, so a PR touching
     `skills/*.md` (or methodology/, templates/, root CLAUDE.md) must not take
-    the doc-only fast path past the cumulative-Critic and PR-reviewer gates.
+    the doc-only fast path past the cumulative-Critic gate.
     Bound list: `buildplan_refs._GOVERNANCE_PROTECTED_PATHS`.
     """
 
@@ -2032,7 +2075,7 @@ class TestJunitLeafCounting:
         junit = self._write(repo, "<testsuites></testsuites>\n")
         res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
         assert res.returncode == 2, res.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        _assert_only_the_attempts_stub(repo)
 
 
     # #963: a failing case two <testsuite> levels deep — the shape the report
@@ -2405,10 +2448,13 @@ class TestNoRerunRestamp:
         """
         repo = self._repo(tmp_path)
         junit = repo / "r.xml"
+        # Suite `time="0.0"`: written right after the repo, so a run claiming a
+        # second's duration would have started before its files existed, and
+        # the ingest (bounded by the run's start, #848) would withhold the tree.
         junit.write_text(
             '<?xml version="1.0"?><testsuites><testsuite name="s" tests="1" '
-            'failures="0" errors="0" skipped="0" time="1.0">'
-            '<testcase classname="t" name="test_a" time="1.0"/>'
+            'failures="0" errors="0" skipped="0" time="0.0">'
+            '<testcase classname="t" name="test_a" time="0.0"/>'
             "</testsuite></testsuites>"
         )
         assert _run_in(repo, "test-evidence", "record", "--from-junit", str(junit)).returncode == 0
@@ -3786,9 +3832,9 @@ class TestGreenIsEvidenceDelivery:
         """A changed source file the symbol-grep overlay cannot judge at all.
 
         `.swift` stands in for every non-Python product (Go, Rust, C#, TS): the
-        overlay classifies it `changes_unjudged` and leaves `changes_referenced`
-        empty, which is the exact shape that kept this directive dark in every
-        such repo.
+        overlay classifies it `changes_out_of_remit` and leaves
+        `changes_referenced` empty, which is the exact shape that kept this
+        directive dark in every such repo.
         """
         (repo / "Widget.swift").write_text("struct Widget { let n = 1 }\n")
 
@@ -3812,7 +3858,7 @@ class TestGreenIsEvidenceDelivery:
             "fixture leaked a judged Python change — this test would then pass "
             "on the OLD trigger and prove nothing about non-Python products"
         )
-        assert "Widget.swift" in ev["changes_unjudged"]
+        assert "Widget.swift" in ev["changes_out_of_remit"]
         hook = _load_hook_module()
         assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in res.stdout
 
@@ -3969,7 +4015,9 @@ class TestGreenIsEvidenceTrigger:
     def test_fires_on_non_python_source_the_overlay_could_not_judge(self, tmp_path):
         """The non-Python product, at the predicate. `changes_referenced` is
         empty there by construction — symbol-grep judges Python only — so the
-        trigger has to read `changes_unjudged` or it can never fire off Python.
+        trigger has to read the no-signal buckets or it can never fire off
+        Python. This record is the pre-split shape, non-Python under
+        `changes_unjudged`; the fresh shape is pinned below.
         """
         hook = _load_hook_module()
         path = self._write(
@@ -3979,6 +4027,49 @@ class TestGreenIsEvidenceTrigger:
             ),
         )
         assert hook._evidence_changed_judged_code(path) is True
+
+    def test_fires_on_non_python_source_in_the_out_of_remit_bucket(self, tmp_path):
+        """#682: a fresh record files non-Python under `changes_out_of_remit`,
+        and `changes_unjudged` no longer holds it. The trigger reads BOTH
+        buckets — the unjudged-only version of this predicate would take every
+        non-Python product dark the day the producer split them."""
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps(
+                {
+                    "changes_referenced": [],
+                    "changes_unjudged": [],
+                    "changes_out_of_remit": ["src/main.swift"],
+                }
+            ),
+        )
+        assert hook._evidence_changed_judged_code(path) is True
+
+    @pytest.mark.parametrize(
+        "out_of_remit",
+        [
+            ["README.md", "docs/guide.md"],
+            [".prawduct/project-state.yaml", ".claude/settings.json"],
+        ],
+        ids=["prose", "framework-metadata"],
+    )
+    def test_silent_when_every_out_of_remit_path_needs_no_review(
+        self, tmp_path, out_of_remit
+    ):
+        """The out-of-remit bucket keeps the silence the unjudged one had."""
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps(
+                {
+                    "changes_referenced": [],
+                    "changes_unjudged": [],
+                    "changes_out_of_remit": out_of_remit,
+                }
+            ),
+        )
+        assert hook._evidence_changed_judged_code(path) is False
 
     @pytest.mark.parametrize(
         "unjudged",
@@ -3991,8 +4082,9 @@ class TestGreenIsEvidenceTrigger:
     def test_silent_when_every_unjudged_path_needs_no_review(self, tmp_path, unjudged):
         """Widening the trigger must not cost it its silence.
 
-        `changes_unjudged` is a mixed bag — non-Python source, prose, framework
-        metadata, and files deleted in the diff all land there — so reading it
+        The no-signal buckets are a mixed bag — non-Python source, prose,
+        framework metadata, and files deleted in the diff all land in them (and
+        in `changes_unjudged` alone, in a record written before the split) — so reading it
         wholesale would fire on every docs-only cycle, and a directive that
         prints every time is one the reader learns to skip. Only the paths that
         need review coverage count.
@@ -4229,8 +4321,7 @@ class TestDeclaredCommandEnvironments:
         assert r.returncode == 2, r.stderr
         assert "refusing to record" in r.stderr
         assert "test_command" in r.stderr  # the migration guidance names the knob
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists(), \
-            "a wrong-environment run must never persist evidence"
+        _assert_only_the_attempts_stub(repo)  # a wrong-environment run persists no evidence
 
     def test_fallback_pass_records_and_nudges(self, tmp_path):
         repo = self._repo(tmp_path, "fallbackok")
@@ -4297,7 +4388,7 @@ class TestDeclaredCommandEnvironments:
         assert r.returncode == 2, r.stderr
         assert "refusing to record" in r.stderr
         assert "--from-junit" in r.stderr  # the escape for a report known complete
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        _assert_only_the_attempts_stub(repo)
 
     def test_the_disagreement_is_judged_per_command(self, tmp_path):
         # Another command's real failure must not cover for this one: summed,
@@ -4311,7 +4402,7 @@ class TestDeclaredCommandEnvironments:
         r = _run_in(repo, "test-evidence", "record")
         assert r.returncode == 2, r.stderr
         assert "refusing to record" in r.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        _assert_only_the_attempts_stub(repo)
 
     def test_fallback_run_that_collected_nothing_is_refused(self, tmp_path):
         # No declared command, so the hook runs pytest itself, and the repo has
@@ -4322,7 +4413,7 @@ class TestDeclaredCommandEnvironments:
         r = _run_in(repo, "test-evidence", "record")
         assert r.returncode == 2, r.stderr
         assert "the pytest fallback exited 5" in r.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        _assert_only_the_attempts_stub(repo)
 
     def test_node_root_level_failure_records_from_a_live_run(self, tmp_path):
         # The #912 reproduction end to end: one describe plus a failing
@@ -4373,8 +4464,7 @@ class TestDeclaredCommandEnvironments:
         r = _run_in(repo, "test-evidence", "record")
         assert r.returncode == 2
         assert "could not launch" in r.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists(), \
-            "no partial multi-environment evidence"
+        _assert_only_the_attempts_stub(repo)  # no partial multi-environment evidence
 
     def test_from_counts_rejected_with_declared_list(self, tmp_path):
         repo = self._repo(
@@ -4431,7 +4521,7 @@ class TestDeclaredCommandEnvironments:
         r = _run_in(repo, "test-evidence", "record")
         assert r.returncode == 2
         assert "could not parse" in r.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        _assert_only_the_attempts_stub(repo)
 
     def test_repeated_from_junit_aggregates(self, tmp_path):
         # The ingest on-ramp scales with test_commands: run each command

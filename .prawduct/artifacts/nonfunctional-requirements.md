@@ -16,9 +16,12 @@ last_validated: null
 <!-- Ratified norms (2026-07-17). See docs/norms.md. -->
 
 - **Review wall-clock is a P0 constraint: cost = unit-cost × run-count, and *both* factors are levers — run-count via gate and chunk structure, unit-cost via the reviewer's *payload* (what a given mode must load to answer its goals). The two independent reviews at the PR boundary run in parallel, never sequentially.**
-  Why: review latency is what determines whether governance feels like a partner or a tax. The original entry treated per-review cost as fixed, but that conflated two different things: the reviewer's **model tier** is fixed (reviewers inherit the session model — reviewer-model tiering was removed deliberately and the manifest's `tier` stays telemetry only; that pin is untouched by this amendment) with the reviewer's **payload**, which was never a considered variable and is large — a `verify-resolutions` reviewer loads the full review protocol plus the review-cycle to answer three goals. Payload is per-mode and reducible without touching model selection, so "unit-cost is fixed" was an accident of the earlier framing, not a finding.
+  Why: review latency is what determines whether governance feels like a partner or a tax. The original entry treated per-review cost as fixed, but that conflated two different things: the reviewer's **model tier**, which no review chooses (reviewers run on the session model, capped at Opus-class by the 2026-11-10 amendment below; reviewer-model tiering by risk was removed deliberately and the manifest's `tier` stays telemetry only), with the reviewer's **payload**, which was never a considered variable and is large — a `verify-resolutions` reviewer loads the full review protocol plus the review-cycle to answer three goals. Payload is per-mode and reducible without touching model selection, so "unit-cost is fixed" was an accident of the earlier framing, not a finding.
   Status: steady-state.
   Amended: 2026-07-29, owner decision. `[DECISION: unit-cost joins run-count as a declared lever, scoped to reviewer payload | the norm's why is bearable review latency; holding unit-cost fixed left the largest reducible term unexamined for the sake of a model-tiering pin that this amendment preserves separately | user can veto/override]` Scope narrows nothing and re-opens nothing: model tiering stays removed.
+  Amended: 2026-11-10, owner ruling (`.prawduct/owner-rulings.md`): "Yes cap at opus. In fact we need to be very careful to not accidentally spam fable subagents anywhere, given the cost. Sometimes it makes sense, but most fable orchestrators should use opus and sonnet for most delegation". A reviewer's model is still no lever this norm pulls: it follows the session's model, and a session above Opus-class dispatches its reviewers on Opus-class instead, answered by code from the dispatcher's own model (`lib/model_tier.py`), never by risk tier or size. The why is engaged, not suspended: a capped single-pass round adds one subagent start, on a tier the 2026-06 comparison (`reviewer-model-ab-2026-06-10.md`) measured at about a quarter of the stronger tier's wall clock.
+  Retires: "no machinery selects models at dispatch time", "the runtime cannot observe which model it is" — code now answers a reviewer's model at dispatch, from the model the dispatcher reports it runs as.
+  Amended: 2026-11-10, owner ruling (`.prawduct/owner-rulings.md`): "yes fold PR reviewer in". The PR boundary has one review, the cumulative Critic, and `/prawduct:pr` dispatches no reviewer, so the statement's sentence on the two boundary reviews running in parallel has no second review to schedule. The why is engaged, not suspended: this is the run-count lever, pulled by one reviewer run per PR, and the checks that replace the reviewer's (`check-pr-hygiene`, `check-pr-body`) are code, not a review run. The statement keeps its words.
 - **Proportionality ratchets both ways. A control that has fired repeatedly and never produced a blocking finding is removed by default; keeping it requires a reason. Adding a control names the yield it expects **and emits that yield observably**, so there is something to measure it against later — a control whose findings are printed and forgotten satisfies the letter and defeats the point, since it can never be retired on evidence, only defended on principle.**
   Why: every review finding tends to add a control and nothing ever removes one, so the system drifts monotonically toward more ceremony regardless of whether any individual addition was justified — and each addition *is* individually justified, which is why argument alone never reverses it. Making removal the default converts the question from a debate into a query, which is newly possible: the `disposition` fact kind (shipped 2026-07-29) plus the governance ledger can answer "how often did this control fire, and what did it catch." Proportionality (Principle 11) already said this; what was missing was a default that acts on it and data to act from.
   Status: in-transition — the yield query does not exist yet, and until it does this norm's removal-by-default arm runs on judgment rather than evidence. **One home, named once: the janitor's Norm Health sweep**, which is already the organ for trend-over-time and already reads the ledger. LNG-5W8R carries the enabling half (surviving canary findings must emit a ledger fact; today they are printed and lost). Chunk 02 is *not* the home — its deliverables are `record_lint.py` and subtraction edits, and it contains no yield query; an earlier revision of this line said otherwise and was wrong. Interim rule: a control may be retired on a reasoned argument recorded as a decision, but the argument must state what evidence *would* have settled it, so the query has a specification to be built against.
@@ -43,39 +46,21 @@ last_validated: null
   under `artifacts/` until the release moves it to `artifacts/archive/`, and nothing rewrites a
   referring path when it moves (the sibling #13 cite two lines below already carries the
   post-archive form, and had to be edited by hand to get there).
-  Live exception: **the `clear-verdict` Stop gate** (shipped with `clear-verdict-coherence`,
-  2026-09-27; it refuses a turn closing `YOUR TURN` or `COMPLETE` with `DO NOT CLEAR`) is a
-  recorded **bounded exception** to the emission arm, on the `check-branch-pushed` grounds above:
-  the ledger's non-review kinds are the derived `learning.*` pair, and a `gate.*` kind for one
-  Stop gate is a persisted-format lock-in taken for a single control. The right home is one
-  firing event for every Stop gate, and this gate joins it as a first case.
-  **Why a gate and not prose alone:** the pair was reported across every consuming repo, and a
-  standing-block rule is one the agent must RECALL at the turn's last line. The digest has no
-  headroom left to restate it, and a refusal that costs one rewritten paragraph is the cheapest
-  mechanism that does not depend on recall.
-  **Expected yield, named now so the query has something to answer:** firings should fall
-  toward zero, because the corrected precedence rule and the narrowed deferral remove both reasons
-  the pair was written. Firings that persist a quarter after release are evidence the prose alone
-  does not hold, and the gate earns its keep. No firings for a quarter, with no reported
-  recurrence, is evidence for retiring it in favour of the prose.
-  Clock: the same trigger as `check-branch-pushed`: the janitor's Norm Health yield query (`#563`)
-  or a Stop-gate firing event, whichever lands first.
-  `[DECISION: clear-verdict is a bounded exception to the emission arm, not a new ledger kind | a one-gate event kind is the accumulation this norm exists to stop, and the gate's yield is named above so the query has a specification | user can veto/override]`
-  Recorded 2026-09-27 on `fix/clear-verdict-coherence`, after its final Critic review raised it.
-  Conforms, not an exception: **the `clear-reason` Stop gate** (#977, 2026-10-09, since 3.7.1)
-  refuses a `SAFE TO CLEAR` whose stated reason is the turn itself ("the questions are in this
-  message"). It emits its yield: every Stop block records a `stop-gate:<gate>` guard-refusal fact
-  per gate id (`telemetry-stats`), so its firings are `prawduct-hook stats` → `stop_blocks.by_gate`
-  ["clear-reason"], apart from the pair check's. That same sink now counts `clear-verdict`, so the
-  exception above's premise, that the gate cannot emit, no longer holds; retiring it is the
-  exception's own clock, not this change's. **Expected yield:** the 2026-10-09 wave-1 trial had 2
-  of 7 fresh agents give the message as the record despite the prose rule. In the transcripts on
-  this machine, `tools/measure-self-citing-clear.py` matched 18 of 1,533 `SAFE TO CLEAR` closes,
-  each a genuine instance on reading. Firings should fall toward zero once agents meet the refusal.
-  Firings that persist a quarter after 3.7.1 ships mean the prose alone does not hold and the gate
-  earns its keep. None for a quarter, and none found by that script, is evidence for retiring the
-  gate in favour of the prose. Clock: the janitor's Norm Health yield query (#563).
-  Live exception: **doctor Health Checks #13 and #13a** (the learnings descent-obligation check, shipped 2026-08-02, and the learnings-pairing check, shipped 2026-08-27) are recorded **bounded exceptions** to the emission arm — it names its expected yield and cannot emit it, because doctor has no fact-emitting path at all and building one for a single check is the accumulation this norm exists to stop. Clock: `#563` — the trigger is *when doctor gains that path*, at which point #13 is its worked first case and #13a follows it. `[DECISION: the #13 bounded exception is widened to cover doctor Health Check #13a (learnings pairing), same clock and same reason | doctor still has no fact-emitting path, so #13a can no more emit its yield than #13 can, and building one for a second single check is precisely the accumulation this norm exists to stop; the alternative — amending the emission arm to admit a control that cannot satisfy it — is the laundering tell the norms guide names, since it would edit the rule to bless the code | user can veto/override]` Owner-vetoable, recorded 2026-08-27 on `fix/silent-clear-checks`. **The exception is bounded by naming its expected yield now, so the query has something to answer:** #13a expects to fire on duplicate active headings, which is zero on this repo's 270-entry corpus today — so a firing is evidence, and a year of never firing is evidence for retiring it. **That trigger is prose here and on the item rather than a `revisit:` field** (when written, the Issues backend had no write path for one; #564 shipped it 2026-09-02, so the constraint is historical — the trigger stays prose because it names a CONDITION, not a date, and `probe_revisit_due` fires only on dated values): the adapter's `update` deliberately strips a caller-pasted `prawduct:` block and re-appends the existing one (`lib/backlog/core.py` `_body_update_preserving_block`), and no op takes a `revisit` flag — the field is read only off the frozen markdown model (`lib/backlog/legacy.py`). So the walker is the janitor's Norm Health sweep reading #563, exactly as it is for every event-bound trigger (`probe_revisit_due` fires on *dated* values and is dark post-cutover regardless). The write path was missing when this was written and is filed as `#564`, **shipped 2026-09-02** (`backlog/core.py` `_UPDATE_BLOCK`; `--revisit` at `backlog/cli.py:124`). Decision block: `artifacts/archive/build-plan-drift-burndown.md` § `governed_by` → nonfunctional-requirements.
+  Resolved exception: **the `clear-verdict` Stop check** was a bounded exception to the emission
+  arm from 2026-09-27 (`clear-verdict-coherence`) until Stop-block facts gave every gate a firing
+  record. **Ruling 2026-11-10 (owner, #1044): it no longer blocks, and its measurement stays.** On
+  3.8, in the three repos that recorded verdicts, it scored 7 catches and 9 slips, and the harm it guards against is a session
+  kept open needlessly, so a block on every such turn did not earn its round-trip. It now records
+  each firing as a `stop-observed:clear-verdict` fact, scored by `stats` under *observed only*
+  (`retire-clear-verdict`). The standing-block rule it enforced stays in the prose.
+  Resolved, the same way: **the `clear-reason` Stop check** (#977, since 3.7.1) refused a
+  `SAFE TO CLEAR` whose stated reason is the turn itself ("the questions are in this message").
+  **Ruling 2026-11-10 (owner, #1131): it no longer blocks, and its measurement stays.** It was
+  decided on the 60-day gate-cost data recorded on #1044, and a block cost each firing turn a
+  round-trip to rewrite its close. It now records each firing as a `stop-observed:clear-reason` fact, scored by
+  `stats` under *observed only* with the same catch/slip rule; the prose tell stays in
+  `session-hygiene.md`, and `tools/measure-self-citing-clear.py` still re-derives its tuning figures.
+  Live exception: **doctor Health Checks #13 and #13a** (the learnings descent-obligation check, shipped 2026-08-02, and the learnings-pairing check, shipped 2026-08-27) are recorded **bounded exceptions** to the emission arm — it names its expected yield and cannot emit it, because doctor has no fact-emitting path at all and building one for a single check is the accumulation this norm exists to stop. Clock: `#563` — the trigger is *when doctor gains that path*, at which point #13 is its worked first case and #13a follows it. `[DECISION: the #13 bounded exception is widened to cover doctor Health Check #13a (learnings pairing), same clock and same reason | doctor still has no fact-emitting path, so #13a can no more emit its yield than #13 can, and building one for a second single check is precisely the accumulation this norm exists to stop; the alternative — amending the emission arm to admit a control that cannot satisfy it — is the laundering tell the norms guide names, since it would edit the rule to bless the code | user can veto/override]` Owner-vetoable, recorded 2026-08-27 on `fix/silent-clear-checks`. **The exception is bounded by naming its expected yield now, so the query has something to answer:** #13a expects to fire on duplicate active headings, which is zero on this repo's 270-entry corpus today — so a firing is evidence, and a year of never firing is evidence for retiring it. **That trigger is prose here and on the item rather than a `revisit:` field** (when written, the Issues backend had no write path for one; #564 shipped it 2026-09-02, so the constraint is historical — the trigger stays prose because it names a CONDITION, not a date, and `probe_revisit_due` fires only on dated values): the adapter's `update` deliberately strips a caller-pasted `prawduct:` block and re-appends the existing one (`lib/backlog/core.py` `_body_update_preserving_block`), and, when this was written, no op took a `revisit` flag. So the walker is the janitor's Norm Health sweep reading #563, exactly as it is for every event-bound trigger (`probe_revisit_due` fires only on *dated* values, on both backends since 2026-11-10). The write path was missing when this was written and is filed as `#564`, **shipped 2026-09-02** (`backlog/core.py` `_UPDATE_BLOCK`; `--revisit` at `backlog/cli.py:124`). Decision block: `artifacts/archive/build-plan-drift-burndown.md` § `governed_by` → nonfunctional-requirements.
   Recorded keep: **the `pr-scoped` review mode**. This is NOT a Live exception and is
   deliberately not labelled one — the two above are exceptions to the *emission* arm
   (controls that cannot emit their yield). This is the *removal* arm running to
@@ -119,6 +104,10 @@ last_validated: null
   is unanswerable and therefore protects nothing about the reviewer that runs today. The arm's next
   run against the live `pr` mode is a separate exercise with its own evidence, and the
   `pr-review-payload` measurements above are the first numbers it would have to work from.
+  **Resolved 2026-11-10 (owner ruling, `.prawduct/owner-rulings.md`):
+  "yes fold PR reviewer in".** The removal arm ran against the `pr` mode itself and returned remove: `/prawduct:pr`
+  dispatches no reviewer, so this keep, its three conditions and the clock below concern no live
+  control. The yield it was judged on is re-derived by `python3 tools/pr-review-yield.py`.
   Clock: the janitor's Norm Health sweep re-reads the three conditions above each run.
   Retroactivity: contain — existing controls are not swept on adoption, because the evidence to judge them does not exist yet (the very defect this norm names). The boundary is explicit and dated: controls added **from 2026-07-29** carry the observable-yield obligation at birth; controls predating it are assessed as the janitor's sweep gains yield data, not before. `compliance_canary` is the worked example and the first case — it emits nothing, so it cannot be judged, and LNG-5W8R fixes that rather than retiring it on argument.
 - **State-file growth past its size threshold is surfaced as an advisory warning that prompts compaction — it is never a hard block or mechanical enforcement.**
@@ -133,6 +122,8 @@ last_validated: null
   Retroactivity: migrate — completed within the birthing changeset. Every site the norm contradicts is enumerated under Retires and swept by the `review-stages` plan before the branch merges, so the norm lands on `develop` with no residual sites; born `steady-state` on that reading. The tracker is the plan's own `## Status` box for the sweep chunk (unticked until the sites are gone), and the xfail pin is the flip detector — it goes red the day the sweep lands, but it cannot see the sweep being *cut*, so the box is what a reader checks. If the sweep is cut from the scope, this line is wrong and the entry must be re-recorded `in-transition` with a tracking item.
   Decision: `[DECISION: review rigor is keyed on stage, and the inner stage blocks only on the set above | the owner accepts a bounded miss-rate increase — a coverage or design gap found at the boundary review instead of mid-chunk, the same catch later — in exchange for wall-clock; the three prior efficiency plans held miss-rate constant and the complaint survived them, which is the evidence that the philosophy, not the mechanics, is what generates the hour | user can veto/override]` Owner decision, 2026-09-17, stated directly ("optimizing for saving a lot of wall clock for at most a minor drop in quality").
   Ratified: 2026-09-17, owner — the entry text and Principle 11's two-stage sentence, confirmed as written.
+  Amended: 2026-11-10, owner ruling (`.prawduct/owner-rulings.md`): "yes fold PR reviewer in". The boundary stage is `cumulative` alone: `/prawduct:pr` dispatches no reviewer, so the PR review the statement names beside it is not run. The boundary's rule — the full severity table, never skipped or inferred away — binds the cumulative Critic unchanged. The statement keeps its ratified words.
+  Amended: 2026-11-10, owner ruling (`.prawduct/owner-rulings.md`): "Yes delete those", landed in #1128 (9e5087d3). NOTE is no longer a finding severity at any stage: a NOTE-rated item is an observation, owed no disposition, at the boundary too. So "a finding at the boundary" above covers WARNING and BLOCKING only. Recorded here 2026-11-18, when #830 was found superseded by it. The statement keeps its ratified words.
   Rulings: 2026-09-25, owner — **the inner stage is keyed on cycle position, not on commit order.** `[DECISION: a mid-plan review of the unreviewed interval is inner stage whether or not the builder committed first — covered frontier → working tree, or merge-base → working tree when nothing on the branch is reviewed; the boundary is merge-base…HEAD at the PR point (the plan complete, or its last chunk committed) | the statement's "uncommitted diff" read by its own why: committing a chunk before reviewing it moves the commit, not the review's place in the cycle, and pricing that review at boundary rigor is the defect the statement names — the 2026-09-25 sibling survey found 33 `cumulative` reviews that mode inference chose on a clean tree in the middle of a plan since 2026-09-20 | owner can veto/override]` Owner, answering the review-friction plan's stage fork: "Yes, key on cycle position". The statement above keeps its ratified words; the mode router (`lib/critic_mode.py`) and the interval's owner (`critic_consolidate.working_tree_interval_base`) implement the ruling.
 
 ## Performance
@@ -144,7 +135,8 @@ governance feels like a partner or a tax.
 The governing model is **cost = unit-cost × run-count**, and both factors are design variables.
 **Run-count** is set by gate and chunk structure. **Unit-cost** is set by the reviewer's *payload* —
 what a given mode must load to answer its goals — and is reducible per-mode. What stays fixed is the
-reviewer's **model tier**: reviewers inherit the session model, reviewer-model tiering was removed
+reviewer's **model tier**: reviewers run on the session model up to Opus-class and on Opus-class above
+it (the Direction amendment of 2026-11-10), reviewer-model tiering by risk was removed
 deliberately, and the manifest's `tier` is telemetry only. Payload and tier are independent; the
 Direction amendment of 2026-07-29 separates them.
 
@@ -156,6 +148,11 @@ Targets we want to hold:
   reviews at the PR boundary **run in parallel, never sequentially** — wall clock is the slowest
   run, not the sum. Any sequencing that exists is for narrative framing, not a data dependency, and
   is a target for removal.
+  Amended: 2026-11-10, owner ruling (`.prawduct/owner-rulings.md`): "yes fold PR reviewer in". The
+  PR boundary is the cumulative Critic alone and `/prawduct:pr` dispatches no reviewer, so the
+  ≤ 7 minutes is the cumulative Critic's wall clock and the parallel-never-sequential sentence has
+  no second review to govern. The tables below are the 2026-09-18 readings of the PR review and stay
+  as that record. The target keeps its words.
 
   **Measured against this target, `pr-review-payload` scope, 2026-09-18.** Two readings, each with
   the command that re-derives it rather than a figure to be trusted:
@@ -283,10 +280,11 @@ probe or malformed state file never takes down a session.
 
 ## Cost Constraints
 
-- **The only meaningful operating cost is reviewer tokens.** Independent reviewers inherit the
-  session model (reviewer-model tiering was removed — the manifest's `tier` is telemetry only and
-  selects no model). The levers are therefore **run-count**, controlled by gate and chunk design,
-  **and per-mode reviewer payload** — never the reviewer model, which stays fixed. This tracks the
+- **The only meaningful operating cost is reviewer tokens.** Independent reviewers run on the
+  session model, capped at Opus-class (reviewer-model tiering by risk was removed — the manifest's
+  `tier` is telemetry only and selects no model). The levers are therefore **run-count**, controlled
+  by gate and chunk design, **and per-mode reviewer payload** — never a per-review choice of model;
+  the cap is a ceiling the owner set, not a lever a review pulls. This tracks the
   § Direction amendment of 2026-07-29; an earlier revision of this bullet still read "the lever is
   therefore run-count … not the reviewer model," which correctly excluded model tiering but wrongly
   implied payload was not a lever either.

@@ -43,7 +43,10 @@ _SCANNED_DIRS = ("bin", "lib", "hooks")
 _HOST_VARIABLE = re.compile(r"""["'](?:CLAUDE_[A-Z_]+|CODEX_HOME|PRAWDUCT_PROJECT_DIR)["']""")
 # Payload keys read off a dict, by `.get` or subscript: every key the seam
 # itself reads, taken from the seam so a key it gains is scanned for too.
-_PAYLOAD_KEYS = (host._MESSAGE_KEY, host._TASKS_KEY, host._CWD_KEY, host._AGENT_TYPE_KEY)
+_PAYLOAD_KEYS = (
+    host._MESSAGE_KEY, host._TASKS_KEY, host._CWD_KEY, host._AGENT_TYPE_KEY,
+    host._TRANSCRIPT_KEY,
+)
 _PAYLOAD_READ = re.compile(
     r"""(\.get\(\s*|\[\s*)["'](""" + "|".join(map(re.escape, _PAYLOAD_KEYS)) + r""")["']"""
 )
@@ -202,6 +205,284 @@ class TestReadEvent:
         with pytest.raises(ValueError):
             host.read_event("pre_tool_use", {})
 
+    def test_the_transcript_path_is_kept_as_sent_and_garbage_is_none(self):
+        event = host.read_event("stop", {"transcript_path": " /t/s.jsonl"})
+        assert event.transcript_path == " /t/s.jsonl"
+        assert host.read_event("stop", {"transcript_path": 3}).transcript_path is None
+        assert host.read_event("stop", {}).transcript_path is None
+
+
+def _record(kind: str, when: str, *blocks: dict) -> str:
+    """One transcript line in the shape Claude Code writes: these keys and
+    nesting were read off a real transcript (2026-11); the fields the reader
+    ignores are left out."""
+    return json.dumps({
+        "type": kind, "timestamp": when, "isSidechain": False,
+        "message": {"role": kind, "content": list(blocks)},
+    }) + "\n"
+
+
+class TestTheSessionRecord:
+    """`host.session_tool_activity` and `host.other_session_wrote_since`: the
+    reads #1071's span narrowing stands on."""
+
+    def test_a_call_runs_from_its_use_to_its_result(self, tmp_path):
+        transcript = tmp_path / "s.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "user", "timestamp": "2026-11-15T10:00:00.000Z",
+                        "message": {"role": "user", "content": "hi"}}) + "\n"
+            + _record("assistant", "2026-11-15T10:01:00.500Z",
+                      {"type": "tool_use", "id": "a", "name": "Bash", "input": {}})
+            + _record("user", "2026-11-15T10:01:30.000Z",
+                      {"type": "tool_result", "tool_use_id": "a", "content": "ok"})
+            # A record with no timestamp (the host's request blobs) is skipped.
+            + json.dumps({"type": "api-request-blob", "message": {"content": [
+                {"type": "tool_use", "id": "z", "name": "Bash", "input": {}}]}}) + "\n"
+        )
+        activity = host.session_tool_activity(str(transcript))
+        start = 1794736860.5  # 2026-11-15T10:01:00.5Z
+        assert activity is not None
+        assert activity.windows == ((start, start + 29.5),)
+        assert activity.covered_from == start - 60.5
+        assert activity.acting_at(start + 10) is True
+        assert activity.acting_at(start + 29.5 + host.ACTIVITY_SLACK_SECONDS) is True
+        assert activity.acting_at(start + 40) is False
+        assert activity.acting_at(start - 600) is None
+
+    def test_a_background_call_never_closes(self, tmp_path):
+        transcript = tmp_path / "s.jsonl"
+        transcript.write_text(
+            _record("assistant", "2026-11-15T10:01:00Z", {
+                "type": "tool_use", "id": "a", "name": "Agent",
+                "input": {"run_in_background": True}})
+            + _record("user", "2026-11-15T10:01:01Z",
+                      {"type": "tool_result", "tool_use_id": "a", "content": "launched"})
+        )
+        activity = host.session_tool_activity(str(transcript))
+        assert activity.acting_at(1794736860 + 86400) is True
+
+    def test_nothing_timestamped_or_nothing_there_is_none(self, tmp_path):
+        transcript = tmp_path / "s.jsonl"
+        transcript.write_text('{"type": "user"}\n')
+        assert host.session_tool_activity(str(transcript)) is None
+        assert host.session_tool_activity(str(tmp_path / "missing.jsonl")) is None
+
+    def test_a_transcript_it_does_not_understand_is_none(self, tmp_path):
+        """Read as idle throughout, an unrecognised format would disown the
+        session's own commits, so it says nothing instead."""
+        transcript = tmp_path / "s.jsonl"
+        prompt = json.dumps({"type": "user", "timestamp": "2026-11-15T10:00:00Z",
+                             "message": {"role": "user", "content": "hi"}}) + "\n"
+        transcript.write_text(prompt)
+        assert host.session_tool_activity(str(transcript)) is None  # no call at all
+        transcript.write_text(
+            prompt + _record("user", "2026-11-15T10:01:01Z",
+                             {"type": "tool_result", "tool_use_id": "a", "content": "ok"})
+        )
+        assert host.session_tool_activity(str(transcript)) is None  # result, no use
+
+    def test_a_sibling_written_since_counts_and_older_or_nested_ones_do_not(
+        self, tmp_path
+    ):
+        ours = tmp_path / "ours.jsonl"
+        ours.write_text("")
+        (tmp_path / "old.jsonl").write_text("")
+        os.utime(tmp_path / "old.jsonl", (1000, 1000))
+        (tmp_path / "ours").mkdir()
+        (tmp_path / "ours" / "agent.jsonl").write_text("")  # a subagent's
+        os.utime(ours, (5000, 5000))
+        assert host.other_session_wrote_since(str(ours), 2000) is False
+        (tmp_path / "theirs.jsonl").write_text("")
+        os.utime(tmp_path / "theirs.jsonl", (3000, 3000))
+        assert host.other_session_wrote_since(str(ours), 2000) is True
+        # Within the slack of the start is the boundary, not a second session.
+        assert host.other_session_wrote_since(
+            str(ours), 3000 - host.ACTIVITY_SLACK_SECONDS
+        ) is False
+
+    def test_no_own_transcript_is_no_evidence(self, tmp_path):
+        (tmp_path / "theirs.jsonl").write_text("")
+        assert host.other_session_wrote_since(str(tmp_path / "ours.jsonl"), 0) is None
+
+    def test_the_paths_this_sessions_edits_targeted_are_collected(self, tmp_path):
+        """Edit, Write and MultiEdit name ``file_path``, NotebookEdit
+        ``notebook_path``; a Read names a path it did not change."""
+        transcript = tmp_path / "s.jsonl"
+        transcript.write_text(
+            _record("assistant", "2026-11-15T10:01:00Z",
+                    {"type": "tool_use", "id": "a", "name": "Edit",
+                     "input": {"file_path": "/r/a.py", "old_string": "", "new_string": ""}},
+                    {"type": "tool_use", "id": "b", "name": "Write",
+                     "input": {"file_path": "/r/b.py", "content": ""}},
+                    {"type": "tool_use", "id": "c", "name": "MultiEdit",
+                     "input": {"file_path": "/r/c.py", "edits": []}},
+                    {"type": "tool_use", "id": "d", "name": "NotebookEdit",
+                     "input": {"notebook_path": "/r/d.ipynb", "new_source": ""}},
+                    {"type": "tool_use", "id": "e", "name": "Read",
+                     "input": {"file_path": "/r/e.py"}},
+                    {"type": "tool_use", "id": "f", "name": "Edit", "input": {"file_path": 7}})
+        )
+        activity = host.session_tool_activity(str(transcript))
+        assert activity.edited_paths == frozenset(
+            {"/r/a.py", "/r/b.py", "/r/c.py", "/r/d.ipynb"}
+        )
+
+    def test_a_bang_command_runs_from_its_input_to_its_output(self, tmp_path):
+        """Claude Code's ``!`` mode records no tool call: a user message whose
+        content is ``<bash-input>…`` when entered, and one starting
+        ``<bash-stdout>`` when the command ended. The shape was read off this
+        machine's transcripts (Claude Code 2.1.220)."""
+        def user(when: str, content: str) -> str:
+            return json.dumps({"type": "user", "timestamp": when,
+                               "message": {"role": "user", "content": content}}) + "\n"
+
+        transcript = tmp_path / "s.jsonl"
+        transcript.write_text(
+            _record("assistant", "2026-11-15T10:00:00Z",
+                    {"type": "tool_use", "id": "a", "name": "Bash", "input": {}})
+            + _record("user", "2026-11-15T10:00:01Z",
+                      {"type": "tool_result", "tool_use_id": "a", "content": "ok"})
+            + user("2026-11-15T10:05:00Z", "<bash-input>git commit -am x</bash-input>")
+            + user("2026-11-15T10:05:30Z", "<bash-stdout>[main 1] x</bash-stdout><bash-stderr></bash-stderr>")
+            + user("2026-11-15T10:09:00Z", "<bash-input>sleep 999</bash-input>")
+        )
+        activity = host.session_tool_activity(str(transcript))
+        five = 1794736800 + 300  # 2026-11-15T10:05:00Z
+        assert activity.acting_at(five + 15) is True
+        assert activity.acting_at(five + 120) is False
+        # No output yet: the command may still be running.
+        assert activity.acting_at(five + 240 + 86400) is True
+
+    def test_text_that_merely_mentions_bash_input_opens_nothing(self, tmp_path):
+        transcript = tmp_path / "s.jsonl"
+        transcript.write_text(
+            _record("assistant", "2026-11-15T10:00:00Z",
+                    {"type": "tool_use", "id": "a", "name": "Bash", "input": {}})
+            + _record("user", "2026-11-15T10:00:01Z",
+                      {"type": "tool_result", "tool_use_id": "a", "content": "ok"})
+            + json.dumps({"type": "user", "timestamp": "2026-11-15T10:05:00Z",
+                          "message": {"role": "user",
+                                      "content": "what does <bash-input> mean?"}}) + "\n"
+        )
+        activity = host.session_tool_activity(str(transcript))
+        assert activity.acting_at(1794736800 + 3600) is False
+
+
+def _transcript_lines() -> list[str]:
+    """A transcript exercising every reader branch, in order: a prompt, a call
+    and its result, an edit, a background call, a ``!`` command and its output."""
+    def user(when: str, content) -> str:
+        return json.dumps({"type": "user", "timestamp": when,
+                           "message": {"role": "user", "content": content}}) + "\n"
+
+    return [
+        user("2026-11-15T10:00:00Z", "hi"),
+        _record("assistant", "2026-11-15T10:01:00Z",
+                {"type": "tool_use", "id": "a", "name": "Bash", "input": {}}),
+        _record("user", "2026-11-15T10:01:10Z",
+                {"type": "tool_result", "tool_use_id": "a", "content": "ok"}),
+        _record("assistant", "2026-11-15T10:02:00Z",
+                {"type": "tool_use", "id": "b", "name": "Edit",
+                 "input": {"file_path": "/r/a.py"}}),
+        _record("user", "2026-11-15T10:02:01Z",
+                {"type": "tool_result", "tool_use_id": "b", "content": "ok"}),
+        _record("assistant", "2026-11-15T10:03:00Z",
+                {"type": "tool_use", "id": "c", "name": "Agent",
+                 "input": {"run_in_background": True}}),
+        _record("user", "2026-11-15T10:03:01Z",
+                {"type": "tool_result", "tool_use_id": "c", "content": "launched"}),
+        user("2026-11-15T10:04:00Z", "<bash-input>git commit</bash-input>"),
+        user("2026-11-15T10:04:05Z", "<bash-stdout>ok</bash-stdout>"),
+        _record("assistant", "2026-11-15T10:05:00Z",
+                {"type": "tool_use", "id": "d", "name": "Write",
+                 "input": {"file_path": "/r/b.py"}}),
+    ]
+
+
+class TestTheTranscriptCache:
+    """``session_tool_activity(path, cache_path)`` keeps what it parsed, keyed
+    by the transcript's path, device, inode and byte offset, and parses only the
+    bytes appended since. Whatever the cache, the answer must be the one a full
+    read gives."""
+
+    def test_any_split_gives_the_full_reads_answer(self, tmp_path):
+        """Two Stops, the first seeing the transcript up to every byte offset,
+        including mid-line (the host may be mid-append), agree with one read of
+        the whole."""
+        text = "".join(_transcript_lines())
+        whole = tmp_path / "whole.jsonl"
+        whole.write_text(text)
+        expected = host.session_tool_activity(str(whole))
+        assert expected is not None and expected.edited_paths
+        data = text.encode()
+        for cut in range(0, len(data) + 1, 7):
+            transcript = tmp_path / "s.jsonl"
+            cache = tmp_path / f"cache-{cut}.json"
+            transcript.write_bytes(data[:cut])
+            host.session_tool_activity(str(transcript), cache_path=str(cache))
+            with transcript.open("ab") as fh:
+                fh.write(data[cut:])
+            got = host.session_tool_activity(str(transcript), cache_path=str(cache))
+            assert got == expected, cut
+
+    def test_a_replaced_or_rewritten_transcript_is_read_again(self, tmp_path):
+        lines = _transcript_lines()
+        transcript = tmp_path / "s.jsonl"
+        cache = str(tmp_path / "cache.json")
+        transcript.write_text("".join(lines))
+        host.session_tool_activity(str(transcript), cache_path=cache)
+        # Rewritten in place at the same length, the last record changed: the
+        # cached scan no longer describes the file. (The host only appends; the
+        # check reads the bytes before the offset, not the whole prefix.)
+        rewritten = "".join(lines).replace('"/r/b.py"', '"/r/z.py"')
+        assert len(rewritten) == len("".join(lines)) and rewritten != "".join(lines)
+        transcript.write_text(rewritten)
+        fresh = host.session_tool_activity(str(tmp_path / "s.jsonl"))
+        assert host.session_tool_activity(str(transcript), cache_path=cache) == fresh
+        # Replaced by a new, shorter file.
+        transcript.unlink()
+        transcript.write_text("".join(lines[:3]))
+        fresh = host.session_tool_activity(str(transcript))
+        assert host.session_tool_activity(str(transcript), cache_path=cache) == fresh
+
+    def test_a_broken_line_stays_fatal_across_stops(self, tmp_path):
+        """A broken line is forgiven only while it is the last; a line appended
+        after it, at a later Stop, makes the transcript unreadable for good."""
+        lines = _transcript_lines()
+        transcript = tmp_path / "s.jsonl"
+        cache = str(tmp_path / "cache.json")
+        transcript.write_text("".join(lines[:3]) + '{"type": "assist\n')
+        assert host.session_tool_activity(str(transcript), cache_path=cache) is not None
+        with transcript.open("a") as fh:
+            fh.write(lines[3])
+        assert host.session_tool_activity(str(transcript), cache_path=cache) is None
+        # Nothing appended: the cached verdict alone must still say so.
+        assert host.session_tool_activity(str(transcript), cache_path=cache) is None
+        with transcript.open("a") as fh:
+            fh.write(lines[4])
+        assert host.session_tool_activity(str(transcript), cache_path=cache) is None
+
+    def test_a_garbage_cache_is_ignored(self, tmp_path):
+        transcript = tmp_path / "s.jsonl"
+        transcript.write_text("".join(_transcript_lines()))
+        expected = host.session_tool_activity(str(transcript))
+        cache = tmp_path / "cache.json"
+        for garbage in ("not json", "[]", '{"transcripts": 3}',
+                        json.dumps({"transcripts": {str(transcript): {"offset": "x"}}})):
+            cache.write_text(garbage)
+            assert host.session_tool_activity(str(transcript), cache_path=str(cache)) == expected
+
+    def test_the_cache_holds_a_bounded_number_of_transcripts(self, tmp_path):
+        cache = str(tmp_path / "cache.json")
+        for n in range(host.ACTIVITY_CACHE_TRANSCRIPTS + 3):
+            transcript = tmp_path / f"s{n}.jsonl"
+            transcript.write_text("".join(_transcript_lines()))
+            host.session_tool_activity(str(transcript), cache_path=cache)
+        kept = json.loads(Path(cache).read_text())["transcripts"]
+        assert len(kept) == host.ACTIVITY_CACHE_TRANSCRIPTS
+        assert str(tmp_path / f"s{host.ACTIVITY_CACHE_TRANSCRIPTS + 2}.jsonl") in kept
+        assert str(tmp_path / "s0.jsonl") not in kept
+
 
 class TestGatesReadTheEvent:
     """The gates take a `HostEvent`; what they decide from it is unchanged."""
@@ -352,7 +633,9 @@ class TestUnknownHost:
         repo = _governed_repo(tmp_path)
         result = _run([str(HOOK), "stop"], repo, tmp_path, "bogus")
         assert result.returncode == 2
-        assert "[prawduct v" in result.stderr and "gate: unknown-host]" in result.stderr
+        # The stamp gains "· NEW this release (vX)" while the running version is the
+        # gate's `since`, so it must match before and after the release that ships it.
+        assert re.search(r"\[prawduct v[^\]\n]* · gate: unknown-host(?: · NEW this release \(v[^)]+\))?\]", result.stderr)
         facts = evidence.facts_of_kind(evidence.read_facts(repo), "guard-refusal")
         assert [f["body"].get("guard") for f in facts] == ["stop-gate:host"]
 

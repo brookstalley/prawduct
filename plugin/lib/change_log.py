@@ -6,7 +6,10 @@ jobs under a name describing neither, which is part of why a dual-reading defect
 reached three consumers before anyone generalised it.
 
 Tagged-entry format — one line after each ``## YYYY-MM-DD:`` header (blank lines
-between are tolerated). **The format a new entry is written in is two keys**::
+between are tolerated). New work is recorded as a change fragment
+(``lib/change_fragments.py``), never here: this format is the change-log archive's,
+which the release cut writes, and the live log's shipped history. **An archived
+entry carries two keys**::
 
     <!-- prawduct: scope=pantry-v1 | release=v1.3.18 -->
 
@@ -21,12 +24,14 @@ neither rewritten nor removed, and the parser gives neither any treatment of its
 own — each is kept as the plain string any unknown key is. Anything below describing them is describing what
 a *historical* entry may contain. Keys, and who reads them:
 
-* ``scope``   — the work identifier, named for the work rather than a version. Read by the release gate to enumerate
-  what has not shipped, and by :mod:`lib.plan_index` to find the plan that
-  declares the same scope in its frontmatter.
-* ``release`` — the version that carried this entry. Its ABSENCE is what marks
-  an entry release-pending, which is why a malformed value is an error rather
-  than a curiosity (see :func:`validate_change_log_tags`).
+* ``scope``   — the work identifier, named for the work rather than a version. Read by the release gate to
+  answer which scopes already shipped in a release, and by :mod:`lib.plan_index`
+  to find the plan that declares the same scope in its frontmatter.
+* ``release`` — the version that carried this entry. Its ABSENCE marks a legacy
+  entry release-pending, which releases no longer read: the release gate refuses
+  on such an entry (``release_readiness.legacy_pending_refusals``), so a
+  malformed value is an error rather than a curiosity (see
+  :func:`validate_change_log_tags`).
 * ``chunks``  — chunk IDs. **RETIRED**, with the derived views that were its
   only reader. It is no longer split on commas, and two tag lines setting it to
   different values are a conflict like any other key's. Which chunks an entry
@@ -329,14 +334,15 @@ def validate_change_log_tags(
 
     One validator over the three failure shapes that can affect a **surviving**
     tag key — malformed value, the same key set twice to different values, and
-    an entry assembled from more than one tag line. It replaces three separate
-    per-shape functions whose only caller was the derived-view regenerator, and
-    it moves the checks to the gate that has a reason to run them: the release
-    gate is the thing that acts on ``release=`` and ``scope=``, so it is where a
-    malformed one must be refused.
+    an entry assembled from more than one tag line. Its caller is the size
+    archive (``change_log_archive``), which refuses to move entries out of a log
+    carrying an error, because a bad ``release=`` is what makes pending work look
+    shipped. The release gate stopped calling it when releases moved to fragments
+    only (#1125): it now refuses a malformed ``release=`` on a live-log entry as
+    ``legacy-pending-entry``, through the migration's own converter.
 
-    **Errors** (the caller fails closed — this is an authority gate, and an
-    unevaluable release state must never read as "fine"):
+    **Errors** (the caller fails closed — an unevaluable record must never read
+    as "fine"):
 
     * ``release=`` present but not a version. This fails in the worst possible
       direction. The release-pending set is every ``scope=``-tagged entry with

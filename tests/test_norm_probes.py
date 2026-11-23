@@ -1107,7 +1107,7 @@ class TestNormHealthSweepOverdueProbe:
         assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
 
     def test_the_advisory_names_the_repair_route_not_only_the_sweep(self, tmp_path):
-        """The pointer to Health Check #14 must live where every surface renders it.
+        """The pointer to the leftover-scaffold check must live where every surface renders it.
 
         It was first set on `alternative_actions`, which the briefing does not
         render (only `advisory show` does) — so the fix was inert where most
@@ -1126,7 +1126,9 @@ class TestNormHealthSweepOverdueProbe:
             "the summary must offer the repair, not only the audit"
         )
         rendered = " ".join([out[0].trigger_summary, *out[0].alternative_actions])
-        assert rendered.count("Health Check #14") == 1, "the route is said once"
+        # Named, not numbered: doctor's list renumbers under an ordinal.
+        assert rendered.count("*Leftover norm-index scaffold rows* check") == 1, "the route is said once"
+        assert "Check #" not in rendered
 
     def test_window_boundary_is_inclusive(self, tmp_path):
         # age == SWEEP_WINDOW_DAYS is still "fresh" (the guard is `<=`); one day past fires.
@@ -1199,7 +1201,7 @@ class TestRegistration:
 #: inferred because the tripwire below has to say precisely which claims it did
 #: NOT make on a cache-less run — "some probes didn't run" is the shape of report
 #: that let #738 sit green for months.
-_CACHE_DEPENDENT_PROBES = frozenset({"dead-why", "stalled-transition"})
+_CACHE_DEPENDENT_PROBES = frozenset({"dead-why", "stalled-transition", "revisit-due"})
 
 
 class TestSilentAgainstThisRepo:
@@ -1279,7 +1281,11 @@ class TestSilentAgainstThisRepo:
         cands = [c for c in run_all_probes(state, codebase) if c.feature == "norm-lifecycle"]
         types = {c.type for c in cands}
         cache_blind = "backlog-cache-unreadable" in types
-        fired = sorted(types - {"backlog-cache-unreadable"})
+        # `revisit-due` is left out of this repo's silence claim: post-cutover its
+        # input is the live tracker's scheduled dates, not committed tree state, so
+        # a date passing is a session advisory to answer, not a regression in the
+        # tree — asserting it here would turn the suite red on a calendar day.
+        fired = sorted(types - {"backlog-cache-unreadable", "revisit-due"})
 
         # Everything not excused by a missing cache must be silent, always.
         unexcused = [t for t in fired if not (cache_blind and t in _CACHE_DEPENDENT_PROBES)]
@@ -1291,8 +1297,8 @@ class TestSilentAgainstThisRepo:
         if cache_blind:
             pytest.skip(
                 "backlog cache unreadable, so "
-                f"{sorted(_CACHE_DEPENDENT_PROBES)} could not resolve any of the "
-                f"{len(cited)} norm citation(s) in this repo — their silence is NOT "
+                f"{sorted(_CACHE_DEPENDENT_PROBES)} could not read it (including the "
+                f"{len(cited)} norm citation(s) in this repo) — their silence is NOT "
                 "asserted by this run. Seed the cache with `python3 "
                 "plugin/bin/prawduct-hook backlog sync --repo <owner/repo>` to make "
                 "this test say something about them."
@@ -1390,10 +1396,10 @@ def _id(candidate) -> str:
 
 
 class TestRevisitDueProbe:
-    """Markdown-backend only, and that scoping is the point of this class.
+    """The markdown-backend arm; the Issues arm is in
+    `TestPostCutoverResolvesThroughTheCache`.
 
-    The cutover retires it — no `revisit:` write path exists on the Issues
-    backend — but for every pre-cutover product it is live, and `docs/norms.md`
+    For every pre-cutover product this arm is live, and `docs/norms.md`
     § Exceptions expire states the two-path split normatively: dated clocks fire
     here, event-bound ones in the janitor's Norm Health sweep, which declines
     dated ones *because* this fires them. Retiring it outright would have taken a
@@ -1407,6 +1413,17 @@ class TestRevisitDueProbe:
         assert len(out) == 1
         assert out[0].type == "revisit-due"
         assert "EXC-1A2B" in out[0].trigger_summary
+
+    def test_owner_action_names_both_intents_of_a_revisit_date(self, tmp_path):
+        """A `revisit:` date is an exception's expiry OR a dated re-check (a measurement
+        booked for a date); the probe cannot tell which, so its summary and owner line
+        must name both."""
+        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
+        cand = np.probe_revisit_due(ProjectState({}), _cb(tmp_path))[0]
+        assert "scheduled work for that date" in cand.owner_action
+        assert "If it is an exception" in cand.owner_action
+        assert "Do what the item scheduled" in cand.trigger_summary
+        assert not cand.trigger_summary.startswith("Exception clock expired")
 
     def test_silent_when_no_revisit(self, tmp_path):
         _write_backlog(tmp_path, _item("EXC-1A2B"))
@@ -1441,24 +1458,20 @@ class TestRevisitDueProbe:
         assert _id(a) == _id(b)
         assert a.trigger_summary != b.trigger_summary  # the message lists the (different) items
 
-    def test_it_retires_on_the_cutover_and_the_cache_cannot_change_that(self, tmp_path):
-        """The one of the three whose dormancy the cache does not end. `revisit:`
-        records intent — *granted until date X* — which no age-based query can
-        reconstruct, so what it waits on post-cutover is a WRITE path for the
-        field, not a read path.
-
-        The check that this is not *promised* as restored used to live here as an
-        assertion about `DORMANT_CHECKS`. That roster and its advisory are gone
-        (W1 Chunk 06), so the promise has no surface to be made on — and the
-        durable form of the claim, that no probe registers to announce it,
-        now sits with the retirement in `test_backlog_probes.py`. What stays here
-        is this probe's own behaviour, which is the part this file owns."""
+    def test_cutover_reads_the_cache_not_the_frozen_file(self, tmp_path):
+        """Post-cutover the markdown file is frozen history: a past clock left in
+        it must not fire, and with no cache the probe says it could not look
+        rather than "nothing due". The Issues arm proper is tested with a real
+        store in `TestPostCutoverResolvesThroughTheCache`."""
         _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
         cutover = ProjectState({"backlog_service_repo": "octo/backlog"})
 
-        assert np.probe_revisit_due(cutover, _cb(tmp_path)) == []
-        # Pre-cutover it still fires on the same fixture — otherwise this test
-        # would pass just as well against a probe that had stopped working.
+        out = np.probe_revisit_due(cutover, _cb(tmp_path))
+
+        assert isinstance(out, CouldNotLook)
+        assert [c.type for c in out] == ["backlog-cache-unreadable"]
+        # Pre-cutover the same fixture fires — otherwise this would pass just as
+        # well against a probe that had stopped working.
         assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path))
 
 
@@ -1508,6 +1521,53 @@ class TestPostCutoverResolvesThroughTheCache:
             fake, project_dir=tmp_path, owner=self.OWNER, repo=self.REPO
         )["status"] == "ok"
         return ids
+
+    def _issue_with_revisit(self, fake, revisit: str, *, status: str | None = None) -> str:
+        issue = fake.create_issue(
+            self.OWNER,
+            self.REPO,
+            title="governance: an item with a clock",
+            body=encode.compose_body("b", {"v": "1", "revisit": revisit}),
+            labels=[],
+        )
+        canonical = f"{self.SCOPE}#{issue['number']}"
+        if status:
+            assert backlog_core.set_status(fake, id_raw=canonical, target=status)["status"] == "ok"
+        return canonical
+
+    def test_revisit_due_fires_on_an_open_issue_past_its_clock(self, tmp_path):
+        """The arm #564's write path made reachable: a dated `revisit:` in an open
+        issue's block fires; a future one, an event trigger, and a closed item's
+        past clock do not."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub(user={"login": "agent-a", "id": 1})
+        due = self._issue_with_revisit(fake, _days_ago(1))
+        future = self._issue_with_revisit(fake, _days_ahead(5))
+        event = self._issue_with_revisit(fake, "when the collector export ships")
+        closed = self._issue_with_revisit(fake, _days_ago(9), status="shipped")
+        assert backlog_sync.full_rebuild(
+            fake, project_dir=tmp_path, owner=self.OWNER, repo=self.REPO
+        )["status"] == "ok"
+
+        out = np.probe_revisit_due(self._state(), _cb(tmp_path))
+
+        assert [c.type for c in out] == ["revisit-due"]
+        summary = out[0].trigger_summary
+        assert due in summary
+        for quiet in (future, event, closed):
+            assert quiet not in summary, quiet  # four issues, #1..#4: no id prefixes another
+
+    def test_revisit_due_is_quiet_when_no_open_issue_is_past_due(self, tmp_path):
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub(user={"login": "agent-a", "id": 1})
+        self._issue_with_revisit(fake, _days_ahead(5))
+        assert backlog_sync.full_rebuild(
+            fake, project_dir=tmp_path, owner=self.OWNER, repo=self.REPO
+        )["status"] == "ok"
+
+        out = np.probe_revisit_due(self._state(), _cb(tmp_path))
+
+        assert out == [] and not isinstance(out, CouldNotLook)
 
     def test_dead_why_fires_on_a_cited_item_that_shipped(self, tmp_path):
         ids = self._cached(
@@ -1684,7 +1744,7 @@ class TestPostCutoverResolvesThroughTheCache:
         """R-2: the cache nag says the checks could not look, so a sync must hold
         dead-why's and stalled-transition's open advisories rather than resolve
         them. The hold is what ``run_probes`` reports as unanswered; a probe that
-        did not read the cache (revisit-due) is the control."""
+        did not read the cache (norm-health-sweep-overdue) is the control."""
         subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
         _write_artifact(
             tmp_path,
@@ -1698,13 +1758,17 @@ class TestPostCutoverResolvesThroughTheCache:
 
         candidates, unanswered = run_probes(self._state(), make_codebase(tmp_path))
 
-        assert {(np.FEATURE, "dead-why"), (np.FEATURE, "stalled-transition")} <= unanswered
-        assert (np.FEATURE, "revisit-due") not in unanswered
+        assert {
+            (np.FEATURE, "dead-why"),
+            (np.FEATURE, "stalled-transition"),
+            (np.FEATURE, "revisit-due"),
+        } <= unanswered
+        assert (np.FEATURE, "norm-health-sweep-overdue") not in unanswered
         assert "backlog-cache-unreadable" in {c.type for c in candidates}
 
-    def test_both_probes_report_one_outage_not_two(self, tmp_path):
+    def test_every_cache_probe_reports_one_outage_not_three(self, tmp_path):
         """One cause, one nag. `compute_id` hashes (feature, type, version,
-        evidence), so the shared type and evidence collapse the two reports into
+        evidence), so the shared type and evidence collapse the three reports into
         a single advisory — the alternative trains the reader to dismiss."""
         subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
         _write_artifact(
@@ -1722,7 +1786,7 @@ class TestPostCutoverResolvesThroughTheCache:
             if c.type == "backlog-cache-unreadable"
         ]
 
-        assert len(fired) == 2  # both probes report…
+        assert len(fired) == 3  # dead-why, stalled-transition and revisit-due report…
         assert len({_id(c) for c in fired}) == 1  # …and the store keeps one advisory
 
 

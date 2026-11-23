@@ -246,7 +246,10 @@ class TestReleasePending:
         assert "branch feature/merged does not exist" in result.stdout
         assert "pending release" not in result.stdout
 
-    def test_an_untagged_change_log_entry_counts_in_a_single_file_log_repo(self, tmp_path):
+    def test_a_pending_change_log_entry_no_longer_counts_and_names_the_refusal(self, tmp_path):
+        """Was: an untagged legacy entry counted as release-pending. Since #1125
+        the release reads fragments only and refuses that entry, so the claim is
+        missing, and the per-plan line says why, naming the refusal."""
         repo = _repo(tmp_path)
         _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
         (repo / ".prawduct" / "change-log.md").write_text(
@@ -254,10 +257,10 @@ class TestReleasePending:
         )
         self._into_base(repo)
         result = _run(repo)
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert (
-            "its change-log entry for scope `shipped` is pending release) — archive at the release"
-        ) in result.stdout
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "branch feature/merged does not exist" in result.stdout
+        assert "is pending release" not in result.stdout
+        assert "legacy-pending-entry: '2026-10-01: shipped it'" in result.stderr
 
     def test_a_released_change_log_entry_is_not_pending(self, tmp_path):
         repo = _repo(tmp_path)

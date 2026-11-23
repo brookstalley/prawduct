@@ -44,25 +44,25 @@ this inventory is exhaustive rather than sampled.
 
 | # | Consumer | Query it needs |
 |---|---|---|
-| 1 | Critic backlog reconciliation walk | all **open** items with id, title, body |
-| 2 | C-B1 missing metadata | items **created since** a ref/timestamp |
-| 3 | C-B2 dedup evidence | **count and ids by `area`** |
-| 4 | C-B3 missing hygiene step | **open items by `area`**, joined to the changed-file set |
-| 5 | C-B4 dangling id | **does this id resolve** — including through aliases, including dead items |
-| 6 | PR R-1 resolved items | same as #1 |
-| 7 | PR R-2 closes/status disagreement | **status by id**, alias-resolving |
+| 1 | ~~Critic backlog reconciliation walk~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | all **open** items with id, title, body |
+| 2 | ~~C-B1 missing metadata~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | items **created since** a ref/timestamp |
+| 3 | ~~C-B2 dedup evidence~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | **count and ids by `area`** |
+| 4 | ~~C-B3 missing hygiene step~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | **open items by `area`**, joined to the changed-file set |
+| 5 | ~~C-B4 dangling id~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | **does this id resolve** — including through aliases, including dead items |
+| 6 | ~~PR R-1 resolved items~~ — retired 2026-11-10 with the PR reviewer (#1129) — no shipped reader | same as #1 |
+| 7 | `check-pr-hygiene`: closes/status disagreement | **status by id**, alias-resolving |
 | 8 | Janitor: group by area | items grouped by `area` |
 | 9 | Janitor: dedup candidates | **text search within an area** (the FTS requirement) |
 | 10 | Janitor: stale items | open items not updated in >90d — from provider `updated_at` (§2.1) |
 | 11 | Janitor: unstaged items | open items with no `stage` |
 | 12 | Janitor: neglected hygiene | items in the `promoted` state whose owning chunk shipped |
-| 13 | `revisit-due` probe | *retired — see §2.1, not restored* |
+| 13 | `revisit-due` probe | open items' block `revisit:` field (restored 2026-11-10 — see §2.1) |
 | 14 | `dead-why` probe | **id → is-dead**, alias-resolving |
 | 15 | `stalled-transition` probe | id → **live? + date floor**, from provider `updated_at` |
 
 **The union is small.** Open-item listing with text; grouping and counting by `area`; id
-resolution through aliases including dead items; creation-time filtering; text search scoped to
-an area; and two date predicates. That is the whole schema surface. The cache does not need to
+resolution through aliases including dead items; text search scoped to an area; and two date
+predicates. That is the whole schema surface. The cache does not need to
 be elaborate, and it should not become so.
 
 ### 2.1 What the consumer pass found — restoring the cache is not sufficient
@@ -81,7 +81,13 @@ chose `working-branch` over a stored claim timestamp (§3).
   re-confirmation — and for a staleness *nag* the derived signal is the better of the two.
 - **Consumer 15 (stalled-transition) likewise** takes its date floor from `updated_at` rather
   than stored metadata dates.
-- **Consumer 13 (`revisit-due`) is retired, not restored.** A query cannot substitute for it —
+- **Ruling 2026-11-10 (owner): consumer 13 (`revisit-due`) is restored.** The retirement below
+  rested on the Issues backend having no write path for `revisit:`; #564 shipped one
+  (`backlog update --revisit`), after which open issues carried dated clocks nothing fired —
+  #987's committed re-run date among them. The probe reads the field from each open item's block
+  via `open_items`; it does not need, and does not use, a date query. The original reasoning is
+  kept below as the record of why it was dark.
+- *(Superseded 2026-11-10)* **Consumer 13 (`revisit-due`) is retired, not restored.** A query cannot substitute for it —
   `revisit:` encodes *"this exception was granted until date X"*, which is intent, not state, and
   two exceptions granted the same day with different clocks are indistinguishable to any
   age-based query. It is retired for a different reason: **exception clocks have already migrated
@@ -110,14 +116,6 @@ strength of consumers 10, 13 and 15. Applying *observable beats stored* removes 
 fields are writable and the two are no longer a dedup question — both shipped. The **new
 `affected` field (§3) has the same write path available to it**; nothing that exists today
 waits on this.
-
-### 2.2 One consumer gets better, not merely restored
-
-Consumer 4 (C-B3) and consumer 1 today require a reviewer to read item text and infer whether
-the diff touches it. With the `affected` field (§3) indexed, that becomes a set intersection
-against the changed files. That is the one place this work produces a capability the markdown
-backend never had, and it is the strongest argument for `affected` over leaving `refs` as free
-text.
 
 ## 3. Domain model — vocabulary
 
@@ -278,6 +276,13 @@ matters: a stored citation resolves through the table, never by being parsed as 
 - **No scheduled deletion sweep.** `since` catches closes — *given `state=all` above* — and
   closed ≠ deleted; only hard deletion and transfer-out are invisible, and both are rare. Owner
   decision — accepted risk.
+- **Evict-on-410 is the one deletion signal, and it is not a sweep.** A `get` of a hard-deleted
+  issue gets **410 Gone** from GitHub; the transport maps it to a terminal, non-retryable
+  `not_found` (`details.http_status == 410`) and `get` evicts that one cached row. It reads
+  nothing it was not already asked to read, so the no-sweep decision stands: a ghost nobody
+  `get`s stays until a rebuild. A plain 404 is reported but never evicts — it also means "no
+  access", which is not proof of deletion. An eviction that cannot run (store unreadable) is a
+  warning on the `not_found` envelope, never a changed verdict.
 - **A full-scan rebuild path still exists** for first build, schema change, and lost or corrupt
   cache. It is a rebuild path, not a deletion sweep.
 - **W1 discharges #230.** `pick`'s ~12.4s full scan at ~6× the NFR floor is explicitly W1-gated;
@@ -340,7 +345,7 @@ the write surface does not:
 |---|---|---|
 | `file` | yes | creates the row |
 | `status` | yes | `status`; also carries `merge`, which closes its source through `set_status` |
-| `update` | yes | every writable column plus the derived `affected` and alias indexes |
+| `update` | yes | every writable column plus the derived alias index |
 | `link`/`unlink` | `related` only | native `blocks`/`parent` edges are not cached at all; `related` is a body write |
 | `import` | via sync | a bulk create with no single issue in hand — an incremental sync after the run, when a store exists |
 | `reconcile-labels` | no | the alias index derives from the block body, not from the `id:PFX` labels this restores |
@@ -384,7 +389,7 @@ writes the same body a sync would have written moments later.
 
 `[DECISION: mirror on write, rather than revalidate on every cache read | making `cache-query`
 revalidate the way `pick` does would also catch foreign writes, but it costs a request per read in
-a Critic walk that issues several, and it would put a network dependency inside the one module
+a janitor sweep that issues several, and it would put a network dependency inside the one module
 whose stated property is that it never touches the network. Our own writes are the dominant source
 and the only one fixable for free | user can veto/override]`
 

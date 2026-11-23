@@ -1,16 +1,20 @@
-"""Stranded work: local branches no remote carries, and worktrees nobody is in.
+"""Stranded work: unlanded branches, and worktrees nobody is in.
 
 Finished work gets stranded where no reader looks. A reviewed fix can sit on a
-local-only branch while the next session plans to build it again, and a clone
+local-only branch while the next session plans to build it again, a finished
+and pushed branch can wait days for a pull request nobody opened, and a clone
 collects worktrees with no sign of which still have an agent in them. This
-module answers both questions from git and file timestamps, read-only, for
-three readers:
+module answers those questions from git, build plans and file timestamps,
+read-only, for four readers:
 
-* ``prawduct-hook worktrees`` — the full table, on demand.
+* ``prawduct-hook worktrees`` — the full table, on demand. Its ``--prs`` flag
+  is this module's one network leg (:func:`check_pull_requests`).
 * The session briefing — sibling WORKTREES as counts only.
 * The ``stranded-branch`` advisory (``stranded_branch_probes``) — one per
   stranded BRANCH, by name, dismissible, resolving itself once the branch is
   pushed or deleted.
+* The ``finished-branch-unlanded`` advisory (same module) — one per finished,
+  pushed, unmerged branch (:func:`unlanded_branches`), offline.
 
 The briefing names no worktree, path or branch. A list of sibling worktrees
 reads to an agent as a menu of work to pick up, and agents have followed it
@@ -72,6 +76,14 @@ SCAN_BUDGET_SECONDS = 4.0
 #: with thousands of untracked files still answers "dirty", just from a sample.
 _DIRTY_STAT_CAP = 500
 
+#: A finished branch is unlanded only once its tip commit is this old. Same-day
+#: work is somebody's next step, not a stranding; the #843 cost example sat two
+#: days. Hardcoded, not a preference row (#843 Decision 2).
+UNLANDED_AFTER_SECONDS = 24 * 3600
+#: ``gh`` lookups per ``worktrees --prs`` run, oldest branch first. Each is one
+#: network call; the rest are reported unchecked, never silently dropped.
+MAX_PR_CHECKS = 8
+
 SCHEMA_VERSION = 1
 
 ACTIVE, RECENT, IDLE, UNKNOWN, MISSING = "active", "recent", "idle", "unknown", "missing"
@@ -104,9 +116,26 @@ class BranchRow:
 
 
 @dataclass
+class UnlandedRow:
+    """A finished branch that is pushed, unmerged and idle (:func:`unlanded_branches`)."""
+
+    name: str
+    last_commit: float
+    #: The build plans claiming it, as ``plan_index.display_path`` writes them.
+    plans: list[str]
+    #: ``unchecked`` (offline, or past :data:`MAX_PR_CHECKS`), ``none`` (gh
+    #: answered: no pull request from this repo, ever), ``found``, or
+    #: ``failed`` (gh could not be asked — never read as ``none``).
+    pr_check: str = "unchecked"
+    #: ``{"number", "state"}`` of the newest pull request when ``found``.
+    pull_request: dict | None = None
+
+
+@dataclass
 class Report:
     worktrees: list[WorktreeRow] = field(default_factory=list)
     branches: list[BranchRow] = field(default_factory=list)
+    unlanded: list[UnlandedRow] = field(default_factory=list)
     #: False when git could not list the worktrees at all — every count below
     #: is then "not checked", never "none found".
     worktrees_checked: bool = True
@@ -205,9 +234,8 @@ def _mtime_signal(path: Path, source: str) -> Signal | None:
 
 def _git(cwd: Path, *args: str, strip: bool = True) -> str | None:
     """stdout of one git call through the shared runner, or None if git could
-    not answer (including output that is not valid UTF-8, which the runner
-    reports as a failed call). ``GIT_OPTIONAL_LOCKS=0`` so a read never
-    refreshes another tree's index."""
+    not answer. ``GIT_OPTIONAL_LOCKS=0`` so a read never refreshes another
+    tree's index."""
     env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
     rc, out, _err = evidence.run_git(cwd, *args, env=env, strip=strip)
     return out if rc == 0 else None
@@ -338,6 +366,126 @@ def stranded_branches(
     return rows, True, None
 
 
+def unlanded_branches(
+    project_dir: Path, *, records: list[dict] | None = None, now: float | None = None
+) -> tuple[list[UnlandedRow], str | None]:
+    """``(rows, problem)`` — #843's pushed arm, offline: local branches that
+    every live build plan claiming them calls finished, whose tip a remote has,
+    that have not merged into their base, and whose last commit is at least
+    :data:`UNLANDED_AFTER_SECONDS` old. Oldest first.
+
+    Each test is an existing answer, never a new one: the claim index
+    (``plan_index.branch_claiming_plans`` — no claiming plan, no reading of
+    "finished", so silence), ``plan_status.is_finished`` for every claimant (one
+    open plan among several keeps the branch open), and
+    ``plan_lifecycle.observe`` answering ``in-progress`` for each (merged,
+    released, superseded or unknown is not "unlanded"). A branch checked out in
+    ANOTHER worktree is that worktree's (#843 Decision 3); the one checked out
+    here is not exempt, since the cost example was a branch its own session had
+    moved on from. An unpushed tip is the local arm's (:func:`stranded_branches`),
+    and a long-lived branch is never a pull request's head.
+
+    Whether a pull request was ever opened is NOT asked here: this runs at
+    session start, where nothing touches the network.
+    :func:`check_pull_requests` asks, from ``worktrees --prs`` only.
+
+    Costs nothing beyond reading plan frontmatter unless a plan claims a
+    branch; git and the evidence store are read only for claimed branches."""
+    from . import plan_index  # noqa: PLC0415 — lazy: most sessions stop at no claim
+
+    artifacts = gitstate.get_prawduct_dir(project_dir) / "artifacts"
+    claims: dict[str, list[Path]] = {}
+    for plan_path, branch in plan_index.branch_claiming_plans(artifacts):
+        claims.setdefault(branch, []).append(plan_path)
+    if not claims:
+        return [], None
+    if records is None:
+        records = gitstate.worktree_records(project_dir)
+        if records is None:
+            return [], "could not list worktrees, so could not tell which branches another worktree holds"
+    if not records:  # not a git repository
+        return [], None
+    toplevel = _git(project_dir, "rev-parse", "--show-toplevel")
+    current = _resolve(toplevel) if toplevel else _resolve(project_dir)
+    held_elsewhere = gitstate.held_branches(
+        [r for r in records if "worktree" in r and _resolve(r["worktree"]) != current]
+    )
+    heads = _git(
+        project_dir, "for-each-ref",
+        "--format=%(refname:lstrip=2)%09%(objectname)%09%(committerdate:unix)", "refs/heads/",
+    )
+    if heads is None:
+        return [], "could not list local branches"
+    now = time.time() if now is None else now
+    candidates: list[tuple[str, str, float]] = []
+    for line in heads.splitlines():
+        try:
+            name, sha, stamp = line.split("\t")
+            last = float(stamp)
+        except ValueError:
+            continue
+        if name in claims and name not in held_elsewhere and now - last >= UNLANDED_AFTER_SECONDS:
+            candidates.append((name, sha, last))
+    if not candidates:
+        return [], None
+
+    # Lazy: git_hygiene imports this module, and plan_lifecycle reaches it.
+    from . import git_hygiene, plan_lifecycle, plan_status  # noqa: PLC0415
+
+    long_lived = git_hygiene.long_lived_names(project_dir, gitstate.push_remote(project_dir))
+    facts = None
+    rows: list[UnlandedRow] = []
+    for name, sha, last in candidates:
+        if git_hygiene.is_long_lived(name, long_lived):
+            continue
+        carried = _git(project_dir, "for-each-ref", "--count=1", "--contains", sha,
+                       "--format=%(refname)", "refs/remotes/")
+        if carried is None:
+            return [], "could not compare finished branches with the remotes"
+        if not carried.strip():
+            continue  # never pushed: the local arm's
+        if facts is None:
+            facts = evidence.read_facts(project_dir)
+        plans = claims[name]
+        if not all(plan_status.is_finished(p, facts, repo_dir=project_dir) for p in plans):
+            continue
+        if not all(
+            plan_lifecycle.observe(p, repo_dir=project_dir, facts=facts).state == plan_lifecycle.IN_PROGRESS
+            for p in plans
+        ):
+            continue
+        rows.append(UnlandedRow(
+            name=name, last_commit=last, plans=[plan_index.display_path(p, artifacts) for p in plans]
+        ))
+    rows.sort(key=lambda r: r.last_commit)
+    return rows, None
+
+
+def check_pull_requests(project_dir: Path, rows: list[UnlandedRow], *, limit: int = MAX_PR_CHECKS) -> str | None:
+    """Ask ``gh`` whether each row's branch ever had a pull request, oldest
+    first, at most ``limit`` calls; fills ``pr_check`` / ``pull_request`` in
+    place. Returns a problem naming the rows left unchecked, else None.
+
+    The network goes through ``git_hygiene.any_pr_for`` — the one ``gh``
+    seam, declared in project-state's ``egress_boundary`` — and only from
+    ``worktrees --prs``, a command someone chose to run."""
+    from . import git_hygiene  # noqa: PLC0415 — git_hygiene imports this module
+
+    for row in sorted(rows, key=lambda r: r.last_commit)[:limit]:
+        answer = git_hygiene.any_pr_for(project_dir, row.name)
+        if answer is None:
+            row.pr_check = "failed"
+        elif answer is False:
+            row.pr_check = "none"
+        else:
+            row.pr_check, row.pull_request = "found", answer
+    left = len(rows) - min(len(rows), limit)
+    if left:
+        return (f"{left} finished branch(es) not checked for a pull request: past the "
+                f"{limit}-lookup cap for one run, newest left; run it again after landing some")
+    return None
+
+
 def scan(
     project_dir: Path,
     *,
@@ -345,12 +493,15 @@ def scan(
     roots: list[Path] | None = None,
     branches: bool = True,
     count_commits: bool = False,
+    check_prs: bool = False,
     budget_seconds: float = SCAN_BUDGET_SECONDS,
 ) -> Report:
     """The report. Never raises: a failed probe is a named problem.
 
-    ``branches=False`` skips the branch comparison — the briefing's case, since
-    stranded branches reach the session through their advisory instead."""
+    ``branches=False`` skips both branch comparisons — the briefing's case,
+    since stranded and unlanded branches reach the session through their
+    advisories instead. ``check_prs`` asks ``gh`` about the unlanded ones
+    (:func:`check_pull_requests`); only ``worktrees --prs`` passes it."""
     now = time.time() if now is None else now
     roots = config_roots() if roots is None else roots
     report = Report()
@@ -388,6 +539,13 @@ def scan(
         report.branches = rows
         if problem:
             report.problems.append(problem)
+        report.unlanded, problem = unlanded_branches(project_dir, records=records, now=now)
+        if problem:
+            report.problems.append(problem)
+        elif check_prs and report.unlanded:
+            problem = check_pull_requests(project_dir, report.unlanded)
+            if problem:
+                report.problems.append(problem)
     return report
 
 
@@ -429,12 +587,22 @@ def briefing_line(report: Report) -> str | None:
     )
 
 
-def _age(seconds: float) -> str:
+def age_text(seconds: float) -> str:
     if seconds < 3600:
         return f"{int(seconds // 60)}m ago"
     if seconds < 86400:
         return f"{int(seconds // 3600)}h ago"
     return f"{int(seconds // 86400)}d ago"
+
+
+def _pull_request_text(row: UnlandedRow) -> str:
+    if row.pr_check == "found" and row.pull_request:
+        return f"pull request #{row.pull_request['number']} ({row.pull_request['state'] or 'state unknown'})"
+    if row.pr_check == "none":
+        return "no pull request, ever"
+    if row.pr_check == "failed":
+        return "could not ask gh about a pull request"
+    return "pull request not checked"
 
 
 def render_table(report: Report, now: float) -> str:
@@ -443,7 +611,7 @@ def render_table(report: Report, now: float) -> str:
         lines.append("  could not list worktrees (git failed here)")
     for w in report.worktrees:
         where = "this session" if w.is_current else w.path
-        seen = f"{_age(now - w.last_activity.at)} via {w.last_activity.source}" if w.last_activity else "no signal"
+        seen = f"{age_text(now - w.last_activity.at)} via {w.last_activity.source}" if w.last_activity else "no signal"
         dirty = "?" if w.dirty is None else str(w.dirty)
         branch = w.branch or "(detached)"
         tag = f" [{w.ephemeral} worktree]" if w.ephemeral else ""
@@ -455,9 +623,17 @@ def render_table(report: Report, now: float) -> str:
         lines.append("LOCAL BRANCHES CHECKED OUT NOWHERE, WITH COMMITS NO REMOTE HAS")
         for b in report.branches:
             count = "?" if b.unique_commits is None else str(b.unique_commits)
-            lines.append(f"  {b.name}  {count} commit(s)  last {_age(now - b.last_commit)}")
+            lines.append(f"  {b.name}  {count} commit(s)  last {age_text(now - b.last_commit)}")
     elif report.worktrees_checked:
         lines.append("BRANCHES: none stranded.")
+    if report.unlanded:
+        lines.append("FINISHED BRANCHES NOT MERGED (pushed; every build plan claiming them finished)")
+        for u in report.unlanded:
+            lines.append(f"  {u.name}  last {age_text(now - u.last_commit)}  "
+                         f"{_pull_request_text(u)}  plan: {', '.join(u.plans)}")
+        if any(u.pr_check == "unchecked" for u in report.unlanded):
+            lines.append("  `prawduct-hook worktrees --prs` asks GitHub whether each ever had a "
+                         f"pull request (one call per branch, at most {MAX_PR_CHECKS}).")
     for problem in report.problems:
         lines.append(f"note: {problem}")
     lines.append(
@@ -474,14 +650,16 @@ def to_json(report: Report) -> str:
 
 
 def worktrees_cmd(project_dir: Path, argv: list[str]) -> int:
-    """``prawduct-hook worktrees [--json]``. Exit 0 whenever a report was
-    produced, partial included (its problems are named in it); 2 on bad usage."""
-    unknown = [a for a in argv if a != "--json"]
+    """``prawduct-hook worktrees [--json] [--prs]``. Exit 0 whenever a report
+    was produced, partial included (its problems are named in it); 2 on bad
+    usage. ``--prs`` is the one network leg: a ``gh pr list`` per finished,
+    unmerged branch, capped at :data:`MAX_PR_CHECKS`."""
+    unknown = [a for a in argv if a not in ("--json", "--prs")]
     if unknown:
-        print(f"worktrees: unknown argument(s) {unknown}; usage: prawduct-hook worktrees [--json]",
+        print(f"worktrees: unknown argument(s) {unknown}; usage: prawduct-hook worktrees [--json] [--prs]",
               file=sys.stderr)
         return 2
     now = time.time()
-    report = scan(project_dir, now=now, count_commits=True)
+    report = scan(project_dir, now=now, count_commits=True, check_prs="--prs" in argv)
     print(to_json(report) if "--json" in argv else render_table(report, now))
     return 0

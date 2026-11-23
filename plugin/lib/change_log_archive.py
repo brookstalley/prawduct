@@ -10,10 +10,13 @@ and every reader that interprets history loads both through :func:`load_all_text
 
 **What may move** (:func:`select`) is decided by three rules, each for a reason:
 
-* **Release-pending entries never move** in a product that versions. The release
-  gate enumerates pending work by the absence of ``release=``, and the live log is
-  where the people cutting a release look for it. A product that has never tagged a
-  release has no pending set, so its tagged entries age out like any other.
+* **Release-pending entries never move** in a product that versions. Releases read
+  only ``.prawduct/changes/`` fragments, so a pending entry (tagged, no
+  ``release=``) is one the release gate refuses on, naming ``/prawduct:doctor``, and
+  ``migrate-change-log`` converts. Both read the live log only, so moving the entry
+  into the archive would hide it from both and drop it silently. A product that has
+  never tagged a release has no pending set, so its tagged entries age out like any
+  other.
 * **Undated entries never move** — there is no bucket to put them in, and keeping
   them live is the direction that loses nothing.
 * **Newest first, and once one entry does not fit, everything older goes.** Keeping
@@ -31,9 +34,8 @@ move would then take unreleased work out of the release's sight.
 **And it checks its own result with the release gate's readers.** The selection
 rule keeps pending entries by construction, but checking a rule against itself is
 how a selection bug proves its own correctness. So before anything is written, the
-log the run would leave is re-read by ``release_readiness``'s own predicates: the
-release-pending and unclassifiable sets must be identical and no tag diagnostic may
-appear. Any difference refuses the run. The move is then written all-or-nothing
+log the run would leave is re-read by ``release_readiness``'s own predicate: the
+release-pending set must be identical and no tag diagnostic may appear. Any difference refuses the run. The move is then written all-or-nothing
 across every file it touches (:func:`core.write_all_or_none`), so an interrupted
 run leaves the log as it was rather than entries in two places, or, if the
 rollback itself fails, names the files it could not restore.
@@ -87,7 +89,7 @@ class Block:
 
     @property
     def size(self) -> int:
-        return len(self.text.encode("utf-8"))
+        return len(self.text.encode("utf-8", "surrogateescape"))
 
     @property
     def key(self) -> str:
@@ -158,7 +160,7 @@ def _pinned(block: Block, versions: bool) -> bool:
     if not versions:
         return False
     # The release gate's own predicate, not a restatement of it: what this module
-    # keeps live must be exactly what `check-releasability` calls pending.
+    # keeps live must be exactly what `check-releasability` refuses on.
     from .release_readiness import release_pending_entries  # noqa: PLC0415 — lazy; avoids an import cycle through gates
 
     return bool(release_pending_entries([entry]))
@@ -181,7 +183,7 @@ class Selection:
 
     @property
     def kept_bytes(self) -> int:
-        return len(self.preamble.encode("utf-8")) + sum(b.size for b in self.kept)
+        return len(self.preamble.encode("utf-8", "surrogateescape")) + sum(b.size for b in self.kept)
 
 
 def select(content: str, *, threshold: int, versions: bool) -> Selection:
@@ -190,7 +192,7 @@ def select(content: str, *, threshold: int, versions: bool) -> Selection:
     Raises :class:`ArchiveRefused` when the release validator reports errors.
     """
     preamble, blocks = split(content)
-    live_bytes = len(content.encode("utf-8"))
+    live_bytes = len(content.encode("utf-8", "surrogateescape"))
     errors, _warnings = change_log.validate_change_log_tags([b.entry for b in blocks])
     if errors:
         raise ArchiveRefused(
@@ -205,7 +207,7 @@ def select(content: str, *, threshold: int, versions: bool) -> Selection:
 
     pinned = [b for b in blocks if _pinned(b, versions)]
     selection.pinned_bytes = sum(b.size for b in pinned)
-    budget = threshold // 2 - len(preamble.encode("utf-8")) - len(ARCHIVE_POINTER) - 2
+    budget = threshold // 2 - len(preamble.encode("utf-8", "surrogateescape")) - len(ARCHIVE_POINTER) - 2
     budget -= selection.pinned_bytes
 
     # Newest first by header date; the file's own order breaks ties, since
@@ -239,17 +241,11 @@ def select(content: str, *, threshold: int, versions: bool) -> Selection:
     return selection
 
 
-def _fingerprint(content: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    from .release_readiness import (  # noqa: PLC0415 — lazy; avoids an import cycle through gates
-        release_pending_entries,
-        unclassifiable_pending_entries,
-    )
+def _fingerprint(content: str) -> tuple[str, ...]:
+    from .release_readiness import release_pending_entries  # noqa: PLC0415 — lazy; avoids an import cycle through gates
 
     entries = change_log.parse_change_log(content)
-    return (
-        tuple(sorted(e.title for e in release_pending_entries(entries))),
-        tuple(sorted(e.title for e in unclassifiable_pending_entries(entries))),
-    )
+    return tuple(sorted(e.title for e in release_pending_entries(entries)))
 
 
 def _diagnostics(content: str) -> set[str]:
@@ -262,8 +258,7 @@ def _diagnostics(content: str) -> set[str]:
 def invariant_violations(before: str, after: str, *, versions: bool) -> list[str]:
     """What the release gate would see differently in ``after``. Empty means safe.
 
-    In a product that versions, the release-pending and unclassifiable sets must be
-    identical. In one that does not, there is no pending set to protect, so only
+    In a product that versions, the release-pending set must be identical. In one that does not, there is no pending set to protect, so only
     the diagnostics check applies. Diagnostics may disappear (they leave with the
     entries they describe) but never appear: a move of whole entries that changes
     how the remaining log parses has broken an entry boundary.
@@ -271,13 +266,11 @@ def invariant_violations(before: str, after: str, *, versions: bool) -> list[str
     problems: list[str] = []
     if versions:
         was, now = _fingerprint(before), _fingerprint(after)
-        lost = sorted(set(was[0]) - set(now[0]))
-        if was[0] != now[0]:
+        lost = sorted(set(was) - set(now))
+        if was != now:
             problems.append(
                 "release-pending entries would leave the live log: " + (", ".join(lost) or "set changed")
             )
-        if was[1] != now[1]:
-            problems.append("the unclassifiable pending set would change")
     for diag in sorted(_diagnostics(after) - _diagnostics(before)):
         problems.append(f"new tag diagnostic: {diag}")
     return problems

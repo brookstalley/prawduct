@@ -809,11 +809,11 @@ class TestShippedScopeExamplesResolve:
     def _example_scopes(self) -> set[str]:
         import re
 
-        sources = (
-            (_REPO_ROOT / "templates" / "change-log.md").read_text(encoding="utf-8"),
-            change_log.__doc__ or "",
-        )
-        return {m for text in sources for m in re.findall(r"scope=([^\s|>]+)", text)}
+        # The module docstring is the one source left: `templates/change-log.md`
+        # was deleted with the legacy-log reader (#1022), since no new repo is
+        # scaffolded onto the single-file log.
+        assert not (_REPO_ROOT / "templates" / "change-log.md").exists()
+        return set(re.findall(r"scope=([^\s|>]+)", change_log.__doc__ or ""))
 
     def test_every_example_scope_is_the_build_plan_templates_scope(self):
         from lib import plan_index

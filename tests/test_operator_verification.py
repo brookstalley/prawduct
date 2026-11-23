@@ -153,8 +153,11 @@ class TestMarkVerified:
 
     def test_accepted_refuses_verify(self):
         entry = self._entry("accepted")
-        with pytest.raises(ValueError, match="accepted"):
-            ov.mark_verified(entry, today=date(2026, 5, 19))
+        before = list(entry.body_lines)
+        result = ov.mark_verified(entry, today=date(2026, 5, 19))
+        assert result["status"] == "refused"
+        assert "accepted" in result["reason"]
+        assert entry.body_lines == before
 
 
 class TestMarkAccepted:
@@ -176,13 +179,19 @@ class TestMarkAccepted:
 
     def test_empty_rationale_rejected(self):
         entry = self._entry("pending")
-        with pytest.raises(ValueError, match="rationale"):
-            ov.mark_accepted(entry, rationale="", today=date(2026, 5, 19))
+        before = list(entry.body_lines)
+        result = ov.mark_accepted(entry, rationale="", today=date(2026, 5, 19))
+        assert result["status"] == "refused"
+        assert "rationale" in result["reason"]
+        assert entry.body_lines == before
 
     def test_whitespace_only_rationale_rejected(self):
         entry = self._entry("pending")
-        with pytest.raises(ValueError, match="rationale"):
-            ov.mark_accepted(entry, rationale="   ", today=date(2026, 5, 19))
+        before = list(entry.body_lines)
+        result = ov.mark_accepted(entry, rationale="   ", today=date(2026, 5, 19))
+        assert result["status"] == "refused"
+        assert "rationale" in result["reason"]
+        assert entry.body_lines == before
 
     def test_already_accepted_is_noop(self):
         entry = self._entry("accepted")
@@ -221,31 +230,39 @@ class TestPendingHelpers:
 
 
 # =============================================================================
-# is_operator_verification_required (column-0 YAML scanner)
+# operator_verification_required read through core.read_bool_flag (column-0 scanner)
 # =============================================================================
+
+
+def _required(state_path: Path) -> bool:
+    """The flag's value as the check reads it (the function this class once
+    called directly was folded into ``core.read_bool_flag``, #777)."""
+    from lib import core
+
+    return core.read_bool_flag(state_path, "operator_verification_required")["value"]
 
 
 class TestIsOperatorVerificationRequired:
     def test_missing_file_is_false(self, tmp_path: Path):
         assert (
-            ov.is_operator_verification_required(tmp_path / "nope.yaml")
+            _required(tmp_path / "nope.yaml")
             is False
         )
 
     def test_missing_key_is_false(self, tmp_path: Path):
         state = tmp_path / "state.yaml"
         state.write_text("other_key: true\n")
-        assert ov.is_operator_verification_required(state) is False
+        assert _required(state) is False
 
     def test_true_value_recognized(self, tmp_path: Path):
         state = tmp_path / "state.yaml"
         state.write_text("operator_verification_required: true\n")
-        assert ov.is_operator_verification_required(state) is True
+        assert _required(state) is True
 
     def test_false_value_recognized(self, tmp_path: Path):
         state = tmp_path / "state.yaml"
         state.write_text("operator_verification_required: false\n")
-        assert ov.is_operator_verification_required(state) is False
+        assert _required(state) is False
 
     def test_indented_occurrence_ignored(self, tmp_path: Path):
         # Nested mention inside a YAML block must not count as the top-level
@@ -254,7 +271,7 @@ class TestIsOperatorVerificationRequired:
         state.write_text(
             "nested:\n  operator_verification_required: true\n"
         )
-        assert ov.is_operator_verification_required(state) is False
+        assert _required(state) is False
 
     def test_inline_comment_tolerated(self, tmp_path: Path):
         # Mirrors the Chunk 10 detector/mutator inline-comment lesson.
@@ -262,7 +279,7 @@ class TestIsOperatorVerificationRequired:
         state.write_text(
             "operator_verification_required: true  # F10 opt-in\n"
         )
-        assert ov.is_operator_verification_required(state) is True
+        assert _required(state) is True
 
 
 # =============================================================================
@@ -605,9 +622,16 @@ class TestQueueEncodingRoundTrip:
             "_load_queue must decode utf-8 — it reads back what _write_queue "
             "wrote through the shared utf-8 writer"
         )
-        assert 'state_path.read_text(encoding="utf-8")' in src, (
+        # #777: the flag read moved out of this module into the one owner,
+        # `core.read_bool_flag`, so the utf-8 pin follows it there and this
+        # module is pinned to NOT read the state file itself again (a second
+        # reader is how the fail-open copy came back).
+        core_src = (REPO_ROOT / "lib" / "core.py").read_text(encoding="utf-8")
+        flag_reader = core_src[core_src.index("def read_bool_flag"):core_src.index("\ndef ", core_src.index("def read_bool_flag") + 1)]
+        assert 'path.read_text(encoding="utf-8")' in flag_reader, (
             "the operator_verification_required read must decode utf-8"
         )
+        assert "state_path.read_text" not in src
         # Receiver-qualified so the assertion cannot be satisfied or broken by
         # prose: the docstring above the fix names ``read_text()`` on purpose.
         assert "queue_path.read_text()" not in src, (
@@ -1012,7 +1036,7 @@ class TestStatusDefectClassification:
         entry = entries[0]
         assert entry.status_defect is not None
         before = list(entry.body_lines)
-        assert ov.mark_verified(entry, today=date(2026, 5, 19)) is False
+        assert ov.mark_verified(entry, today=date(2026, 5, 19))["status"] == "refused"
         assert entry.body_lines == before
 
 
@@ -1026,17 +1050,16 @@ class TestMutatorsRefuseRatherThanHalfWrite:
     def test_mark_verified_refuses_and_touches_nothing(self):
         entry = self._malformed()
         before = list(entry.body_lines)
-        assert ov.mark_verified(entry, today=date(2026, 5, 19)) is False
+        assert ov.mark_verified(entry, today=date(2026, 5, 19))["status"] == "refused"
         assert entry.body_lines == before
         assert not any("Verified" in line for line in entry.body_lines)
 
     def test_mark_accepted_refuses_and_touches_nothing(self):
         entry = self._malformed()
         before = list(entry.body_lines)
-        assert (
-            ov.mark_accepted(entry, rationale="r", today=date(2026, 5, 19))
-            is False
-        )
+        result = ov.mark_accepted(entry, rationale="r", today=date(2026, 5, 19))
+        assert result["status"] == "refused"
+        assert result["reason"]
         assert entry.body_lines == before
         assert not any("Accepted" in line for line in entry.body_lines)
 
@@ -1044,13 +1067,13 @@ class TestMutatorsRefuseRatherThanHalfWrite:
         _, entries = ov.parse_operator_verification(
             "## VRF-001 — a\n**Status:** pending\n"
         )
-        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19))["status"] == "ok"
 
     def test_already_verified_reports_no_work_outstanding(self):
         _, entries = ov.parse_operator_verification(
             "## VRF-001 — a\n**Status:** verified\n"
         )
-        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19))["status"] == "ok"
 
 
 class TestDescribeStatusDefect:
@@ -1276,14 +1299,14 @@ class TestWritePathPreservesTheFile:
             "**Status:** pending\n"
         )
         preamble, entries = ov.parse_operator_verification(content)
-        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19))["status"] == "ok"
         out = ov.format_operator_verification(preamble, entries)
         assert "**Verified:** 2026-05-19\n\n## VRF-002" in out
 
     def test_drain_adds_exactly_one_blank_line_above_the_footer(self):
         content = "## VRF-001 — a\n\n**Status:** pending\n\n"
         preamble, entries = ov.parse_operator_verification(content)
-        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19))["status"] == "ok"
         out = ov.format_operator_verification(preamble, entries)
         assert "**Status:** verified\n\n**Verified:**" in out
 
@@ -1305,7 +1328,7 @@ class TestWritePathPreservesTheFile:
         """
         content = "## VRF-001 — a\n\n**Status:** pending\n"
         preamble, entries = ov.parse_operator_verification(content)
-        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19))["status"] == "ok"
         out = ov.format_operator_verification(preamble, entries)
         assert out == (
             "## VRF-001 — a\n"
@@ -1321,7 +1344,7 @@ class TestWritePathPreservesTheFile:
             "## VRF-002 — b\n\n**Status:** pending\n"
         )
         preamble, entries = ov.parse_operator_verification(content)
-        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19))["status"] == "ok"
         out = ov.format_operator_verification(preamble, entries)
         assert out == (
             "## VRF-001 — a\n"
@@ -1350,7 +1373,7 @@ class TestWritePathPreservesTheFile:
             "## VRF-002 \u2014 b\n\n**Status:** pending\n"
         )
         preamble, entries = ov.parse_operator_verification(content)
-        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19))["status"] == "ok"
         out = ov.format_operator_verification(preamble, entries)
         assert out == (
             "## VRF-001 \u2014 a\n"
@@ -1453,3 +1476,228 @@ class TestDispatchRefusesUnreadableStatus:
         cp = _run_hook(product, "verify-operator-verification", "VRF-001")
         assert cp.returncode == 0
         assert "pending → verified" in cp.stdout
+
+
+# =============================================================================
+# Bracketed headings and the one unreadable-queue refusal (#811)
+# =============================================================================
+
+_BRACKETED = """# Operator Verification Queue
+
+## [VRF-001] check the dashboard renders
+
+**Status:** pending
+**Added:** 2026-11-01
+
+## [VRF-002] confirm the webhook fires
+
+**Status:** verified
+"""
+
+_UNKNOWN_STYLE = """# Operator Verification Queue
+
+### VRF-1 check the dashboard
+
+**Status:** pending
+"""
+
+
+def _run_hook_env(repo, *args):
+    return _subprocess.run(  # noqa: S603
+        [_sys.executable, str(_HOOK_PATH), *args],
+        capture_output=True, text=True,
+        env={"CLAUDE_PROJECT_DIR": str(repo), "PATH": "/usr/bin:/bin"},
+    )
+
+
+def test_bracketed_vrf_headings_parse_as_entries_and_round_trip():
+    preamble, entries = _ov.parse_operator_verification(_BRACKETED)
+
+    assert [e.vrf_id for e in entries] == ["VRF-001", "VRF-002"]
+    assert entries[0].heading == "## [VRF-001] check the dashboard renders"
+    assert [e.status for e in entries] == ["pending", "verified"]
+    assert _ov.format_operator_verification(preamble, entries) == _BRACKETED
+
+
+def test_dashed_headings_still_parse_with_the_widened_pattern():
+    _, entries = _ov.parse_operator_verification(
+        "## VRF-012 \u2014 c \u2014 title\n**Status:** pending\n## VRF-3\n**Status:** pending\n"
+    )
+    assert [e.vrf_id for e in entries] == ["VRF-012", "VRF-3"]
+
+
+def test_bracketed_queue_is_gated_when_required(tmp_path):
+    result = _ov.run_check_operator_verification(_repo(tmp_path, _BRACKETED))
+
+    assert result["queue_status"] == _ov.QUEUE_OK
+    assert result["pending"] == 1
+    assert result["first_pending"] == "VRF-001"
+
+
+def test_verify_drains_a_bracketed_entry_keeping_the_operators_heading(tmp_path):
+    repo = _repo(tmp_path, _BRACKETED)
+    result = _ov.run_verify_entry(repo, "VRF-001", today=date(2026, 11, 15))
+
+    assert "error" not in result
+    text = (repo / ".prawduct" / "operator-verification.md").read_text(encoding="utf-8")
+    assert "## [VRF-001] check the dashboard renders" in text
+    assert "**Verified:** 2026-11-15" in text
+
+
+def test_accept_refusal_quotes_the_heading_and_names_the_hand_off(tmp_path):
+    result = _ov.run_accept_pending(_repo(tmp_path, _UNKNOWN_STYLE), "shipping anyway")
+
+    err = result["error"]
+    assert "### VRF-1 check the dashboard" in err
+    assert "operator" in err and "operator_verification_required" in err
+    assert not ("Fix the queue's format" in err and "Do NOT reformat" in err)
+
+
+def test_verify_on_an_unreadable_queue_gives_the_same_refusal_not_empty_queue(tmp_path):
+    repo = _repo(tmp_path, _UNKNOWN_STYLE)
+    verify = _ov.run_verify_entry(repo, "VRF-1")
+    accept = _ov.run_accept_pending(repo, "shipping anyway")
+
+    assert "(empty queue)" not in verify["error"]
+    assert "### VRF-1 check the dashboard" in verify["error"]
+    queue = repo / ".prawduct" / "operator-verification.md"
+    owned = _ov._unreadable_queue(queue, _ov._load_queue(queue)[0])
+    assert owned and owned in verify["error"] and owned in accept["error"]
+
+
+def test_not_required_check_notes_an_unreadable_queue_and_exits_0(tmp_path):
+    repo = _repo(tmp_path, _UNKNOWN_STYLE, required=False)
+    result = _ov.run_check_operator_verification(repo)
+    assert result["queue_status"] == _ov.QUEUE_OK
+    assert "### VRF-1 check the dashboard" in result["note"]
+
+    proc = _run_hook_env(repo, "check-operator-verification")
+    assert proc.returncode == 0
+    assert "### VRF-1 check the dashboard" in proc.stderr
+
+
+def test_not_required_check_has_no_note_for_a_readable_or_missing_queue(tmp_path):
+    for text in (_BRACKETED, None, _BRACKETED + "\n## Notes\n\nhi\n", "# Operator Verification Queue\n"):
+        result = _ov.run_check_operator_verification(
+            _repo(tmp_path, text, required=False)
+        )
+        assert not result.get("note")
+        for f in (tmp_path / ".prawduct").glob("operator-verification.md"):
+            f.unlink()
+
+
+def test_required_unreadable_queue_still_exits_3(tmp_path):
+    proc = _run_hook_env(_repo(tmp_path, _UNKNOWN_STYLE), "check-operator-verification")
+    assert proc.returncode == 3
+    assert "### VRF-1 check the dashboard" in proc.stderr
+
+
+def test_the_unreadable_refusal_text_has_one_owner():
+    src = (_Path(_ov.__file__)).read_text(encoding="utf-8")
+    assert src.count("parsed 0 entries") == 1
+
+
+
+# =============================================================================
+# An off gate does not speak in blocking voice; a gate that cannot load fails
+# closed (coherence pass over #1185)
+# =============================================================================
+
+#: Phrases that tell the reader something was stopped. Every one is true of the
+#: required gate's refusal and false of a gate that is off, where nothing blocks.
+_BLOCKING_VOICE = (
+    "You can stop here",
+    "NOT a clear queue",
+    "clear `operator_verification_required`",
+    "re-run",
+)
+
+
+def test_off_gate_unreadable_queue_note_carries_no_blocking_voice(tmp_path):
+    repo = _repo(tmp_path, _UNKNOWN_STYLE, required=False)
+    proc = _run_hook_env(repo, "check-operator-verification")
+    assert proc.returncode == 0, proc.stderr
+    assert "### VRF-1 check the dashboard" in proc.stderr, proc.stderr
+    for phrase in _BLOCKING_VOICE:
+        assert phrase not in proc.stderr, (phrase, proc.stderr)
+    assert "nothing is blocked" in proc.stderr.lower(), proc.stderr
+
+
+def test_required_gate_unreadable_queue_keeps_its_blocking_voice(tmp_path):
+    """The control: the same queue with the gate on is a refusal, and says so."""
+    proc = _run_hook_env(_repo(tmp_path, _UNKNOWN_STYLE), "check-operator-verification")
+    assert proc.returncode == 3
+    assert "You can stop here" in proc.stderr and "NOT a clear queue" in proc.stderr
+    assert "nothing is blocked" not in proc.stderr.lower()
+
+
+def test_off_gate_undecodable_queue_note_carries_no_blocking_voice(tmp_path):
+    repo = _repo(tmp_path, None, required=False)
+    (repo / ".prawduct" / "operator-verification.md").write_bytes(b"## VRF-1 \xff\xfe\n")
+    proc = _run_hook_env(repo, "check-operator-verification")
+    assert proc.returncode == 0, proc.stderr
+    assert "UnicodeDecodeError" in proc.stderr, proc.stderr
+    for phrase in _BLOCKING_VOICE:
+        assert phrase not in proc.stderr, (phrase, proc.stderr)
+    on = _repo(tmp_path / "on", None)
+    (on / ".prawduct" / "operator-verification.md").write_bytes(b"## VRF-1 \xff\xfe\n")
+    control = _run_hook_env(on, "check-operator-verification")
+    assert control.returncode == 3 and "NOT a clear queue" in control.stderr
+
+
+def test_a_gate_that_cannot_load_its_lib_fails_open_by_contract(tmp_path):
+    """Renegotiated: a coherence pass moved this arm to exit 3, and the Critic held
+    it against the recorded contract — api-contract § Error Model, "Unevaluable
+    advisory gate": the plugin's OWN lib failing to import fails open, exit 0,
+    because prawduct is what is broken and blocking every caller's PR (most of
+    which never enabled the gate) helps nobody. What must hold is that the skip
+    is SAID: the NOTE names the gate as not run and the repair, and the old
+    "gate skipped" one-liner that read as a verdict is gone."""
+    import shutil  # noqa: PLC0415
+
+    plugin = tmp_path / "plugin"
+    src = _HOOK_PATH.parent.parent
+    for sub in ("bin", "lib"):
+        shutil.copytree(src / sub, plugin / sub,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+    (plugin / "lib" / "operator_verification.py").unlink()
+    repo = _repo(tmp_path / "repo", None)
+    proc = _subprocess.run(  # noqa: S603
+        [_sys.executable, str(plugin / "bin" / "prawduct-hook"), "check-operator-verification"],
+        capture_output=True, text=True,
+        env={"CLAUDE_PROJECT_DIR": str(repo), "CLAUDE_PLUGIN_ROOT": str(plugin),
+             "PATH": "/usr/bin:/bin"},
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stderr.startswith("NOTE:"), proc.stderr
+    assert "did not run" in proc.stderr and "reinstall" in proc.stderr, proc.stderr
+    # The control: the intact tree evaluates the same repo (empty queue → 0, no NOTE).
+    control = _run_hook_env(repo, "check-operator-verification")
+    assert control.returncode == 0 and "did not run" not in control.stderr
+
+
+def test_the_handler_docstring_lists_every_exit():
+    import ast  # noqa: PLC0415
+
+    tree = ast.parse(_HOOK_PATH.read_text(encoding="utf-8"))
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+              and n.name == "cmd_check_operator_verification")
+    doc = ast.get_docstring(fn)
+    returned = {n.value.value for n in ast.walk(fn)
+                if isinstance(n, ast.Return) and isinstance(n.value, ast.Constant)}
+    assert returned == {0, 1, 3}, returned
+    for code in sorted(returned):
+        assert f"  {code} " in doc or f"  {code}  " in doc, (code, doc)
+
+
+def test_the_pr_skill_exit_3_row_names_every_exit_3_state():
+    """Exit 3 is the three inputs the gate could not read: the row must name each,
+    or a reader meeting the state file's refusal goes looking for a queue heading
+    to blame. A plugin that cannot load its lib/ is NOT one of them — it fails open
+    by contract (exit 0), so the row must not claim it."""
+    text = (_HOOK_PATH.parent.parent / "skills" / "pr" / "SKILL.md").read_text(encoding="utf-8")
+    row = next(ln for ln in text.splitlines() if ln.startswith("- **Exit 3**"))
+    for state in ("parsed as zero entries", "cannot be read or decoded",
+                  "project-state.yaml"):
+        assert state in row, (state, row)
+    assert "lib/" not in row, row

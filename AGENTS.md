@@ -52,12 +52,11 @@ block), `review-cycle.md` for modes and the evidence model, `review-protocol.md`
 severity, and `plugin/methodology/building.md` for the builder-side steps the skill does not
 address to you.
 
-## PR Review — Release Readiness
+## Pull Requests
 
 **Anything PR-shaped — "PR this", "create a PR", "push this up" — goes through `/prawduct:pr`**,
-which handles the whole lifecycle (branch hygiene, review, create, update, merge) and dispatches an
-independent reviewer for a fresh-eyes release-readiness assessment. Protocol:
-`plugin/skills/pr/review-protocol.md`.
+which handles the whole lifecycle (branch hygiene, gates, create, update, merge) and dispatches no
+reviewer: the cumulative Critic is the PR boundary's one review.
 
 ## The Learning Loop
 
@@ -84,7 +83,7 @@ Full protocol: `plugin/methodology/reflection.md`.
 `documentation/project-structure.md` — both trees, annotated: this framework repo, and what a
 plugin-governed product repo commits (its own state plus a small install reference; no framework
 files). Governance — `/prawduct:*` skills, the SessionStart + Stop hooks, methodology, and the
-Critic/PR protocols — comes from the **plugin**, not the repo.
+Critic protocol — comes from the **plugin**, not the repo.
 
 ## Running tests
 

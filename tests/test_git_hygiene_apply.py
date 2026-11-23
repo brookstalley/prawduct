@@ -377,6 +377,57 @@ class TestApply:
         [w] = [o for o in outcomes if o.kind == REMOVE_WORKTREE]
         assert w.result == KEPT and wt.exists()
 
+    # --- a sibling holding a submodule ----------------------------------------
+    # A forced removal deletes the submodule's repository with the worktree, so a
+    # submodule commit no remote has must keep the worktree.
+
+    def _sibling_with_submodule(self, clone, tmp_path):
+        lib = tmp_path / "lib"
+        git(tmp_path, "init", "-q", str(lib))
+        commit(lib, "lib.txt")
+        wt = tmp_path / "side"
+        git(clone, "worktree", "add", "-q", "-b", "feat/side", str(wt))
+        git(wt, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "vendor/lib")
+        git(wt, "commit", "-q", "-m", "add submodule")
+        merge(clone, "feat/side")
+        return wt
+
+    @staticmethod
+    def _side_branch_commit(sub: Path) -> None:
+        """A commit on a submodule branch that leaves its HEAD, and so the
+        superproject's status, untouched."""
+        git(sub, "checkout", "-q", "-b", "side")
+        commit(sub, "unpublished.txt")
+        git(sub, "checkout", "-q", "-")
+
+    def test_a_sibling_with_a_published_submodule_is_removed_forced(self, clone, tmp_path, fake_gh):
+        wt = self._sibling_with_submodule(clone, tmp_path)
+        later = time.time() + 8 * DAY
+        p = gh.plan(clone, roots=[], offline=False, now=later)
+        [w] = [a for a in p.actions if a.kind == REMOVE_WORKTREE]
+        assert w.command == ("git", "worktree", "remove", "--force", w.target)
+        _, outcomes = gh.apply(clone, p.fingerprint, roots=[], now=later)
+        assert (REMOVE_WORKTREE, REMOVED) in {(o.kind, o.result) for o in outcomes}
+        assert not wt.exists()
+
+    def test_a_sibling_whose_submodule_has_an_unpublished_branch_is_not_proposed(self, clone, tmp_path, fake_gh):
+        wt = self._sibling_with_submodule(clone, tmp_path)
+        self._side_branch_commit(wt / "vendor" / "lib")
+        later = time.time() + 8 * DAY
+        p = gh.plan(clone, roots=[], offline=False, now=later)
+        assert not [a for a in p.actions if a.kind == REMOVE_WORKTREE]
+
+    def test_an_unpublished_submodule_commit_after_the_plan_keeps_the_sibling(self, clone, tmp_path, fake_gh, monkeypatch):
+        wt = self._sibling_with_submodule(clone, tmp_path)
+        later = time.time() + 8 * DAY
+        approved = gh.plan(clone, roots=[], offline=False, now=later).fingerprint
+        real_plan = gh.plan
+        monkeypatch.setattr(gh, "plan", lambda *a, **k: (
+            real_plan(*a, **k), self._side_branch_commit(wt / "vendor" / "lib"))[0])
+        _, outcomes = gh.apply(clone, approved, roots=[], now=later)
+        [w] = [o for o in outcomes if o.kind == REMOVE_WORKTREE]
+        assert w.result == KEPT and "holds commits none of its remote-tracking" in w.detail and wt.exists()
+
 
 class TestCommand:
     def _run(self, cwd, *args, home):

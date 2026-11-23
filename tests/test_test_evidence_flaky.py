@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
 
-from test_plugin_runtime import _git, _run_in  # noqa: E402
+from test_plugin_runtime import _git, _run_in, as_just_run  # noqa: E402
 
 from lib import evidence  # noqa: E402
 
@@ -45,6 +45,7 @@ def _record(repo: Path, cases: str, *extra: str):
         '<?xml version="1.0" encoding="utf-8"?>\n'
         f'<testsuites><testsuite name="s" time="1.0">{cases}</testsuite></testsuites>'
     )
+    as_just_run(junit)
     res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit), *extra)
     ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
     return res, ev
@@ -774,9 +775,11 @@ class TestTheCriticRuleMatchesWhatIsPrinted:
             assert "**WARNING** at the boundary" in rule, name
 
 
-class TestFlakesReachTheHandoffAndThePrPayload:
+class TestFlakesReachTheHandoff:
     """A green that needed a retry is still a green, so nothing else carries
-    its flakes past /clear or into the PR review — each surface must."""
+    its flakes past /clear — the handoff must. (The PR description carries them
+    from `test-status`'s own `flaky:` lines, `skills/pr/SKILL.md` Step 5; the PR
+    review payload that also carried them left with the PR reviewer.)"""
 
     def test_the_session_handoff_lists_them(self, tmp_path):
         from lib import briefing
@@ -795,23 +798,6 @@ class TestFlakesReachTheHandoffAndThePrPayload:
         _record(repo, '<testcase classname="m" name="ok"/>')
         assert "Flaky Tests" not in briefing.render_session_handoff(repo).text
 
-    def test_the_pr_payload_test_section_carries_them(self, tmp_path):
-        from lib import pr_payload
-        repo = _branch_repo(tmp_path, touch=True)
-        _record(repo, _NET_FLAKE)
-        body = pr_payload._section_test_evidence(repo).body
-        lines = body.splitlines()
-        assert lines[0].startswith("test-status: ")
-        assert any(
-            ln.startswith("flaky: tests.test_net::test_timeout") and "flaky_policy: warn]" in ln
-            for ln in lines
-        ), body
-
-    def test_a_clean_run_adds_no_payload_line(self, tmp_path):
-        from lib import pr_payload
-        repo = _branch_repo(tmp_path, touch=True)
-        _record(repo, '<testcase classname="m" name="ok"/>')
-        assert "flaky:" not in pr_payload._section_test_evidence(repo).body
 
 
 class TestTheFlakeFileIsResolvedForTheJudgment:

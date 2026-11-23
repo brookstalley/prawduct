@@ -19,7 +19,7 @@ _PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
 if str(_PLUGIN) not in sys.path:
     sys.path.insert(0, str(_PLUGIN))
 
-from lib import change_fragments, pr_payload  # noqa: E402
+from lib import change_fragments  # noqa: E402
 
 HOOK = _PLUGIN / "bin" / "prawduct-hook"
 ARCHIVE = ".prawduct/change-log-archive"
@@ -98,7 +98,7 @@ def _cut_own_fragment(repo: Path) -> None:
 
 
 class TestTheTrunkWalk:
-    def test_step_1c_the_payload_and_the_close_all_find_a_cut_record(self, tmp_path):
+    def test_step_1c_and_the_close_both_find_a_cut_record(self, tmp_path):
         repo = _branch_with_fragment(tmp_path)
         before = _hook(repo, "check-change-log-entry")
         assert before.returncode == 0 and before.stdout.startswith("fragment-present:"), before.stderr
@@ -114,11 +114,6 @@ class TestTheTrunkWalk:
         assert record.error is None
         assert [(c.scope, c.source) for c in record.changes] == [("x", "archive")]
         assert [c.closes for c in record.changes] == [("owner/repo#7",)]
-
-        section = pr_payload._fragment_section(repo, "x", "main")
-        assert section is not None and section.ok
-        assert f"archive entry in {ARCHIVE}/2026-10.md" in section.body
-        assert "scope=x" in section.body and "release=v1.0.0" in section.body
 
         _git(repo, "checkout", "-q", "main")
         _git(repo, "merge", "-q", "--no-ff", "-m", "merge", "feature/x")
@@ -236,16 +231,6 @@ class TestAGitFailureIsNotAMissingRecord:
         err = capsys.readouterr().err
         assert verdict == 1
         assert err.startswith("git-failed: git diff exited 128") and "no-entry" not in err
-
-    def test_the_payload_degrades_rather_than_falling_back(self, tmp_path, monkeypatch):
-        repo = _trunk(tmp_path)
-        monkeypatch.setattr(
-            change_fragments, "branch_change_record",
-            lambda *_a, **_k: change_fragments.BranchRecord(error="git diff exited 128"),
-        )
-        section = pr_payload._fragment_section(repo, "x", "main")
-        assert section is not None and not section.ok
-        assert "could not be read" in section.degraded
 
 
 class TestAnUnreadableArchiveBucket:
