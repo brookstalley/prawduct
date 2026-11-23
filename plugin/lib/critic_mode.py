@@ -1754,16 +1754,18 @@ def _newest_branch_review(project_dir: Path, facts: "dict | None" = None) -> "di
 def review_chain(facts: list[dict], newest: dict) -> list[dict]:
     """Every review fact on the chain ``newest`` stands on, newest first.
 
-    The chain is structural: each review's ``base_tree`` is the ``head_tree`` of
-    a review recorded before it, and a verify pass steps back to the review it
-    recorded as its anchor — ``coverage_algebra.linked_reviews``, the one
+    The chain is structural — ``coverage_algebra.linked_reviews``, the one
     link rule the verify roll-call's anchor and ``plan_status``'s extended
-    line follow too. EVERY review standing at a linked tree before that one is
-    included, not only it, because a second review of an unchanged tree must
-    not hide the first; the walk steps back through the linked one. Walked
-    to the end, because a chain can be several passes long; a fact already on
-    the chain is never walked again, which is what ends a walk over an anchor
-    recorded later in the store than its pass.
+    line follow too. A review that names no anchor links by tree, to every
+    review at its ``base_tree`` recorded before it: EVERY one of them is
+    included, not only the newest, because a second review of an unchanged
+    tree must not hide the first, and the walk steps back through the newest.
+    A verify pass that named its anchor steps to that review, with the reviews
+    of the same tree recorded before it. Walked to the end, because a chain can
+    be several passes long. The walk ends where the review a fact links to is already on the
+    chain: an anchor is found by id wherever it sits in the store, so store
+    order no longer ends a malformed cycle, and stepping on to some other
+    review at that tree would credit one nothing links to.
     """
     # Append order is recording order (the store is append-only); `ts` has
     # one-second resolution, so it cannot order two reviews in the same second.
@@ -1774,14 +1776,14 @@ def review_chain(facts: list[dict], newest: dict) -> list[dict]:
     while current is not None and current.get("id") not in seen:
         seen.add(current.get("id"))
         chain.append(current)
-        earlier = [
-            f for f in coverage_algebra.linked_reviews(reviews, current)
-            if f.get("id") not in seen
-        ]
-        for other in earlier[:-1]:
-            seen.add(other.get("id"))
-            chain.append(other)
-        current = earlier[-1] if earlier else None
+        linked = coverage_algebra.linked_reviews(reviews, current)
+        if not linked or linked[-1].get("id") in seen:
+            break
+        for other in linked[:-1]:
+            if other.get("id") not in seen:
+                seen.add(other.get("id"))
+                chain.append(other)
+        current = linked[-1]
     return chain
 
 

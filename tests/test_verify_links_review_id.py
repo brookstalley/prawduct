@@ -142,6 +142,35 @@ class TestTheLinkFollowsTheRecordedAnchor:
         reviews = [new, pass_, old]
         assert ca.prior_review(reviews, pass_)["id"] == "rev-old"
 
+    @pytest.mark.parametrize("base", [None, ""], ids=["none", "empty"])
+    @pytest.mark.parametrize("verifies", [_ABSENT, "rev-old"], ids=["tree", "anchored"])
+    def test_a_pass_with_no_base_tree_links_to_nothing(self, base, verifies):
+        """A pass whose interval cannot be placed is no link, anchored or not:
+        the same safe reading as an anchor the store lacks."""
+        reviews = _two_reviews_of_one_tree(verifies=verifies)
+        reviews[-1]["body"]["base_tree"] = base
+        # Another review "at" the missing tree, so the tree link has bait too.
+        reviews.insert(0, _review("rev-treeless", CHUNK, T0, base))
+        assert ca.linked_reviews(reviews, reviews[-1]) == []
+
+    def test_an_anchor_at_another_tree_is_unresolved(self):
+        """The dispatch takes the pass's base from its anchor's head, so a
+        recorded pair that disagrees is malformed: no link, and not a review
+        a later ingest could supply."""
+        old, new, pass_ = _two_reviews_of_one_tree()
+        old["body"]["head_tree"] = T3
+        reviews = [old, new, pass_]
+        assert ca.linked_reviews(reviews, pass_) == []
+        assert ca.missing_anchor(reviews, pass_) is None
+
+    def test_only_an_id_the_store_lacks_is_missing(self):
+        reviews = _two_reviews_of_one_tree(verifies="rev-from-another-clone")
+        assert ca.missing_anchor(reviews, reviews[-1]) == "rev-from-another-clone"
+        resolved = _two_reviews_of_one_tree()
+        assert ca.missing_anchor(resolved, resolved[-1]) is None
+        legacy = _two_reviews_of_one_tree(verifies=_ABSENT)
+        assert ca.missing_anchor(legacy, legacy[-1]) is None
+
 
 # ---------------------------------------------------------------------------
 # Walkers
@@ -201,14 +230,27 @@ class TestTheStopHookSynthesisFollowsTheAnchor:
         ok, reason = self._gate(tmp_path, CUMULATIVE, CHUNK, verifies=_ABSENT)
         assert not ok and f"over a '{CHUNK}' review" in reason, reason
 
-    def test_an_anchor_not_in_the_store_is_no_verified_review(self, tmp_path):
+    def test_an_anchor_not_in_the_store_names_it_and_asks_for_no_final(self, tmp_path):
         """A cumulative stands at the tree, but it is not the review the pass
-        names, so nothing on record shows synthesis ran."""
+        names, and that one has not been ingested: synthesis is unknown here,
+        so the NOTE names the review and the repair, never a `final`."""
         ok, reason = self._gate(
             tmp_path, CUMULATIVE, CUMULATIVE, verifies="rev-from-another-clone"
         )
         assert not ok
+        assert "the review it verifies (rev-from-another-clone) is not in this clone's" in reason
+        assert "evidence sync" in reason, reason
+        assert "/prawduct:critic final" not in reason, reason
+
+    def test_a_pass_linking_to_nothing_it_names_still_asks_for_final(self, tmp_path):
+        """The control for the message's other state: a pass from before the
+        field with no review at its base tree names nothing to wait for."""
+        repo = _finished_plan_repo(tmp_path)
+        _append(repo, _review("rev-pass", VERIFY_MODE, T1, T2), here=True)
+        ok, reason = gates._critic_session_satisfies_gate(repo)
+        assert not ok
         assert "no review it verifies is on record" in reason, reason
+        assert "/prawduct:critic final" in reason, reason
 
     def test_a_cycle_of_passes_ends(self, tmp_path):
         """Found by id wherever it sits, so store order no longer ends the walk;
@@ -279,6 +321,16 @@ class TestTheChainsFollowTheAnchor:
         new["body"]["base_commit"] = "b" * 40
         line = plan_status._extended_reviews([old, new, pass_], pass_)
         assert [f["id"] for f in line] == ["rev-old"]
+
+    def test_review_chain_ends_at_an_anchor_already_on_it(self):
+        """p2 and p1 name each other, and an unrelated review R stands at p1's
+        base tree. Back at p2 the walk must end, not step on to R, which
+        nothing links to."""
+        unrelated = _review("rev-r", CHUNK, T0, T2)
+        p1 = _review("rev-p1", VERIFY_MODE, T2, T1, verifies="rev-p2")
+        p2 = _review("rev-p2", VERIFY_MODE, T1, T2, verifies="rev-p1")
+        chain = critic_mode.review_chain([unrelated, p1, p2], p2)
+        assert [f["id"] for f in chain] == ["rev-p2", "rev-p1"]
 
     def test_the_extended_line_ends_on_a_cycle(self):
         p1 = _review("rev-p1", VERIFY_MODE, T2, T1, verifies="rev-p2")

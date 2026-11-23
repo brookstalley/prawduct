@@ -376,17 +376,21 @@ def _store_position(reviews: list[dict], fact: dict) -> int:
 
 #: The review-fact body key naming the review a ``verify-resolutions`` pass
 #: anchored to — written by ``critic_consolidate`` from the dispatch's own
-#: choice, read only through :func:`_recorded_anchor`.
+#: choice, read only through :func:`_resolve_claim`.
 VERIFIES_KEY = "verifies"
 
 
-def _recorded_anchor(reviews: list[dict], fact: dict) -> "tuple[bool, dict | None]":
-    """``(claimed, anchor)`` for ``fact``'s recorded :data:`VERIFIES_KEY`.
+def _resolve_claim(
+    reviews: list[dict], fact: dict
+) -> "tuple[bool, dict | None, str | None]":
+    """``(claimed, anchor, missing)`` for ``fact``'s recorded :data:`VERIFIES_KEY`.
 
     ``claimed`` is False when the body carries no such key (or null): a fact
     written before the field, or one that is not a verify pass — the tree link
     then decides. Otherwise ``anchor`` is the review in ``reviews`` with that
-    id, or ``None`` when none is there.
+    id, standing at the pass's ``base_tree``, or ``None``; ``missing`` is the id
+    when it is a well-formed id no review in ``reviews`` carries (the one case
+    a later ingest can repair), else ``None``.
 
     **A claim that does not resolve is no link, never a fallback to the tree.**
     The id is the dispatch's own choice, made because the tree alone cannot
@@ -394,12 +398,16 @@ def _recorded_anchor(reviews: list[dict], fact: dict) -> "tuple[bool, dict | Non
     store (not yet ingested from the clone that recorded it), the newest review
     at the tree is exactly the guess the field exists to stop making, so a
     reader would act on a review the pass did not verify. Every consumer reads
-    "no link" in the safe direction: the Stop hook says no verified review is
-    on record, a chain ends at the pass (no chunk is inherited, no boundary
-    review is credited), and a roll-call carries nothing it cannot name. The
-    link resolves on its own once the review arrives. A value that is not a
-    non-empty string, or that names the pass itself, is the same: a claim, and
-    no review answers it.
+    "no link" in the safe direction: the Stop hook says the verified review has
+    not arrived and asks for no review, a chain ends at the pass (no chunk is
+    inherited, no boundary review is credited), and a roll-call carries nothing
+    it cannot name. The link resolves on its own once the review arrives.
+
+    Unresolved too, though present: a value that is not a non-empty string, one
+    naming the pass itself, and an anchor whose ``head_tree`` is not the pass's
+    ``base_tree``. The dispatch takes the pass's base from its anchor's head,
+    so a recorded pair that disagrees is a malformed record, and neither half
+    says which review the interval started from.
 
     Looked up by id over the WHOLE store, not only what precedes the pass:
     ingest appends another clone's facts in note order, which can put a pass
@@ -409,13 +417,23 @@ def _recorded_anchor(reviews: list[dict], fact: dict) -> "tuple[bool, dict | Non
     body = fact.get("body") or {}
     claim = body.get(VERIFIES_KEY)
     if claim is None:
-        return False, None
+        return False, None, None
     if not isinstance(claim, str) or not claim or claim == fact.get("id"):
-        return True, None
+        return True, None, None
     for other in reviews:
         if other is not fact and other.get("id") == claim:
-            return True, other
-    return True, None
+            if (other.get("body") or {}).get("head_tree") != body.get("base_tree"):
+                return True, None, None
+            return True, other, None
+    return True, None, claim
+
+
+def missing_anchor(reviews: list[dict], fact: dict) -> "str | None":
+    """The id ``fact`` recorded as the review it verifies, when no review in
+    ``reviews`` carries it — not yet ingested from the clone that recorded it —
+    else ``None``. The one case of an unresolved claim a reader can name a
+    repair for (:func:`_resolve_claim`)."""
+    return _resolve_claim(reviews, fact)[2]
 
 
 def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
@@ -431,7 +449,7 @@ def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
     is ``[-1]``, preceded by the reviews at the same tree recorded before both
     it and the pass (an earlier review of that tree is still on the chain), and
     a review recorded between the anchor and the pass is not linked. A claim
-    that does not resolve links to nothing (:func:`_recorded_anchor` says why
+    that does not resolve links to nothing (:func:`_resolve_claim` says why
     that, and not the tree, is the safe reading). A fact without the key — one
     written before it, or any other mode — links by tree as below.
 
@@ -451,17 +469,18 @@ def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
     recording order; ``ts`` has one-second resolution). ``fact`` need not be
     in it — a dispatch asks before its fact exists, and then every review
     counts as earlier. A ``base_tree`` that is not a non-empty string links to
-    nothing (a missing tree must not match another fact's missing tree).
+    nothing, anchored or not: a missing tree must not match another fact's
+    missing tree, and a pass whose interval cannot be placed is no link.
     """
     base = (fact.get("body") or {}).get("base_tree")
-    claimed, anchor = _recorded_anchor(reviews, fact)
+    if not isinstance(base, str) or not base:
+        return []
+    claimed, anchor, _missing = _resolve_claim(reviews, fact)
     if claimed and anchor is None:
         return []
     here = _store_position(reviews, fact)
     if anchor is not None:
         here = min(here, _store_position(reviews, anchor))
-    if not isinstance(base, str) or not base:
-        return [anchor] if anchor is not None else []
     earlier = [
         f for f in reviews[:here]
         if f is not fact and f is not anchor
@@ -491,9 +510,10 @@ def reviews_linked_from(reviews: list[dict], root_tree: str) -> list[dict]:
 
     The tree relation :func:`linked_reviews` reads backward, from a root
     instead of from a review, so the two agree about which TREES link. A
-    verify pass's recorded anchor is not consulted here: it stands at the
-    pass's ``base_tree`` by construction, so it names which review at a linked
-    tree the pass verified, never another tree, and this answers membership
+    verify pass's recorded anchor is not consulted here: one that resolves
+    stands at the pass's ``base_tree`` (:func:`_resolve_claim` refuses one that
+    does not), so it names which review at a linked tree the pass verified,
+    never another tree, and this answers membership
     (does a review's chain reach the root), not which review it verified.
     ``coverage.branch_review_ids`` bounds its empty-span fallback with it,
     over one worktree's reviews, where the anchor may have been recorded

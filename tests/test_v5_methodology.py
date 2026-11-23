@@ -1173,12 +1173,13 @@ LAST_MEASURED_TOKENS = {
     # outcomes; paid by cutting its single-writer mechanics, which `lib/ledger.py`'s docstring owns.
     # -7 on 2026-11-23 (round-budget-cadence): the budget caps rounds past a plan's cadence; paid by
     # cutting the `--force`-every-time aside, which `docs/project-state-keys.md` owns.
-    # +23 on 2026-11-23 (verify-links-review-id, #1220): the anchoring paragraph says a pass's fact
-    # names its anchor (`verifies`) and the manifest key list names the key; partly paid by cutting the
-    # "When NOT to use verify-resolutions" paragraph's long-drift case, which the Demotion table's
-    # scope-widened row refuses. The rest is a raise: its other case ("never a chunk's first
-    # review") is refused by no code when the branch has an earlier review, so it stays, shortened.
-    "skills/critic/review-cycle.md": 8245,
+    # +43 on 2026-11-23 (verify-links-review-id, #1220): the anchoring paragraph says a pass's fact
+    # names its anchor (`verifies`) and the manifest key list names the key. A raise, not paid in
+    # place: the "When NOT to use verify-resolutions" paragraph that looked like the trim is kept,
+    # rewritten, because neither of its cases is fully refused by code. "Never a chunk's first
+    # review" is refused only when the branch has no review at all, and drift unrelated to the
+    # findings only past the Demotion table's scope-widened threshold.
+    "skills/critic/review-cycle.md": 8265,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -6911,8 +6912,8 @@ class TestReviewCycle:
         # LOWERED 8250 -> 8240 (backlog-roi integration, #334, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 8240 -> 8230 (backlog-roi-wave2, #606, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 8230 -> 8223 (round-budget-cadence, 2026-11-23) — see LAST_MEASURED_TOKENS.
-        # RAISED 8223 -> 8246 (verify-links-review-id, #1220, 2026-11-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8246, f"review-cycle.md is ~{tokens} tokens, should be <8246"
+        # RAISED 8223 -> 8266 (verify-links-review-id, #1220, 2026-11-23) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8266, f"review-cycle.md is ~{tokens} tokens, should be <8266"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

@@ -19,14 +19,23 @@ field. The Stop hook's walk (`gates._critic_session_satisfies_gate`), the review
 (`critic_mode.review_chain`), the extended line (`plan_status._extended_reviews`) and
 `critic_consolidate.carried_blocking` all go through it. A `verifies` naming a review the store
 does not hold, for example one not yet ingested from the clone that recorded it, links to no
-review rather than the tree's newest. The walks that loop over the link now stop at a fact they
-have already visited, since an anchor found by id no longer follows store order. The schema
-change is additive: old facts stay valid, and git notes carry the field unchanged. Tests put two
-reviews at one tree with the pass anchored to the older one, and pin each walker, the dangling
-and malformed cases, and the field written end to end through `critic-begin` and
-`critic-consolidate`.
+review rather than the tree's newest. The same goes for a named review whose `head_tree` is not
+the pass's `base_tree`, and for a pass with no usable `base_tree`, anchored or not. When the
+Stop hook's walk ends at a pass whose review has not been ingested, the NOTE names that review
+and points at `prawduct-hook evidence sync` instead of asking for a `final`. The walks that loop
+over the link now stop at a fact they have already visited, since an anchor found by id no
+longer follows store order; `review_chain` also ends there rather than stepping to some other
+review at that tree. The schema change is additive: old facts stay valid, and git notes carry
+the field unchanged. Tests put two reviews at one tree with the pass anchored to the older one,
+and pin each walker, the dangling, mismatched and malformed cases, both Stop-hook messages, and
+the field written end to end through `critic-begin` and `critic-consolidate`.
+
+`review-cycle.md`'s "never a chunk's first review" line also says not to verify after drift
+unrelated to the findings, which `critic-begin` refuses only past the scope-widened threshold.
 
 ## Consumer note
 Your verify-resolutions passes now record which review they verify. If another worktree of your
 clone reviewed the same tree, the Stop hook's "run /prawduct:critic final" NOTE now judges the
-review your pass actually verified. Facts recorded before this release behave as before.
+review your pass actually verified. If that review has not reached your clone yet, the NOTE says
+so and suggests `prawduct-hook evidence sync`; it does not ask for a `final`. Facts recorded
+before this release behave as before.
