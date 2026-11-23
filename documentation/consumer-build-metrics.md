@@ -125,7 +125,7 @@ against 605 gives 53% and answers a different question. 212 is not a scoped subs
 248 corpus scopes are scoped by construction, and 212 is how many of them ran a cumulative at all,
 which is the only population in which a *repeat* cumulative is possible. Cumulative is the most expensive mode per run, so this is
 the biggest single block of re-review in the corpus — larger than everything the chunk and final
-modes cost together, and it sits outside what the round budget reaches until the sixth round.
+modes cost together, and it sits outside what the round budget reaches until the sixth counted round.
 
 This is the target of the consumer-overhead program's WS5 (#672, coverage composing by tree while
 its gates key on identity), which that program ranks fifth.

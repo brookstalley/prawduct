@@ -2825,14 +2825,18 @@ BOUND_WORKTREE = coverage.BOUND_WORKTREE
 
 
 def _round_budget_verdict(
-    project_dir: Path, prawduct_dir: Path, scope: "str | None"
+    project_dir: Path, prawduct_dir: Path, scope: "str | None",
+    incoming: "dict | None" = None,
 ) -> dict:
     """Has this body of work already spent its full-round budget?
 
-    Returns ``{"status": "within", "spent", "budget", "cadence_ids", "review_ids", "bound"}``,
-    ``{"status": "exhausted", "spent", "budget", "cadence_ids", "review_ids", "bound"}``,
+    Returns ``{"status": "within", "spent", "budget", "incoming_is_cadence", "cadence_ids", "review_ids", "bound"}``,
+    ``{"status": "exhausted", ...the same keys}``,
     ``{"status": "disabled"}`` when the repo set the budget to ``null``, or
-    ``{"status": "unavailable", "reason"}``.
+    ``{"status": "unavailable", "reason"}``. ``incoming`` is the dispatch being
+    asked about, as a fact body's ``mode`` and ``chunks``. When it is itself a
+    cadence step (:func:`_cadence_round_ids`), ``incoming_is_cadence`` is true
+    and the verdict is never ``exhausted``.
 
     **The unit is the SCOPE, not the branch, and the two are not the same
     question.** The declared ceiling bounds one body of work, and a branch is
@@ -2903,15 +2907,24 @@ def _round_budget_verdict(
     }
     in_scope = branch["review_ids"]
     cadence = _cadence_round_ids(in_scope, body_of)
+    # The dispatch being asked about, walked after every recorded round. The
+    # ceiling caps the rounds past the plan's cadence, so a dispatch that is
+    # itself a cadence step (a chunk's first review, the first boundary review)
+    # is not refused for rounds the loops spent. It is known only when the
+    # dispatch says what it reviews: its declared chunks, or none.
+    incoming_is_cadence = bool(incoming) and _INCOMING_ROUND in _cadence_round_ids(
+        [*in_scope, _INCOMING_ROUND], {**body_of, _INCOMING_ROUND: incoming},
+    )
     spent = sum(
         1 for rid in in_scope
         if mode_token_of(body_of[rid].get("mode")) in FULL_ROUND_MODES
         and rid not in cadence
     )
     return {
-        "status": "exhausted" if spent >= budget else "within",
+        "status": "exhausted" if spent >= budget and not incoming_is_cadence else "within",
         "spent": spent,
         "budget": budget,
+        "incoming_is_cadence": incoming_is_cadence,
         # The rounds the plan's own cadence bought, which `spent` leaves out.
         # Returned so the refusal can say what it did NOT count: "6 rounds"
         # read against a 7-chunk plan is otherwise a loop that never happened.
@@ -2934,18 +2947,23 @@ def _cadence_round_ids(review_ids: "list[str]", body_of: dict) -> "set[str]":
     not charge (owner ruling 2026-11-23, answering R-9(a) of the plan that
     shipped the budget).
 
-    That is each chunk's first ``chunk`` review, and the scope's first boundary
-    review (``final`` or ``cumulative``). The budget exists to end a review LOOP
-    (re-reviewing one body of work), and those reviews are the plan's
-    planned steps, not a loop. Charged, they exhausted any plan of more chunks
-    than the budget on cadence alone, refusing the boundary review the
-    methodology says is never skipped, with `--force` its only route.
+    That is each chunk's first review, in whatever mode it ran, and the scope's
+    first boundary review: the first ``final`` or ``cumulative`` that names no
+    chunk an earlier review had not. The budget exists to end a review LOOP
+    (re-reviewing one body of work), and those reviews are the plan's planned
+    steps, not a loop. Charged, they exhausted any plan of more chunks than the
+    budget on cadence alone, refusing the boundary review the methodology says
+    is never skipped, with ``--force`` its only route. The allowance follows
+    the plan step a review serves, not its mode: a chunk whose plan declares
+    ``Critic mode: final`` is reviewed in ``final``, and that review is the
+    chunk's step, which leaves the boundary review its own.
 
-    Walked in ``review_ids`` order, the store's append order. A ``chunk``
-    review is cadence when it names a chunk no earlier ``chunk`` review in the
-    set named. One naming no chunk claims nothing and is charged: no plan step
-    can be shown to have bought it. Every later round, of either kind, is
-    charged as before.
+    Walked in ``review_ids`` order, the store's append order, over full rounds
+    only (a ``verify-resolutions`` pass neither claims nor spends an
+    allowance). A review naming no chunk claims no chunk's step, since no plan
+    step can be shown to have bought it. A ``chunk`` review like that is
+    charged, so name the chunk with ``--chunks``. Every later round is charged
+    as before.
     """
     from . import buildplan_refs, plan_status  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
@@ -2955,18 +2973,24 @@ def _cadence_round_ids(review_ids: "list[str]", body_of: dict) -> "set[str]":
     for rid in review_ids:
         body = body_of.get(rid) or {}
         mode = mode_token_of(body.get("mode"))
-        if mode == "chunk":
-            named = {
-                buildplan_refs._normalize_chunk_id(c)
-                for c in plan_status.fact_chunks(body)
-            }
-            if named - reviewed:
-                cadence.add(rid)
-            reviewed |= named
+        if mode not in FULL_ROUND_MODES:
+            continue
+        named = {
+            buildplan_refs._normalize_chunk_id(c)
+            for c in plan_status.fact_chunks(body)
+        }
+        if named - reviewed:
+            cadence.add(rid)
         elif mode in plan_status._WHOLE_PLAN_MODES and not boundary_seen:
             cadence.add(rid)
             boundary_seen = True
+        reviewed |= named
     return cadence
+
+
+#: The id :func:`_round_budget_verdict` gives the dispatch it is asked about,
+#: walked last. No fact can carry it, since review ids are minted.
+_INCOMING_ROUND = "\x00incoming"
 
 
 def _refuse_over_budget(
@@ -3008,9 +3032,12 @@ def _refuse_over_budget(
     cadence = len(budget.get("cadence_ids") or [])
     reason = (
         f"round budget exhausted — this work bought {budget['spent']} full "
-        f"review round(s) {counted} against a budget of {budget['budget']}, "
-        f"not counting the {cadence} its plan's cadence bought (each chunk's "
-        "first chunk review, and the first boundary review)"
+        f"review round(s) {counted} against a budget of {budget['budget']}"
+        + (
+            f", not counting the {cadence} its plan's cadence bought (each "
+            "chunk's first review, and the first boundary review)"
+            if cadence else ""
+        )
     )
     swept = dispositions.auto_accept(project_dir, budget["review_ids"], reason=reason)
     # Rendered over the SWEPT ids, not over the scope: those are the findings
@@ -4548,7 +4575,13 @@ def begin_review(
     # one at exhaustion would strand it with no command that resolves it —
     # the same deadlock the free-interval guard's second conjunct avoids.
     if mode_token in FULL_ROUND_MODES and not force:
-        budget = _round_budget_verdict(project_dir, prawduct_dir, scope)
+        budget = _round_budget_verdict(
+            project_dir, prawduct_dir, scope,
+            incoming={
+                "mode": MODE_TOKEN_TO_VERBOSE[mode_token],
+                "chunks": list(declared_chunks or []),
+            },
+        )
         if budget["status"] == "unavailable":
             notes.append(
                 "the review round budget could not be derived "
