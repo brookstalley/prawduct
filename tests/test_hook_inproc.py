@@ -121,16 +121,20 @@ class TestInventories:
         for _module, path in _production_files():
             names.update(literal.findall(path.read_text(encoding="utf-8")))
         assert "CLAUDE_CONFIG_DIR" in names, "the scan found nothing: it is broken"
-        not_env = {"PRAWDUCT_VERSION"}  # `lib/__init__`'s export table names the constant
-        assert names - _hook_inproc.STRIPPED_ENV - not_env == set()
+        # Names that must reach the hook, or are no environment read at all. A test seam a
+        # fixture sets (a clock, say) belongs here: stripping it would hand the hook the real one.
+        passed_through = {
+            "PRAWDUCT_VERSION",  # `lib/__init__`'s export table names the constant
+        }
+        assert names - _hook_inproc.STRIPPED_ENV - passed_through == set()
         assert _hook_inproc.STRIPPED_ENV - names == set(), "stripped names production never reads"
 
 
 @pytest.fixture
-def seen(monkeypatch):
+def seen(monkeypatch, tmp_path):
     """Record what the hook ran under, from its first act: `get_project_dir` asks the host seam
     for the launch-dir hint before any command runs."""
-    run_hook("version")  # loads the host seam into this process
+    run_hook("version", cwd=tmp_path)  # loads the host seam into this process
     host = sys.modules["prawduct_host"]
     record: dict = {}
     real_hint = host.project_dir_hint
@@ -222,7 +226,7 @@ class TestWhatTheCallReturns:
             os.write(2, b"stderr descriptor\n")
             raise SystemExit(0)
 
-        run_hook("version")  # loads the host seam into this process
+        run_hook("version", cwd=tmp_path)  # loads the host seam into this process
         monkeypatch.setattr(sys.modules["prawduct_host"], "project_dir_hint", probe_writes)
         result = run_hook("resolve-base", cwd=tmp_path)
         assert result.stdout == "from print\nfrom the descriptor\n"
