@@ -40,3 +40,21 @@ tags = ["v[0-9]*"]
 
 [setup]
 steps = [["uv", "sync", "--extra", "dev", "--quiet"]]
+
+# Areas: what a reader asks about the framework, not where a file sits. A test takes the first
+# area (in this order) whose glob matches its file, so the specific ones come first and `core`
+# takes the rest. `testament areas check` lists anything unassigned or any glob that takes nothing.
+[areas]
+preferences = ["tests/preferences/**"]
+scenarios   = ["tests/scenarios/**"]
+backlog     = ["tests/test_backlog_*", "tests/test_issue*"]
+critic      = ["tests/test_critic_*", "tests/test_native_review_*", "tests/test_reviewer_*", "tests/test_review_*", "tests/test_measure_*", "tests/test_verify_*", "tests/test_verdict_cache.py", "tests/test_cumulative_gate*", "tests/test_bounded_cumulative.py", "tests/test_dispatch_*", "tests/test_class_finding_*", "tests/test_carried_blocking_*", "tests/test_coverage_*", "tests/test_finding_*", "tests/test_severity_*", "tests/test_prose_severity*", "tests/test_dispositions.py", "tests/test_observation_*", "tests/test_session_critic_gate.py", "tests/test_fact_dispatch_clock.py", "tests/test_gate_review_concurrency.py", "tests/test_findings_cache_reader.py", "tests/test_model_tier.py"]
+evidence    = ["tests/test_evidence_*", "tests/test_test_*", "tests/test_testament_*", "tests/test_failing_test_ids.py", "tests/test_suite_*", "tests/test_collector_*", "tests/test_pytest_config.py", "tests/test_ci_suite.py", "tests/test_advisory_evidence_pins.py"]
+plans       = ["tests/test_plan_*", "tests/test_build_plan*", "tests/test_buildplan_*", "tests/test_chunk_*", "tests/test_work_*", "tests/test_short_plan*", "tests/test_unscoped_plan*", "tests/test_uncertified_*", "tests/test_mid_plan_*", "tests/test_late_requirements.py", "tests/test_handoff_*"]
+changes     = ["tests/test_change_*", "tests/test_release_*", "tests/test_cost_of_commit.py", "tests/test_pr_*", "tests/test_contribution*", "tests/test_upstream_probes.py"]
+git         = ["tests/test_git*", "tests/test_stranded_*", "tests/test_stale_base*", "tests/test_check_branch_pushed.py", "tests/test_base_advance_*", "tests/test_ephemeral_worktree.py", "tests/test_hot_path_git_batching.py", "tests/test_protected_paths.py", "tests/test_tree_key_memo.py", "tests/test_per_tree_freshness.py"]
+hooks       = ["tests/test_stop_*", "tests/test_hook_*", "tests/test_session_*", "tests/test_subagent_stop.py", "tests/test_reflection_gate.py", "tests/test_host_seam*", "tests/test_gate_flags_*", "tests/test_unloaded_tripwire.py", "tests/test_briefing_*", "tests/test_advisory_*", "tests/test_binary_skew_guard.py", "tests/test_repo_disable.py", "tests/test_control_*", "tests/test_compliance_canary.py"]
+learnings   = ["tests/test_learn*", "tests/test_ledger_*", "tests/test_governance_ledger.py", "tests/test_discovery_*", "tests/test_stats*", "tests/test_aggregate_stats.py", "tests/test_review_stats.py"]
+plugin      = ["tests/test_plugin_*", "tests/test_onboarding_*", "tests/test_install_reference_*", "tests/test_lifecycle_*", "tests/test_doctor_*", "tests/test_gitignore_*", "tests/test_gitattributes_*", "tests/test_python_floor.py", "tests/test_project_*", "tests/test_core_yaml_keys.py", "tests/test_norm_*", "tests/test_opt_in_*", "tests/test_skill_command_grants.py"]
+methodology = ["tests/test_v5_*", "tests/test_cutover_*", "tests/test_retired_*", "tests/test_deprecated_*", "tests/test_path_reference_*", "tests/test_markdown_*", "tests/test_reference_verifier.py", "tests/test_record_lint.py", "tests/test_drop_box_*", "tests/test_discipline_table.py", "tests/test_coverage_algebra.py"]
+core        = ["tests/**"]   # what the areas above leave: shared state, codecs, state writes, small utilities
