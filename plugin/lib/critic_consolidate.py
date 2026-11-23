@@ -4566,9 +4566,9 @@ def begin_review(
     # and free dispatches are commonest on exactly the long branches that
     # exhaust a budget (62 of 492 facts, by the exit-3 leg's own measurement).
     #
-    # A plan's cadence is not charged: each chunk's first `chunk` review and
-    # the first boundary review are the plan's steps, not a loop
-    # (`_cadence_round_ids`).
+    # A plan's cadence is not charged: each chunk's first review, in any mode,
+    # and the first boundary review are the plan's steps, not a loop, and a
+    # dispatch that is itself one passes the ceiling (`_cadence_round_ids`).
     #
     # Only full rounds are counted AND only a full round is refused. A
     # `verify-resolutions` pass is how a BLOCKING finding clears, so refusing

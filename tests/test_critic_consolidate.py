@@ -10045,8 +10045,8 @@ def _seed_chunk_review(repo: Path, fact_id: str, head: str, chunks, *,
 class TestRoundBudgetCadence:
     """A plan's cadence is not a review loop (owner ruling 2026-11-23, R-9(a)).
 
-    Each chunk's first `chunk` review and the scope's first boundary review are
-    the plan's own steps. Charged, a 7-chunk plan with one clean review per
+    Each chunk's first review, in any mode, and the scope's first boundary
+    review are the plan's own steps. Charged, a 7-chunk plan with one clean review per
     chunk spent a budget of 6 on Chunks 01 to 06, and `critic-begin` refused
     the boundary review the methodology says is never skipped. That is the
     shape `chunk-plan-order` hit, pinned first.

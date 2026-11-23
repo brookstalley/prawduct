@@ -409,7 +409,7 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
    round after those. The fix goes on its own branch off `develop`. Lands in `critic_consolidate._round_budget_verdict`,
    `plugin/docs/project-state-keys.md` (`review_round_budget`) and `plugin/skills/critic/review-cycle.md`.
    **2026-11-23, transcription corrected:** the ask the owner approved said "not counting the first review of
-   each chunk, plus the first branch-wide review", with no mode. The entry above narrowed it to `chunk` reviews,
+   each chunk or the first branch-wide review", with no mode. The entry above narrowed it to `chunk` reviews,
    and `fix/round-budget-cadence`'s boundary review (R-2 of rev-20261123T135555Z-05b709ab) found that a mid-plan
    `final` was then charged. The implementation follows the approved words: a chunk's first full review in any
    mode, and the first whole-plan review that names no new chunk.
@@ -421,3 +421,6 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
 4. The two inferred design calls in `build-plan-chunk-plan-order.md` Goals are confirmed as written: D8's exclusion
    rule as revised in Chunk 07 (only the code's own naming of a done chunk is questioned), and D3's refusal
    recorded as one `guard-refusal` fact through `evidence.append_guard_refusal` (the #596 one-sink ruling).
+
+**2026-11-23.** "Merge when ready" — PR #1212 (`fix/chunk-plan-order` → `develop`) and the `fix/round-budget-cadence`
+PR are each merged once their gates pass.
