@@ -280,3 +280,272 @@ def test_an_owner_asking_what_the_work_is_for_counts_as_a_goal_question(tmp_path
         _owner("what's the point of telling me a reason that was not used?"),
     ])
     assert _total(tool.measure([path], None, None, 60, ()))["goal_questions"] == 5
+
+
+# --- #1211: compaction summaries, per-window health, the saved baseline -----------------------
+
+#: A Claude Code compaction summary, in the shape read off a real transcript (keys and flags only,
+#: text synthetic): a user record, `isCompactSummary` true, string content, not `isMeta`.
+SUMMARY = ("This session is being continued from a previous conversation that ran out of context. "
+           "The user said the banner was wrong and asked to revert it.")
+
+
+def _summary(ts="2026-09-01T10:00:00Z", cwd="/work/app"):
+    rec = _owner(SUMMARY, ts=ts, cwd=cwd)
+    rec["isCompactSummary"] = True
+    rec["isVisibleInTranscriptOnly"] = True
+    return rec
+
+
+def test_a_compaction_summary_is_not_an_owner_turn(tmp_path):
+    """The summary arrives as a user record, long and full of correction words. Counted as an
+    owner turn it inflated requests, substantive and corrections in the 2026-11 re-run."""
+    path = _session(tmp_path, "p", [
+        _owner(LONG), _calls("Edit"), _summary(), _calls("Edit"),
+    ])
+    row = _total(tool.measure([path], None, None, 60, ()))
+    assert row["requests"] == 1
+    assert row["substantive"] == 1
+    assert row["corrections"] == 0
+    # The control: the same text without the flag is an owner typing it.
+    typed = _session(tmp_path, "t", [
+        _owner(LONG), _calls("Edit"), _owner(SUMMARY), _calls("Edit"),
+    ])
+    row = _total(tool.measure([typed], None, None, 60, ()))
+    assert row["requests"] == 2
+    assert row["corrections"] == 1
+
+
+def test_work_after_a_compaction_summary_stays_with_the_request_it_continues(tmp_path):
+    path = _session(tmp_path, "p", [
+        _owner(LONG), _calls("AskUserQuestion"), _summary(), _calls("Edit"),
+        _calls("AskUserQuestion"),
+    ])
+    row = _total(tool.measure([path], None, None, 60, ()))
+    assert row["substantive"] == 1
+    assert row["asked_first"] == 1
+    assert row["mid_build_asks"] == 1
+
+
+def _two_window_corpus(tmp_path):
+    """Two transcripts per window. The baseline window holds one with no owner turns and one with a
+    bad line; the after window holds one with no owner turns and one clean."""
+    def _bare(ts):
+        return {"type": "system", "timestamp": ts, "cwd": "/work/app"}
+    proj = tmp_path / "projects" / "p"
+    proj.mkdir(parents=True)
+    before_empty = _write(proj / "b1.jsonl", [_bare("2026-09-01T10:00:00Z")])
+    before_bad = proj / "b2.jsonl"
+    before_bad.write_text(
+        "{not json\n" + json.dumps(_owner(LONG, ts="2026-09-02T10:00:00Z")) + "\n", encoding="utf-8")
+    after_empty = _write(proj / "a1.jsonl", [_bare("2026-10-20T10:00:00Z")])
+    after_clean = _write(proj / "a2.jsonl", [_owner(LONG, ts="2026-10-21T10:00:00Z"), _calls("Edit")])
+    return [before_empty, before_bad, after_empty, after_clean]
+
+
+def test_health_is_tallied_over_the_transcripts_the_window_selects(tmp_path):
+    import collections
+    paths = _two_window_corpus(tmp_path)
+    before, after = collections.Counter(), collections.Counter()
+    tool.measure(paths, None, "2026-10-09", 60, (), health=before)
+    tool.measure(paths, "2026-10-09", None, 60, (), health=after)
+    assert before["transcripts_without_owner_turns"] == 1
+    assert before["lines_unparsed"] == 1
+    assert after["transcripts_without_owner_turns"] == 1
+    assert after.get("lines_unparsed", 0) == 0
+    assert before != after
+    everything = collections.Counter()
+    tool.measure(paths, None, None, 60, (), health=everything)
+    assert everything["transcripts_without_owner_turns"] == 2
+    assert everything["lines_unparsed"] == 1
+
+
+def _run_json(tmp_path, capsys, *argv):
+    glob = str(tmp_path / "projects" / "*" / "*.jsonl")
+    rc = tool.main(["--glob", glob, "--json", *argv])
+    return rc, json.loads(capsys.readouterr().out)
+
+
+def test_cli_json_reports_per_window_health_and_transcript_count(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    _, before = _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", "")
+    _, after = _run_json(tmp_path, capsys, "--since", "2026-10-09", "--baseline-file", "")
+    assert before["transcripts"] == 2 and after["transcripts"] == 2
+    assert before["transcripts_on_disk"] == after["transcripts_on_disk"] == 4
+    assert before["health"] != after["health"]
+    assert before["health"]["lines_unparsed"] == 1
+    assert "lines_unparsed" not in after["health"]
+
+
+def test_save_baseline_writes_counts_once_and_never_overwrites(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    store = tmp_path / "baselines.json"
+    rc, out = _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store),
+                        "--save-baseline", "--read-date", "2026-10-09")
+    assert rc == 0 and out["baseline_saved"] is True
+    saved = json.loads(store.read_text(encoding="utf-8"))
+    entry = saved["windows"][tool.window_key(None, "2026-10-09")]
+    assert entry["counts"]["ungoverned"]["requests"] == 1
+    assert entry["counts"]["ungoverned"]["substantive"] == 0
+    assert entry["health"]["lines_unparsed"] == 1
+    assert entry["source"] == "measured" and entry["read"] == "2026-10-09"
+    assert entry["tool_basis"].startswith("blob:")
+    # Transcripts are pruned; a second --save-baseline must keep the first reading.
+    for p in (tmp_path / "projects" / "p").glob("b*.jsonl"):
+        p.unlink()
+    rc, out = _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store),
+                        "--save-baseline", "--read-date", "2026-10-09")
+    assert rc == 0 and out["baseline_saved"] is False
+    assert json.loads(store.read_text(encoding="utf-8")) == saved
+
+
+def test_the_saved_baseline_leaks_no_text_paths_or_project_names(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    store = tmp_path / "baselines.json"
+    _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store),
+              "--save-baseline", "--read-date", "2026-10-09")
+    text = store.read_text(encoding="utf-8")
+    assert text.strip()
+    assert LONG not in text and str(tmp_path) not in text and "/work/app" not in text
+    assert '"p"' not in text
+
+
+def test_a_rerun_reports_against_the_saved_counts_when_transcripts_were_pruned(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    store = tmp_path / "baselines.json"
+    _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store),
+              "--save-baseline", "--read-date", "2026-10-09")
+    _, intact = _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store))
+    assert intact["saved_baseline"]["pruned"] is False
+    for p in (tmp_path / "projects" / "p").glob("b*.jsonl"):
+        p.unlink()
+    _, out = _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store))
+    assert out["saved_baseline"]["counts"]["ungoverned"]["requests"] == 1
+    assert out["saved_baseline"]["pruned"] is True
+    assert out["saved_baseline"]["vs_live"]["ungoverned"]["requests"] == {"saved": 1, "live": 0}
+    # A window with no saved reading reports none.
+    _, other = _run_json(tmp_path, capsys, "--since", "2026-10-09", "--baseline-file", str(store))
+    assert "saved_baseline" not in other
+
+
+def test_a_saved_baseline_is_not_compared_across_min_chars(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    store = tmp_path / "baselines.json"
+    _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store),
+              "--save-baseline", "--read-date", "2026-10-09")
+    _, out = _run_json(tmp_path, capsys, "--until", "2026-10-09", "--min-chars", "10",
+                       "--baseline-file", str(store))
+    assert out["saved_baseline"]["comparable"] is False
+    assert "vs_live" not in out["saved_baseline"]
+
+
+def test_a_corrupt_baseline_file_is_an_error_not_an_overwrite(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    store = tmp_path / "baselines.json"
+    store.write_text("{not json", encoding="utf-8")
+    glob = str(tmp_path / "projects" / "*" / "*.jsonl")
+    rc = tool.main(["--glob", glob, "--json", "--until", "2026-10-09", "--baseline-file", str(store),
+                    "--save-baseline"])
+    assert rc == 2
+    assert store.read_text(encoding="utf-8") == "{not json"
+
+
+def test_the_committed_baseline_is_the_recorded_2026_10_09_reading():
+    """The real file, read: the baseline the 2026-11 re-run found pruned. Its figures are the
+    ones `requirements-alignment-discovery.md` records, null where that artifact records none."""
+    store = tool.load_baselines(tool.DEFAULT_BASELINES)
+    entry = store["windows"][tool.window_key(None, "2026-10-09")]
+    assert entry["source"] == "artifact"
+    gov = entry["counts"]["governed"]
+    assert (gov["substantive"], gov["asked_first"], gov["mid_build_asks"], gov["corrections"]) == (
+        963, 140, 349, 18)
+    assert set(gov) == set(tool.KEYS)
+    assert entry["counts"]["ungoverned"] is None
+    assert entry["min_chars"] == 60
+
+
+def _pruned_store(tmp_path, capsys, basis):
+    """Save the baseline window, set its recorded tool_basis, then prune its transcripts."""
+    _two_window_corpus(tmp_path)
+    store = tmp_path / "baselines.json"
+    _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store),
+              "--save-baseline", "--read-date", "2026-10-09")
+    doc = json.loads(store.read_text(encoding="utf-8"))
+    doc["windows"][tool.window_key(None, "2026-10-09")]["tool_basis"] = basis
+    store.write_text(json.dumps(doc), encoding="utf-8")
+    for p in (tmp_path / "projects" / "p").glob("b*.jsonl"):
+        p.unlink()
+    return store
+
+
+def _shortfall(tmp_path, capsys, basis, text=False):
+    store = _pruned_store(tmp_path, capsys, basis)
+    if text:
+        glob = str(tmp_path / "projects" / "*" / "*.jsonl")
+        tool.main(["--glob", glob, "--until", "2026-10-09", "--baseline-file", str(store)])
+        return capsys.readouterr().out
+    return _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store))[1]
+
+
+def test_a_shortfall_is_pruning_only_when_the_same_script_read_it(tmp_path, capsys):
+    out = _shortfall(tmp_path, capsys, tool._tool_basis(), text=True)
+    assert "transcripts were pruned" in out
+    assert tool._instrument(tool._tool_basis()) == "same"
+
+
+def test_a_shortfall_from_a_different_script_is_not_attributed_to_pruning(tmp_path, capsys):
+    saved = _shortfall(tmp_path, capsys, "blob:" + "0" * 40)["saved_baseline"]
+    assert saved["short"] is True and saved["pruned"] is False
+    assert saved["instrument"] == "different"
+    capsys.readouterr()
+    out = _shortfall(tmp_path / "again", capsys, "blob:" + "0" * 40, text=True)
+    assert "transcripts were pruned" not in out
+    assert "different version of this script" in out
+
+
+def test_a_saved_basis_that_resolves_to_nothing_is_unknown_not_same_or_different(tmp_path, capsys):
+    for basis in ("commit:0000000000000000", None, "garbage"):
+        assert tool._instrument(basis) == "unknown"
+    saved = _shortfall(tmp_path, capsys, "commit:0000000000000000")["saved_baseline"]
+    assert saved["instrument"] == "unknown" and saved["pruned"] is False and saved["short"] is True
+    capsys.readouterr()
+    out = _shortfall(tmp_path / "again", capsys, "commit:0000000000000000", text=True)
+    assert "cannot be resolved" in out and "transcripts were pruned" not in out
+
+
+def test_the_committed_baseline_is_a_different_instrument_not_pruning():
+    entry = tool.load_baselines(tool.DEFAULT_BASELINES)["windows"][tool.window_key(None, "2026-10-09")]
+    assert tool._instrument(entry["tool_basis"]) in ("different", "unknown")
+
+
+def _save(tmp_path, capsys, *argv):
+    glob = str(tmp_path / "projects" / "*" / "*.jsonl")
+    store = tmp_path / "baselines.json"
+    rc = tool.main(["--glob", glob, "--json", "--baseline-file", str(store), "--save-baseline",
+                    "--read-date", "2026-11-01", *argv])
+    captured = capsys.readouterr()
+    return rc, captured.err, store
+
+
+def test_save_baseline_refuses_an_open_ended_window(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    rc, err, store = _save(tmp_path, capsys, "--since", "2026-10-09")
+    assert rc != 0 and "closed window" in err and not store.exists()
+
+
+def test_save_baseline_refuses_an_until_after_the_read_date(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    rc, err, store = _save(tmp_path, capsys, "--until", "2026-11-02")
+    assert rc != 0 and "closed window" in err and not store.exists()
+
+
+def test_save_baseline_refuses_a_run_that_matched_no_transcripts(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    rc, err, store = _save(tmp_path, capsys, "--until", "2026-10-09", "--glob", str(tmp_path / "nope" / "*.jsonl"))
+    assert rc != 0 and "no transcript" in err and not store.exists()
+
+
+def test_save_baseline_accepts_a_closed_window_ending_on_the_read_date(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    rc, err, store = _save(tmp_path, capsys, "--until", "2026-11-01")
+    assert rc == 0 and err == "" and store.exists()

@@ -403,7 +403,7 @@ class TestTheRollCallFollowsTheAnchor:
 class TestTheChainsFollowTheAnchor:
     def test_review_chain_steps_back_through_the_anchor(self):
         reviews = _two_reviews_of_one_tree()
-        chain = critic_mode.review_chain(reviews, reviews[-1])
+        chain = critic_mode.review_chain(reviews, reviews[-1], bound=None)
         assert [f["id"] for f in chain] == ["rev-pass", "rev-old"]
 
     def test_the_extended_line_reaches_the_anchors_commit(self):
@@ -422,7 +422,7 @@ class TestTheChainsFollowTheAnchor:
         unrelated = _review("rev-r", CHUNK, T0, T2)
         p1 = _review("rev-p1", VERIFY_MODE, T2, T1, verifies="rev-p2")
         p2 = _review("rev-p2", VERIFY_MODE, T1, T2, verifies="rev-p1")
-        chain = critic_mode.review_chain([unrelated, p1, p2], p2)
+        chain = critic_mode.review_chain([unrelated, p1, p2], p2, bound=None)
         assert [f["id"] for f in chain] == ["rev-p2", "rev-p1"]
 
     def test_the_chain_and_the_stop_hook_agree_whatever_the_order(self, tmp_path):
@@ -441,7 +441,7 @@ class TestTheChainsFollowTheAnchor:
         assert not ok and f"over a '{CHUNK}' review" in reason, reason
         facts = evidence.read_facts(repo)["facts"]
         newest = next(f for f in facts if f["id"] == "rev-pass")
-        chain = critic_mode.review_chain(facts, newest)
+        chain = critic_mode.review_chain(facts, newest, bound=None)
         assert [f["id"] for f in chain] == ["rev-pass", "rev-anchor"]
         assert not critic_mode.boundary_review_on_chain(chain)
 
@@ -461,7 +461,7 @@ class TestTheChainsFollowTheAnchor:
         a = _review("rev-a", CHUNK, T0, T1)
         b = _review("rev-b", CHUNK, T1, T1)
         c = _review("rev-c", CHUNK, T1, T2)
-        chain = critic_mode.review_chain([p, a, b, c], c)
+        chain = critic_mode.review_chain([p, a, b, c], c, bound=None)
         assert [f["id"] for f in chain] == ["rev-c", "rev-a", "rev-b"]
 
 
@@ -505,7 +505,7 @@ class TestReviewChainConsumersOnAnAnchoredPass:
             anchor["body"]["chunks"] = anchor_chunks
         pass_ = _review("rev-pass", VERIFY_MODE, T1, T2, verifies="rev-anchor")
         facts = [earlier, anchor, pass_]
-        return facts, critic_mode.review_chain(facts, pass_)
+        return facts, critic_mode.review_chain(facts, pass_, bound=None)
 
     def test_chunk_inheritance_takes_the_anchors_chunks(self):
         """`chain_named_chunks` (the verify proposal and `chain_certified_chunks`)
@@ -533,11 +533,11 @@ class TestReviewChainConsumersOnAnAnchoredPass:
         cumulative = _review("rev-cumulative", CUMULATIVE, T0, T1)
         rereview = _review("rev-chunk", CHUNK, T0, T1)
         pass_ = _review("rev-pass", VERIFY_MODE, T1, T2, verifies="rev-chunk")
-        chain = critic_mode.review_chain([cumulative, rereview, pass_], pass_)
+        chain = critic_mode.review_chain([cumulative, rereview, pass_], pass_, bound=None)
         assert [f["id"] for f in chain] == ["rev-pass", "rev-chunk"]
         assert not critic_mode.boundary_review_on_chain(chain)
         rereview["body"]["base_tree"] = T1
-        chain = critic_mode.review_chain([cumulative, rereview, pass_], pass_)
+        chain = critic_mode.review_chain([cumulative, rereview, pass_], pass_, bound=None)
         assert [f["id"] for f in chain] == ["rev-pass", "rev-chunk", "rev-cumulative"]
         assert critic_mode.boundary_review_on_chain(chain)
 
@@ -555,11 +555,11 @@ class TestReviewChainConsumersOnAnAnchoredPass:
         cumulative = _review("rev-cumulative", CUMULATIVE, OTHER_BASE, T1,
                              findings=[_blocker("R-1", "a blocker")])
         pass_ = _review("rev-pass", VERIFY_MODE, T1, T2, verifies="rev-cumulative")
-        chain = critic_mode.review_chain([chunk, cumulative, pass_], pass_)
+        chain = critic_mode.review_chain([chunk, cumulative, pass_], pass_, bound=None)
         assert [f["id"] for f in chain] == ["rev-pass", "rev-cumulative"]
         assert critic_mode.chain_named_chunks(chain) == []
         del pass_["body"]["verifies"]
-        chain = critic_mode.review_chain([chunk, cumulative, pass_], pass_)
+        chain = critic_mode.review_chain([chunk, cumulative, pass_], pass_, bound=None)
         assert [f["id"] for f in chain] == ["rev-pass", "rev-chunk", "rev-cumulative"]
         assert critic_mode.chain_named_chunks(chain) == ["03"]
 
@@ -607,7 +607,7 @@ class TestTheDeferralAsksTheGatesCount:
 
     def test_a_blocker_the_gate_counts_off_the_chain_is_not_deferred(self, monkeypatch):
         facts = self._facts(blocker=True)
-        chain = critic_mode.review_chain(facts, facts[-1])
+        chain = critic_mode.review_chain(facts, facts[-1], bound=None)
         assert [f["id"] for f in chain] == ["rev-pass", "rev-anchor"]  # F-1 is off it
         verdict = ca.coverage_verdict(facts, T0, T2, lambda a, b: None)
         assert verdict["status"] == "blocked", verdict

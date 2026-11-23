@@ -481,7 +481,9 @@ def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
     through :func:`walk_links`, which owns stepping back along the link and
     ending the walk: ``gates._review_verified_passes_stand_on`` follows it back
     over verify passes to the review they stand for, ``critic_mode.review_chain``
-    walks it back through every review at each linked tree, and
+    walks it back through every review at each linked tree, over only the
+    reviews its ``bound`` leaves on this branch (#1224: a tree link knows no
+    branch, so the walk is fed the branch's reviews rather than taught to stop), and
     ``plan_status._extended_reviews`` follows it to the review that records a
     commit. ``critic_consolidate.carried_blocking`` takes one hop of it, as a
     verify pass's anchor, through :func:`prior_review`.

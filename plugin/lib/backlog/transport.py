@@ -31,6 +31,7 @@ import os
 import re
 import subprocess
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import NamedTuple
 
 # --- Secret scrub (the SEC-1 backstop) ---------------------------------------
@@ -1053,6 +1054,93 @@ def _extract_retry_after(stderr_lower: str) -> int | None:
 
 def _looks_like_network(stderr_lower: str) -> bool:
     return any(signal in stderr_lower for signal in _NETWORK_SIGNALS)
+
+
+# --- Local git history reads (the `pick` annotation) --------------------------
+#
+# Local, read-only, and not network egress -- but it is a subprocess, and this
+# module owns every one under ``lib/backlog/`` (the egress-discipline invariant
+# is checkable only while that stays true), so the git reads `pick` needs
+# live here rather than in ``query``.
+
+#: Wall-clock bound on one local ``git`` read. A history walk over a large base is
+#: the slow case; it must never hold a ``pick`` hostage.
+GIT_READ_TIMEOUT_S = 10.0
+
+
+def resolve_base_ref(project_dir) -> tuple[str | None, str]:
+    """The checkout's integration base as ``(ref, ref)``, or ``(None, reason)``.
+
+    Asks :func:`coverage.repo_base_branch` -- the repo's integration base (a
+    configured ``base_branch:``, else ``origin/HEAD`` outside the main family, else
+    the ``main`` candidates) -- and NOT the gates' ``_resolve_base_branch``, which
+    prefers a bound plan's own ``base:``. A plan's base can be a stack branch that has
+    not shipped; ``pick`` asks what has SHIPPED, which is what the repo integrates
+    onto, the same question minting a unit asks.
+
+    **The moving ``HEAD~1`` fallback is refused.** ``repo_base_branch`` ends on it when
+    nothing else resolves; as a "shipped history" it would be the branch's own
+    commits, reported as already on the base. ``critic_mode.chain_bound`` refuses it
+    for the same reason, so it comes back as ``(None, reason)`` and the caller skips
+    the annotation with a warning. Never raises: a git that cannot be run is reported
+    as an unresolved base.
+    """
+    from .. import coverage  # noqa: PLC0415 — lazy: only the pick annotation pays for it
+
+    try:
+        ref, reason = coverage.repo_base_branch(Path(project_dir))
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return None, f"git could not be run ({type(exc).__name__})"
+    if ref == coverage.MOVING_FALLBACK_BASE:
+        return None, (
+            f"no integration base resolved (only the moving {ref} fallback, "
+            "whose history is the branch's own)"
+        )
+    return ref, reason
+
+
+def git_log_subjects(
+    project_dir, ref: str, *, max_count: int, timeout: float = GIT_READ_TIMEOUT_S
+) -> list[tuple[str, str]]:
+    """``(short sha, subject)`` of the newest ``max_count`` commits reachable from ``ref``.
+
+    One ``git log`` call, newest first. The bound is a COMMIT count, so the cost of
+    the walk is fixed whatever the caller then looks for; matching is the caller's,
+    in Python, over the subjects returned. Raises ``TransportError`` (``unavailable``)
+    on a non-zero exit, a timeout or an unrunnable ``git`` -- the caller decides what
+    a failed read costs.
+    """
+    if ref.startswith("-"):
+        raise TransportError("unavailable", f"refusing base ref {ref!r}: it reads as an option")
+    argv = [
+        "git", "log", "--format=%h%x09%s", f"--max-count={max_count}", ref, "--",
+    ]
+    try:
+        proc = subprocess.run(  # noqa: S603 — list-form, no shell (project preference)
+            argv,
+            cwd=str(project_dir),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            encoding="utf-8",
+            errors="surrogateescape",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise TransportError("unavailable", f"'git log' timed out after {timeout:g}s")
+    except OSError as exc:
+        raise TransportError("unavailable", f"'git log' could not be run ({type(exc).__name__})")
+    if proc.returncode != 0:
+        detail = scrub_secrets(proc.stderr).strip().splitlines()
+        raise TransportError(
+            "unavailable",
+            f"'git log' exited {proc.returncode}" + (f": {detail[0]}" if detail else ""),
+        )
+    rows = []
+    for line in proc.stdout.splitlines():
+        sha, _tab, subject = line.partition("\t")
+        if sha.strip():
+            rows.append((sha.strip(), subject))
+    return rows
 
 
 # --- Detached process spawn (the D6 briefing-refresh warm) -------------------

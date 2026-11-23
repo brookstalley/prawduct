@@ -636,7 +636,7 @@ class TestReviewChain:
         rereview = self._review("r2", "t0", "t1", "2026-09-22T11:00:00Z")
         newest = self._review("r3", "t1", "t2", "2026-09-22T12:00:00Z")
         facts = [blocked, rereview, newest]
-        chain = critic_mode.review_chain(facts, newest)
+        chain = critic_mode.review_chain(facts, newest, bound=None)
         assert {f["id"] for f in chain} == {"r1", "r2", "r3"}
         resolved = critic_mode.coverage_algebra.resolution_index(facts)
         assert any(critic_mode.coverage_algebra.unresolved_blocking(f, resolved) for f in chain)
@@ -646,8 +646,12 @@ class TestReviewChain:
                                   mode="cumulative (bundle review, ready for merge)")
         verify = self._review("r2", "t1", "t2", "2026-09-22T11:00:00Z",
                               mode="verify-resolutions (delta review, prior findings only)")
-        assert critic_mode.boundary_review_on_chain(critic_mode.review_chain([cumulative, verify], verify))
-        assert not critic_mode.boundary_review_on_chain(critic_mode.review_chain([verify], verify))
+        assert critic_mode.boundary_review_on_chain(
+            critic_mode.review_chain([cumulative, verify], verify, bound=None)
+        )
+        assert not critic_mode.boundary_review_on_chain(
+            critic_mode.review_chain([verify], verify, bound=None)
+        )
 
     def test_same_second_reviews_are_ordered_by_the_store_not_the_clock(self, monkeypatch):
         """`ts` has one-second resolution; CI records a chunk review and the
@@ -664,13 +668,437 @@ class TestReviewChain:
                             lambda _p: {"status": "ok", "facts": [chunk, cumulative, verify]})
         newest = critic_mode._newest_branch_review(Path("."))
         assert newest["id"] == "r3"
-        chain = critic_mode.review_chain([chunk, cumulative, verify], newest)
+        chain = critic_mode.review_chain([chunk, cumulative, verify], newest, bound=None)
         assert {f["id"] for f in chain} == {"r1", "r2", "r3"}
         assert critic_mode.boundary_review_on_chain(chain)
         # And the newest pick with a same-second tie at the END of the store.
         monkeypatch.setattr(evidence, "read_facts",
                             lambda _p: {"status": "ok", "facts": [chunk, cumulative]})
         assert critic_mode._newest_branch_review(Path("."))["id"] == "r2"
+
+
+_CUMULATIVE = "cumulative (bundle review, ready for merge)"
+_VERIFY = "verify-resolutions (delta review, prior findings only)"
+#: A commit of this branch older than its tip: once the base is merged in, the
+#: merge base moves past the review anchored here, which stays on the range.
+EARLIER = "4" * 40
+
+
+def _anchored(rid, base, head, anchor, *, mode="chunk", chunks=None, verifies=None):
+    body = {"mode": mode, "base_tree": base, "head_tree": head, "findings": [],
+            "head_commit": anchor}
+    if chunks is not None:
+        body["chunks"] = chunks
+    if verifies is not None:
+        body["verifies"] = verifies
+    return {"kind": "review", "id": rid, "ts": "2026-11-23T10:00:00Z", "body": body}
+
+
+def _earlier_branch(x_anchor: str) -> list:
+    """B1: a `cumulative` standing at tL, then a review X of tL→tM. B1 merged
+    with the base unmoved, so the branch under test starts at tM."""
+    return [
+        _anchored("b1-cumulative", "tK", "tL", OFF_LINEAGE, mode=_CUMULATIVE, chunks=["01"]),
+        _anchored("b1-x", "tL", "tM", x_anchor, chunks=["02"]),
+    ]
+
+
+#: B2, cut from the merge base whose tree is tM; its tip is TIP.
+B2_BOUND = critic_mode.ChainBound("tM", frozenset({TIP, MERGE_BASE}))
+
+
+def _ids(chain) -> list:
+    return [f["id"] for f in chain]
+
+
+class TestTheChainStopsAtTheBranchStart:
+    """#1224: the tree link knows nothing of branches. An earlier branch's last
+    review standing at the tree this branch starts from is linked to by this
+    branch's first review, and behind it stands that branch's `cumulative`.
+    Unbounded, the chain carries both, so this branch reads its boundary
+    review as run and a verify pass inherits that branch's chunks. Each case
+    keeps the unbounded walk as its control."""
+
+    # ff: B1's tip IS the merge base, so X anchors on the range and only the
+    # tree half keeps it off. Merge commit: X's anchor is behind the merge base.
+    @pytest.mark.parametrize("x_anchor", [MERGE_BASE, OFF_LINEAGE], ids=["ff", "merge-commit"])
+    def test_this_branchs_first_review_does_not_reach_the_earlier_branchs_cumulative(
+        self, x_anchor
+    ):
+        r1 = _anchored("b2-r1", "tM", "tN", TIP, chunks=["01"])
+        facts = [*_earlier_branch(x_anchor), r1]
+        chain = critic_mode.review_chain(facts, r1, bound=B2_BOUND)
+        assert _ids(chain) == ["b2-r1"]
+        assert not critic_mode.boundary_review_on_chain(chain)
+        unbounded = critic_mode.review_chain(facts, r1, bound=None)
+        assert _ids(unbounded) == ["b2-r1", "b1-x", "b1-cumulative"]
+        assert critic_mode.boundary_review_on_chain(unbounded)
+
+    def test_a_verify_pass_inherits_no_chunk_from_the_earlier_branch(self):
+        """`chain_named_chunks` — the verify proposal's inheritance and
+        `chain_certified_chunks`' reviewed set. B2's review named no chunk, so
+        on an unbounded chain the newest naming fact is B1's X."""
+        r1 = _anchored("b2-r1", "tM", "tN", TIP)
+        pass_ = _anchored("b2-v", "tN", "tP", TIP, mode=_VERIFY, verifies="b2-r1")
+        facts = [*_earlier_branch(MERGE_BASE), r1, pass_]
+        chain = critic_mode.review_chain(facts, pass_, bound=B2_BOUND)
+        assert _ids(chain) == ["b2-v", "b2-r1"]
+        assert critic_mode.chain_named_chunks(chain) == []
+        assert critic_mode.chain_named_chunks(
+            critic_mode.review_chain(facts, pass_, bound=None)
+        ) == ["02"]
+
+    def test_merging_the_base_in_keeps_this_branchs_reviews_and_stops_before_the_earlier_branchs(
+        self,
+    ):
+        """The base merged into B2 moves the merge base to tD, past B2's first
+        review, which started at tM. No review stands at tD, so the tree half
+        stops nothing here; the lineage half does: B2's reviews anchor on the
+        range, B1's behind it."""
+        r1 = _anchored("b2-r1", "tM", "tN", EARLIER, chunks=["01"])
+        r2 = _anchored("b2-r2", "tN", "tQ", TIP, chunks=["02"])
+        facts = [*_earlier_branch(OFF_LINEAGE), r1, r2]
+        bound = critic_mode.ChainBound("tD", frozenset({TIP, EARLIER, MERGE_BASE}))
+        chain = critic_mode.review_chain(facts, r2, bound=bound)
+        assert _ids(chain) == ["b2-r2", "b2-r1"]
+        assert not critic_mode.boundary_review_on_chain(chain)
+        assert critic_mode.boundary_review_on_chain(
+            critic_mode.review_chain(facts, r2, bound=None)
+        )
+
+    def test_this_branchs_own_cumulative_stays_on_the_chain(self):
+        """What the bound must not cut: B2's boundary review starts at the
+        merge-base tree and is on the chain of the pass that verifies it."""
+        cumulative = _anchored("b2-cumulative", "tM", "tN", TIP, mode=_CUMULATIVE, chunks=["01"])
+        pass_ = _anchored("b2-v", "tN", "tP", TIP, mode=_VERIFY, verifies="b2-cumulative")
+        facts = [*_earlier_branch(MERGE_BASE), cumulative, pass_]
+        chain = critic_mode.review_chain(facts, pass_, bound=B2_BOUND)
+        assert _ids(chain) == ["b2-v", "b2-cumulative"]
+        assert critic_mode.boundary_review_on_chain(chain)
+
+    def test_a_pass_anchored_outside_the_bound_links_to_nothing(self):
+        pass_ = _anchored("b2-v", "tM", "tN", TIP, mode=_VERIFY, verifies="b1-x")
+        facts = [*_earlier_branch(MERGE_BASE), pass_]
+        assert _ids(critic_mode.review_chain(facts, pass_, bound=B2_BOUND)) == ["b2-v"]
+        assert _ids(critic_mode.review_chain(facts, pass_, bound=None)) == [
+            "b2-v", "b1-x", "b1-cumulative"
+        ]
+
+    def test_the_review_walked_from_heads_its_chain_whatever_the_bound(self):
+        """The bound says how far back the walk goes, never whether the review
+        a caller chose counts: one standing at the merge-base tree still heads
+        its chain, and so does a copy of it (the envelope just appended)."""
+        facts = _earlier_branch(OFF_LINEAGE)
+        x = facts[1]
+        assert _ids(critic_mode.review_chain(facts, x, bound=B2_BOUND)) == ["b1-x"]
+        copy = json.loads(json.dumps(x))
+        assert _ids(critic_mode.review_chain(facts, copy, bound=B2_BOUND)) == ["b1-x"]
+
+    def test_once_this_branchs_work_has_landed_its_reviews_at_the_start_tree_stay_on(self):
+        """A trunk branch after a push, or a branch merged with a merge
+        commit: the merge base is this branch's tip, so its `cumulative` and
+        the verify pass after it both stand at the merge-base tree. The newest
+        review stands there too, and that is what keeps the tree half off."""
+        landed = critic_mode.ChainBound("tN", frozenset({TIP}))
+        cumulative = _anchored("b2-cumulative", "tM", "tN", TIP, mode=_CUMULATIVE, chunks=["01"])
+        pass_ = _anchored("b2-v", "tN", "tN", TIP, mode=_VERIFY, verifies="b2-cumulative")
+        chain = critic_mode.review_chain([cumulative, pass_], pass_, bound=landed)
+        assert _ids(chain) == ["b2-v", "b2-cumulative"]
+        assert critic_mode.boundary_review_on_chain(chain)
+        assert critic_mode.chain_named_chunks(chain) == ["01"]
+
+    def test_a_first_review_of_uncommitted_work_on_a_fast_forwarded_base_stops_there(self):
+        """The direction a `merge_base != HEAD` rule would get wrong: B2 just
+        cut from a base B1 fast-forwarded, nothing committed yet, so HEAD is
+        the merge base and B2's dirty-tree review anchors on it, as B1's X
+        does. Only the newest review's tree — past the merge-base tree — says
+        X is not this work's."""
+        r1 = _anchored("b2-r1", "tM", "tN", MERGE_BASE, chunks=["01"])
+        facts = [*_earlier_branch(MERGE_BASE), r1]
+        uncommitted = critic_mode.ChainBound("tM", frozenset({MERGE_BASE}))
+        chain = critic_mode.review_chain(facts, r1, bound=uncommitted)
+        assert _ids(chain) == ["b2-r1"]
+        assert not critic_mode.boundary_review_on_chain(chain)
+
+    def test_an_earlier_cycles_cumulative_on_the_same_trunk_branch_stays_off(self):
+        """The direction a recorded-branch rule would get wrong: consecutive
+        work on one trunk branch records every review on the same name, so the
+        last cycle's `cumulative`, standing at the tree this cycle starts from,
+        carries the same `actor.branch` as this cycle's first review."""
+        earlier = _anchored("main-cumulative", "tL", "tM", MERGE_BASE, mode=_CUMULATIVE,
+                            chunks=["01"])
+        r1 = _anchored("main-r1", "tM", "tN", TIP, chunks=["02"])
+        for f in (earlier, r1):
+            f["actor"] = {"branch": "main"}
+        chain = critic_mode.review_chain([earlier, r1], r1, bound=B2_BOUND)
+        assert _ids(chain) == ["main-r1"]
+        assert not critic_mode.boundary_review_on_chain(chain)
+
+
+class TestChainBoundResolution:
+    """`chain_bound`'s third state: where no merge base places a bound it
+    answers ``None``, which `review_chain` reads as unbounded (its docstring
+    says why) — never an empty bound, which would cut every chain to one
+    review."""
+
+    OK = {"status": "ok", "base_branch": "main", "merge_base": MERGE_BASE, "tree": "tM",
+          "moving": False}
+    SPAN = {"status": "ok", "commits": {TIP, MERGE_BASE}, "ordered": [TIP, MERGE_BASE]}
+
+    def _patch(self, monkeypatch, resolved, span):
+        from lib import coverage, evidence_notes
+
+        monkeypatch.setattr(coverage, "resolve_merge_base_tree", lambda _p: resolved)
+        monkeypatch.setattr(evidence_notes, "_branch_commits", lambda _p: span)
+
+    def test_a_resolved_merge_base_bounds_the_chain(self, monkeypatch):
+        self._patch(monkeypatch, self.OK, self.SPAN)
+        assert critic_mode.chain_bound(Path(".")) == B2_BOUND
+
+    @pytest.mark.parametrize("resolved,span", [
+        ({"status": "error", "step": "resolve-base", "reason": "no base"}, SPAN),
+        ({**OK, "base_branch": "HEAD~1", "moving": True}, SPAN),
+        (OK, {"status": "error", "reason": "rev-list failed"}),
+        (OK, {"status": "unbounded", "reason": "no base"}),
+    ], ids=["no-merge-base", "moving-base", "span-unlisted", "span-unbounded"])
+    def test_no_bound_where_no_merge_base_places_one(self, monkeypatch, resolved, span):
+        self._patch(monkeypatch, resolved, span)
+        assert critic_mode.chain_bound(Path(".")) is None
+
+
+class _ChainAsked(Exception):
+    """Raised by the spy below once a consumer has asked for its chain."""
+
+
+class TestEveryChainConsumerPassesTheBranchBound:
+    """Each production caller walks its chain through `branch_review_chain`,
+    which bounds it with `chain_bound(project_dir)`: the class fixed at every
+    site, each pinned, and the walk reachable no other way."""
+
+    SENTINEL = critic_mode.ChainBound("t-sentinel", frozenset())
+    FACT = {"kind": "review", "id": "r1", "body": {"mode": "chunk", "head_tree": "t1"}}
+    READ = {"status": "ok", "facts": [FACT]}
+
+    @pytest.fixture
+    def asked(self, monkeypatch):
+        seen = {}
+
+        def bound(project_dir):
+            seen["project_dir"] = project_dir
+            return self.SENTINEL
+
+        def chain(_facts, _newest, *, bound):
+            seen["bound"] = bound
+            raise _ChainAsked
+
+        monkeypatch.setattr(critic_mode, "chain_bound", bound)
+        monkeypatch.setattr(critic_mode, "review_chain", chain)
+        return seen
+
+    def _assert_bounded(self, asked, project_dir):
+        assert asked.get("bound") is self.SENTINEL
+        assert asked.get("project_dir") == project_dir
+
+    def test_the_boundary_cumulative_check(self, monkeypatch, asked):
+        monkeypatch.setattr(critic_mode, "declares_boundary_cumulative", lambda _p, _b: True)
+        monkeypatch.setattr(critic_mode, "_newest_branch_review", lambda _p, _r=None: self.FACT)
+        progress = critic_mode.PlanProgress(5, 4, "05", ("05",), {}, False)
+        with pytest.raises(_ChainAsked):
+            critic_mode.boundary_cumulative_still_owed(
+                Path("/repo"), Path("/repo/.prawduct"), object(), progress, facts=self.READ
+            )
+        self._assert_bounded(asked, Path("/repo"))
+
+    def test_the_extension_deferral(self, monkeypatch, asked):
+        monkeypatch.setattr(critic_mode, "_newest_branch_review", lambda _p, _r=None: self.FACT)
+        progress = critic_mode.PlanProgress(5, 1, "02", ("02",), {}, False)
+        with pytest.raises(_ChainAsked):
+            critic_mode.extension_deferral_owed(
+                Path("/repo"), Path("/repo/.prawduct"), object(), progress, facts=self.READ
+            )
+        self._assert_bounded(asked, Path("/repo"))
+
+    def test_the_verify_proposal(self, asked, tmp_path):
+        plan = tmp_path / "build-plan.md"
+        plan.write_text("# plan\n")
+        with pytest.raises(_ChainAsked):
+            cc._dispatch_proposal(
+                tmp_path, plan, lambda: self.READ, [], "verify-resolutions", self.FACT
+            )
+        self._assert_bounded(asked, tmp_path)
+
+    def test_the_review_close(self, monkeypatch, asked, tmp_path):
+        binding = type("Binding", (), {"plan_path": tmp_path / "build-plan.md"})()
+        monkeypatch.setattr(work_unit, "resolve", lambda _p: binding)
+        with pytest.raises(_ChainAsked):
+            cc._plan_owes_a_later_review(tmp_path, tmp_path / ".prawduct", [self.FACT], self.FACT)
+        self._assert_bounded(asked, tmp_path)
+
+    def test_production_code_walks_a_chain_only_through_branch_review_chain(self):
+        """`branch_review_chain` owns the pairing of the walk with its bound,
+        so a new caller cannot pair them wrongly: no function in the plugin
+        but it calls `review_chain`. The callers named are the four the
+        tests above drive, so a fifth that appears gets its own."""
+        import ast
+
+        direct: set = set()
+        through: set = set()
+        for path in sorted(ROOT.rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for node in ast.walk(fn):
+                    if not isinstance(node, ast.Call):
+                        continue
+                    callee = node.func
+                    name = callee.attr if isinstance(callee, ast.Attribute) else getattr(
+                        callee, "id", None
+                    )
+                    if name == "review_chain":
+                        direct.add(fn.name)
+                    elif name == "branch_review_chain":
+                        through.add(fn.name)
+        assert direct == {"branch_review_chain"}
+        assert through == {
+            "boundary_cumulative_still_owed",
+            "extension_deferral_owed",
+            "_dispatch_proposal",
+            "_plan_owes_a_later_review",
+        }
+
+
+class TestAnEarlierBranchsCumulativeDoesNotDischargeThisBranchsBoundary:
+    """#1224 end to end on a real repository: B1 records a `cumulative` and a
+    later review X, and merges into `main` unmoved; B2 is cut from `main` and
+    reviews its first chunk from X's tree. B2's boundary review is still owed.
+    Only the store read and the plan's declaration are stubbed — the newest
+    review's selection and the merge base are git's."""
+
+    def _repo(self, tmp_path, merge_args):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        c0 = _commit_file(repo, "src/app.py", "x = 0\n", "base")
+        _git(repo, "checkout", "-b", "b1", "--quiet")
+        c1 = _commit_file(repo, "src/app.py", "x = 1\n", "b1 chunk")
+        c2 = _commit_file(repo, "src/app.py", "x = 2\n", "b1 fix")
+        _git(repo, "checkout", "main", "--quiet")
+        _git(repo, "merge", *merge_args, "--quiet", "-m", "merge b1", "b1")
+        _git(repo, "checkout", "-b", "b2", "--quiet")
+        c3 = _commit_file(repo, "src/app.py", "x = 3\n", "b2 chunk")
+
+        def tree(commit):
+            return _git(repo, "rev-parse", f"{commit}^{{tree}}").stdout.strip()
+
+        b1 = [
+            _anchored("b1-cumulative", tree(c0), tree(c1), c1, mode=_CUMULATIVE, chunks=["01"]),
+            _anchored("b1-x", tree(c1), tree(c2), c2, chunks=["01"]),
+        ]
+        return repo, b1, tree(c2), tree(c3), c3
+
+    def _owed(self, monkeypatch, repo, facts) -> bool:
+        from lib import evidence
+
+        for f in facts:
+            f["schema"] = evidence.SCHEMA_VERSION
+            f["actor"] = {"branch": f["id"].split("-")[0]}
+        monkeypatch.setattr(critic_mode, "declares_boundary_cumulative", lambda _p, _b: True)
+        monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "ok", "facts": facts})
+        progress = critic_mode.PlanProgress(2, 1, "02", ("02",), {}, False)
+        return critic_mode.boundary_cumulative_still_owed(
+            repo, repo / ".prawduct", object(), progress
+        )
+
+    @pytest.mark.parametrize("merge_args", [(), ("--no-ff",)], ids=["ff", "merge-commit"])
+    def test_b2s_boundary_review_is_owed(self, monkeypatch, tmp_path, merge_args):
+        repo, b1, m, n, c3 = self._repo(tmp_path, merge_args)
+        assert critic_mode.chain_bound(repo).tree == m  # B2 starts at X's tree
+        r1 = _anchored("b2-r1", m, n, c3, chunks=["01"])
+        assert self._owed(monkeypatch, repo, [*b1, r1]) is True
+
+    def test_b2s_own_cumulative_discharges_it(self, monkeypatch, tmp_path):
+        repo, b1, m, n, c3 = self._repo(tmp_path, ())
+        cumulative = _anchored("b2-cumulative", m, n, c3, mode=_CUMULATIVE, chunks=["01"])
+        assert self._owed(monkeypatch, repo, [*b1, cumulative]) is False
+
+    def test_b2s_boundary_review_is_owed_before_it_commits_anything(self, monkeypatch, tmp_path):
+        """B1 ran its boundary `cumulative` at its committed tip and
+        fast-forwarded into `main`, so that review anchors on the merge base
+        at the merge-base tree. B2's first review is of uncommitted work: HEAD
+        is still the merge base, and the review anchors on it too, from that
+        tree to a tree past it."""
+        repo, _b1, m, _n, _c3 = self._repo(tmp_path, ())
+        _git(repo, "reset", "--hard", "--quiet", "main")
+        merge_base = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        assert critic_mode.chain_bound(repo) == critic_mode.ChainBound(m, frozenset({merge_base}))
+        b1_start = _git(repo, "rev-parse", "HEAD~2^{tree}").stdout.strip()
+        b1 = _anchored("b1-cumulative", b1_start, m, merge_base, mode=_CUMULATIVE, chunks=["01"])
+        r1 = _anchored("b2-r1", m, "t-dirty", merge_base, chunks=["01"])
+        assert self._owed(monkeypatch, repo, [b1, r1]) is True
+
+
+class TestThisBranchsBoundaryReviewSurvivesItsWorkLanding:
+    """Once this branch's work is in its base, the merge base is this branch's
+    tip, so its boundary `cumulative` and the verify pass after it stand at
+    the merge-base tree. They are still this branch's, and the boundary stays
+    discharged: the Stop gate must not ask for a second `cumulative`. Each
+    case checks the same facts before the work lands as its control."""
+
+    def _facts(self, repo, base, tip, branch) -> list:
+        from lib import evidence
+
+        def tree(commit):
+            return _git(repo, "rev-parse", f"{commit}^{{tree}}").stdout.strip()
+
+        facts = [
+            _anchored("cumulative", tree(base), tree(tip), tip, mode=_CUMULATIVE, chunks=["01"]),
+            _anchored("verify", tree(tip), tree(tip), tip, mode=_VERIFY, verifies="cumulative"),
+        ]
+        for f in facts:
+            f["schema"] = evidence.SCHEMA_VERSION
+            f["actor"] = {"branch": branch}
+        return facts
+
+    def _owed(self, monkeypatch, repo, facts) -> bool:
+        from lib import evidence
+
+        monkeypatch.setattr(critic_mode, "declares_boundary_cumulative", lambda _p, _b: True)
+        monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "ok", "facts": facts})
+        progress = critic_mode.PlanProgress(2, 1, "02", ("02",), {}, False)
+        return critic_mode.boundary_cumulative_still_owed(
+            repo, repo / ".prawduct", object(), progress
+        )
+
+    def _landed(self, repo, tip):
+        bound = critic_mode.chain_bound(repo)
+        tip_tree = _git(repo, "rev-parse", f"{tip}^{{tree}}").stdout.strip()
+        assert bound == critic_mode.ChainBound(tip_tree, frozenset({tip}))  # merge base IS the tip
+
+    def test_on_a_trunk_branch_after_a_push(self, monkeypatch, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        c0 = _commit_file(repo, "src/app.py", "x = 0\n", "base")
+        _git(repo, "update-ref", "refs/remotes/origin/main", c0)
+        c1 = _commit_file(repo, "src/app.py", "x = 1\n", "chunk")
+        facts = self._facts(repo, c0, c1, "main")
+        assert self._owed(monkeypatch, repo, facts) is False  # before the push
+        _git(repo, "update-ref", "refs/remotes/origin/main", c1)  # the push
+        self._landed(repo, c1)
+        assert self._owed(monkeypatch, repo, facts) is False
+
+    def test_on_a_feature_branch_merged_with_a_merge_commit(self, monkeypatch, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        c0 = _commit_file(repo, "src/app.py", "x = 0\n", "base")
+        _git(repo, "checkout", "-b", "feat", "--quiet")
+        c1 = _commit_file(repo, "src/app.py", "x = 1\n", "chunk")
+        facts = self._facts(repo, c0, c1, "feat")
+        assert self._owed(monkeypatch, repo, facts) is False  # before the merge
+        _git(repo, "checkout", "main", "--quiet")
+        _git(repo, "merge", "--no-ff", "--quiet", "-m", "merge feat", "feat")
+        _git(repo, "checkout", "feat", "--quiet")
+        self._landed(repo, c1)
+        assert self._owed(monkeypatch, repo, facts) is False
 
 
 class TestOnlyASuppliedChunkIdIsCredited:
@@ -888,7 +1316,9 @@ class TestBoundaryReviewOwed:
         from lib import evidence
 
         facts = evidence.read_facts(repo).get("facts") or []
-        return critic_mode.review_chain(facts, critic_mode._newest_branch_review(repo))
+        return critic_mode.review_chain(
+            facts, critic_mode._newest_branch_review(repo), bound=critic_mode.chain_bound(repo)
+        )
 
     def test_a_cumulative_final_last_chunk_owes_the_boundary_review(self, tmp_path):
         """Renegotiated in the open (#1051): the chunk review of 05 now

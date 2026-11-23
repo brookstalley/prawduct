@@ -53,6 +53,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .. import clock
+from ..core import TEMP_SUFFIX
 from . import core, encode, ids, issuefmt, legacy, provision, restructure
 from .transport import Transport, TransportError, paginate
 
@@ -541,7 +542,7 @@ class Checkpoint:
         }
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), prefix=self.path.name, suffix=".tmp")
+            fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), prefix=self.path.name, suffix=TEMP_SUFFIX)
             try:
                 with os.fdopen(fd, "w", encoding="utf-8", errors="backslashreplace") as handle:
                     json.dump(data, handle)

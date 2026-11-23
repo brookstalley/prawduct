@@ -1026,6 +1026,10 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.handoff-notes.md",
     ".prawduct/.pr-body.md",
     ".prawduct/.test-evidence.json",
+    # Mirrored for the pin; `_untrack_session_files` maps listed files back by exact
+    # path or directory, so a glob untracks nothing, and a transient temp file is
+    # never the accidentally committed session file that loop exists for.
+    ".prawduct/**/*.prawduct.tmp",
     ".prawduct/.test-report.xml",
     ".prawduct/.test-report.xml.scope.json",
     ".prawduct/.critic-review-dispatch.json",
@@ -4786,7 +4790,7 @@ def _void_test_evidence(evidence_path: Path, attempt: str) -> dict:
             "test-status will read it as stale until it lands.",
             file=sys.stderr,
         )
-    tmp = evidence_path.with_name(evidence_path.name + ".tmp")
+    tmp = evidence_path.with_name(evidence_path.name + ".prawduct.tmp")
     try:
         tmp.write_text(json.dumps(voided, indent=2, sort_keys=True) + "\n")
         os.replace(tmp, evidence_path)
@@ -6525,7 +6529,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     # Atomic write — the freshness gate must never observe a half-written file.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
-    tmp = evidence_path.with_name(evidence_path.name + ".tmp")
+    tmp = evidence_path.with_name(evidence_path.name + ".prawduct.tmp")
     tmp.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     os.replace(tmp, evidence_path)
 
@@ -9059,7 +9063,7 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
         heading, end = span
         if apply:
             kept = lines[:heading] + lines[end:]
-            tmp = plan_path.with_name(plan_path.name + ".import-status.tmp")
+            tmp = plan_path.with_name(plan_path.name + ".import-status.prawduct.tmp")
             try:
                 with open(tmp, "w", encoding="utf-8", newline="", errors="backslashreplace") as handle:
                     handle.write("".join(kept))
