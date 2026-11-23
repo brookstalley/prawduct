@@ -14,11 +14,11 @@ import shlex
 import stat
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
 
+from conftest import TEST_NOW_EPOCH
 from lib import probe_families
 from lib import stranded_branch_probes as sbp
 from lib.advisory_store import (
@@ -219,7 +219,8 @@ def finished_branch(repo: Path, branch: str, *, age_days: float = 3, push: bool 
     name = f"{branch.replace('/', '-')}.txt"
     (repo / name).write_text(name)
     git(repo, "add", name)
-    git_at(repo, time.time() - age_days * DAY, "commit", "-q", "-m", name)
+    # The suite's clock, which dates git's commits and the plugin's ages of them alike.
+    git_at(repo, TEST_NOW_EPOCH - age_days * DAY, "commit", "-q", "-m", name)
     if push:
         git(repo, "push", "-q", "origin", branch)
     git(repo, "switch", "-q", "main")

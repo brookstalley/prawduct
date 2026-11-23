@@ -114,11 +114,13 @@ def scrubbed_env(home: "Path | str", **extra: str) -> dict[str, str]:
     writes. ``extra`` adds or overrides keys, so a test that must lift one of the suite's
     settings says so at its call site.
 
-    Each :data:`TEST_ENV` key takes this process's current value where it has one, so a test
-    that moved the clock (:func:`set_suite_clock`) moves its scrubbed children's with it."""
+    Each :data:`TEST_ENV` key takes this process's current value, so a test that moved the
+    clock (:func:`set_suite_clock`) moves its scrubbed children's with it, and one that removed
+    a key on purpose (`monkeypatch.delenv("GIT_CONFIG_GLOBAL")` to lift git's isolation) leaves
+    it out of them too."""
     Path(home).mkdir(parents=True, exist_ok=True)
     return {
-        **{name: os.environ.get(name, value) for name, value in TEST_ENV.items()},
+        **{name: os.environ[name] for name in TEST_ENV if name in os.environ},
         "HOME": str(home),
         "PATH": SCRUBBED_PATH,
         "GIT_TERMINAL_PROMPT": "0",

@@ -351,10 +351,6 @@ def _session_epoch(project_dir: Path) -> str | None:
     return datetime.fromtimestamp(mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _now_iso() -> str:
-    return clock.now().strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def append_fact(
     project_dir: Path, kind: str, fact_id: str, body: dict
 ) -> dict:
@@ -411,7 +407,7 @@ def append_fact(
         "schema": SCHEMA_VERSION,
         "kind": kind,
         "id": fact_id,
-        "ts": _now_iso(),
+        "ts": clock.now_iso(),
         "actor": actor,
         "body": body,
     }

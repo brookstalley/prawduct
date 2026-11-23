@@ -47,6 +47,7 @@ from lib import (  # noqa: E402
     stats,
     telemetry,
 )
+from lib import clock as lib_clock  # noqa: E402
 
 NOTES_REF = "refs/notes/prawduct"
 TRACKING_REF = "refs/notes/origin/prawduct"
@@ -300,8 +301,8 @@ class TestEveryCloneAgreesOnTheWinner:
         _sync(b, push=False)
         assert _winner(b, "R-1")["body"]["reason"] == "A's answer"
 
-        with monkeypatch.context() as clock:
-            clock.setattr(evidence, "_now_iso", lambda: "2020-01-01T00:00:00Z")
+        with monkeypatch.context() as behind:
+            behind.setenv(lib_clock.FROZEN_ENV, "@1577836800 +0000")  # 2020-01-01T00:00:00Z
             _record(b, "R-1", dispositions.FILE, backlog_id="ABC-1234")
         _sync(b)
         _sync(a)

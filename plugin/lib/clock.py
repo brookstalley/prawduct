@@ -4,7 +4,9 @@ The records the plugin stamps and later compares (an evidence fact, the
 ``.session-start`` marker, a ledger event, a backlog sync, an advisory
 transition), and the comparisons against them, read the wall clock through
 :func:`now`; each read that does not is listed with its reason in
-``tests/test_clock.py``. The gates compare such stamps with git's own dates: the Stop gate's session-work walk bounds the
+``tests/test_clock.py``. Which clock a read uses is decided by what it is
+compared with, not by the module that makes it: a stamp that leaves its module
+and meets one of these records reads :func:`now`, wherever it was minted. The gates compare such stamps with git's own dates: the Stop gate's session-work walk bounds the
 HEAD reflog by the ``.session-start`` stamp, and git dates a reflog entry by the
 committer date. A process whose stamps and whose commits read two different
 clocks gets that comparison wrong, so a test suite that pins git's dates has to
@@ -25,7 +27,10 @@ What does NOT read this clock, on purpose:
   by a frozen wall clock;
 * ages measured against a file's mtime or another process's real start, which
   the filesystem and the OS date by the real clock (a frozen "now" would make
-  every such file look older or younger than it is);
+  every such file look older or younger than it is). The exception is a file
+  :func:`date_file` dated, whose mtime is on this clock: a reader that ages it
+  beside real mtimes (``stranded_work``'s worktree liveness) carries its stamp
+  across first;
 * staleness and TTL logic under test, which takes an injected instant.
 
 Stdlib only, no relative imports: ``bin/prawduct-hook`` imports it from its own
@@ -75,11 +80,6 @@ def local_today() -> date:
     """Today's date on this machine's local calendar, from :func:`now`."""
     pinned = frozen()
     return pinned.astimezone().date() if pinned is not None else date.today()
-
-
-def epoch() -> float:
-    """:func:`now` as POSIX seconds, for code that compares with ``time.time()``-style numbers."""
-    return now().timestamp()
 
 
 def date_file(path: Path) -> None:

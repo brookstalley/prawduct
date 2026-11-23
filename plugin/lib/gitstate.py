@@ -22,13 +22,14 @@ from pathlib import Path
 #: can run under a git hook, or under a caller that exported them for ANOTHER repository, and a
 #: git child aimed at a different repository would then act on, or answer about, that one. Only
 #: these are shed: the rest of git's environment (identity, dates, config isolation such as
-#: `GIT_CONFIG_GLOBAL`) is the caller's choice and still applies.
+#: `GIT_CONFIG_GLOBAL`) is the caller's choice and still applies. That includes the limits on
+#: discovery, `GIT_CEILING_DIRECTORIES` and `GIT_DISCOVERY_ACROSS_FILESYSTEM`: they name no
+#: repository, they only stop git searching upward for one, so shedding them would WIDEN where
+#: a git child looks (into a dotfiles repository at `$HOME`, say) rather than aim it.
 REPO_LOCATING_ENV = frozenset({
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_CEILING_DIRECTORIES",
     "GIT_COMMON_DIR",
     "GIT_DIR",
-    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
     "GIT_INDEX_FILE",
     "GIT_NAMESPACE",
     "GIT_OBJECT_DIRECTORY",

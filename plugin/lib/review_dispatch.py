@@ -236,7 +236,7 @@ def begin(prawduct_dir: Path, event_kind: str, head: str | None) -> dict:
     never been, and must not become, a reason for one kind to touch another's.
     """
     record = {
-        "dispatched_at": clock.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "dispatched_at": clock.now_iso(),
         "head": head,
     }
     prawduct_dir.mkdir(parents=True, exist_ok=True)

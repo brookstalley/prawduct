@@ -41,26 +41,39 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 
 
-def as_just_run(report: Path) -> Path:
-    """Date a hand-written JUnit report as a run that STARTED just now — after
-    every file the fixture wrote — and ended its stated duration later.
+def as_just_run(report: Path, tree: "Path | None" = None) -> Path:
+    """Date a hand-written JUnit report as a run that STARTED a second after the
+    suite's current instant, after every file the fixture wrote, and ended its
+    stated duration later.
 
     The ingest bounds the tree by the run's start, read as the report's mtime
-    less its duration (#848, native finding at `report_predates_tree`). A report
-    written in the same instant as the fixture's files and claiming a run of a
-    second or more would have started before those files existed, so its stamp
-    is rightly withheld. Real runs start after their files; this makes the
-    fixture's report say so. The duration is read here independently of the
-    reader: the `<testsuites>` `time`, else the sum of the `<testsuite>` times."""
+    less its duration (#848, native finding at `report_predates_tree`), in two
+    ways: no file the suite reads may be newer than the start, and HEAD must not
+    have moved since it (`HEAD@{<start>}`, which git answers from the reflog's
+    dates, on the suite's clock). So the start is on the suite's clock: a commit
+    made on a clock moved past it (:func:`conftest.set_suite_clock`) is a HEAD
+    move the ingest can see, and one made before it is history the run read.
+    The fixture's files were written on the real clock, far later than that, so
+    each file and directory under ``tree`` (default: the report's own directory)
+    newer than the start is dated to the suite's instant, as written before the
+    run. The duration is read here independently of the reader: the
+    `<testsuites>` `time`, else the sum of the `<testsuite>` times."""
     import xml.etree.ElementTree as ET  # noqa: PLC0415
+
+    from lib import clock  # noqa: PLC0415
 
     root = ET.parse(report).getroot()
     suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
     total = root.get("time") if root.tag == "testsuites" else None
     duration = float(total) if total else sum(float(s.get("time") or 0) for s in suites)
-    # The report was written after every file the fixture wrote, so a start just after its
-    # own write time is after all of them; read from the file, not the clock.
-    end = report.stat().st_mtime + duration + 0.05
+    written = clock.now().timestamp()
+    start = written + 1
+    for folder, dirs, files in os.walk(tree or report.parent):
+        dirs[:] = [d for d in dirs if d != ".git"]
+        for path in [Path(folder), *(Path(folder) / name for name in files)]:
+            if path != report and path.lstat().st_mtime > written:
+                os.utime(path, (written, written), follow_symlinks=False)
+    end = start + duration + 0.05
     os.utime(report, (end, end))
     return report
 

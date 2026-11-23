@@ -37,7 +37,6 @@ class TestTheSeam:
         assert clock.frozen() == datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc)
         assert clock.now() == clock.frozen()
         assert clock.now_iso() == "2023-11-14T22:13:20Z"
-        assert clock.epoch() == 1700000000.0
 
     @pytest.mark.parametrize(
         "value", ["", "1700000000", "@1700000000", "@1700000000 +0100", "@abc +0000", "now"]
@@ -107,9 +106,25 @@ class TestTheLocalCalendar:
         assert clock.now().date() == date(2026, 10, 26)
         assert clock.local_today() == date(2026, 10, 25)
 
-    def test_the_suites_instant_is_the_same_day_everywhere(self, monkeypatch, pacific):
-        """Noon UTC, so a local date read from the suite's clock does not move with the machine."""
-        assert clock.local_today() == FROZEN.date()
+    @pytest.mark.parametrize("zone", [
+        "Etc/GMT+11", "America/Los_Angeles", "UTC", "Asia/Tokyo", "Etc/GMT-11",
+    ])
+    def test_the_suites_instant_is_the_same_day_from_utc_minus_11_to_plus_11(self, monkeypatch, zone):
+        """Noon UTC, so a local date read from the suite's clock does not move with the machine
+        anywhere in that band. Beyond it the date does move (the control): a test that pins a
+        local date compares with the local calendar, not with the UTC one."""
+        if not hasattr(time, "tzset"):
+            pytest.skip("no tzset on this platform")
+        try:
+            monkeypatch.setenv("TZ", zone)
+            time.tzset()
+            assert clock.local_today() == FROZEN.date()
+            monkeypatch.setenv("TZ", "Pacific/Kiritimati")  # UTC+14
+            time.tzset()
+            assert clock.local_today() != FROZEN.date()
+        finally:
+            monkeypatch.undo()
+            time.tzset()
 
 
 class TestTheSuiteRunsOneClock:
@@ -147,6 +162,14 @@ class TestTheSuiteRunsOneClock:
         assert marker.read_text().strip() == FROZEN.strftime("%Y-%m-%dT%H:%M:%SZ")
         assert marker.stat().st_mtime == TEST_NOW_EPOCH
 
+    def test_a_suite_setting_a_test_removed_stays_out_of_a_scrubbed_child(self, monkeypatch, tmp_path):
+        """A test that lifts one of the suite's settings with `delenv` (the global-excludes
+        tests lift `GIT_CONFIG_GLOBAL`) lifts it for the children it scrubs too."""
+        monkeypatch.delenv("GIT_CONFIG_GLOBAL")
+        env = scrubbed_env(tmp_path / "_home")
+        assert "GIT_CONFIG_GLOBAL" not in env
+        assert env["GIT_CONFIG_NOSYSTEM"] == "1", "control: the settings left in place still reach it"
+
     def test_moving_the_clock_moves_both(self, monkeypatch, tmp_path):
         instant = set_suite_clock(monkeypatch, 90)
         assert instant == f"@{TEST_NOW_EPOCH + 90} +0000"
@@ -157,18 +180,28 @@ class TestTheSuiteRunsOneClock:
 
 # Each plugin file that still reads the wall clock directly, how many times, and why it does not
 # read `lib.clock`. A new read is either routed through the seam or added here with its reason,
-# so "which clock does this read" is a decision someone made, not a default.
+# so "which clock does this read" is a decision someone made, not a default. The decision is per
+# COMPARISON: a read stays real only when everything it is compared with is real too (a file's
+# mtime, another process's start, a stamp this same read's clock minted). A stamp that is
+# persisted or returned and then compared with one `lib.clock` wrote reads `lib.clock`.
 LEFT_ON_THE_REAL_CLOCK = {
-    "plugin/lib/stranded_work.py": (3, "ages mix file mtimes with commit dates; callers inject `now`"),
-    "plugin/lib/git_hygiene.py": (1, "passes `now` into stranded_work, which ages file mtimes"),
-    "plugin/lib/stranded_branch_probes.py": (1, "renders an age for a branch stranded_work aged"),
+    "plugin/lib/stranded_work.py": (3, (
+        "a worktree's liveness ages file mtimes (transcripts, the reflog, edits), which the"
+        " filesystem dates; the third read carries the `.session-start` stamp onto that clock."
+        " Commit dates age on `lib.clock`, the clock git's agrees with")),
+    "plugin/lib/git_hygiene.py": (1, "passes `now` to stranded_work's worktree scan, which ages file mtimes"),
     "plugin/lib/host.py": (1, "an ordering key for the transcript cache, compared with no stamp"),
     "plugin/lib/briefing.py": (1, "a handoff file's age, from its mtime"),
     "plugin/lib/contribution.py": (1, "a send lock's age, from its mtime"),
-    "plugin/lib/critic_marker.py": (2, "a running review's liveness: real elapsed time, else mtime"),
+    "plugin/lib/critic_marker.py": (2, (
+        "a running review's liveness: the marker's `started_at` is minted and aged here and"
+        " nowhere else, else its mtime")),
     "plugin/lib/record_progress.py": (3, "a running recorder's liveness, against the OS's process start"),
-    "plugin/lib/native_review.py": (1, "elapsed time since a dispatch critic_consolidate stamps"),
-    "plugin/lib/critic_consolidate.py": (6, "review ids and dispatch ages, minted and aged in this module"),
+    "plugin/lib/critic_consolidate.py": (5, (
+        "a review id's stamp and dispatch_age_minutes's default `now`, which ages only that stamp:"
+        " dispatched reviewers' real elapsed time; a started marker's age from its mtime; an"
+        " archive directory's fallback name, compared with nothing; the superseded-at notice,"
+        " which a reader is shown and no code compares")),
     "plugin/bin/prawduct-hook": (1, "the recorder's in-progress stamp, which record_progress ages"),
 }
 _WALL_CLOCK = re.compile(

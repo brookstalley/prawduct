@@ -1328,10 +1328,20 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     try:
         clock = _clock()
         _core().atomic_write_text(prawduct_dir / ".session-start", clock.now_iso())
-        clock.date_file(prawduct_dir / ".session-start")
     except (OSError, ImportError) as exc:
         print(
             f"NOTE: could not write .session-start ({exc}) — freshness gates will fail closed this session",
+            file=sys.stderr,
+        )
+        return
+    # The marker exists with the right text by here; only its mtime can still be wrong, so a
+    # failure says that and not that the gates fail closed (they read the text).
+    try:
+        clock.date_file(prawduct_dir / ".session-start")
+    except OSError as exc:
+        print(
+            f"NOTE: could not date .session-start to the plugin's clock ({exc}) — its mtime, "
+            "which identifies this session, disagrees with the stamp it holds",
             file=sys.stderr,
         )
 
@@ -4708,9 +4718,12 @@ def _void_test_evidence(evidence_path: Path, attempt: str) -> dict:
     caller proceeds either way, because a void that could not be written leaves
     the reader exactly where it was before.
     """
-    # The real clock, not `_clock()`: this stamp is the running recorder's start, which
-    # `record_progress` ages against the wall clock and the OS's own process start time.
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Two clocks, one per comparison. The record's `timestamp` is sorted against the store's
+    # test-run facts and `.session-start`, which the plugin's clock stamps. The in-progress
+    # stamp is the running recorder's start, which `record_progress` ages against the wall
+    # clock and the OS's own process start time.
+    now = _clock().now_iso()
+    started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     void = f"record attempt at {now} ({attempt}) did not complete"
     prior, why_no_prior = None, "no record had landed in this worktree"
     if evidence_path.is_file():
@@ -4766,7 +4779,7 @@ def _void_test_evidence(evidence_path: Path, attempt: str) -> dict:
     try:
         from lib import record_progress  # noqa: PLC0415 — lazy keeps top-level cheap
 
-        voided["in_progress"] = record_progress.stamp(attempt, now)
+        voided["in_progress"] = record_progress.stamp(attempt, started)
     except ImportError as exc:
         print(
             f"note: the record attempt is not stamped as in progress ({exc}); "
@@ -6458,7 +6471,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # skipped (verifier absent on a broken install). The overlay fills the real
     # coverage half.
     record = {
-        "timestamp": _clock().now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": _clock().now_iso(),
         "command": (
             prior_command
             if no_rerun

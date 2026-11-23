@@ -537,9 +537,30 @@ def test_only_the_location_variables_are_shed():
     kept = {
         "GIT_AUTHOR_NAME": "A", "GIT_COMMITTER_DATE": "@0 +0000",
         "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_COUNT": "0", "PATH": "/usr/bin",
+        # Limits on discovery name no repository: shedding them would widen the search.
+        "GIT_CEILING_DIRECTORIES": "/home/someone", "GIT_DISCOVERY_ACROSS_FILESYSTEM": "0",
     }
     assert gitstate.env_without_repo_location({**env, **kept}) == kept
     assert {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} <= gitstate.REPO_LOCATING_ENV
+
+
+def test_a_callers_ceiling_still_stops_the_plugin_build_read(tmp_path, monkeypatch):
+    """A home directory under version control that tracks a plugin copy's files: the caller's
+    `GIT_CEILING_DIRECTORIES` keeps the build read from discovering that repository, so the
+    plugin borrows no sha. Without the ceiling (the control) the same read finds it."""
+    from lib import evidence  # noqa: PLC0415
+
+    home = tmp_path / "home"
+    plugin = home / "plugins" / "p"
+    plugin.mkdir(parents=True)
+    (plugin / "VERSION").write_text("1.0.0\n")
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=home, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=home, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "dotfiles"], cwd=home, check=True)
+    monkeypatch.delenv("GIT_CEILING_DIRECTORIES", raising=False)
+    assert evidence.read_plugin_build(plugin) is not None, "control: the home repo is found"
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(home))
+    assert evidence.read_plugin_build(plugin) is None
 
 
 # --- the probe --------------------------------------------------------------------
