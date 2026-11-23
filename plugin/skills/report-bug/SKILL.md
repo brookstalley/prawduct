@@ -94,6 +94,13 @@ Then compose the three inputs the adapter takes:
   (Principle 5 — Honest Confidence). Omit the section if you only have symptoms.
   ```
 
+**When the component is `plan status` or chunk state**, the Reproduction carries what decides the
+row: the affected row from `prawduct-hook plan status --json` (`state`, `fact_id`, `reason`,
+`ahead_of`) and the certifying fact's `mode`, `chunks`, `chunks_proposed`, `chunks_declared` and
+`chunks_evidence`, read with `prawduct-hook evidence list --id <fact_id> --json`. They are ids,
+paths and commit ids. Abstract the paths and ids as above; the fields' names and shape are what the
+report needs.
+
 **Do not write a `Component` or `Found in` section** — the adapter composes both,
 and it *sources* the version from the running manifest rather than recalling one.
 That is why it is not your step: a recalled version drifts as the plugin updates.

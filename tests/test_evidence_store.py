@@ -874,6 +874,23 @@ class TestEvidenceCli:
         assert "Usage" in proc.stderr
         assert _run_hook(repo, "evidence", "list", "-n", "1").returncode == 0
 
+    def test_list_by_id_as_json_prints_the_whole_fact(self, tmp_path):
+        """#1141-R10: the bug-report intake reads a certifying review's chunk
+        fields, which the one-row listing does not show."""
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(repo, "review", "r-1", {"head_tree": "a" * 40, "chunks": ["01"]})
+        evidence.append_fact(repo, "review", "r-2", {"head_tree": "b" * 40, "chunks": ["02"],
+                                                     "chunks_declared": False})
+        proc = _run_hook(repo, "evidence", "list", "--id", "r-2", "--json")
+        assert proc.returncode == 0, proc.stderr
+        (line,) = proc.stdout.splitlines()
+        fact = json.loads(line)
+        assert (fact["id"], fact["body"]["chunks"], fact["body"]["chunks_declared"]) == ("r-2", ["02"], False)
+        # Without --json, --id narrows the one-row listing.
+        rows = _run_hook(repo, "evidence", "list", "--id", "r-1").stdout
+        assert "r-1" in rows and "r-2" not in rows
+        assert _run_hook(repo, "evidence", "list", "--id", "nope", "--json").stdout == ""
+
     def test_list_tolerates_opaque_body_values(self, tmp_path):
         repo = _make_repo(tmp_path)
         # Valid envelope, body fields this lister doesn't understand — a

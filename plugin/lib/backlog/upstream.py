@@ -134,6 +134,13 @@ _URL_RE = re.compile(r"^\s*url\s*=\s*(.+?)\s*$", re.IGNORECASE)
 # --- the two impure reads ----------------------------------------------------
 
 
+def _plugin_root() -> Path:
+    """The plugin tree this module runs from: the directory holding
+    ``.claude-plugin/`` and ``VERSION``. The one derivation the version and the
+    build both read from."""
+    return Path(__file__).resolve().parents[2]
+
+
 def plugin_version(plugin_root: Path | None = None) -> str:
     """The running plugin's semver from the bundled manifest, or :data:`VERSION_UNKNOWN`.
 
@@ -143,7 +150,7 @@ def plugin_version(plugin_root: Path | None = None) -> str:
     missing file, an undecodable one, malformed JSON, or a manifest carrying no
     version.
     """
-    root = Path(plugin_root) if plugin_root is not None else Path(__file__).resolve().parents[2]
+    root = Path(plugin_root) if plugin_root is not None else _plugin_root()
     try:
         raw = (root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
         data = json.loads(raw)
@@ -151,6 +158,26 @@ def plugin_version(plugin_root: Path | None = None) -> str:
         return VERSION_UNKNOWN
     version = data.get("version") if isinstance(data, dict) else None
     return str(version) if version else VERSION_UNKNOWN
+
+
+def plugin_build(found_in: str, plugin_root: Path | None = None) -> str | None:
+    """The plugin tree's build on a development build, else ``None``.
+
+    A ``-dev`` version names a line of development, not a tree, so a report
+    filed from one cannot say whether the reporter's plugin predates a fix
+    (#1141-R11). The build can, and it is read at call time like the version.
+    It is :func:`evidence.read_plugin_build`'s answer, the one reader every
+    fact's ``actor.build`` is stamped from, so a report's label and the facts
+    it quotes cannot disagree: the checkout's commit plus ``+dirty`` for
+    uncommitted plugin changes, and ``None`` for a plugin root that only sits
+    inside some unrelated repository. A released version keeps its bare
+    label, because its tag already names the tree.
+    """
+    if found_in == VERSION_UNKNOWN or "-dev" not in found_in:
+        return None
+    from .. import evidence  # noqa: PLC0415 — lazy: only a development build asks git
+
+    return evidence.read_plugin_build(Path(plugin_root) if plugin_root is not None else _plugin_root())
 
 
 def resolve_self_identity(project_dir) -> tuple[str, ...]:
@@ -286,7 +313,7 @@ def render_title(component: str, symptom: str) -> str:
     return f"{TITLE_PREFIX} {symptom}"
 
 
-def render_report(*, component: str, found_in: str, body: str) -> str:
+def render_report(*, component: str, found_in: str, body: str, build: str | None = None) -> str:
     """The human half of the body: the two sourced sections, then the authored ones.
 
     **Component** and **Found in** are the only sections this module composes,
@@ -299,21 +326,25 @@ def render_report(*, component: str, found_in: str, body: str) -> str:
     component = (component or "").strip()
     if component:
         blocks.append(f"### Component\n\n{component}")
-    blocks.append(f"### Found in\n\n{version_label(found_in)}")
+    blocks.append(f"### Found in\n\n{version_label(found_in, build)}")
     body = (body or "").strip()
     if body:
         blocks.append(body)
     return "\n\n".join(blocks)
 
 
-def version_label(found_in: str) -> str:
+def version_label(found_in: str, build: str | None = None) -> str:
     """``prawduct v3.4.0 (plugin)`` — or an unadorned ``(unknown)`` sentinel.
 
     The ``v`` prefix belongs to a real version only; ``prawduct v(unknown)``
     reads like a version string and invites someone to treat it as one.
+    ``build`` is :func:`plugin_build`'s answer on a development build: a
+    version plus a build is what rules version skew in or out.
     """
     if found_in == VERSION_UNKNOWN:
         return f"prawduct {VERSION_UNKNOWN} (plugin)"
+    if build:
+        return f"prawduct v{found_in} (plugin, build {build})"
     return f"prawduct v{found_in} (plugin)"
 
 
@@ -408,6 +439,7 @@ def build_payload(
     body: str,
     component: str = "",
     found_in: str,
+    build: str | None = None,
     target: str = PINNED_TARGET,
 ) -> dict | None:
     """The complete outbound payload: ``{repo, title, body, labels}``.
@@ -427,7 +459,7 @@ def build_payload(
     if check_payload_inputs(title=title, body=body, component=component) is not None:
         return None
     rendered_title = render_title(component, title)
-    report = render_report(component=component, found_in=found_in, body=body)
+    report = render_report(component=component, found_in=found_in, body=body, build=build)
     key = source_key(title=rendered_title, body=report)
     marker = marker_block(found_in=found_in, key=key)
     return {
@@ -451,11 +483,13 @@ def render_preview(
     ``approval-mismatch``, which reads to the operator as their own mistake rather
     than as two spellings of one recipe. Both arms call this.
     """
+    found_in = plugin_version()
     payload = build_payload(
         title=title,
         body=body,
         component=component,
-        found_in=plugin_version(),
+        found_in=found_in,
+        build=plugin_build(found_in),
     )
     if payload is None:
         return None

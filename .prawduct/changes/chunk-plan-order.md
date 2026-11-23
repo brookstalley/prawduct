@@ -65,6 +65,16 @@ and only reads; the CLI writes behind it. A write that fails partway says what w
 exits 1, and a re-run converges, because every written pair answers `already`. `--all` with
 `--fact` is a usage error. Without `--all`, the "still reads done" line names it.
 
+### Chunk 05: bug-report intake
+
+A bug report about `plan status` or chunk state now carries what decides the row: the affected
+`plan status --json` row, and the certifying fact's chunk fields. `evidence list` gains `--id` and
+`--json`, so the intake can read those fields; the one-row listing never showed a body. On a `-dev`
+build, the report's Found-in label also carries the plugin tree's commit
+(`prawduct v3.9.1-dev (plugin, build <commit>)`). A version plus a commit is enough to rule version
+skew in or out. A released version keeps its bare label, and the report's machine-read `found_in`
+stays the bare version.
+
 ## Consumer note
 A review no longer certifies a later chunk just because its diff touched that chunk's files while
 an earlier chunk is still open. `critic-begin` prints a note when it holds a chunk back. To credit

@@ -11269,7 +11269,7 @@ _USAGE = (
     "plan {new <scope> [--branch B] [--base BASE] [--title T] [--kind K] [--working]|"
     "bind <path> --branch B|resolve [--json]|status [<path>] [--json]}|"
     "resolve-base|version|python-floor|print-install-reference|"
-    "evidence {status|list [--kind <k>] [-n <count>]|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}|advisory <subcmd> [args]|"
+    "evidence {status|list [--kind <k>] [--id <fact-id>] [-n <count>] [--json]|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}|advisory <subcmd> [args]|"
     "disposition <review-id> <fid|oid> {--accept <reason>|--file <backlog-id>|--fixed <path>[,<path>...]} [--owner-ruling <text>]|"
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
