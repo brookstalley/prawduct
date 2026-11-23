@@ -2090,6 +2090,10 @@ def _print_human_ok(data) -> None:
             _print_item_line(cand)
             if cand.get("why"):
                 print(f"    {cand['why']}")
+            # Advice from the base branch's history, on the same footing as the
+            # why: a candidate whose legs already shipped must not read as clean.
+            if (cand.get("base_history") or {}).get("note"):
+                print(f"    history: {cand['base_history']['note']}")
         print(f"  {data.get('count', len(candidates))} candidate(s)")
     elif "items" in data:
         # A list result.

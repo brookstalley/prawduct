@@ -199,7 +199,7 @@ def resolve_self_identity(project_dir) -> tuple[str, ...]:
         directory / ".prawduct" / "project-state.yaml", "backlog_service_repo"
     )
     resolved: list[str] = []
-    for candidate in (configured, _origin_repo(directory)):
+    for candidate in (configured, origin_repo(directory)):
         spec = canonical_repo(candidate)
         if spec is None or spec in resolved:
             continue
@@ -220,7 +220,7 @@ def canonical_repo(spec: str | None) -> str | None:
     return f"{parsed[0].lower()}/{parsed[1].lower()}" if parsed else None
 
 
-def _origin_repo(directory: Path) -> str | None:
+def origin_repo(directory: Path) -> str | None:
     """``owner/repo`` from this checkout's ``origin`` remote, or ``None``.
 
     Read out of ``.git/config`` rather than by shelling out to ``git remote
