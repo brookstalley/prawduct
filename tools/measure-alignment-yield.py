@@ -66,6 +66,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -286,9 +287,40 @@ def _save_baseline(path: Path, store: dict, key: str, entry: dict) -> bool:
     return True
 
 
+def _saved_blob(basis) -> str | None:
+    """The script's git blob id a saved ``tool_basis`` names, or None when it cannot be told:
+    ``blob:<id>`` is its own answer; ``commit:<sha>`` is looked up in this repo's history."""
+    if not isinstance(basis, str):
+        return None
+    if basis.startswith("blob:"):
+        return basis[5:] or None
+    if basis.startswith("commit:") and len(basis) > 7:
+        rel = Path(__file__).resolve().relative_to(Path(__file__).resolve().parent.parent)
+        try:
+            out = subprocess.run(["git", "rev-parse", f"{basis[7:]}:{rel.as_posix()}"],
+                                 cwd=Path(__file__).resolve().parent, capture_output=True,
+                                 text=True, timeout=10, check=True).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return out or None
+    return None
+
+
+def _instrument(saved_basis) -> str:
+    """'same', 'different' or 'unknown': whether the saved reading came from this script as it is
+    now. The current basis hashes the file's bytes, so a dirty tree or a copy outside git is
+    'different' from any commit it does not match; 'unknown' is only a saved basis that names no
+    resolvable script version."""
+    blob = _saved_blob(saved_basis)
+    if blob is None:
+        return "unknown"
+    return "same" if "blob:" + blob == _tool_basis() else "different"
+
+
 def _against_saved(entry: dict, total: dict, min_chars: int) -> dict:
-    """The saved reading beside the live one. Counts only fall when transcripts are pruned, so a
-    live count below its saved one means the saved figure is the baseline to cite."""
+    """The saved reading beside the live one. A live count below its saved one has two possible
+    causes: transcripts were pruned, or the instrument changed (a counting fix lowers counts too).
+    Only when the saved reading came from this same script is a shortfall attributed to pruning."""
     out = {"read": entry.get("read"), "source": entry.get("source"),
            "tool_basis": entry.get("tool_basis"), "counts": entry.get("counts"),
            "note": entry.get("note")}
@@ -303,7 +335,10 @@ def _against_saved(entry: dict, total: dict, min_chars: int) -> dict:
         live = total[side == "governed"]
         vs[side] = {k: {"saved": v, "live": live[k]} for k, v in saved.items() if v is not None}
     out["vs_live"] = vs
-    out["pruned"] = any(c["live"] < c["saved"] for side in vs.values() for c in side.values())
+    out["instrument"] = _instrument(entry.get("tool_basis"))
+    short = any(c["live"] < c["saved"] for side in vs.values() for c in side.values())
+    out["short"] = short
+    out["pruned"] = short and out["instrument"] == "same"
     return out
 
 
@@ -326,6 +361,12 @@ def main(argv=None) -> int:
     if args.save_baseline and baseline_path is None:
         print("--save-baseline needs a --baseline-file", file=sys.stderr)
         return 2
+    read_date = (args.read_date or datetime.date.today().isoformat()) if args.save_baseline else None
+    if args.save_baseline and not (args.until and args.until <= read_date):
+        print("--save-baseline needs a closed window: --until set and not after the read date "
+              f"({read_date}); an open window's counts would still grow and a save is never "
+              "replaced", file=sys.stderr)
+        return 2
     store = None
     if baseline_path is not None:
         try:
@@ -345,9 +386,13 @@ def main(argv=None) -> int:
 
     key = window_key(args.since, args.until)
     saved_now = False
+    if args.save_baseline and not selected and key not in store["windows"]:
+        print("--save-baseline: no transcript falls in the window (check --glob and the dates), "
+              "nothing written", file=sys.stderr)
+        return 2
     if args.save_baseline:
         entry = {"window": {"since": args.since, "until": args.until},
-                 "read": args.read_date or datetime.date.today().isoformat(), "source": "measured",
+                 "read": read_date, "source": "measured",
                  "tool_basis": _tool_basis(), "min_chars": args.min_chars,
                  "counts": {"governed": {k: total[True][k] for k in KEYS},
                             "ungoverned": {k: total[False][k] for k in KEYS}},
@@ -396,8 +441,17 @@ def main(argv=None) -> int:
             print(f"  {side}: " + ", ".join(f"{k} {c['saved']} (live {c['live']})"
                                             for k, c in counts.items()))
         if saved.get("pruned"):
-            print("  live counts fall short of the saved ones: transcripts were pruned, so "
-                  "cite the saved counts for this window.")
+            print("  live counts fall short of the saved ones, read by this same script: "
+                  "transcripts were pruned, so cite the saved counts for this window.")
+        elif saved.get("short"):
+            if saved["instrument"] == "different":
+                print("  live counts fall short of the saved ones, but the saved reading came "
+                      "from a different version of this script: the shortfall may be pruning, "
+                      "the counting change, or both. Do not read it as pruning.")
+            else:
+                print("  live counts fall short of the saved ones, and the saved reading's "
+                      "script version cannot be resolved here: the shortfall may be pruning or "
+                      "a counting change.")
     if health:
         print("health: " + ", ".join(f"{k} {v}" for k, v in sorted(health.items()))
               + " — a jump between runs is a transcript format change before it is a result.")
