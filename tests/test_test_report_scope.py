@@ -913,11 +913,22 @@ class TestLifetimeProseMatchesTheSingleSlot:
 # deliberate non-read of the record has to say why (R-1/R-6).
 
 
-def _git_in(repo: Path, *args: str) -> None:
+def _git_in(repo: Path, *args: str, env: "dict[str, str] | None" = None) -> None:
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
-        cwd=repo, capture_output=True, check=True,
+        cwd=repo, capture_output=True, check=True, env=env,
     )
+
+
+def _dated_now() -> dict[str, str]:
+    """The environment for a git command that must happen NOW on the reflog's clock.
+
+    The suite fixes every commit's dates (`conftest.GIT_TEST_ENV`), and a reflog entry is dated
+    by the committer date, so a commit made under it sits in the reflog at that fixed past
+    instant, BEFORE a report this file dates relative to the wall clock. A test whose subject is
+    a HEAD move after the run started must date that move by the real clock."""
+    stamp = f"@{int(time.time())} +0000"
+    return {**os.environ, "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp}
 
 
 def _test_runs(repo: Path) -> list[dict]:
@@ -1005,7 +1016,7 @@ class TestIngestStampsATreeOnlyWhenTheReportIsNewer:
         against HEAD; HEAD's own movement since the report is what shows it."""
         repo, report = ingest_repo
         _git_in(repo, "rm", "-q", "tests/test_b.py")
-        _git_in(repo, "commit", "-q", "-m", "drop b")
+        _git_in(repo, "commit", "-q", "-m", "drop b", env=_dated_now())
         self._withheld(repo, self._ingest(repo, report))
 
     def test_a_commit_after_the_report_that_deletes_nothing_still_stamps(self, ingest_repo):
@@ -1016,7 +1027,7 @@ class TestIngestStampsATreeOnlyWhenTheReportIsNewer:
         past = report.stat().st_mtime - 60
         os.utime(repo / "notes.txt", (past, past))
         _git_in(repo, "add", "notes.txt")
-        _git_in(repo, "commit", "-q", "-m", "notes")
+        _git_in(repo, "commit", "-q", "-m", "notes", env=_dated_now())
         res = self._ingest(repo, report)
         assert res.returncode == 0, res.stderr
         record = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())

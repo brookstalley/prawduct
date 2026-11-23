@@ -393,6 +393,14 @@ def test_a_per_clone_exclude_does_not_satisfy_the_contract(tmp_path):
     assert drift["ignored_by_rule"] == []
 
 
+#: Every test using `global_excludes` lifts the suite's git isolation (`conftest.GIT_TEST_ENV`) on
+#: purpose, so its git children read a global config, and testament must not reuse the result.
+_READS_A_GLOBAL_GIT_CONFIG = pytest.mark.uncacheable(
+    "its subject is a user-level git config: it lifts the suite's GIT_CONFIG_GLOBAL isolation "
+    "so git reads a global excludes file"
+)
+
+
 @pytest.fixture
 def global_excludes(tmp_path_factory, monkeypatch):
     """A user-level excludes file NAMED `.gitignore` (the common `~/.gitignore`), outside the repo.
@@ -414,6 +422,7 @@ def global_excludes(tmp_path_factory, monkeypatch):
     return gfile
 
 
+@_READS_A_GLOBAL_GIT_CONFIG
 def test_a_global_excludes_file_named_dot_gitignore_is_not_shared(world, global_excludes):
     """`core.excludesFile=~/.gitignore` shares a NAME with the repo's file and nothing else.
 
@@ -439,6 +448,7 @@ def test_a_global_excludes_file_named_dot_gitignore_is_not_shared(world, global_
     assert ".prawduct/.critic-active" in (world / ".gitignore").read_text().splitlines()
 
 
+@_READS_A_GLOBAL_GIT_CONFIG
 def test_a_gitignore_in_the_work_tree_still_counts_with_a_global_file_present(world, global_excludes):
     # The control for the path decision: same rule text, but in the repo's own `.gitignore`.
     _write(world, ".prawduct/.critic-active\n")

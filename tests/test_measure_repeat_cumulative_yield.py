@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import GIT_TEST_ENV  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _TOOL = REPO_ROOT / "tools" / "measure-repeat-cumulative-yield.py"
@@ -43,6 +44,7 @@ def _load():
 tool = _load()
 
 _GIT_ENV = {
+    **GIT_TEST_ENV,
     "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
     "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid",
     "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",

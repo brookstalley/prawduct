@@ -33,6 +33,7 @@ from lib.buildplan_refs import (
     _chunk_section_lines,
 )
 from lib.plan_index import iter_status_section_items, iter_status_section_lines
+from conftest import GIT_TEST_ENV  # noqa: E402
 
 LIB_DIR = Path(__file__).resolve().parent.parent / "plugin" / "lib"
 
@@ -46,6 +47,7 @@ def _git_env(repo: Path) -> dict[str, str]:
     """Sterile env for git calls; HOME outside the repo (see the inference
     tests' helper for why — OS caches must not appear as untracked files)."""
     return {
+        **GIT_TEST_ENV,
         "HOME": str(repo.parent / "_home"),
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "GIT_CONFIG_GLOBAL": "/dev/null",

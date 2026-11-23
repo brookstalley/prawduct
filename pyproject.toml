@@ -92,6 +92,7 @@ markers = [
     "requires_history: reads this repo's full git history; not runnable on a history-less checkout",
     "requires_local_cache: full assertion needs this clone's backlog cache; skips on a fresh checkout",
     "non_root: permission fixture that cannot refuse root; skipped when euid is 0",
+    "uncacheable(why): never reuse this test's result (testament); the why says what it reads on purpose",
 ]
 # Worker count is pinned rather than `auto` (owner request 2026-08-19): `auto`
 # takes every core, and a full-suite run then owns the developer's machine for

@@ -20,6 +20,7 @@ if str(_PLUGIN) not in sys.path:
     sys.path.insert(0, str(_PLUGIN))
 
 from lib import change_fragments  # noqa: E402
+from conftest import GIT_TEST_ENV  # noqa: E402
 
 HOOK = _PLUGIN / "bin" / "prawduct-hook"
 ARCHIVE = ".prawduct/change-log-archive"
@@ -27,6 +28,7 @@ ARCHIVE = ".prawduct/change-log-archive"
 
 def _env(repo: Path) -> dict[str, str]:
     return {
+        **GIT_TEST_ENV,
         "HOME": str(repo.parent / "_home"),
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "GIT_CONFIG_GLOBAL": "/dev/null",

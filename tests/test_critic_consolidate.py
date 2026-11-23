@@ -68,6 +68,7 @@ def _git_env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
     return {
+        **GIT_TEST_ENV,
         "HOME": str(home),
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -206,7 +207,7 @@ FAKE_REVIEW_ID = "rev-test-0001"
 #: `fact_to_cache_record` reads its waivers from the store, so it takes one.
 _NO_FACTS = {"facts": []}
 
-from conftest import V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home for the shape
+from conftest import GIT_TEST_ENV, V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home for the shape
 
 
 def _review_id(repo: Path) -> str:
