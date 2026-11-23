@@ -22,9 +22,11 @@ PLUGIN = ROOT / "plugin"
 
 
 def _plugin_sources() -> list[Path]:
-    """Every Python source under ``plugin/``, the extensionless hook included."""
+    """Every Python source under ``plugin/`` (the extensionless hook included) and
+    this repo's ``tools/``, which write into ``.prawduct/research/``."""
     files = sorted(p for p in PLUGIN.rglob("*.py") if "__pycache__" not in p.parts)
     files.append(PLUGIN / "bin" / "prawduct-hook")
+    files += sorted((ROOT / "tools").glob("*.py"))
     return files
 
 

@@ -281,7 +281,7 @@ def _save_baseline(path: Path, store: dict, key: str, entry: dict) -> bool:
         return False
     store["windows"][key] = entry
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
+    tmp = path.with_name(path.name + ".prawduct.tmp")  # core.TEMP_SUFFIX: ignored under .prawduct/
     tmp.write_text(json.dumps(store, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, path)
     return True
