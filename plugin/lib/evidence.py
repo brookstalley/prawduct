@@ -284,14 +284,6 @@ def _plugin_version() -> str | None:
 BUILD_SHA_LENGTH = 12
 #: Suffix on ``actor.build`` when the plugin tree differs from its commit.
 BUILD_DIRTY_SUFFIX = "+dirty"
-#: Git's repository-locating variables. A hook can run under a git hook or a
-#: caller that exported them for the PRODUCT repo, and git would then answer
-#: about the product rather than the plugin checkout.
-_REPO_LOCATING_ENV = (
-    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
-    "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX",
-    "GIT_NAMESPACE",
-)
 _UNREAD = object()
 _build_memo: object = _UNREAD
 
@@ -309,7 +301,10 @@ def read_plugin_build(plugin_root: Path) -> str | None:
     directory: a dirty sibling outside it did not change the code that ran.
     Runs with ``GIT_OPTIONAL_LOCKS=0``, so it never rewrites that index.
     Never raises (:func:`run_git` converts every failure)."""
-    env = {k: v for k, v in os.environ.items() if k not in _REPO_LOCATING_ENV}
+    # A hook can run under a git hook, or a caller that exported git's location
+    # variables for the PRODUCT repo; git would then answer about the product
+    # rather than the plugin checkout.
+    env = gitstate.env_without_repo_location()
     # A read must never refresh the checkout's index: this one is often a
     # developer's working tree, where a lock collides with their own git and a
     # rewritten index reads as activity to whatever watches its mtime.

@@ -17,6 +17,33 @@ import re
 import subprocess
 from pathlib import Path
 
+#: Git's repository-locating variables (`git help git`, "The Git Repository"; `GIT_PREFIX` and
+#: `GIT_QUARANTINE_PATH` are the ones git itself exports to aliases and receive hooks). A hook
+#: can run under a git hook, or under a caller that exported them for ANOTHER repository, and a
+#: git child aimed at a different repository would then act on, or answer about, that one. Only
+#: these are shed: the rest of git's environment (identity, dates, config isolation such as
+#: `GIT_CONFIG_GLOBAL`) is the caller's choice and still applies.
+REPO_LOCATING_ENV = frozenset({
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CEILING_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_DIR",
+    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    "GIT_INDEX_FILE",
+    "GIT_NAMESPACE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+    "GIT_QUARANTINE_PATH",
+    "GIT_WORK_TREE",
+})
+
+
+def env_without_repo_location(env: "dict[str, str] | None" = None) -> "dict[str, str]":
+    """A copy of ``env`` (default ``os.environ``) without :data:`REPO_LOCATING_ENV`, for a git
+    child aimed at a repository other than the one an inherited environment may name."""
+    source = os.environ if env is None else env
+    return {k: v for k, v in source.items() if k not in REPO_LOCATING_ENV}
+
 
 def get_prawduct_dir(project_dir: Path) -> Path:
     """``.prawduct/`` under the project dir. Local copy of the hook's bootstrap
