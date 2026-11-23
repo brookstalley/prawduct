@@ -1041,6 +1041,69 @@ class TestModeAdvisoryReadsTheWorkSpan:
         assert self._SENTINEL not in err
 
 
+class TestModeAdvisoryAfterAVerifyPass:
+    """Gate 2.5 as the Stop hook prints it, with the REAL predicate: a finished
+    plan closed by a boundary `cumulative` whose findings one clean
+    `verify-resolutions` pass resolved owes no `final`, so the hook prints no
+    synthesis NOTE. The defect was reported as that printed line (2026-11-23);
+    a test on the predicate alone stays green with the hook's call deleted.
+
+    Only the coverage verdict is stubbed, to "covered" — Gate 2.5 runs only
+    when Gate 2 passes, and composition is not what this pins."""
+
+    _NOTE = "Run /prawduct:critic final for end-of-cycle synthesis"
+    _CUMULATIVE = "cumulative (bundle review, ready for merge)"
+    _CHUNK = "chunk (lighter pass, not ready for push)"
+    _VERIFY = "verify-resolutions (delta review, prior findings only)"
+
+    def _stop_after(self, tmp_path, monkeypatch, capsys, boundary_mode: str) -> str:
+        repo = _session_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n"
+            "- [x] Chunk 01: a\n- [x] Chunk 02: b\n- [x] Chunk 03: c\n"
+        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        _commit(repo, "code.py", "x = 2\n", "c2")
+        t0, t1, t2 = _tree(repo, "HEAD~1"), "1" * 40, _tree(repo)
+        for fid, mode, base, head in (
+            ("rev-boundary", boundary_mode, t0, t1),
+            ("rev-verify", self._VERIFY, t1, t2),
+        ):
+            appended = evidence.append_fact(repo, "review", fid, {
+                "mode": mode, "findings": [], "files_reviewed": ["code.py"],
+                "base_tree": base, "head_tree": head,
+            })
+            assert appended["status"] == "appended", appended
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda project_dir, **_kw: {"status": "covered"},
+        )
+        _hook.cmd_stop(repo, {})
+        return capsys.readouterr().err
+
+    def test_a_verify_pass_over_a_cumulative_prints_no_synthesis_note(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        err = self._stop_after(tmp_path, monkeypatch, capsys, self._CUMULATIVE)
+        assert self._NOTE not in err, err
+
+    def test_the_control_a_verify_pass_over_a_chunk_prints_it(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Same session, a `chunk` where the `cumulative` was: the NOTE prints,
+        naming the review that decided — so the absence above is the
+        predicate's answer, not a path that never reached Gate 2.5."""
+        err = self._stop_after(tmp_path, monkeypatch, capsys, self._CHUNK)
+        note = next(
+            (line for line in err.splitlines() if self._NOTE in line), None
+        )
+        assert note is not None, err
+        assert note.startswith("NOTE: All 3 chunks done or dropped;"), note
+        assert f"a verify-resolutions pass over a '{self._CHUNK}' review" in note
+
+
 def _imported_history_session(
     tmp_path: Path, *, review_own: bool = True, findings: "list[dict] | None" = None
 ) -> Path:
