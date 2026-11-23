@@ -1174,21 +1174,41 @@ class TestModeAdvisoryFollowsTheVerifiedReview:
         assert note is not None, err
         assert f"a verify-resolutions pass over a '{self._CHUNK}' review" in note, note
 
-    def test_a_pass_naming_a_review_not_yet_ingested_asks_for_no_final(
+    _ELSEWHERE = "rev-20261123T120000Z-0e1f2a3b"
+
+    def test_a_pass_naming_a_review_this_store_lacks_names_both_repairs(
         self, tmp_path, monkeypatch, capsys
     ):
-        """The named review has not reached this clone: the NOTE says which
-        review is missing and how to bring it in, and asks for no `final`,
-        which might not be owed. The other two tests are its controls."""
+        """The named review, shaped like a minted id, is not in this clone's
+        store. It may be another clone's, not yet synced, or a fact this store
+        dropped, which no sync brings back: the NOTE names the review and
+        offers both repairs in one sentence. The other two tests are its
+        controls."""
+        err = self._stop_after(
+            tmp_path, monkeypatch, capsys, self._CHUNK, self._CHUNK, verifies=self._ELSEWHERE
+        )
+        note = next((line for line in err.splitlines() if self._ELSEWHERE in line), None)
+        assert note is not None, err
+        assert note.startswith("NOTE: All 3 chunks done or dropped;"), note
+        assert f"({self._ELSEWHERE}) is not in this clone's evidence store" in note, note
+        assert (
+            "If that review was recorded in another clone, run `prawduct-hook evidence "
+            "sync` to ingest it and this NOTE re-judges; otherwise run /prawduct:critic "
+            "final for end-of-cycle synthesis"
+        ) in note, note
+
+    def test_a_pass_naming_no_review_id_prints_the_run_final_note(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A value shaped like no minted id names no review any clone holds, so
+        the NOTE offers no sync and asks for the `final`."""
         err = self._stop_after(
             tmp_path, monkeypatch, capsys, self._CHUNK, self._CHUNK, verifies="rev-elsewhere"
         )
-        note = next((line for line in err.splitlines() if "rev-elsewhere" in line), None)
+        note = next((line for line in err.splitlines() if "no review it verifies" in line), None)
         assert note is not None, err
-        assert note.startswith("NOTE: All 3 chunks done or dropped;"), note
-        assert "is not in this clone's evidence store yet" in note, note
-        assert "evidence sync" in note, note
-        assert self._NOTE not in err, err
+        assert self._NOTE in note, note
+        assert "evidence sync" not in err, err
 
 
 def _imported_history_session(

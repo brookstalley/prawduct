@@ -638,7 +638,8 @@ class TestReviewChain:
         facts = [blocked, rereview, newest]
         chain = critic_mode.review_chain(facts, newest)
         assert {f["id"] for f in chain} == {"r1", "r2", "r3"}
-        assert critic_mode._open_blocker_on_chain(facts, chain)
+        resolved = critic_mode.coverage_algebra.resolution_index(facts)
+        assert any(critic_mode.coverage_algebra.unresolved_blocking(f, resolved) for f in chain)
 
     def test_a_cumulative_anywhere_on_the_chain_marks_the_boundary(self):
         cumulative = self._review("r1", "t0", "t1", "2026-09-22T10:00:00Z",
