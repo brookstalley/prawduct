@@ -100,6 +100,27 @@ class TestAnnotation:
         )
         assert "base_history" not in cands[ID13]
 
+    def test_a_body_only_mention_is_not_a_commit_naming_the_item(self, fake, repo_dir):
+        """Bodies mention items in passing ("why #12 stayed deferred"); only a
+        subject names the item the commit is work on. The annotation is read as
+        'someone already built part of this', so a passing mention is noise."""
+        _commit(repo_dir, "docs: record the design\n\nwhy #12 stayed deferred, and #13 too")
+        result = _pick(fake, repo_dir)
+        assert all("base_history" not in c for c in _by_id(result).values())
+        # Control: the same mention in a subject annotates, so the verdict above
+        # is the subject rule and not a repo the check never reached.
+        _commit(repo_dir, "feat: legs 2 and 3 of #12\n\nbody text")
+        cands = _by_id(_pick(fake, repo_dir))
+        assert cands[ID12]["base_history"]["count"] == 1
+        assert "base_history" not in cands[ID13]
+
+    def test_subject_matches_behind_many_body_only_mentions_are_still_found(self, fake, repo_dir):
+        _commit(repo_dir, "feat: leg 1 of #12")
+        for i in range(30):
+            _commit(repo_dir, f"docs: note {i}\n\nwhy #12 stayed deferred")
+        hist = _by_id(_pick(fake, repo_dir))[ID12]["base_history"]
+        assert hist["count"] == 1  # the 30 body mentions are not counted
+
     def test_the_annotation_is_advice_only_nothing_is_hidden_or_restaged(self, fake, repo_dir):
         before = _by_id(_pick(fake, repo_dir))
         _commit(repo_dir, "feat: #12 and #13")
@@ -149,8 +170,7 @@ class TestPatternIsAWholeReference:
     """`\\b` is a GNU extension, so the boundary is spelled out and tested."""
 
     def _names(self, repo_dir, number):
-        pattern = query._history_pattern(f"{OWNER}/{REPO}", number)
-        return transport.git_log_naming(repo_dir, "main", pattern, max_count=20)
+        return query._shas_naming_in_subject(repo_dir, "main", f"{OWNER}/{REPO}", number)
 
     def test_12_does_not_match_123_or_1204(self, repo_dir):
         _commit(repo_dir, "fix: closes #123")
@@ -167,7 +187,7 @@ class TestPatternIsAWholeReference:
             "#12 leads the subject",
             "ends with #12",
             "(#12) parenthesised",
-            "body\n\nfixes #12.",
+            "fixes #12.",
             "follows a comma: #7,#12",
             "qualified octo/repo#12 form",
         ):
@@ -179,10 +199,27 @@ class TestPatternIsAWholeReference:
         _commit(repo_dir, "see brookstalley/prawduct#12")
         assert self._names(repo_dir, 12) == []
 
+    def test_the_pattern_reads_the_same_in_git_and_in_python(self, repo_dir):
+        """One pattern source: git's ERE and Python's `re` must agree on it, or a
+        subject git returned could be dropped (or a body-only hit kept) silently."""
+        import re
+
+        subjects = [
+            "fix #12", "#12 leads", "(#12)", "#123 no", "x#12 no", "octo/repo#12 yes",
+            "other/repo#12 no", "v#12", "a, #12, b", "#12.", "#1204 no",
+        ]
+        for subject in subjects:
+            _commit(repo_dir, subject)
+        pattern = query._history_pattern(f"{OWNER}/{REPO}", 12)
+        git_side = {
+            s for _sha, s in transport.git_log_subjects(repo_dir, "main", pattern, max_count=50)
+        }
+        py_side = {s for s in subjects if re.search(pattern, s)}
+        assert git_side == py_side and len(py_side) == 6, (git_side, py_side)
+
     def test_a_regex_dot_in_the_repo_name_is_literal(self, repo_dir):
-        pattern = query._history_pattern("octo/re.po", 12)
         _commit(repo_dir, "see octo/reXpo#12")
-        assert transport.git_log_naming(repo_dir, "main", pattern, max_count=5) == []
+        assert query._shas_naming_in_subject(repo_dir, "main", "octo/re.po", 12) == []
 
 
 class TestOnlyThisCheckoutsTracker:
@@ -221,7 +258,7 @@ class TestFailSoft:
             calls.append(args)
             raise TransportError("unavailable", "'git log' exited 128: bad revision")
 
-        monkeypatch.setattr(query, "git_log_naming", broken)
+        monkeypatch.setattr(query, "git_log_subjects", broken)
         result = _pick(fake, repo_dir)
         assert all("base_history" not in c for c in _by_id(result).values())
         assert len(calls) == 1  # a broken git is not retried per candidate
@@ -234,13 +271,13 @@ class TestFailSoft:
         err = capsys.readouterr().err
         assert "warning: base-branch history not checked (nothing resolved)" in err
 
-    def test_git_log_naming_maps_each_failure_to_a_transport_error(self, repo_dir, tmp_path):
+    def test_git_log_subjects_maps_each_failure_to_a_transport_error(self, repo_dir, tmp_path):
         with pytest.raises(TransportError):  # a ref that does not exist: git exits non-zero
-            transport.git_log_naming(repo_dir, "no-such-ref", "x", max_count=1)
+            transport.git_log_subjects(repo_dir, "no-such-ref", "x", max_count=1)
         with pytest.raises(TransportError):  # not a repository
-            transport.git_log_naming(tmp_path / "missing", "main", "x", max_count=1)
+            transport.git_log_subjects(tmp_path / "missing", "main", "x", max_count=1)
         with pytest.raises(TransportError):  # an option-shaped ref is refused, not run
-            transport.git_log_naming(repo_dir, "--all", "x", max_count=1)
+            transport.git_log_subjects(repo_dir, "--all", "x", max_count=1)
 
     def test_a_timeout_is_a_transport_error(self, repo_dir, monkeypatch):
         def slow(*_a, **kw):
@@ -249,7 +286,7 @@ class TestFailSoft:
 
         monkeypatch.setattr(transport.subprocess, "run", slow)
         with pytest.raises(TransportError, match="timed out"):
-            transport.git_log_naming(repo_dir, "main", "x", max_count=1)
+            transport.git_log_subjects(repo_dir, "main", "x", max_count=1)
 
     def test_resolve_base_ref_never_raises_on_an_unrunnable_git(self, repo_dir, monkeypatch):
         from lib import coverage
@@ -273,19 +310,19 @@ class TestBounded:
             )
             assert done["status"] == "ok", done
         patterns = []
-        real = transport.git_log_naming
+        real = transport.git_log_subjects
 
         def spy(project_dir, ref, pattern, *, max_count, timeout=transport.GIT_READ_TIMEOUT_S):
             patterns.append((pattern, max_count))
             return real(project_dir, ref, pattern, max_count=max_count, timeout=timeout)
 
-        monkeypatch.setattr(query, "git_log_naming", spy)
+        monkeypatch.setattr(query, "git_log_subjects", spy)
         result = query.pick(
             gh, project_dir=repo_dir, owner=OWNER, repo=REPO, now=NOW, limit=total
         )
         assert result["data"]["count"] == total  # no candidate dropped by the cap
         assert len(patterns) == query._HISTORY_CHECK_CAP
-        assert {mc for _p, mc in patterns} == {query._HISTORY_MAX_COMMITS}
+        assert {mc for _p, mc in patterns} == {query._HISTORY_GIT_MAX}
         assert len({p for p, _m in patterns}) == len(patterns)  # one distinct call each
         assert any(f"first {query._HISTORY_CHECK_CAP} of {total}" in w for w in result["warnings"])
 

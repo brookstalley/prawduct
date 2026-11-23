@@ -1084,13 +1084,14 @@ def resolve_base_ref(project_dir) -> tuple[str | None, str]:
         return None, f"git could not be run ({type(exc).__name__})"
 
 
-def git_log_naming(
+def git_log_subjects(
     project_dir, ref: str, pattern: str, *, max_count: int, timeout: float = GIT_READ_TIMEOUT_S
-) -> list[str]:
-    """Short shas of the commits on ``ref`` whose message matches ``pattern``.
+) -> list[tuple[str, str]]:
+    """``(short sha, subject)`` of the commits on ``ref`` whose message matches ``pattern``.
 
-    One ``git log -E --grep`` call, newest first, at most ``max_count`` commits.
-    ``pattern`` is a POSIX extended regex (``-E``: a ``\\b`` word boundary is a GNU
+    One ``git log -E --grep`` call, newest first, at most ``max_count`` commits. The
+    grep reads the WHOLE message, body included; the subject comes back beside the
+    sha so the caller can narrow to the subject without a second call. ``pattern`` is a POSIX extended regex (``-E``: a ``\\b`` word boundary is a GNU
     extension that git's default regex flavour does not promise). Raises
     ``TransportError`` (``unavailable``) on a non-zero exit, a timeout or an
     unrunnable ``git`` -- the caller decides what a failed read costs.
@@ -1098,7 +1099,7 @@ def git_log_naming(
     if ref.startswith("-"):
         raise TransportError("unavailable", f"refusing base ref {ref!r}: it reads as an option")
     argv = [
-        "git", "log", "-E", "--format=%h", f"--max-count={max_count}",
+        "git", "log", "-E", "--format=%h%x09%s", f"--max-count={max_count}",
         f"--grep={pattern}", ref, "--",
     ]
     try:
@@ -1121,7 +1122,12 @@ def git_log_naming(
             "unavailable",
             f"'git log' exited {proc.returncode}" + (f": {detail[0]}" if detail else ""),
         )
-    return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    rows = []
+    for line in proc.stdout.splitlines():
+        sha, _tab, subject = line.partition("\t")
+        if sha.strip():
+            rows.append((sha.strip(), subject))
+    return rows
 
 
 # --- Detached process spawn (the D6 briefing-refresh warm) -------------------

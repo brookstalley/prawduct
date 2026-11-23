@@ -30,6 +30,7 @@ through ``cachequery``, which is the same discipline one layer over.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -42,7 +43,7 @@ from .core import (
     log_diag,
     ok,
 )
-from .transport import Transport, TransportError, git_log_naming, paginate, resolve_base_ref
+from .transport import Transport, TransportError, git_log_subjects, paginate, resolve_base_ref
 
 # The structured facets ``list`` accepts as label filters (each an AND term).
 # ``tag`` rides the same mechanism because a tag *is* a namespaced label — the
@@ -306,16 +307,28 @@ def pick(
 #: At most this many candidates are checked against the base's history, one
 #: ``git log`` each. ``limit`` is the caller's and unbounded; the check is advice.
 _HISTORY_CHECK_CAP = 10
-#: ``git log --max-count`` for one candidate: enough to say "many", never a full walk.
+#: Subject-matching commits counted for one candidate: enough to say "many" (the
+#: note then reads ``20+``), never a full walk.
 _HISTORY_MAX_COMMITS = 20
+#: ``git log --max-count`` for one candidate. The grep matches whole messages, so
+#: body-only mentions use up this bound before the subject filter drops them; it is
+#: set well above ``_HISTORY_MAX_COMMITS`` to leave room for them. An item mentioned
+#: in the bodies of more than this many newer commits can have older subject matches
+#: missed. That undercount is accepted: the note is advice, a candidate that busy
+#: with passing mentions is rarely one with unseen shipped legs, and an unbounded
+#: walk would put the cost on every pick.
+_HISTORY_GIT_MAX = 100
 #: Short shas named in the note; the count says how many more there are.
 _HISTORY_SHAS_LISTED = 5
 
 
 def _history_pattern(scope: str, number: int) -> str:
-    """POSIX ERE matching ``#<number>`` as a whole reference, not a prefix of one.
+    """The ONE pattern for ``#<number>`` as a whole reference, not a prefix of one.
 
-    ``\\b`` is a GNU extension, so the boundary is spelled out: the number must not
+    It is read twice, by ``git log --grep -E`` (POSIX ERE) and by ``re.search`` on
+    each subject (Python), so it is written in the subset both read identically:
+    ASCII classes, no ``[[:alnum:]]`` (Python lacks it) and no ``\\b`` (a GNU
+    extension). The boundary is spelled out: the number must not
     be followed by a digit (``#12`` is not ``#123`` or ``#1204``) and must not be
     preceded by a word character (``other/repo#12`` is another repo's issue), with
     one exception, this tracker's own qualified form ``owner/repo#12``. Issues and
@@ -323,13 +336,29 @@ def _history_pattern(scope: str, number: int) -> str:
     different thing from the item.
     """
     qualified = scope.replace(".", "\\.")
-    return rf"((^|[^[:alnum:]_.-])#{number}|{qualified}#{number})([^0-9]|$)"
+    return rf"((^|[^A-Za-z0-9_.-])#{number}|{qualified}#{number})([^0-9]|$)"
+
+
+def _shas_naming_in_subject(project_dir: Path, base: str, scope: str, number: int) -> list[str]:
+    """Short shas of commits on ``base`` whose SUBJECT names ``#<number>``, newest first.
+
+    One bounded ``git log`` call. Git's ``--grep`` matches the whole message, and
+    bodies mention items in passing ("why #165 stayed deferred"), which is not work
+    on the item; a subject is where a commit says what it is about. So git narrows
+    the walk and the same pattern is re-applied to each returned subject here,
+    dropping body-only matches. Raises ``TransportError`` as ``git_log_subjects`` does.
+    """
+    pattern = _history_pattern(scope, number)
+    rows = git_log_subjects(project_dir, base, pattern, max_count=_HISTORY_GIT_MAX)
+    matcher = re.compile(pattern)
+    named = [sha for sha, subject in rows if matcher.search(subject)]
+    return named[:_HISTORY_MAX_COMMITS]
 
 
 def _annotate_base_history(
     candidates: list[dict], *, project_dir: Path, scope: str, warnings: list[str]
 ) -> None:
-    """Flag each candidate that commits on the base branch already name.
+    """Flag each candidate that commit subjects on the base branch already name.
 
     The issue's labels and body are records; the code history is the other record,
     and nothing at pick time looked at it, so a builder was dispatched on an item
@@ -370,12 +399,7 @@ def _annotate_base_history(
         if number is None:
             continue  # unreachable after the filter in `pick`; never guess a number
         try:
-            shas = git_log_naming(
-                project_dir,
-                base,
-                _history_pattern(scope, number),
-                max_count=_HISTORY_MAX_COMMITS,
-            )
+            shas = _shas_naming_in_subject(project_dir, base, scope, number)
         except TransportError as exc:
             warnings.append(
                 f"base-branch history not checked ({exc.message}); "
