@@ -36,7 +36,6 @@ The contract, per command:
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -121,14 +120,11 @@ def _repo(tmp_path: Path) -> Path:
 
 
 def _run(repo: Path, argv: tuple[str, ...]) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), *argv],
-        cwd=str(repo),
-        capture_output=True,
-        text=True,
-        env={"PATH": "/usr/bin:/bin", "CLAUDE_PROJECT_DIR": str(repo)},
-        timeout=30,
-    )
+    from _hook_inproc import run_hook  # noqa: PLC0415
+
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True)
+    return run_hook(*argv, cwd=str(repo), env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo)})
 
 
 def _tree(repo: Path) -> dict[str, bytes]:

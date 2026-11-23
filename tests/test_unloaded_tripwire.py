@@ -463,15 +463,15 @@ def test_init_product_adds_it_to_settings_that_carry_only_the_reference(tmp_path
 
 
 def _cli(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(_HOOK), "install-tripwire", *args],
-        capture_output=True,
-        text=True,
-        env={
-            "PATH": "/usr/bin:/bin",
-            "CLAUDE_PLUGIN_ROOT": str(_PLUGIN_ROOT),
-            "CLAUDE_PROJECT_DIR": str(root),
-        },
+    from _hook_inproc import run_hook  # noqa: PLC0415
+
+    home = root.parent / "_home"
+    home.mkdir(exist_ok=True)
+    return run_hook(
+        "install-tripwire", *args,
+        cwd=root.parent,
+        env={"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(_PLUGIN_ROOT),
+             "CLAUDE_PROJECT_DIR": str(root)},
     )
 
 

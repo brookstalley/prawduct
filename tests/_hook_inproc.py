@@ -17,8 +17,9 @@ the same:
   as a closed pipe is.
 - **cwd and environment.** The caller's `cwd` (or the process's, as `subprocess.run` without
   `cwd` inherited it) and its environment overlay are applied for the call and restored after,
-  over the suite's environment rather than in place of it, so `GIT_TEST_ENV` and any seam a
-  fixture sets reach the hook's git children and its code. What a scratch child environment used
+  over the suite's environment rather than in place of it, so `conftest.TEST_ENV` (git's
+  isolation and the suite's one clock) and any seam a fixture sets reach the hook's git children
+  and its code. What a scratch child environment used
   to keep out is stripped instead: :data:`STRIPPED_ENV` (the host's and CI's variables, which a
   developer's session or a CI job sets ambiently) and git's repository-locating variables.
 - **process state.** Each call executes a fresh copy of the hook's module, so the hook's own
@@ -33,8 +34,10 @@ the same:
   save before it returns, as a child's exit did.
 - **a process that is gone afterwards.** A child's pid named no live process once it exited, and
   the test-evidence recorder stamps its pid into an `in_progress` record that `test-status` later
-  probes. So for the call `os.getpid()` answers :data:`EXITED_PID`, which no process can hold,
-  and a stamp the call leaves behind reads as interrupted, as the child's did.
+  probes. So for the call `lib.record_progress` reads its pid as :data:`EXITED_PID`, which no
+  process can hold, and a stamp the call leaves behind reads as interrupted, as the child's did.
+  Only that module's view changes: anything else that writes or probes its own pid during the
+  call (a temp-file name, a lock) sees a live process, as the child saw itself.
 
 What it cannot give: a timeout (nothing can stop a call in this process), and a different
 interpreter. A test whose subject is the process boundary itself (the entry point parsing on an
@@ -167,14 +170,29 @@ def _cwd(cwd: Path | str | None):
         os.chdir(saved)
 
 
+class _OsWithAnExitedPid:
+    """`os`, as `lib.record_progress` sees it for a call: its own pid is :data:`EXITED_PID`."""
+
+    @staticmethod
+    def getpid() -> int:
+        return EXITED_PID
+
+    def __getattr__(self, name: str):
+        return getattr(os, name)
+
+
 @contextmanager
 def _exited_pid():
-    saved = os.getpid
-    os.getpid = lambda: EXITED_PID
+    """The recorder's stamp names a process that is gone, and only the stamp: the rest of the
+    process (a temp-file name, a lock, the test's own liveness probes) keeps its real pid."""
+    from lib import record_progress  # noqa: PLC0415 — the module the hook's lazy import reaches
+
+    saved = record_progress.os
+    record_progress.os = _OsWithAnExitedPid()
     try:
         yield
     finally:
-        os.getpid = saved
+        record_progress.os = saved
 
 
 @contextmanager
@@ -251,8 +269,11 @@ def _captured_fds(stdin: str):
     sys.stdout = io.TextIOWrapper(
         open(os.dup(1), "wb", buffering=0), encoding="utf-8", write_through=True
     )
+    # The interpreter's own stderr escapes what it cannot encode (a surrogate from a
+    # non-UTF-8 path) rather than raising; its stdout is strict.
     sys.stderr = io.TextIOWrapper(
-        open(os.dup(2), "wb", buffering=0), encoding="utf-8", write_through=True
+        open(os.dup(2), "wb", buffering=0), encoding="utf-8", errors="backslashreplace",
+        write_through=True,
     )
     sys.stdin = io.StringIO(stdin)
     result: dict[str, bytes] = {}
