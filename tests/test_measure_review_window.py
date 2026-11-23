@@ -15,6 +15,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from conftest import GIT_TEST_ENV  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _TOOL = REPO_ROOT / "tools" / "measure-review-window.py"
@@ -139,7 +140,7 @@ class TestSummarise:
 
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=str(repo), check=True, capture_output=True, timeout=10,
-                   env={"HOME": str(repo.parent), "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+                   env={**GIT_TEST_ENV, "HOME": str(repo.parent), "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
                         "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"})
 
 

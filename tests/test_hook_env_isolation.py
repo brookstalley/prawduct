@@ -19,6 +19,7 @@ if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 
 from fixtures.hook_env import HOOK, PLUGIN_ROOT, isolated_hook_run  # noqa: E402
+from conftest import GIT_TEST_ENV  # noqa: E402
 
 # A retired hook subcommand: inert and silent on both streams wherever it runs,
 # so anything on its stderr came from the pre-dispatch guards.
@@ -36,6 +37,7 @@ def _git(cwd: Path, *args: str) -> None:
         check=True,
         timeout=15,
         env={
+            **GIT_TEST_ENV,
             "HOME": str(home),
             "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
             "GIT_CONFIG_GLOBAL": "/dev/null",

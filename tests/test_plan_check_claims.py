@@ -14,6 +14,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from conftest import GIT_TEST_ENV  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -23,6 +24,7 @@ def _env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
     return {
+        **GIT_TEST_ENV,
         "HOME": str(home),
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "GIT_CONFIG_GLOBAL": "/dev/null",

@@ -41,6 +41,8 @@ from conftest import (  # noqa: E402
     PARTIAL,
     SCOPE_RECORD_SUFFIX,
     classify_invocation,
+    pre_session_git_env,
+    require_real_git_clock,
     write_scope_record,
 )
 
@@ -913,10 +915,10 @@ class TestLifetimeProseMatchesTheSingleSlot:
 # deliberate non-read of the record has to say why (R-1/R-6).
 
 
-def _git_in(repo: Path, *args: str) -> None:
+def _git_in(repo: Path, *args: str, env: "dict[str, str] | None" = None) -> None:
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
-        cwd=repo, capture_output=True, check=True,
+        cwd=repo, capture_output=True, check=True, env=env,
     )
 
 
@@ -938,7 +940,9 @@ def ingest_repo(tmp_path) -> tuple[Path, Path]:
     (repo / "mod.py").write_text("X = 1\n")
     _git_in(repo, "init", "-b", "main")
     _git_in(repo, "add", "-A")
-    _git_in(repo, "commit", "-m", "c1")
+    # Before the report even in a `real_git_clock` test, so `HEAD@{<run start>}` names this
+    # commit by its own entry rather than by git's oldest-entry fallback.
+    _git_in(repo, "commit", "-m", "c1", env=pre_session_git_env())
     report = repo / ".prawduct" / ".test-report.xml"
     report.write_text(
         '<testsuites><testsuite name="pytest" time="1.0"><testcase name="a"/>'
@@ -1000,14 +1004,20 @@ class TestIngestStampsATreeOnlyWhenTheReportIsNewer:
         _git_in(repo, "rm", "-q", "tests/test_b.py")
         self._withheld(repo, self._ingest(repo, report))
 
+    # A HEAD move after the run is found at `HEAD@{<run start>}`, and git dates a reflog entry
+    # by the committer date: under the suite's fixed one the commit below would sit before the
+    # report's wall-clock start, so these two take the real clock (`conftest._real_git_clock`).
+    @pytest.mark.real_git_clock
     def test_a_deletion_committed_after_the_report_withholds_the_tree(self, ingest_repo):
         """Once committed, the deletion is in neither the index nor a diff
         against HEAD; HEAD's own movement since the report is what shows it."""
         repo, report = ingest_repo
         _git_in(repo, "rm", "-q", "tests/test_b.py")
+        require_real_git_clock()
         _git_in(repo, "commit", "-q", "-m", "drop b")
         self._withheld(repo, self._ingest(repo, report))
 
+    @pytest.mark.real_git_clock
     def test_a_commit_after_the_report_that_deletes_nothing_still_stamps(self, ingest_repo):
         """Run, commit, ingest is the ordinary flow. HEAD moved after the
         report, but every file it carries predates it, so the stamp holds."""
@@ -1016,6 +1026,7 @@ class TestIngestStampsATreeOnlyWhenTheReportIsNewer:
         past = report.stat().st_mtime - 60
         os.utime(repo / "notes.txt", (past, past))
         _git_in(repo, "add", "notes.txt")
+        require_real_git_clock()
         _git_in(repo, "commit", "-q", "-m", "notes")
         res = self._ingest(repo, report)
         assert res.returncode == 0, res.stderr

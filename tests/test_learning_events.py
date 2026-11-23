@@ -46,7 +46,7 @@ from lib import critic_consolidate as cc  # noqa: E402
 from lib import learnings_files as lf  # noqa: E402
 from lib import ledger  # noqa: E402
 from lib import telemetry  # noqa: E402
-from conftest import SHAPED_REFLECTION  # noqa: E402 — one home for the shape
+from conftest import GIT_TEST_ENV, SHAPED_REFLECTION  # noqa: E402 — one home for the shape
 
 HOOK = _ROOT / "bin" / "prawduct-hook"
 LEDGER_REL = ".prawduct/.governance-ledger.jsonl"
@@ -316,6 +316,7 @@ def _consolidate_env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
     return {
+        **GIT_TEST_ENV,
         "HOME": str(home),
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "GIT_CONFIG_GLOBAL": "/dev/null",

@@ -332,6 +332,10 @@ class TestWorktreeComposition:
 # ---------------------------------------------------------------------------
 
 
+# Session 1 commits after its wall-clock `.session-start`, and session 2's boundary reads that
+# commit as session 1's work (the span walk and the handoff's `git log --since`); under the
+# suite's fixed commit date it would read as made before session 1 began.
+@pytest.mark.real_git_clock
 class TestSequentialSessions:
     def test_session_1_reviews_session_2_passes_with_no_stale_warning(self, tmp_path):
         # The v2 defect class: freshness was mtime-vs-.session-start, so any
