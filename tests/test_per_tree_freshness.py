@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
 
+from conftest import set_suite_clock  # noqa: E402
 from test_plugin_runtime import _git, _run_in, as_just_run  # noqa: E402
 
 from lib import evidence  # noqa: E402
@@ -260,13 +261,13 @@ class TestARefusedRecordIsAFloor:
         res = _status(repo)
         assert res.returncode == 1, res.stdout
 
-    def test_a_strictly_newer_green_from_a_sibling_still_vouches(self, tmp_path):
-        import time
-
+    def test_a_strictly_newer_green_from_a_sibling_still_vouches(self, tmp_path, monkeypatch):
         repo = _repo(tmp_path)
         _branch(repo, "feat-a", "A = 1\n")
         _record(repo, _RED)
-        time.sleep(1.1)  # store and record timestamps are to the second
+        # Store and record timestamps are to the second, and the suite's clock is frozen, so the
+        # sibling's run is made strictly newer by moving that clock, not by waiting.
+        set_suite_clock(monkeypatch, 60)
         wt = tmp_path / "wt2"
         _git(repo, "worktree", "add", "-q", "--detach", str(wt), "feat-a")
         (wt / ".prawduct").mkdir(exist_ok=True)
