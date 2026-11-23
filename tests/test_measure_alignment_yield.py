@@ -462,3 +462,90 @@ def test_the_committed_baseline_is_the_recorded_2026_10_09_reading():
     assert set(gov) == set(tool.KEYS)
     assert entry["counts"]["ungoverned"] is None
     assert entry["min_chars"] == 60
+
+
+def _pruned_store(tmp_path, capsys, basis):
+    """Save the baseline window, set its recorded tool_basis, then prune its transcripts."""
+    _two_window_corpus(tmp_path)
+    store = tmp_path / "baselines.json"
+    _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store),
+              "--save-baseline", "--read-date", "2026-10-09")
+    doc = json.loads(store.read_text(encoding="utf-8"))
+    doc["windows"][tool.window_key(None, "2026-10-09")]["tool_basis"] = basis
+    store.write_text(json.dumps(doc), encoding="utf-8")
+    for p in (tmp_path / "projects" / "p").glob("b*.jsonl"):
+        p.unlink()
+    return store
+
+
+def _shortfall(tmp_path, capsys, basis, text=False):
+    store = _pruned_store(tmp_path, capsys, basis)
+    if text:
+        glob = str(tmp_path / "projects" / "*" / "*.jsonl")
+        tool.main(["--glob", glob, "--until", "2026-10-09", "--baseline-file", str(store)])
+        return capsys.readouterr().out
+    return _run_json(tmp_path, capsys, "--until", "2026-10-09", "--baseline-file", str(store))[1]
+
+
+def test_a_shortfall_is_pruning_only_when_the_same_script_read_it(tmp_path, capsys):
+    out = _shortfall(tmp_path, capsys, tool._tool_basis(), text=True)
+    assert "transcripts were pruned" in out
+    assert tool._instrument(tool._tool_basis()) == "same"
+
+
+def test_a_shortfall_from_a_different_script_is_not_attributed_to_pruning(tmp_path, capsys):
+    saved = _shortfall(tmp_path, capsys, "blob:" + "0" * 40)["saved_baseline"]
+    assert saved["short"] is True and saved["pruned"] is False
+    assert saved["instrument"] == "different"
+    capsys.readouterr()
+    out = _shortfall(tmp_path / "again", capsys, "blob:" + "0" * 40, text=True)
+    assert "transcripts were pruned" not in out
+    assert "different version of this script" in out
+
+
+def test_a_saved_basis_that_resolves_to_nothing_is_unknown_not_same_or_different(tmp_path, capsys):
+    for basis in ("commit:0000000000000000", None, "garbage"):
+        assert tool._instrument(basis) == "unknown"
+    saved = _shortfall(tmp_path, capsys, "commit:0000000000000000")["saved_baseline"]
+    assert saved["instrument"] == "unknown" and saved["pruned"] is False and saved["short"] is True
+    capsys.readouterr()
+    out = _shortfall(tmp_path / "again", capsys, "commit:0000000000000000", text=True)
+    assert "cannot be resolved" in out and "transcripts were pruned" not in out
+
+
+def test_the_committed_baseline_is_a_different_instrument_not_pruning():
+    entry = tool.load_baselines(tool.DEFAULT_BASELINES)["windows"][tool.window_key(None, "2026-10-09")]
+    assert tool._instrument(entry["tool_basis"]) in ("different", "unknown")
+
+
+def _save(tmp_path, capsys, *argv):
+    glob = str(tmp_path / "projects" / "*" / "*.jsonl")
+    store = tmp_path / "baselines.json"
+    rc = tool.main(["--glob", glob, "--json", "--baseline-file", str(store), "--save-baseline",
+                    "--read-date", "2026-11-01", *argv])
+    captured = capsys.readouterr()
+    return rc, captured.err, store
+
+
+def test_save_baseline_refuses_an_open_ended_window(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    rc, err, store = _save(tmp_path, capsys, "--since", "2026-10-09")
+    assert rc != 0 and "closed window" in err and not store.exists()
+
+
+def test_save_baseline_refuses_an_until_after_the_read_date(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    rc, err, store = _save(tmp_path, capsys, "--until", "2026-11-02")
+    assert rc != 0 and "closed window" in err and not store.exists()
+
+
+def test_save_baseline_refuses_a_run_that_matched_no_transcripts(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    rc, err, store = _save(tmp_path, capsys, "--until", "2026-10-09", "--glob", str(tmp_path / "nope" / "*.jsonl"))
+    assert rc != 0 and "no transcript" in err and not store.exists()
+
+
+def test_save_baseline_accepts_a_closed_window_ending_on_the_read_date(tmp_path, capsys):
+    _two_window_corpus(tmp_path)
+    rc, err, store = _save(tmp_path, capsys, "--until", "2026-11-01")
+    assert rc == 0 and err == "" and store.exists()

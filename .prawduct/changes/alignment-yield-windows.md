@@ -23,14 +23,19 @@ by turn, so no request count moves except by the compaction fix. The JSON gains
 Claude Code's 30-day retention pruned the 2026-10-09 baseline to 442 of 963 substantive requests.
 `--save-baseline` now writes a window's governed and ungoverned totals and its health, once, to
 `.prawduct/research/alignment-yield/baselines.json` (counts only, no text, paths or project
-names; a window already saved is kept, and an unreadable file is an error, never replaced). A run
-of a saved window reports its live counts against the saved ones and says when they fall short,
-so the saved counts are the baseline to cite. `--baseline-file ''` ignores the file. The committed
+names; a window already saved is kept, and an unreadable file is an error, never replaced). It
+refuses, non-zero with a message on stderr, a window that is not closed (`--until` unset or after
+the read date) and a run that selected no transcript (a mistyped `--glob`), since a save is never
+replaced. A run of a saved window reports its live counts against the saved ones. A shortfall is
+attributed to pruning only when the saved reading's `tool_basis` is this script as it is now; a
+saved reading from a different script version (a counting fix lowers counts too), or one whose
+version cannot be resolved, reports the shortfall as possibly pruning, the counting change, or both
+(`instrument`: same, different or unknown). `--baseline-file ''` ignores the file. The committed
 file is seeded from the figures `requirements-alignment-discovery.md` records for the 2026-10-09
 baseline (substantive 963, asked_first 140, mid_build_asks 349, corrections 18, governed); the
 figures it does not record are null. Tests feed a compaction-summary record and assert it is not
-an owner turn, give two windows different health, and pin the write-once, no-leak, pruned and
-min-chars-mismatch behaviour and the committed seed.
+an owner turn, give two windows different health, and pin the write-once, no-leak, instrument
+(same, different, unknown), refusal and min-chars-mismatch behaviour and the committed seed.
 
 ## Consumer note
 None. `tools/measure-alignment-yield.py` and its saved baseline are this repository's own measurement; nothing ships in the plugin.
