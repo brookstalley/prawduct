@@ -121,6 +121,16 @@ class TestAnnotation:
         hist = _by_id(_pick(fake, repo_dir))[ID12]["base_history"]
         assert hist["count"] == 1  # the 30 body mentions are not counted
 
+    def test_a_qualified_reference_in_another_case_still_annotates(self, fake, repo_dir):
+        _commit(repo_dir, "feat: legs 2 and 3 of OCTO/REPO#12")
+        cands = _by_id(_pick(fake, repo_dir))
+        assert cands[ID12]["base_history"]["count"] == 1
+        assert "base_history" not in cands[ID13]
+
+    def test_another_repos_qualified_reference_ending_in_this_one_does_not(self, fake, repo_dir):
+        _commit(repo_dir, "feat: legs of xocto/repo#12")
+        assert all("base_history" not in c for c in _by_id(_pick(fake, repo_dir)).values())
+
     def test_the_annotation_is_advice_only_nothing_is_hidden_or_restaged(self, fake, repo_dir):
         before = _by_id(_pick(fake, repo_dir))
         _commit(repo_dir, "feat: #12 and #13")
@@ -169,8 +179,9 @@ class TestAnnotation:
 class TestPatternIsAWholeReference:
     """`\\b` is a GNU extension, so the boundary is spelled out and tested."""
 
-    def _names(self, repo_dir, number):
-        return query._shas_naming_in_subject(repo_dir, "main", f"{OWNER}/{REPO}", number)
+    def _names(self, repo_dir, number, scope=f"{OWNER}/{REPO}"):
+        rows = transport.git_log_subjects(repo_dir, "main", max_count=100)
+        return query._history_matches(rows, scope, number)
 
     def test_12_does_not_match_123_or_1204(self, repo_dir):
         _commit(repo_dir, "fix: closes #123")
@@ -199,27 +210,21 @@ class TestPatternIsAWholeReference:
         _commit(repo_dir, "see brookstalley/prawduct#12")
         assert self._names(repo_dir, 12) == []
 
-    def test_the_pattern_reads_the_same_in_git_and_in_python(self, repo_dir):
-        """One pattern source: git's ERE and Python's `re` must agree on it, or a
-        subject git returned could be dropped (or a body-only hit kept) silently."""
-        import re
-
-        subjects = [
-            "fix #12", "#12 leads", "(#12)", "#123 no", "x#12 no", "octo/repo#12 yes",
-            "other/repo#12 no", "v#12", "a, #12, b", "#12.", "#1204 no",
-        ]
-        for subject in subjects:
-            _commit(repo_dir, subject)
-        pattern = query._history_pattern(f"{OWNER}/{REPO}", 12)
-        git_side = {
-            s for _sha, s in transport.git_log_subjects(repo_dir, "main", pattern, max_count=50)
-        }
-        py_side = {s for s in subjects if re.search(pattern, s)}
-        assert git_side == py_side and len(py_side) == 6, (git_side, py_side)
+    def test_the_qualified_form_is_case_insensitive_and_has_a_leading_boundary(self, repo_dir):
+        """`pick --repo BrooksTalley/Prawduct` must still see a lower-case
+        `brookstalley/prawduct#12` (GitHub owners and repos are case-insensitive), and
+        `xocto/repo#12` is another repo's issue, as `x#12` is not this item's."""
+        _commit(repo_dir, "see OCTO/REPO#12 upstream")
+        _commit(repo_dir, "see xocto/repo#12")
+        _commit(repo_dir, "see foo-octo/repo#12")
+        _commit(repo_dir, "see (octo/repo#12)")
+        assert len(self._names(repo_dir, 12)) == 2
+        assert len(self._names(repo_dir, 12, scope="Octo/Repo")) == 2
 
     def test_a_regex_dot_in_the_repo_name_is_literal(self, repo_dir):
         _commit(repo_dir, "see octo/reXpo#12")
-        assert query._shas_naming_in_subject(repo_dir, "main", "octo/re.po", 12) == []
+        rows = transport.git_log_subjects(repo_dir, "main", max_count=100)
+        assert query._history_matches(rows, "octo/re.po", 12) == []
 
 
 class TestOnlyThisCheckoutsTracker:
@@ -273,11 +278,11 @@ class TestFailSoft:
 
     def test_git_log_subjects_maps_each_failure_to_a_transport_error(self, repo_dir, tmp_path):
         with pytest.raises(TransportError):  # a ref that does not exist: git exits non-zero
-            transport.git_log_subjects(repo_dir, "no-such-ref", "x", max_count=1)
+            transport.git_log_subjects(repo_dir, "no-such-ref", max_count=1)
         with pytest.raises(TransportError):  # not a repository
-            transport.git_log_subjects(tmp_path / "missing", "main", "x", max_count=1)
+            transport.git_log_subjects(tmp_path / "missing", "main", max_count=1)
         with pytest.raises(TransportError):  # an option-shaped ref is refused, not run
-            transport.git_log_subjects(repo_dir, "--all", "x", max_count=1)
+            transport.git_log_subjects(repo_dir, "--all", max_count=1)
 
     def test_a_timeout_is_a_transport_error(self, repo_dir, monkeypatch):
         def slow(*_a, **kw):
@@ -286,7 +291,7 @@ class TestFailSoft:
 
         monkeypatch.setattr(transport.subprocess, "run", slow)
         with pytest.raises(TransportError, match="timed out"):
-            transport.git_log_subjects(repo_dir, "main", "x", max_count=1)
+            transport.git_log_subjects(repo_dir, "main", max_count=1)
 
     def test_resolve_base_ref_never_raises_on_an_unrunnable_git(self, repo_dir, monkeypatch):
         from lib import coverage
@@ -299,46 +304,156 @@ class TestFailSoft:
         assert ref is None and "TimeoutExpired" in reason
 
 
-class TestBounded:
-    def test_one_git_call_per_candidate_capped_with_a_note(self, repo_dir, monkeypatch):
-        gh = FakeGitHub(user={"login": "agent-a", "id": 1})
-        total = query._HISTORY_CHECK_CAP + 3
-        for i in range(total):
-            done = core.file_item(
-                gh, owner=OWNER, repo=REPO, title=f"pick: ready item number {i} under test",
-                body="b", facets={"stage": "ready"},
-            )
-            assert done["status"] == "ok", done
-        patterns = []
-        real = transport.git_log_subjects
-
-        def spy(project_dir, ref, pattern, *, max_count, timeout=transport.GIT_READ_TIMEOUT_S):
-            patterns.append((pattern, max_count))
-            return real(project_dir, ref, pattern, max_count=max_count, timeout=timeout)
-
-        monkeypatch.setattr(query, "git_log_subjects", spy)
-        result = query.pick(
-            gh, project_dir=repo_dir, owner=OWNER, repo=REPO, now=NOW, limit=total
+def _many_ready_items(count):
+    gh = FakeGitHub(user={"login": "agent-a", "id": 1})
+    for i in range(count):
+        done = core.file_item(
+            gh, owner=OWNER, repo=REPO, title=f"pick: ready item number {i} under test",
+            body="b", facets={"stage": "ready"},
         )
-        assert result["data"]["count"] == total  # no candidate dropped by the cap
-        assert len(patterns) == query._HISTORY_CHECK_CAP
-        assert {mc for _p, mc in patterns} == {query._HISTORY_GIT_MAX}
-        assert len({p for p, _m in patterns}) == len(patterns)  # one distinct call each
-        assert any(f"first {query._HISTORY_CHECK_CAP} of {total}" in w for w in result["warnings"])
+        assert done["status"] == "ok", done
+    return gh
 
-    def test_shas_listed_are_capped_and_the_count_says_how_many_more(self, fake, repo_dir):
+
+class TestBounded:
+    def test_one_bounded_walk_serves_every_candidate(self, repo_dir, monkeypatch):
+        """The cost is the walk, so the test counts walks: a per-candidate `git log
+        --grep` stops after N MATCHES, so for an item few messages name it reads the
+        whole history, once per candidate. One walk, capped by commits, is the bound."""
+        gh = _many_ready_items(13)
+        _commit(repo_dir, "feat: leg 1 of #7")
+        walks = []
+        real = subprocess.run
+
+        def spy(argv, *a, **kw):
+            if isinstance(argv, list) and argv[:2] == ["git", "log"]:
+                walks.append(argv)
+            return real(argv, *a, **kw)
+
+        monkeypatch.setattr(transport.subprocess, "run", spy)
+        result = query.pick(gh, project_dir=repo_dir, owner=OWNER, repo=REPO, now=NOW, limit=13)
+        assert result["data"]["count"] == 13  # no candidate dropped
+        assert len(walks) == 1, walks
+        argv = walks[0]
+        assert "--max-count=1000" in argv  # absolute: the chosen window, not a constant echoing itself
+        assert not any(a.startswith("--grep") for a in argv)  # the match is not left to git
+        by_id = _by_id(result)
+        assert set(c for c, v in by_id.items() if "base_history" in v) == {f"{OWNER}/{REPO}#7"}
+
+    def test_the_walk_reads_at_most_the_newest_commits_and_says_so(self, repo_dir, monkeypatch):
+        monkeypatch.setattr(query, "_HISTORY_WALK_COMMITS", 3)
+        gh = _many_ready_items(13)
+        _commit(repo_dir, "feat: the oldest leg of #12")
+        _commit(repo_dir, "chore: filler 1")
+        _commit(repo_dir, "chore: filler 2")
+        _commit(repo_dir, "feat: a newer leg of #13")
+        result = query.pick(gh, project_dir=repo_dir, owner=OWNER, repo=REPO, now=NOW, limit=13)
+        by_id = _by_id(result)
+        assert "base_history" not in by_id[ID12]  # past the window: an accepted undercount
+        newer = by_id[ID13]["base_history"]
+        assert newer["capped"] is True
+        assert "in the last 3 commits on main" in newer["note"]
+        assert result["data"]["base_history"] == {
+            "checked": True, "base": "main", "walked": 3, "capped": True,
+        }
+
+    def test_a_walk_inside_the_window_is_not_marked_capped(self, fake, repo_dir):
+        _commit(repo_dir, "feat: #12")
+        result = _pick(fake, repo_dir)
+        hist = _by_id(result)[ID12]["base_history"]
+        assert hist["capped"] is False and "in the last" not in hist["note"]
+        assert result["data"]["base_history"]["capped"] is False
+
+    def test_shas_listed_are_capped_and_the_remainder_is_exact(self, fake, repo_dir):
         for i in range(8):
             _commit(repo_dir, f"feat: part {i} of #12")
         hist = _by_id(_pick(fake, repo_dir))[ID12]["base_history"]
         assert hist["count"] == 8 and len(hist["shas"]) == query._HISTORY_SHAS_LISTED
         assert "8 commit(s)" in hist["note"] and "and 3 more" in hist["note"]
 
-    def test_a_history_longer_than_the_walk_reads_as_a_lower_bound(self, fake, repo_dir):
-        for i in range(query._HISTORY_MAX_COMMITS + 2):
+    def test_a_capped_walk_never_prints_an_inexact_remainder(self, repo_dir, monkeypatch):
+        """With the window full, the matches in it are all counted: '10 ... and 5
+        more' is exact for that window and says which window, rather than a '20+'
+        beside a remainder computed from an already-truncated list."""
+        monkeypatch.setattr(query, "_HISTORY_WALK_COMMITS", 10)
+        gh = _many_ready_items(13)
+        for i in range(15):
             _commit(repo_dir, f"feat: part {i} of #12")
-        hist = _by_id(_pick(fake, repo_dir))[ID12]["base_history"]
-        assert hist["count"] == query._HISTORY_MAX_COMMITS
-        assert f"{query._HISTORY_MAX_COMMITS}+ commit(s)" in hist["note"]
+        result = query.pick(gh, project_dir=repo_dir, owner=OWNER, repo=REPO, now=NOW, limit=13)
+        hist = _by_id(result)[ID12]["base_history"]
+        assert hist["capped"] is True and hist["count"] == 10
+        assert "10 commit(s) in the last 10 commits on main" in hist["note"]
+        assert "and 5 more" in hist["note"]
+
+
+class TestIndicator:
+    """A skipped check and 'checked, nothing matched' must not read the same."""
+
+    def test_checked_and_nothing_matched(self, fake, repo_dir):
+        _commit(repo_dir, "chore: unrelated")
+        result = _pick(fake, repo_dir)
+        assert all("base_history" not in c for c in _by_id(result).values())
+        assert result["data"]["base_history"] == {
+            "checked": True, "base": "main", "walked": 2, "capped": False,
+        }
+
+    def test_a_scope_that_is_not_origin_reports_why_it_was_skipped(self, fake, repo_dir):
+        _git(repo_dir, "remote", "set-url", "origin", "https://github.com/octo/product-code.git")
+        result = _pick(fake, repo_dir)
+        ind = result["data"]["base_history"]
+        assert ind["checked"] is False and "origin" in ind["reason"]
+        assert not any("history" in w for w in result["warnings"])  # still quiet on stderr
+
+    def test_no_readable_origin_reports_why(self, fake, repo_dir):
+        _git(repo_dir, "remote", "remove", "origin")
+        ind = _pick(fake, repo_dir)["data"]["base_history"]
+        assert ind["checked"] is False and "origin" in ind["reason"]
+
+    def test_an_unresolvable_base_or_failed_git_reports_why(self, fake, repo_dir, monkeypatch):
+        with monkeypatch.context() as m:
+            m.setattr(query, "resolve_base_ref", lambda _d: (None, "no base candidate resolved"))
+            ind = _pick(fake, repo_dir)["data"]["base_history"]
+        assert ind == {"checked": False, "reason": "no base candidate resolved"}
+
+        def broken(*_a, **_k):
+            raise TransportError("unavailable", "'git log' exited 128: bad revision")
+
+        monkeypatch.setattr(query, "git_log_subjects", broken)
+        ind = _pick(fake, repo_dir)["data"]["base_history"]
+        assert ind["checked"] is False and "exited 128" in ind["reason"]
+
+    def test_json_output_carries_it(self, fake, repo_dir, capsys):
+        cli.run(repo_dir, ["pick", "--repo", "octo/repo", "--limit", "5", "--json"], transport=fake)
+        env = json.loads(capsys.readouterr().out)
+        assert env["data"]["base_history"]["checked"] is True
+
+
+class TestMovingFallbackIsNotABase:
+    """`coverage.repo_base_branch` can end on the moving `HEAD~1`. As a 'shipped
+    history' it would report the branch's OWN commits as already on the base."""
+
+    def _trunk_repo(self, repo_dir):
+        _git(repo_dir, "branch", "-m", "main", "trunk")  # no main, no origin/main, no base_branch
+        _commit(repo_dir, "feat: the branch's own leg of #12")
+
+    def test_resolve_base_ref_refuses_the_fallback(self, repo_dir):
+        self._trunk_repo(repo_dir)
+        ref, reason = transport.resolve_base_ref(repo_dir)
+        assert ref is None and "HEAD~1" in reason
+
+    def test_pick_skips_the_annotation_with_a_warning(self, fake, repo_dir):
+        self._trunk_repo(repo_dir)
+        result = _pick(fake, repo_dir)
+        assert all("base_history" not in c for c in _by_id(result).values())
+        notes = [w for w in result["warnings"] if "base-branch history not checked" in w]
+        assert len(notes) == 1 and "HEAD~1" in notes[0]
+        assert result["data"]["base_history"]["checked"] is False
+
+    def test_control_the_same_repo_with_a_real_base_is_annotated(self, fake, repo_dir):
+        self._trunk_repo(repo_dir)
+        _git(repo_dir, "branch", "main")  # a real base now exists and holds the commit
+        cands = _by_id(_pick(fake, repo_dir))
+        assert cands[ID12]["base_history"]["base"] == "main"
 
 
 def test_the_egress_boundary_still_holds_for_the_new_git_reads():
