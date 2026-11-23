@@ -45,6 +45,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable
 
+from . import clock
 from .core import atomic_write_text, strip_scalar_comment, unquote_scalar
 
 # Schema version of the on-disk store. Incremented only on breaking changes;
@@ -573,7 +574,7 @@ def make_codebase(product_dir) -> Codebase:
 
 
 def _utcnow_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return clock.now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _valid_prerequisites(declared) -> list[tuple[str, str]]:

@@ -45,6 +45,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import clock
 from .advisory_store import AdvisoryCandidate, ProjectState, Codebase, register_probe
 from .backlog.legacy import parse_backlog
 
@@ -213,7 +214,7 @@ def probe_overdue_grooming(state: ProjectState, codebase: Codebase):
     open_count = len(parse_backlog(text).open_items())
     if open_count <= GROOMING_MIN_OPEN_ITEMS:
         return []
-    if not _is_stale(state.get("backlog_last_groomed_at"), now=datetime.now(timezone.utc)):
+    if not _is_stale(state.get("backlog_last_groomed_at"), now=clock.now()):
         return []
     return [
         AdvisoryCandidate(

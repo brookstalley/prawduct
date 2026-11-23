@@ -34,6 +34,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import clock
 from . import buildplan_refs
 from . import change_fragments
 from . import change_log as change_log_mod
@@ -397,11 +398,10 @@ def _issues_blocker_liveness(
     procedure that must not depend on a live provider, and the cache already
     owns id resolution — bare ``#N`` against its own scope, aliases, redirects.
     A bare ``#N`` means an issue in ``scope``, the repo the cache holds."""
-    from datetime import datetime, timezone  # noqa: PLC0415
 
     from .backlog import cachequery  # noqa: PLC0415 -- lazy: only the post-cutover arm
 
-    now = datetime.now(timezone.utc)
+    now = clock.now()
     default_owner = scope.split("/", 1)[0] if "/" in scope else None
     open_blockers: set[str] = set()
     unverifiable: dict[str, str] = {}

@@ -48,8 +48,8 @@ feature-agnostic — the same pattern as ``lib/backlog_probes.py``.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
+from . import clock
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
 from .backlog import cachequery, upstream
 
@@ -109,7 +109,7 @@ def _intake_reading(state: ProjectState, codebase: Codebase) -> tuple[int | None
     all-clear, which is the one thing a triage nudge must never emit.
     """
     result = cachequery.unstaged_items(
-        codebase.root, scope=_backlog_store(state), now=datetime.now(timezone.utc)
+        codebase.root, scope=_backlog_store(state), now=clock.now()
     )
     if result.get("status") != "ok":
         return None, False

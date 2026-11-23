@@ -64,6 +64,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import clock
 from . import gitstate
 
 SCHEMA_VERSION = 1
@@ -356,7 +357,7 @@ def _session_epoch(project_dir: Path) -> str | None:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return clock.now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def append_fact(
@@ -664,7 +665,7 @@ def _append_guard_fact(project_dir, guard, body, dedupe_key, known_facts) -> dic
         )
     fact_id = "guard-{}-{}-{}".format(
         guard.strip(),
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        clock.now().strftime("%Y%m%dT%H%M%SZ"),
         uuid.uuid4().hex[:8],
     )
     # `guard` LAST, not first: the id was minted from the parameter, so a body
@@ -716,7 +717,7 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
     if not isinstance(body, dict) or not isinstance(body.get("tree"), str):
         return {"status": "error", "reason": "a test-run fact needs a tree"}
     fact_id = "test-run-{}-{}".format(
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        clock.now().strftime("%Y%m%dT%H%M%SZ"),
         uuid.uuid4().hex[:8],
     )
     return append_fact(project_dir, "test-run", fact_id, body)
@@ -844,7 +845,7 @@ def append_stop_block(
     correct whether or not its record lands.
     """
     stop_id = "{}-{}".format(
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+        clock.now().strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
     )
     results = []
     for gate in gates:
@@ -908,7 +909,7 @@ def append_session_start(project_dir: Path) -> dict:
     rates this fact exists for need only that a session began, so the
     SessionStart payload's ``source`` (``startup`` or ``clear``) is not read."""
     fact_id = "session-start-{}-{}".format(
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+        clock.now().strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
     )
     return append_fact(project_dir, "session-start", fact_id, {})
 

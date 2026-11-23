@@ -33,10 +33,11 @@ import json
 import re
 import statistics
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from . import clock
 from . import contribution, evidence
 
 REPORT_SCHEMA_VERSION = 1
@@ -430,7 +431,7 @@ def aggregate_stats_cmd(argv: list[str], now: "datetime | None" = None) -> int:
     """Body of ``prawduct-hook aggregate-stats``. Exit 0 with a report (no
     reports at all is an answer); exit 1 on a bad argument or a named input
     that cannot be read, or a ``--collector`` fetch that fails."""
-    now = now or datetime.now(timezone.utc)
+    now = now or clock.now()
     try:
         args = _parse_args(argv)
         texts = read_bundle_paths(args["bundles"])
