@@ -382,6 +382,13 @@ The most full review rounds one body of work may buy before `critic-begin` refus
 4). `verify-resolutions` is never refused by the budget and never counted — it is how a BLOCKING finding clears,
 so a ceiling that ate it would strand findings with no command that resolves them.
 
+A plan's cadence is not counted either: the scope's first boundary review (its first `cumulative`), and each
+chunk's first review in any other mode. The budget ends a review loop, and those reviews are the plan's own steps.
+Counted, they ran out any plan with more chunks than the budget before its boundary review (owner ruling
+2026-11-23). At the ceiling a dispatch that is itself one of them still runs. Its chunks are the ones it will
+name, `--chunks` or the proposal. A later review of a chunk, a second `cumulative`, and a review naming no chunk
+are counted.
+
 The unit is the build-plan SCOPE, not the branch: a branch may carry two scopes (one would charge
 the other), and on a trunk-based repo the merge-base span is zeroed by every push, so a
 branch-counted rule could never fire. A dispatch that resolves no scope is not budgeted at all.

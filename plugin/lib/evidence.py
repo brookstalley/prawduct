@@ -2369,6 +2369,12 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         spent, ceiling = body.get("spent"), body.get("budget")
         if isinstance(spent, int) and isinstance(ceiling, int):
             guard_note += f" rounds={spent}/{ceiling}"
+        # The rounds the plan's cadence bought, which `spent` leaves out. A
+        # record without the key predates that allowance, and its `spent`
+        # counted them, so absence renders as nothing rather than as zero.
+        cadence = body.get("cadence")
+        if isinstance(cadence, int):
+            guard_note += f" cadence={cadence}"
         bound = body.get("bound")
         if isinstance(bound, str) and bound:
             guard_note += f" bound={bound}"

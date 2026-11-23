@@ -2825,14 +2825,18 @@ BOUND_WORKTREE = coverage.BOUND_WORKTREE
 
 
 def _round_budget_verdict(
-    project_dir: Path, prawduct_dir: Path, scope: "str | None"
+    project_dir: Path, prawduct_dir: Path, scope: "str | None",
+    incoming: "dict | None" = None,
 ) -> dict:
     """Has this body of work already spent its full-round budget?
 
-    Returns ``{"status": "within", "spent", "budget", "review_ids", "bound"}``,
-    ``{"status": "exhausted", "spent", "budget", "review_ids", "bound"}``,
+    Returns ``{"status": "within", "spent", "budget", "incoming_is_cadence", "cadence_ids", "review_ids", "bound"}``,
+    ``{"status": "exhausted", ...the same keys}``,
     ``{"status": "disabled"}`` when the repo set the budget to ``null``, or
-    ``{"status": "unavailable", "reason"}``.
+    ``{"status": "unavailable", "reason"}``. ``incoming`` is the dispatch being
+    asked about, as a fact body's ``mode`` and ``chunks``. When it is itself a
+    cadence step (:func:`_cadence_round_ids`), ``incoming_is_cadence`` is true
+    and the verdict is never ``exhausted``.
 
     **The unit is the SCOPE, not the branch, and the two are not the same
     question.** The declared ceiling bounds one body of work, and a branch is
@@ -2902,14 +2906,29 @@ def _round_budget_verdict(
         if f.get("kind") == "review"
     }
     in_scope = branch["review_ids"]
+    cadence = _cadence_round_ids(in_scope, body_of)
+    # The dispatch being asked about, walked after every recorded round. The
+    # ceiling caps the rounds past the plan's cadence, so a dispatch that is
+    # itself a cadence step (a chunk's first review, the first boundary review)
+    # is not refused for rounds the loops spent. It is known only when the
+    # dispatch says what it reviews: its declared chunks, or none.
+    incoming_is_cadence = bool(incoming) and _INCOMING_ROUND in _cadence_round_ids(
+        [*in_scope, _INCOMING_ROUND], {**body_of, _INCOMING_ROUND: incoming},
+    )
     spent = sum(
         1 for rid in in_scope
         if mode_token_of(body_of[rid].get("mode")) in FULL_ROUND_MODES
+        and rid not in cadence
     )
     return {
-        "status": "exhausted" if spent >= budget else "within",
+        "status": "exhausted" if spent >= budget and not incoming_is_cadence else "within",
         "spent": spent,
         "budget": budget,
+        "incoming_is_cadence": incoming_is_cadence,
+        # The rounds the plan's own cadence bought, which `spent` leaves out.
+        # Returned so the refusal can say what it did NOT count: "6 rounds"
+        # read against a 7-chunk plan is otherwise a loop that never happened.
+        "cadence_ids": [rid for rid in in_scope if rid in cadence],
         # WHICH bound produced the count. The two answer different questions and
         # returned indistinguishable verdicts, so the control's own falsification
         # query — "did it ever refuse a round that turned out to be needed?" —
@@ -2921,6 +2940,61 @@ def _round_budget_verdict(
         # of them or the census it renders is not a census.
         "review_ids": in_scope,
     }
+
+
+def _cadence_round_ids(review_ids: "list[str]", body_of: dict) -> "set[str]":
+    """The full rounds a build plan's own cadence buys, which the budget does
+    not charge (owner ruling 2026-11-23).
+
+    That is the scope's first boundary review, and each chunk's first review in
+    whatever mode it ran. The budget exists to end a review LOOP (re-reviewing
+    one body of work), and those reviews are the plan's planned steps, not a
+    loop. Charged, they exhausted any plan of more chunks than the budget on
+    cadence alone, refusing the boundary review the methodology says is never
+    skipped, with ``--force`` its only route.
+
+    **The boundary review is the first review in the boundary stage**
+    (:data:`STAGE_OF_MODE`, so the first ``cumulative``), wherever it falls and
+    whatever it names. Picked by what a review names instead, the slot went to
+    the wrong one both ways: a chunk's second ``final`` named nothing new and
+    took it, refusing the real boundary review; and a boundary ``cumulative``
+    naming a still-open chunk (a short plan, a ``cumulative-final`` plan's last
+    chunk) never took it, so a repeat ``cumulative`` was free. A ``final`` is an
+    inner-stage review: free as a chunk's first review, charged as a re-review.
+
+    Walked in ``review_ids`` order, the store's append order, over full rounds
+    only (a ``verify-resolutions`` pass neither claims nor spends an
+    allowance). A review naming no chunk claims no chunk's step, since no plan
+    step can be shown to have bought it. A ``chunk`` review like that is
+    charged, so name the chunk with ``--chunks``. Every later round is charged
+    as before.
+    """
+    from . import buildplan_refs, plan_status  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    cadence: "set[str]" = set()
+    reviewed: "set[str]" = set()
+    boundary_seen = False
+    for rid in review_ids:
+        body = body_of.get(rid) or {}
+        mode = mode_token_of(body.get("mode"))
+        if mode not in FULL_ROUND_MODES:
+            continue
+        named = {
+            buildplan_refs._normalize_chunk_id(c)
+            for c in plan_status.fact_chunks(body)
+        }
+        if stage_of(mode) == STAGE_BOUNDARY and not boundary_seen:
+            cadence.add(rid)
+            boundary_seen = True
+        elif named - reviewed:
+            cadence.add(rid)
+        reviewed |= named
+    return cadence
+
+
+#: The id :func:`_round_budget_verdict` gives the dispatch it is asked about,
+#: walked last. No fact can carry it, since review ids are minted.
+_INCOMING_ROUND = "\x00incoming"
 
 
 def _refuse_over_budget(
@@ -2959,9 +3033,15 @@ def _refuse_over_budget(
         else "in this worktree (the branch span holds no commits, so lineage "
              "could not bound the count)"
     )
+    cadence = len(budget.get("cadence_ids") or [])
     reason = (
         f"round budget exhausted — this work bought {budget['spent']} full "
         f"review round(s) {counted} against a budget of {budget['budget']}"
+        + (
+            f", not counting the {cadence} its plan's cadence bought (each "
+            "chunk's first review, and the first boundary review)"
+            if cadence else ""
+        )
     )
     swept = dispositions.auto_accept(project_dir, budget["review_ids"], reason=reason)
     # Rendered over the SWEPT ids, not over the scope: those are the findings
@@ -2982,6 +3062,9 @@ def _refuse_over_budget(
             "mode": mode_token,
             "spent": budget["spent"],
             "budget": budget["budget"],
+            # Present from the cadence allowance on. A record without it
+            # predates the allowance, and its `spent` counted cadence rounds.
+            "cadence": cadence,
             "auto_accepted": swept.get("accepted"),
             "blocking_left": swept.get("skipped_blocking"),
             "scope": scope,
@@ -3784,7 +3867,8 @@ def begin_review(
     outstanding takes the same answer, for the same reason.
 
     ``{"status": "budget-exhausted", ...}`` — the CLI exits 4 — when this
-    BODY OF WORK has already bought its declared full-round budget. The unit is
+    BODY OF WORK has already bought its declared full-round budget, past the
+    rounds its plan's cadence buys (:func:`_cadence_round_ids`). The unit is
     the build-plan scope, which a branch is only sometimes: see
     :func:`_round_budget_verdict` for what bounds the count when lineage cannot. The
     outstanding non-blocking findings are auto-accepted and a census is rendered
@@ -4561,40 +4645,6 @@ def begin_review(
             "recorded": recorded,
         }
 
-    # ROUND BUDGET — the terminating rule. Yield does not decay (13.5 → 15.4 →
-    # 15.5 → 18.4 findings per full round across this clone's store, 99% of them
-    # new), so a review loop has no natural fixed point and every "one more
-    # round" reads locally reasonable. A declared ceiling is the only principled
-    # stop: arbitrary-but-visible beats arbitrary-but-hidden.
-    #
-    # BELOW the free-interval refusal, and that ordering is load-bearing. "The
-    # loop is over" and "there was nothing to review" are different answers —
-    # which is why exit 4 is a separate code from exit 3 — and asking the second
-    # question is advertised as free (`skills/pr/SKILL.md`: "You do not have to
-    # work out whether that pass is needed — asking is free"). Checked first, an
-    # exhausted branch charged a records-only dispatch an auto-ACCEPT of every
-    # outstanding finding for asking a question the gate answers for nothing,
-    # and free dispatches are commonest on exactly the long branches that
-    # exhaust a budget (62 of 492 facts, by the exit-3 leg's own measurement).
-    #
-    # Only full rounds are counted AND only a full round is refused. A
-    # `verify-resolutions` pass is how a BLOCKING finding clears, so refusing
-    # one at exhaustion would strand it with no command that resolves it —
-    # the same deadlock the free-interval guard's second conjunct avoids.
-    if mode_token in FULL_ROUND_MODES and not force:
-        budget = _round_budget_verdict(project_dir, prawduct_dir, scope)
-        if budget["status"] == "unavailable":
-            notes.append(
-                "the review round budget could not be derived "
-                f"({budget['reason']}) — this round was NOT counted against it, "
-                "so read the budget as not in force for this dispatch"
-            )
-        elif budget["status"] == "exhausted":
-            return _refuse_over_budget(
-                project_dir, budget, mode_token, scope, chunk,
-                dispatch_commit, notes,
-            )
-
     # Untracked files inside the tree this review will vouch for, named while
     # leaving one out is still free. "Commit verbatim" is `git add -A`; a commit
     # of the tracked files alone records a tree without them, and the interval
@@ -4704,6 +4754,56 @@ def begin_review(
                 f"WARNING: declared chunk(s) {', '.join(outside)} are not in the proposal "
                 f"for this {mode_token} interval ({', '.join(chunks_proposed) or 'none'}); "
                 "recorded as declared, with the proposal beside them on the fact"
+            )
+
+    # ROUND BUDGET — the terminating rule. Yield does not decay (13.5 → 15.4 →
+    # 15.5 → 18.4 findings per full round across this clone's store, 99% of them
+    # new), so a review loop has no natural fixed point and every "one more
+    # round" reads locally reasonable. A declared ceiling is the only principled
+    # stop: arbitrary-but-visible beats arbitrary-but-hidden.
+    #
+    # BELOW the free-interval refusal, and that ordering is load-bearing. "The
+    # loop is over" and "there was nothing to review" are different answers —
+    # which is why exit 4 is a separate code from exit 3 — and asking the second
+    # question is advertised as free (`skills/pr/SKILL.md`: "You do not have to
+    # work out whether that pass is needed — asking is free"). Checked first, an
+    # exhausted branch charged a records-only dispatch an auto-ACCEPT of every
+    # outstanding finding for asking a question the gate answers for nothing,
+    # and free dispatches are commonest on exactly the long branches that
+    # exhaust a budget (62 of 492 facts, by the exit-3 leg's own measurement).
+    #
+    # A plan's cadence is not charged: each chunk's first review, in any mode,
+    # and the first boundary review are the plan's steps, not a loop, and a
+    # dispatch that is itself one passes the ceiling (`_cadence_round_ids`).
+    # BELOW the proposal for that reason: whether this dispatch is a chunk's
+    # first review depends on the chunks it will name, and with `--chunks`
+    # omitted (the skill's default) those are the proposal's. Asked before it,
+    # the check saw no chunk, refused the chunk's own first review, and had
+    # already swept the findings it auto-accepts. Still before anything is
+    # written, as the chunks-ambiguous refusal above is.
+    #
+    # Only full rounds are counted AND only a full round is refused. A
+    # `verify-resolutions` pass is how a BLOCKING finding clears, so refusing
+    # one at exhaustion would strand it with no command that resolves it —
+    # the same deadlock the free-interval guard's second conjunct avoids.
+    if mode_token in FULL_ROUND_MODES and not force:
+        budget = _round_budget_verdict(
+            project_dir, prawduct_dir, scope,
+            incoming={
+                "mode": MODE_TOKEN_TO_VERBOSE[mode_token],
+                "chunks": list(declared_chunks),
+            },
+        )
+        if budget["status"] == "unavailable":
+            notes.append(
+                "the review round budget could not be derived "
+                f"({budget['reason']}) — this round was NOT counted against it, "
+                "so read the budget as not in force for this dispatch"
+            )
+        elif budget["status"] == "exhausted":
+            return _refuse_over_budget(
+                project_dir, budget, mode_token, scope, chunk,
+                dispatch_commit, notes,
             )
 
     # Machine-verified record checks, computed HERE so no reviewer re-derives

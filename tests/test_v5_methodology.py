@@ -1171,7 +1171,9 @@ LAST_MEASURED_TOKENS = {
     # scoped to blockers the verify roll-call does not name. A READING; ceiling lowered with it.
     # -10 on 2026-11-18 (backlog-roi-wave2, #606): the ledger paragraph says it holds reviews, never
     # outcomes; paid by cutting its single-writer mechanics, which `lib/ledger.py`'s docstring owns.
-    "skills/critic/review-cycle.md": 8229,
+    # -7 on 2026-11-23 (round-budget-cadence): the budget caps rounds past a plan's cadence; paid by
+    # cutting the `--force`-every-time aside, which `docs/project-state-keys.md` owns.
+    "skills/critic/review-cycle.md": 8222,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -6903,7 +6905,8 @@ class TestReviewCycle:
         # LOWERED 8252 -> 8250 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 8250 -> 8240 (backlog-roi integration, #334, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 8240 -> 8230 (backlog-roi-wave2, #606, 2026-11-18) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8230, f"review-cycle.md is ~{tokens} tokens, should be <8230"
+        # LOWERED 8230 -> 8223 (round-budget-cadence, 2026-11-23) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8223, f"review-cycle.md is ~{tokens} tokens, should be <8223"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

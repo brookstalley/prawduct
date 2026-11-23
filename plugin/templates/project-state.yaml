@@ -265,7 +265,7 @@ coverage_required: false
 # Block `/prawduct:pr create` while operator-verification entries are pending.
 operator_verification_required: false
 
-# The most full review rounds one build-plan scope may buy; null disables it.
+# Full review rounds a build-plan scope may buy past its cadence; null disables.
 review_round_budget: 6
 
 # Dev builds only; false opts out of the paired native reviews.

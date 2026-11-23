@@ -86,7 +86,8 @@ rather than restating them (`REVIEW_ROUND_BUDGET_DEFAULT`, `FULL_ROUND_MODES`), 
 either lands here without anyone remembering to update prose. **It does not read the plugin's
 counting PREDICATE, and that is the load-bearing limit of this section**: `analyse` pools a scope's
 whole history, while `_round_budget_verdict` counts only the rounds `count_branch_rounds` admits —
-within the branch's lineage span, or, where that span is empty, within the current worktree. Those
+within the branch's lineage span, or, where that span is empty, within the current worktree — and,
+from 2026-11-23, not each chunk's first review (in any mode) or the scope's first boundary review. Those
 bounds are narrower than "the whole history", so the reach below is an upper bound for that reason
 as well as the one stated after it. The bound itself changed in v3.6.1-dev (#776), one commit
 behind this reading, which is the concrete form of the risk: parameters track, predicates do not.
@@ -124,7 +125,7 @@ against 605 gives 53% and answers a different question. 212 is not a scoped subs
 248 corpus scopes are scoped by construction, and 212 is how many of them ran a cumulative at all,
 which is the only population in which a *repeat* cumulative is possible. Cumulative is the most expensive mode per run, so this is
 the biggest single block of re-review in the corpus — larger than everything the chunk and final
-modes cost together, and it sits outside what the round budget reaches until the sixth round.
+modes cost together, and it sits outside what the round budget reaches until the sixth counted round.
 
 This is the target of the consumer-overhead program's WS5 (#672, coverage composing by tree while
 its gates key on identity), which that program ranks fifth.
