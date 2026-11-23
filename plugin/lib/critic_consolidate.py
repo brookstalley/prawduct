@@ -3295,6 +3295,12 @@ def _unresolved_scope_cause(
 #: dispatch error): the remedy is to fix the id, not to demote the mode.
 UNKNOWN_CHUNK_KIND = "unknown-chunk"
 
+#: A `chunk` dispatch with `--chunks` omitted whose proposal names more than one
+#: chunk. A `chunk` review is one chunk's review, and the plan-order rule
+#: cannot tell adjacent chunks apart, so the builder chooses before anything is
+#: written. Exit 8 (`api-contract.md`, Error Model).
+CHUNKS_AMBIGUOUS_KIND = "chunks-ambiguous"
+
 
 def _declared_chunks(
     project_dir: Path, plan_path: "Path | None", chunks: "list | None"
@@ -3347,8 +3353,27 @@ def _proposed_chunks(
     base_commit: "str | None" = None,
     head_tree: "str | None" = None,
 ) -> "tuple[list[str], tuple[str, ...]]":
-    """The chunk set this dispatch proposes to name, and the proposal's notes
-    for the dispatch to print: ``files_changed`` is the interval, ending at
+    """:func:`_dispatch_proposal`'s chunks and notes alone."""
+    proposal = _dispatch_proposal(
+        project_dir, plan_path, read_store, files_changed, mode_token, verify_anchor,
+        base_commit, head_tree,
+    )
+    return proposal.chunks, proposal.notes
+
+
+def _dispatch_proposal(
+    project_dir: Path,
+    plan_path: "Path | None",
+    read_store,
+    files_changed: list,
+    mode_token: str,
+    verify_anchor: "dict | None" = None,
+    base_commit: "str | None" = None,
+    head_tree: "str | None" = None,
+):
+    """The chunk set this dispatch proposes to name, as a
+    :class:`plan_status.ChunkProposal` — its notes for the dispatch to print,
+    and what named each chunk: ``files_changed`` is the interval, ending at
     ``head_tree``, ``read_store`` the dispatch's one store read. ``[]`` with no
     plan bound, or when the store cannot be read (the proposal is advice beside
     a declaration; a store that cannot be read certifies nothing).
@@ -3364,44 +3389,104 @@ def _proposed_chunks(
     naming a new chunk still warns. ``base_commit`` is the interval's base,
     which bounds a whole-plan mode's subject walk to the commits this review
     covers (:func:`plan_status.chunk_proposal`, ``since``)."""
-    if plan_path is None:
-        return [], ()
     from . import plan_status  # noqa: PLC0415 — lazy; pulls the plan readers
 
+    none = plan_status.ChunkProposal([])
+    if plan_path is None:
+        return none
     store = read_store()
     if store.get("status") == "error":
-        return [], ()
+        return none
     if mode_token == "verify-resolutions":
         if verify_anchor is None:
-            return [], ()
+            return none
         from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
         chain = critic_mode.review_chain(store.get("facts") or [], verify_anchor)
         named = {
             buildplan_refs._normalize_chunk_id(c) for c in critic_mode.chain_named_chunks(chain)
         }
+        # How the verified review named them rides along. The pass names them
+        # only because that review did, and the route a `done` row prints is
+        # read off the certifying fact, which is this pass once it resolves a
+        # blocker. Without it a chunk the builder declared read as a proposal.
+        naming = (critic_mode.chain_naming_fact(chain) or {}).get("body") or {}
+        inherited_declared = (
+            naming.get("chunks_declared")
+            if isinstance(naming.get("chunks_declared"), bool) else None
+        )
+        if isinstance(naming.get("chunks_proposed"), list) and any(
+            buildplan_refs._normalize_chunk_id(c) not in {
+                buildplan_refs._normalize_chunk_id(p) for p in naming["chunks_proposed"]
+            }
+            for c in plan_status.fact_chunks(naming)
+        ):
+            # A chunk outside that review's own proposal was declared, whatever
+            # its fact recorded (`plan_status._route`'s first rule).
+            inherited_declared = True
+        naming_evidence = (
+            naming.get("chunks_evidence") if isinstance(naming.get("chunks_evidence"), dict) else {}
+        )
         from . import plan_index  # noqa: PLC0415 — lazy, as above
 
         try:
             content = Path(plan_path).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
-            return [], ()
+            return none
         _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
         chain_ids = {f.get("id") for f in chain}
         named -= {
             n for (fid, n) in plan_status.retractions(store, scope) if fid in chain_ids
         }
         roster = plan_status.chunk_states(Path(plan_path), {"facts": []}, repo_dir=Path(project_dir))
-        return [
+        chunks = [
             k for k, s in roster.items()
             if not s.synthetic and buildplan_refs._normalize_chunk_id(k) in named
-        ], ()
-    proposal = plan_status.chunk_proposal(
+        ]
+        evidence_by_norm = {
+            buildplan_refs._normalize_chunk_id(k): v for k, v in naming_evidence.items()
+            if _valid_chunk_evidence(k, v)
+        }
+        return plan_status.ChunkProposal(
+            chunks,
+            evidence={
+                k: dict(evidence_by_norm[buildplan_refs._normalize_chunk_id(k)])
+                for k in chunks if buildplan_refs._normalize_chunk_id(k) in evidence_by_norm
+            },
+            declared=inherited_declared,
+        )
+    return plan_status.chunk_proposal(
         Path(plan_path), store, list(files_changed), mode_token, repo_dir=Path(project_dir),
         since=base_commit if gitstate.is_object_id(base_commit) else None,
         head_tree=head_tree,  # chunk_proposal guards it: a malformed id names fewer
     )
-    return proposal.chunks, proposal.notes
+
+
+def _chunks_ambiguous_reason(proposal) -> str:
+    """The `chunks-ambiguous` refusal's text: per proposed chunk the paths that
+    proposed it (three, then a count), then a re-run line per chunk and one for
+    them all.
+
+    One line per chunk, not the earliest: the refusal exists for the builder
+    who built a later chunk and touched an earlier one's path in passing, and
+    offering the earliest as "the chunk you built" would certify the unbuilt one
+    (#1141). The builder picks the line naming the chunk they built."""
+    lines = [
+        f"this `chunk` review's diff proposes {len(proposal.chunks)} chunks "
+        f"({', '.join(proposal.chunks)}), and a `chunk` review is one chunk's review:"
+    ]
+    for c in proposal.chunks:
+        ev = proposal.evidence.get(c) or {}
+        paths = ", ".join(f"`{p}`" for p in ev.get("paths") or []) or "(no path recorded)"
+        more = f" +{ev['paths_more']} more" if ev.get("paths_more") else ""
+        lines.append(f"  chunk {c}: {paths}{more}")
+    lines.append("  re-run with the line naming the chunk you built:")
+    for c in proposal.chunks:
+        lines.append(f"    `--chunks {c}`")
+    lines.append(
+        f"  with `--chunks {','.join(proposal.chunks)}` if this review is all of their work"
+    )
+    return "\n".join(lines)
 
 
 # --- The paired native review (#1130) ------------------------------------------
@@ -3667,12 +3752,18 @@ def begin_review(
     set. The code-derived proposal,
     ``chunks_proposed``, is :func:`plan_status.chunk_proposal` over this
     dispatch interval's ``files_changed`` (``chunk`` mode: the open chunks whose
-    Deliverables it touches; ``final``/``cumulative``: those and the open
-    chunks a scoped commit subject in the interval names — a mode sets depth,
-    never reach; ``verify-resolutions``: the chunks the review it verifies
-    names, inherited along that review's chain). The proposal's own notes —
-    why it named fewer than a reader might expect — join ``notes``. With
-    nothing declared, the declared set IS the proposal. A declared id the reviewed plan does not declare is refused
+    Deliverables it touches, a path joining only while every earlier open chunk
+    is in; ``final``/``cumulative``: those and the open chunks a scoped commit
+    subject in the interval names — a mode sets depth, never reach;
+    ``verify-resolutions``: the chunks the review it verifies names, inherited
+    along that review's chain). The proposal's own notes — why it named fewer
+    than a reader might expect — join ``notes``. With nothing declared, the
+    declared set IS the proposal — except in ``chunk`` mode when it names more
+    than one chunk: that dispatch is refused (``{"status": "error", "kind":
+    "chunks-ambiguous"}``, exit 8) before anything is written, with one
+    ``guard-refusal`` fact recorded. ``chunks_declared`` and
+    ``chunks_evidence`` ride the manifest beside the two lists: whether a set
+    was declared, and what named each proposed chunk. A declared id the reviewed plan does not declare is refused
     (``{"status": "error", "kind": "unknown-chunk"}``, exit 1 through the CLI's
     error path) before the tree is captured; a declared set that leaves the
     proposal is recorded as declared, with a ``WARNING:`` note, so the edit is
@@ -4578,11 +4669,31 @@ def begin_review(
     relay_files = bundle_files if bundle_files is not None else files_changed
     relay_base_commit = bundle_base_commit if span == SPAN_BOUNDED else base_commit
     relay_base_tree = bundle_base_tree if span == SPAN_BOUNDED else base_tree
-    chunks_proposed, proposal_notes = _proposed_chunks(
+    proposal = _dispatch_proposal(
         project_dir, graded_plan, read_store, relay_files, mode_token, verify_anchor,
         relay_base_commit, head_tree,
     )
+    chunks_proposed, proposal_notes = proposal.chunks, proposal.notes
     notes.extend(proposal_notes)
+    # `--chunks` is the builder's words. Without it, a derived proposal is the
+    # code's naming, and a verify pass's is the verified review's, whose own
+    # answer it carries (`ChunkProposal.declared`).
+    chunks_declared = True if declared_chunks is not None else proposal.declared
+    # Refused before the manifest, the marker or the archive of leftovers is
+    # written, so a refusal leaves nothing behind. Narrowing to the earliest
+    # chunk instead would name the wrong one when the builder works out of
+    # order and the diff touches an earlier chunk's path in passing.
+    if mode_token == "chunk" and declared_chunks is None and len(chunks_proposed) > 1:
+        _record_guard_refusal(
+            project_dir, "critic-dispatch-chunks-ambiguous",
+            {"mode": mode_token, "chunks_proposed": list(chunks_proposed), "scope": scope,
+             "branch": gitstate.current_branch(project_dir)},
+            reason=CHUNKS_AMBIGUOUS_KIND,
+        )
+        return {
+            "status": "error", "kind": CHUNKS_AMBIGUOUS_KIND,
+            "reason": _chunks_ambiguous_reason(proposal), "notes": notes,
+        }
     if declared_chunks is None:
         declared_chunks = list(chunks_proposed)
         chunk = declared_chunks[0] if declared_chunks else None
@@ -4671,6 +4782,14 @@ def begin_review(
         # code proposed for its interval.
         "chunks": list(declared_chunks),
         "chunks_proposed": list(chunks_proposed),
+        # Whether `--chunks` was passed — without it, a declared set equal to
+        # the proposal cannot be told from the proposal — and what named each
+        # proposed chunk. Read for the route a `done` row prints and by the
+        # bug-report intake; never for state (`chunks` alone is).
+        "chunks_declared": chunks_declared,
+        "chunks_evidence": {
+            c: dict(ev) for c, ev in proposal.evidence.items() if c in chunks_proposed
+        },
         "base_reviewed": base_reviewed,
         # Make the resolved target VISIBLE so a wrong-tree review is obvious
         # instead of silent (PDT-WT9K). ``branch`` is None on a detached HEAD.
@@ -5267,6 +5386,20 @@ def validate_manifest(data) -> tuple[bool, str]:
     for key in ("chunks", "chunks_proposed"):
         if data.get(key) is not None and not _str_list(data.get(key)):
             return False, f"'{key}' must be a list of non-empty strings or null"
+    # The route of each named chunk (#1141). Optional, as a manifest written
+    # before the fields still consolidates and its rows say the route is not
+    # recorded; typed when present, because the route text reads them.
+    if data.get("chunks_declared") is not None and not isinstance(data.get("chunks_declared"), bool):
+        return False, "'chunks_declared' must be a boolean or null"
+    evidence_map = data.get("chunks_evidence")
+    if evidence_map is not None and not (
+        isinstance(evidence_map, dict)
+        and all(_valid_chunk_evidence(k, v) for k, v in evidence_map.items())
+    ):
+        return False, (
+            "'chunks_evidence' must map a chunk id to "
+            "{paths: [str], paths_more: int, commits: [str]} or be null"
+        )
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals", "dispatch_tree", "reviewer_model",
@@ -6386,8 +6519,22 @@ def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
     return blocking, warning, note
 
 
+def _valid_chunk_evidence(chunk_id: object, entry: object) -> bool:
+    """One ``chunks_evidence`` entry: a chunk id to its paths (a list), the
+    count past them (a non-negative int) and its commits (a list)."""
+    if not _nonempty_str(chunk_id) or not isinstance(entry, dict):
+        return False
+    more = entry.get("paths_more")
+    return (
+        isinstance(entry.get("paths"), list) and all(_nonempty_str(p) for p in entry["paths"])
+        and isinstance(entry.get("commits"), list) and all(_nonempty_str(c) for c in entry["commits"])
+        and isinstance(more, int) and not isinstance(more, bool) and more >= 0
+    )
+
+
 def _fact_chunk_fields(manifest: dict) -> dict:
-    """``chunks`` and ``chunks_proposed`` for a review fact body.
+    """``chunks`` and ``chunks_proposed`` for a review fact body, with
+    ``chunks_declared`` and ``chunks_evidence`` when the manifest recorded them.
 
     The singular ``chunk`` (``chunks[0]``) is no longer written; facts already
     in a store keep theirs and :func:`plan_status.fact_chunks` still reads it.
@@ -6399,10 +6546,18 @@ def _fact_chunk_fields(manifest: dict) -> dict:
     chunks = manifest.get("chunks")
     if not isinstance(chunks, list):
         return {"chunk": manifest.get("chunk")}
-    return {
+    fields = {
         "chunks": list(chunks),
         "chunks_proposed": list(manifest.get("chunks_proposed") or []),
     }
+    # The route (#1141): copied only when the manifest recorded it, so a fact
+    # from a manifest written before the fields renders "not recorded" rather
+    # than a route nobody observed.
+    if isinstance(manifest.get("chunks_declared"), bool):
+        fields["chunks_declared"] = manifest["chunks_declared"]
+    if isinstance(manifest.get("chunks_evidence"), dict):
+        fields["chunks_evidence"] = {k: dict(v) for k, v in manifest["chunks_evidence"].items()}
+    return fields
 
 
 def build_fact_body(

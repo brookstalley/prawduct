@@ -27,6 +27,17 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-22.** "1. yes keep running 2. yes agred 3. yes please do fix" — answering three asks
+from the post-v3.9.0 orientation:
+1. The #1130 paired experiment runs to its stop condition (four weeks, about 2026-12-10), even
+   though the 60-boundary-pair sample is already met (104). Before the final blind check,
+   #1170 (consolidation duplicates inflate Critic-only counts) is fixed and native-review token
+   cost is measured (`compare.py --transcripts`). No fourth interim check. Lands on #1130.
+2. The next build is #1141 + #1198 (shared design `documentation/issues/1141-1198-design.md`),
+   then #1207.
+3. The delegation brief's verification ceiling names the whole-tree guard class, as the
+   scratch-subdirectory item does for scratch. Lands in `plugin/methodology/delegation.md`.
+
 **2026-11-22.** "yes update prawduct live" — `../prawduct-live` is advanced to `origin/develop` after
 the v3.9.0 release (the dogfood track, `documentation/release-process.md` § Dogfooding the develop
 track), so this machine's sessions run the released plugin plus the 3.9.1-dev reopen.
@@ -387,3 +398,29 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
 2. PR #1206 (`integration/backlog-roi-2026-11-18` → `develop`, the backlog ROI batch) is merged.
 
 **2026-11-19.** "Yes merge" — PR #1209 (`integration/backlog-roi-wave2-2026-11-18` → `develop`, backlog ROI wave 2) is merged.
+
+**2026-11-23.** "Yes to all of your recommendations" — answering four asks together:
+1. The `chunk-plan-order` boundary `cumulative` is bought past the exhausted round budget with `--force`, as a
+   one-off round. Six `chunk` reviews (Chunks 01 to 06) had spent the budget before Chunk 07 was reviewed. The
+   refusal's census goes into the PR body.
+2. R-9(a), left open in `archive/build-plan-review-loop-termination.md` ("chunk-mode reviews spend budget, so a
+   6+-chunk plan exhausts on cadence alone"), is answered. The budget stops counting the first `chunk` review of
+   each chunk and the first boundary review (`final`/`cumulative`) of a scope. It keeps 6 as the cap on every full
+   round after those. The fix goes on its own branch off `develop`. Lands in `critic_consolidate._round_budget_verdict`,
+   `plugin/docs/project-state-keys.md` (`review_round_budget`) and `plugin/skills/critic/review-cycle.md`.
+   **2026-11-23, transcription corrected:** the ask the owner approved said "not counting the first review of
+   each chunk or the first branch-wide review", with no mode. The entry above narrowed it to `chunk` reviews,
+   and `fix/round-budget-cadence`'s boundary review (R-2 of rev-20261123T135555Z-05b709ab) found that a mid-plan
+   `final` was then charged. The implementation follows the approved words: a chunk's first full review in any
+   mode, and the first whole-plan review that names no new chunk.
+3. `develop`'s two unpushed commits (a04758d4, 792d8c06, the delegate-ceiling whole-tree guards) ship as a PR after
+   `fix/chunk-plan-order`'s.
+   **2026-11-23, later:** "That's fine one PR works." `fix/chunk-plan-order` was cut after those two commits
+   landed on `develop`, so they are in its history and ship in its PR, which the body names. There is no separate
+   PR. Raised by R-5 of rev-20261123T132423Z-278552aa.
+4. The two inferred design calls in `build-plan-chunk-plan-order.md` Goals are confirmed as written: D8's exclusion
+   rule as revised in Chunk 07 (only the code's own naming of a done chunk is questioned), and D3's refusal
+   recorded as one `guard-refusal` fact through `evidence.append_guard_refusal` (the #596 one-sink ruling).
+
+**2026-11-23.** "Merge when ready" — PR #1212 (`fix/chunk-plan-order` → `develop`) and the `fix/round-budget-cadence`
+PR are each merged once their gates pass.

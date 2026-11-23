@@ -19,6 +19,8 @@ import sys
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from lib import critic_consolidate as cc
 from lib import critic_mode, work_unit
 from lib.critic_mode import MODE_DEFERRED, infer_mode
@@ -109,6 +111,7 @@ def _commit_all(repo: Path, msg: str) -> str:
 def _scenario(
     tmp_path: Path, ticked: int, findings: list, *, commit_fix: bool, commit_reviewed: bool = True,
     last_type: "str | None" = None, deliverables: "dict[int, str] | None" = None,
+    chunks: "str | None" = None, seed: "dict[str, str] | None" = None,
 ) -> tuple[Path, str]:
     """The current chunk reviewed with ``findings``, committed verbatim (unless
     ``commit_reviewed`` is False: the fix then goes straight onto the reviewed,
@@ -117,6 +120,8 @@ def _scenario(
     repo = tmp_path / "r"
     _init_repo(repo)
     _commit_file(repo, "src/app.py", "x = 1\n", "init")
+    for rel, text in (seed or {}).items():  # files a later chunk's Deliverables name
+        _commit_file(repo, rel, text, f"seed {rel}")
     _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
     _commit_file(
         repo, ".prawduct/artifacts/build-plan-work.md",
@@ -124,7 +129,7 @@ def _scenario(
     )
     _git(repo, "checkout", "-b", "feat/work", "--quiet")
     (repo / "src/app.py").write_text("x = 2\n")
-    begin = _run_begin(repo, "--mode", "chunk", "--chunks", str(ticked + 1))
+    begin = _run_begin(repo, "--mode", "chunk", "--chunks", chunks or str(ticked + 1))
     assert begin.returncode == 0, begin.stderr
     manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
     _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=findings)
@@ -226,6 +231,178 @@ class TestAFixIsToldFromTheNextChunkByItsDeliverables:
         mode, why = infer_mode(repo, None)
         assert mode == MODE_DEFERRED, why
         assert "chunk 1 was reviewed" in why, why
+
+    def test_1141_shared_module_leaves_a_later_chunk_open_and_its_work_infers_a_review(self, tmp_path):
+        """#1141-R3. Chunks 1 and 3 both list `src/app.py`, so the one-owner
+        rule credits a touch of it to neither, and the review that names chunk 1
+        leaves 3 open. Work that then touches the shared module may be 3's: the
+        deferral asks whether the work touches an open chunk at all
+        (`touched`), not whether a review could name one, or it would defer the
+        review of a chunk nobody reviewed. Red before #1141: the proposal over
+        the shared path was empty, so the work deferred."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=True,
+                            deliverables={1: "src/app.py", 3: "src/app.py"})
+        owed = critic_mode.extension_deferral_owed(
+            repo, repo / ".prawduct", work_unit.resolve(repo),
+            critic_mode.binding_progress(repo, work_unit.resolve(repo)),
+        )
+        assert owed is None, owed
+        mode, why = infer_mode(repo, None)
+        assert mode != MODE_DEFERRED, why
+
+    def test_work_on_a_chunk_ahead_of_an_open_one_is_not_deferred(self, tmp_path):
+        """Design D4. Chunk 1 is reviewed and done, 2 is open (it lists no
+        path), and the work touches only 3's path. The plan-order rule withholds
+        3 from a proposal while 2 is open, so a deferral reading the proposal
+        would read "no open chunk touched" and defer 3's review."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False,
+                            deliverables={3: "src/three.py"})
+        (repo / "src/app.py").write_text("x = 2\n")
+        (repo / "src/three.py").write_text("w = 1  # chunk 3, built ahead of 2\n")
+        _commit_all(repo, "the work")
+        mode, why = infer_mode(repo, None)
+        assert mode != MODE_DEFERRED, why
+        assert critic_mode.extension_deferral_owed(
+            repo, repo / ".prawduct", work_unit.resolve(repo),
+            critic_mode.binding_progress(repo, work_unit.resolve(repo)),
+        ) is None
+
+    def _owed(self, repo: Path):
+        return critic_mode.extension_deferral_owed(
+            repo, repo / ".prawduct", work_unit.resolve(repo),
+            critic_mode.binding_progress(repo, work_unit.resolve(repo)),
+        )
+
+    def test_a_fix_to_the_reviewed_chunk_names_no_done_chunk(self, tmp_path):
+        """Design D8's control: the deferral's ordinary case, a fix to the one
+        chunk just reviewed, says nothing about retracting it."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False,
+                            deliverables={1: "src/app.py"})
+        owed = self._owed(repo)
+        assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
+        assert "plan retract" not in owed[1]
+
+    def test_a_chunk_the_builder_named_is_not_questioned(self, tmp_path):
+        """D8's other exclusion: the same two-chunk review, named by the
+        builder with `--chunks 1,3`, so 3's route is their own words. Work on 3
+        then defers with no clause: a declared certification is not second-
+        guessed. The 1141 sequence below is the same shape with the route
+        unrecorded, and does print it."""
+        repo, _ = _scenario(
+            tmp_path, MID, [WARNING], commit_fix=False, chunks="1,3",
+            deliverables={1: "src/app.py", 3: "src/three.py"}, seed={"src/three.py": "w = 0\n"},
+        )
+        (repo / "src/app.py").write_text("x = 2\n")
+        (repo / "src/three.py").write_text("w = 1\n")
+        _commit_all(repo, "chunk 3's work")
+        owed = self._owed(repo)
+        assert owed is not None, owed
+        assert "plan retract" not in owed[1], owed
+
+    @pytest.mark.parametrize(("route", "questioned"), [
+        ("declared", False), ("subject", False), ("span", False),
+        ("proposal", True), ("unrecorded", True),
+    ])
+    def test_only_the_codes_own_naming_is_questioned(self, monkeypatch, route, questioned):
+        """D8's exclusion, one row per route kind (R-2 and R-1 of the Chunk 07
+        review). Chunk 07 added `span` and pinned only `declared`; dropping
+        `span` left the suite green. A scoped subject was not excluded at all.
+        Two chunks reviewed, so the one-chunk `own` exemption cannot be what
+        silences the clause."""
+        from lib import plan_status
+        from lib.plan_status import ChunkState
+
+        monkeypatch.setattr(
+            plan_status, "done_chunks_touched", lambda *_a, **_k: [("03", "rev-named")]
+        )
+        states = {
+            "01": ChunkState("done", fact_id="rev-named", route="declared"),
+            "02": ChunkState("open"),
+            "03": ChunkState("done", fact_id="rev-named", route=route),
+        }
+        progress = critic_mode.PlanProgress(
+            total=3, complete=2, current_id="02", open_ids=("02",), states=states, finished=False,
+        )
+        plan = type("Binding", (), {"plan_path": Path("plan.md")})
+        clause = critic_mode._done_chunks_touched_clause(
+            plan, progress, {"src/three.py"}, ("01", "03"), Path("."),
+        )
+        if questioned:
+            assert "plan retract 03 --all" in clause and "`rev-named`" in clause, clause
+        else:
+            assert clause == "", clause
+
+    def test_a_later_chunk_editing_a_chunk_the_builder_named_says_nothing(self, tmp_path):
+        """Dogfooded on #1141's own branch: chunk 1 certified by `--chunks 1`,
+        chunk 3 reviewed with `--chunks 3`, then a fix touching a file chunk 1
+        lists. Chunk 1's certification is the builder's own words, and a later
+        chunk editing its file is ordinary, so no retraction is suggested."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False,
+                            deliverables={1: "src/app.py", 2: "src/app.py"})
+        # A second review, of chunk 2 (shared with 1), so 1 is done by a review
+        # the newest one is not.
+        (repo / "src/app.py").write_text("x = 3\n")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "2")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[WARNING])
+        assert _run_consolidate(repo).returncode == 0
+        _commit_all(repo, "chunk 2, reviewed")
+        (repo / "src/app.py").write_text("x = 4  # chunk 2's fix\n")
+        owed = self._owed(repo)
+        assert owed is not None, "the fix to chunk 2 defers"
+        assert "plan retract" not in owed[1], owed
+
+    def test_the_1141_sequence_names_the_wrong_certification_then_retracting_it_reviews_it(self, tmp_path):
+        """#1141 (A2, R8, R9) end to end. A pre-#1141 fact named 1 and 3, so 3
+        reads done though nobody built it. 3's work then reads as a fix and
+        defers, and the deferral names 3 and the fact so the builder can see
+        the wrong certification where they meet it. Retracting 3 reopens it,
+        its work then infers a review, and a review naming 3 certifies it."""
+        from lib import evidence, plan_status
+
+        repo, _ = _scenario(
+            tmp_path, MID, [WARNING], commit_fix=False, chunks="1,3",
+            deliverables={1: "src/app.py", 3: "src/three.py"}, seed={"src/three.py": "w = 0\n"},
+        )
+        # The reported repos' facts predate `chunks_declared`, and their
+        # proposal named 3 (a path it merely touched): rewrite the fact so, as
+        # `--chunks` cannot produce it now. Its route then reads unrecorded,
+        # not the builder's own words.
+        store = evidence.store_path(repo)
+        lines = [json.loads(line) for line in store.read_text().splitlines() if line.strip()]
+        for fact in lines:
+            if fact.get("kind") == "review":
+                fact["body"].pop("chunks_declared", None)
+                fact["body"].pop("chunks_evidence", None)
+                fact["body"]["chunks_proposed"] = ["1", "3"]
+        store.write_text("".join(json.dumps(f) + "\n" for f in lines))
+        (repo / "src/app.py").write_text("x = 2\n")  # the reviewed tree: no fix
+        (repo / "src/three.py").write_text("w = 1  # chunk 3's real work\n")
+        _commit_all(repo, "chunk 3's work")
+        owed = self._owed(repo)
+        assert owed is not None, owed
+        assert "touches chunk 3's Deliverables" in owed[1] and "plan retract 3 --all" in owed[1], owed
+        plan = repo / ".prawduct/artifacts/build-plan-work.md"
+        fact_id = plan_status.chunk_states(plan, evidence.read_facts(repo), repo_dir=repo)["3"].fact_id
+        assert f"`{fact_id}`" in owed[1]
+
+        retract = subprocess.run(
+            [sys.executable, str(HOOK), "plan", "retract", "3", "--all", "--reason", "never built"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert retract.returncode == 0, retract.stderr
+        assert self._owed(repo) is None
+        mode, why = infer_mode(repo, None)
+        assert mode != MODE_DEFERRED, why
+        begin = _run_begin(repo, "--mode", "chunk", "--chunks", "3")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        states = plan_status.chunk_states(plan, evidence.read_facts(repo), repo_dir=repo)
+        assert states["3"].state == "done" and states["3"].fact_id != fact_id
 
     def test_a_chunk_with_no_path_deliverables_reads_as_a_fix_and_loses_nothing(self, tmp_path):
         """The accepted fail-open, with its DIRECTION asserted. No chunk here
@@ -509,7 +686,11 @@ class TestOnlyASuppliedChunkIdIsCredited:
         monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "ok", "facts": facts})
         monkeypatch.setattr(gates, "covered_frontier", lambda _p, **_k: {"commit": "abcdef1234567890"})
         monkeypatch.setattr(critic_mode, "_paths_since_tree", lambda _t, _p: set())
-        monkeypatch.setattr(plan_status, "propose_chunks", lambda *_a, **_k: [])
+        # The deferral asks `chunk_proposal(...).touched`, so that is what is
+        # stubbed: work touching no open chunk's Deliverables.
+        monkeypatch.setattr(
+            plan_status, "chunk_proposal", lambda *_a, **_k: plan_status.ChunkProposal([])
+        )
         plan = type("Binding", (), {"plan_path": Path("plan.md"), "chosen_by": "binding",
                                     "is_legacy": legacy})
         open_ids = tuple(k for k, s in states.items() if s.state == "open")

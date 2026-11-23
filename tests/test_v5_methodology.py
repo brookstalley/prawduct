@@ -585,7 +585,21 @@ LAST_MEASURED_TOKENS = {
     # -8 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): Resolve findings names `gates.FIX_ORDER`
     # and cites the anchoring derivation instead of copying the order and restating what committing
     # first does to the pass. A READING; ceiling lowered with it.
-    "methodology/building.md": 5658,
+    # -2 on 2026-11-22 (delegate-ceiling-whole-tree-guards): the delegate brief's verification
+    # ceiling points at delegation.md "What a brief must say", which owns it, instead of restating
+    # it, so the whole-tree guard class has one home. A READING; ceiling lowered with it.
+    # -5 on 2026-11-22 (same scope, Critic round on a04758d4): the review found the pointer had
+    # dropped the `How:` line's reach for the `Delegate verification` row (R-13's fix), and the
+    # shared ceiling paragraph still gave a delegate the builder's touched-files ceiling. The `How:`
+    # line names the row and the guards again, and the paragraph says a delegate runs its brief's.
+    # Paid in place: the removal-evidence paragraph drops "these fail silently, in the direction of
+    # looking finished" and "the files it touched", which delegation.md's "The Done taken on faith"
+    # owns. A READING; ceiling lowered with it.
+    # 0 on 2026-11-23 (chunk-plan-order, native review of the boundary round): the `How:` line read
+    # as if the guards joined only the fallback; it now says "either way plus the whole-tree
+    # guards", paid by dropping an article. "The files it touched" now lives in delegation.md's
+    # "What to return" (the line above was wrong that it already did).
+    "methodology/building.md": 5651,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1368,7 +1382,10 @@ LAST_MEASURED_TOKENS = {
     # names the covering mode on every demotion. Ceiling lowered with it.
     # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): the exit-3 qualifier stops restating which
     # tree a `cumulative`/`verify-resolutions` pass anchored. A READING; ceiling lowered with it.
-    "skills/critic/SKILL.md": 3225,
+    # +22 on 2026-11-22 (chunk-plan-order Chunk 02, #1141), DECLARED: the exit table gains exit 8
+    # (chunks ambiguous), net of cutting step 4's restated definition of the proposal for a pointer
+    # to planning.md "Chunk state", which owns it. Priced in `test_reviewer_payload_budget.py`.
+    "skills/critic/SKILL.md": 3247,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1684,7 +1701,13 @@ LAST_MEASURED_TOKENS = {
     # +10 on 2026-11-18 (backlog-roi, #1199): "Chunk state" names the merged-in side of a
     # non-base merge as span credit — a description of the code, recorded as a departure under
     # data-model.md D1 for the owner's confirmation. A READING.
-    "methodology/planning.md": 5779,
+    # +150 on 2026-11-22 (chunk-plan-order Chunk 06, #1141/#1198): "Chunk state" states the
+    # plan-order rule (a path proposes a chunk only while every earlier open chunk is proposed),
+    # how to name a chunk built ahead of an open one, the `chunk`-mode refusal and `retract --all`;
+    # Plan Shape gains "A plan may ship in parts" (owner ruling 2026-11-22, ruling 3 of "yes to all").
+    # Each is a rule a builder meets nowhere else before the gate answers; drafted at +260 and cut to
+    # this. A READING.
+    "methodology/planning.md": 5929,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1976,7 +1999,18 @@ LAST_MEASURED_TOKENS = {
     # subdirectory, and the anti-patterns gain its tell. Parallel delegates sharing session scratch
     # overwrote each other's mutation-check backups; no existing clause covered it, so nothing was
     # cut to pay. A READING.
-    "methodology/delegation.md": 2914,
+    # +55 on 2026-11-22 (owner ruling, owner-rulings.md): the verification-ceiling bullet names the
+    # whole-tree guard class, and the anti-patterns gain its tell. Two delegates' narrow ceilings
+    # missed a whole-tree guard in one batch, and tests.md's learning alone was a recall miss both
+    # times; no existing clause covered it, so nothing was cut to pay. A READING.
+    # +32 on 2026-11-22 (same scope, Critic round on a04758d4): the ceiling bullet says the row sets
+    # the narrow run and the guards are added either way (a narrow ratified row otherwise dropped
+    # them), and describes the class by property instead of this repo's guard names. A READING.
+    # +7 on 2026-11-23 (chunk-plan-order, native review of the boundary round): "What to return"
+    # asks a removal or sweep for the files it touched. building.md cut that list on 2026-11-22
+    # because this file owned it, and this file never did. It is added here, the owning item.
+    # A READING.
+    "methodology/delegation.md": 3008,
 }
 
 
@@ -2886,6 +2920,38 @@ class TestBuildingMethodology:
     @pytest.fixture(autouse=True)
     def load(self):
         self.content = read_file("methodology/building.md")
+
+    def test_every_delegate_ceiling_sentence_reaches_the_row_and_the_guards(self):
+        """building.md states a delegate's ceiling twice: in the shared ceiling
+        paragraph, which a delegate reads because its brief points it at the
+        build cycle, and in the `How:` line a coordinator writes the brief from.
+        Each must agree with delegation.md "What a brief must say". The
+        paragraph defers to the brief, so a delegate never takes the builder's
+        narrower touched-files ceiling for its own. The `How:` line reaches for
+        a ratified `Delegate verification` row, so a coordinator does not invent
+        a ceiling beside the owner's, and it names the whole-tree guards, which
+        a narrow run never reads.
+        """
+        para = next(
+            ln for ln in self.content.splitlines() if ln.startswith("**A verification ceiling")
+        )
+        assert "A delegate runs the one its brief names" in para
+        how = next(ln for ln in self.content.splitlines() if ln.startswith("**How:**"))
+        assert "`Delegate verification` row" in how
+        assert "whole-tree guards" in how
+        # The guards join the row as well as the fallback (native review,
+        # chunk-plan-order boundary round). "row, else the narrowest run, plus
+        # the guards" read as if only the fallback took them.
+        assert "either way plus the whole-tree guards" in how
+
+    def test_a_sweeps_return_names_the_files_it_touched(self):
+        """building.md cut "the files it touched" from its removal-evidence
+        paragraph because delegation.md owned it, which it did not. The owning
+        item is "What to return"."""
+        from pathlib import Path as _P
+        delegation = (_P(__file__).resolve().parents[1] / "plugin/methodology/delegation.md").read_text()
+        item = next(ln for ln in delegation.splitlines() if ln.startswith("- **What to return**"))
+        assert "the files it touched" in item, item
 
     def test_work_scaled_governance(self):
         """Has governance model with size/type levels, no v4 phase references."""
@@ -4030,7 +4096,9 @@ class TestBuildingMethodology:
         # LOWERED 5409 -> 5407 (testament-evidence-wiring, 2026-11-13) with the reading's cut.
         # RAISED 5407 -> 5667 (backlog-roi Chunk 09, #1034 + #678, 2026-11-18) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 5667 -> 5659 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 5659, f"building.md is ~{tokens} tokens, should be <5659"
+        # LOWERED 5659 -> 5657 (delegate-ceiling-whole-tree-guards, 2026-11-22) with the reading — see LAST_MEASURED_TOKENS.
+        # LOWERED 5657 -> 5652 (same scope, Critic round on a04758d4) with the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 5652, f"building.md is ~{tokens} tokens, should be <5652"
 
 
 # =============================================================================
@@ -4206,6 +4274,34 @@ class TestDelegationGuide:
         assert "not a template" in self.content.lower(), (
             "the brief section no longer refuses to be a template, which is the "
             "one sentence stopping the next editor from writing one"
+        )
+
+    def _ceiling_bullet(self) -> str:
+        return next(
+            ln for ln in self.content.splitlines() if ln.startswith("- **A verification ceiling**")
+        )
+
+    def test_the_ceiling_takes_the_ratified_row_first_and_adds_the_whole_tree_guards_either_way(self):
+        """A delegate's narrow run never reads the files a whole-tree guard
+        checks, so a file it wrote broke such a guard only at the merge: twice
+        in one batch, while the rule lived only in a learnings file. The bullet
+        is where a brief's ceiling is written, so it carries the class. It must
+        also say how the class meets a ratified `Delegate verification` row.
+        Without that, a coordinator honouring the row drops the guards, or adds
+        them and so writes a ceiling beside the owner's, which the same bullet
+        forbids. The row sets the narrow part, and the guards are added on top.
+        """
+        bullet = self._ceiling_bullet()
+        assert "`Delegate verification` row first" in bullet
+        assert "whole-tree guards" in bullet
+        assert "Either way, add" in bullet, (
+            "the ceiling bullet must say the guards are added whether or not a "
+            "`Delegate verification` row is ratified"
+        )
+        tells = [b for b in self._anti_pattern_bullets() if b.startswith("- **The narrow green.**")]
+        assert tells and "whole-tree guard" in tells[0], (
+            "the narrow-green anti-pattern and its tell are the dispatch-time "
+            "check for the ceiling bullet"
         )
 
     def test_the_guide_names_no_consumer_test_vocabulary(self):
@@ -6457,7 +6553,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3254 -> 3262 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3262 -> 3232 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 3232 -> 3226 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 3226, f"SKILL.md is ~{tokens} tokens, should be <3226"
+        # RAISED 3226 -> 3248 (chunk-plan-order Chunk 02, #1141): exit 8's row — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3248, f"SKILL.md is ~{tokens} tokens, should be <3248"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

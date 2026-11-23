@@ -1643,17 +1643,24 @@ _BOUNDARY_CUMULATIVE_FINAL_WHY = (
 )
 
 
-def chain_named_chunks(chain: list[dict]) -> list[str]:
-    """The chunk ids the NEWEST fact on ``chain`` that names any names, as it
-    spells them — so a chunk-less ``verify-resolutions`` pass inherits the
-    chunk review it verifies. ``[]`` when no fact on the chain names a chunk.
-    The one inheritance rule, read by :func:`chain_certified_chunks` and by
-    ``critic_consolidate``'s ``verify-resolutions`` proposal."""
+def chain_naming_fact(chain: list[dict]) -> "dict | None":
+    """The NEWEST fact on ``chain`` that names any chunk, else ``None`` — the
+    fact a chunk-less ``verify-resolutions`` pass inherits its chunks, and how
+    they were named, from."""
     for fact in chain:
-        ids = plan_status.fact_chunks(fact.get("body") or {})
-        if ids:
-            return ids
-    return []
+        if plan_status.fact_chunks(fact.get("body") or {}):
+            return fact
+    return None
+
+
+def chain_named_chunks(chain: list[dict]) -> list[str]:
+    """The chunk ids :func:`chain_naming_fact` names, as it spells them — so a
+    chunk-less ``verify-resolutions`` pass inherits the chunk review it
+    verifies. ``[]`` when no fact on the chain names a chunk. The one
+    inheritance rule, read by :func:`chain_certified_chunks` and by
+    ``critic_consolidate``'s ``verify-resolutions`` proposal."""
+    fact = chain_naming_fact(chain)
+    return plan_status.fact_chunks(fact.get("body") or {}) if fact else []
 
 
 def chain_certified_chunks(progress: PlanProgress, chain: list[dict]) -> "tuple | None":
@@ -1790,10 +1797,10 @@ def _open_blocker_on_chain(facts: list[dict], chain: list[dict]) -> bool:
 def boundary_review_on_chain(chain: list[dict]) -> bool:
     """Whether a ``cumulative`` sits on ``chain`` — the builder is at the boundary.
 
-    A ``cumulative`` spans every chunk built so far and names every chunk built
-    and open at its dispatch (``plan_status.propose_chunks``), so after one an
-    open chunk cannot say whether it is still to be built or was left out of
-    that set; on
+    A ``cumulative`` spans every chunk built so far and names the open chunks
+    built at its dispatch, a path's only while every earlier open chunk is named
+    too (``plan_status.chunk_proposal``), so after one an open chunk cannot say
+    whether it is still to be built or was left out of that set; on
     a plan with ``## Status`` boxes, a box awaiting its tick reads the same as
     one still to build. The review's mode can: a ``cumulative`` is the
     end-of-plan or pre-PR review, so no later chunk review is coming to carry
@@ -1848,8 +1855,9 @@ def extension_deferral_owed(
        - **(1a) the chain certified them** (:func:`chain_certified_chunks`):
          every reviewed chunk is ``done`` by a fact on the chain, AND the work
          since the newest review's tree touches no OPEN chunk's Deliverables
-         (:func:`plan_status.propose_chunks` in ``chunk`` mode over those
-         paths is empty). A review closes its chunks the moment it records,
+         (``touched`` of :func:`plan_status.chunk_proposal` in ``chunk`` mode
+         over those paths is empty — every open chunk a path covers, before
+         the one-owner and plan-order rules narrow what a review may name). A review closes its chunks the moment it records,
          so no tick marks "the builder moved on"; the observable stands in for
          the stored one (``hook-surface.md``: observable beats stored).
          **Fail-open, accepted (coordinator, 2026-10-25):** a chunk whose
@@ -1899,11 +1907,15 @@ def extension_deferral_owed(
     fact_list = read.get("facts") or []
     chain = review_chain(fact_list, newest)
     reviewed = chain_certified_chunks(progress, chain)
+    pending: "set[str] | None" = None
     if reviewed is not None:
         pending = _paths_since_tree((newest.get("body") or {}).get("head_tree"), project_dir)
-        if pending is None or plan_status.propose_chunks(
+        # `touched`, not the proposal: the certifying rules (one owner, plan
+        # order) leave out chunks this work does touch, and reading their
+        # absence as "no open chunk touched" would defer a chunk nobody reviewed.
+        if pending is None or plan_status.chunk_proposal(
             Path(plan.plan_path), read, pending, "chunk", repo_dir=Path(project_dir)
-        ):
+        ).touched:
             return None
         label = ", ".join(reviewed)
     else:
@@ -1923,12 +1935,13 @@ def extension_deferral_owed(
     if owed is None:
         return None
     kind, why = owed
+    touched = _done_chunks_touched_clause(plan, progress, pending, reviewed, project_dir)
     if kind == OWED_BOUNDARY:
         return kind, (
             f"chunk {label} was reviewed with no open blocker and {why}. "
             "That review spans the branch from the merge-base, so it covers this work "
             "too. Commit, then run `/prawduct:critic` when the chunk is done — it infers "
-            "the cumulative"
+            f"the cumulative{touched}"
         )
     frontier = gates.covered_frontier(project_dir, read=read)
     if frontier is None:
@@ -1937,7 +1950,46 @@ def extension_deferral_owed(
         f"chunk {label} was reviewed with no open blocker and {why}, and it "
         f"starts from the newest committed state a review covers ({frontier['commit'][:12]})"
         " — it covers this "
-        "work too. Commit and carry on"
+        f"work too. Commit and carry on{touched}"
+    )
+
+
+def _done_chunks_touched_clause(
+    plan, progress: PlanProgress, pending: "set[str] | None", reviewed: "tuple | None",
+    project_dir: Path,
+) -> str:
+    """The deferral's closing advice when the pending work touches a chunk a
+    review already certified, other than the one just reviewed (#1141-R8):
+    a later chunk editing a done chunk's file is ordinary, so the inference
+    stands, but a wrong certification is met here first. ``""`` otherwise.
+    Reads the states the inference already holds; the path rule is
+    :func:`plan_status.done_chunks_touched`'s."""
+    if not pending or not progress.states:
+        return ""
+    # Only the code's own naming is questioned: a chunk certified by the
+    # builder's words (`ChunkState.named_by_builder`) is theirs, and a later
+    # chunk editing its file is ordinary. The newest review's chunks are not
+    # all exempt: when it named several by a path proposal, the one a path
+    # merely touched is exactly the wrong certification this clause exists
+    # for (#1141's sequence, design control (i)). A fix to the one chunk a review
+    # just named is the deferral's ordinary case too. What remains is a chunk a
+    # proposal named, or one whose route predates the record: that is how a
+    # later chunk was certified by a path it merely touched (#1141).
+    named = list(reviewed or ())
+    own = {buildplan_refs._normalize_chunk_id(c) for c in named} if len(named) == 1 else set()
+    hits = [
+        (c, fid) for c, fid in plan_status.done_chunks_touched(
+            Path(plan.plan_path), progress.states, pending, repo_dir=Path(project_dir),
+        )
+        if buildplan_refs._normalize_chunk_id(c) not in own
+        and not (progress.states.get(c) is not None and progress.states[c].named_by_builder)
+    ]
+    if not hits:
+        return ""
+    chunk, fact_id = hits[0]
+    return (
+        f". This work touches chunk {chunk}'s Deliverables, which `{fact_id}` certified; if "
+        f"that was wrong, `prawduct-hook plan retract {chunk} --all --reason …`"
     )
 
 
@@ -2030,7 +2082,9 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     ways. The rule: an earlier chunk's review is the boundary ``cumulative``,
     so the chunk is COMMITTED and left for it — nothing is ticked, because the
     boundary review names every open chunk that is built (``plan_status``:
-    ``chunk_proposal`` in ``cumulative`` mode) and its fact closes them all.
+    ``chunk_proposal`` in ``cumulative`` mode, where a scoped subject names a
+    chunk whatever its order and a path only while every earlier open chunk is
+    named) and its fact closes them all.
     That proposal counts a subject's chunk only when the subject carries the
     plan's scope, hence the scoped form the text gives. Inference sees a
     committed chunk as ``built`` (:func:`short_plan_deferral`, ``read_built``)
@@ -2052,7 +2106,8 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
         "Then build the last chunk before asking for review: `/prawduct:critic` "
         "infers the boundary `cumulative` once one chunk is left uncommitted and "
         "the tree is clean, and that review names every chunk built and still "
-        "open, and closes them together"
+        "open (a chunk built ahead of an open one is named by its scoped subject), and closes "
+        "them together"
     )
 
 

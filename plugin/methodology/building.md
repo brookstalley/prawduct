@@ -90,7 +90,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Implement.** Write the code that makes the tests pass, following `project-preferences.md` conventions. Prefer simplicity — the minimum abstraction the current chunk needs. Add observability alongside features, not after.
 
-**A verification ceiling — yours and a delegate's.** While building, run the narrowest thing that proves the change: the project's `Inner-loop verification` row where it has one, else the tests for the files you touched. The declared suite runs at the boundary, before the work lands (the `cumulative` review and PR, where there are ones), unless that row asks for it per chunk. A cost bound, not a rigor discount, and what it prevents fails *silently*: a partial or contended run reports a green that skipped a part nobody can name.
+**A verification ceiling.** While building, run the narrowest thing that proves the change: the project's `Inner-loop verification` row where it has one, else the tests for the files you touched. A delegate runs the one its brief names. The declared suite runs at the boundary, before the work lands (the `cumulative` review and PR, where there are ones), unless that row asks for it per chunk. A cost bound, not a rigor discount, and what it prevents fails *silently*: a partial or contended run reports a green that skipped a part nobody can name.
 
 **Update artifacts as you go.** When implementation changes something an artifact describes — API surface, data model, architecture — update that artifact as part of implementation, not at the end. Artifact drift is the #1 recurring quality issue at scale.
 
@@ -155,13 +155,13 @@ Research scales to impact: medium (pervasive pattern, non-core dep) → quick in
 
 **When the user asks you to work in a subagent, do it** (Principle 23). Otherwise delegation is the default when it finishes the work sooner without collision — a plan's chunks or a mid-cycle tangent — recorded as the plan's `partition:` and re-checked at each chunk close. `/prawduct:methodology delegation` holds the default and what holds however you arrange it; read it before fanning out. This section is the mechanics.
 
-**How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction "Read the build cycle via `/prawduct:methodology building`", a verification ceiling (the `Delegate verification` row, else the narrowest run covering its own change; never the heavy run), and who integrates. Name its model, since an unnamed one inherits yours, and set its effort. Add "then `.prawduct/.subagent-briefing.md`" only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it.
+**How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction "Read the build cycle via `/prawduct:methodology building`", a verification ceiling (the `Delegate verification` row or narrowest run covering its change, either way plus the whole-tree guards; never the heavy run), and who integrates. Name its model, since an unnamed one inherits yours, and set its effort. Add "then `.prawduct/.subagent-briefing.md`" only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it.
 
 **Parallel chunks:** launch independent chunks as separate subagents. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts are invisible; commit first or inline it in the prompt, say the prompt outranks any file. **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope a later `git commit`; use `git commit -- <paths>`. Prefer isolation for independent chunks. The canary may fire O(agents × edits) — expected.
 
 **Who integrates:** you, or an integrator subagent holding the one integration branch, where delegate branches merge and the heavy run happens; Critic, reflection, state and the done decision stay with you. A scratch worktree is unbound; it builds, you govern.
 
-**A delegate's "Done" on a removal or a sweep arrives with its evidence.** These fail silently, in the direction of looking finished. Ask for the falsifying output in the brief (the grep for the removed symbol returning nothing, the recount against the source you named, the files it touched) and read it when the report lands; don't repeat the sweep.
+**A delegate's "Done" on a removal or a sweep arrives with its evidence**: ask for the falsifying output in the brief (the grep for the removed symbol returning nothing, the recount against the source you named), read it when the report lands, and don't repeat the sweep.
 
 ## Working With Specs
 

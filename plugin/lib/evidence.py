@@ -2029,7 +2029,7 @@ def distinct_trees(facts: list[dict]) -> set[str]:
 #: offers them (a test holds the two rosters equal) — the text an unknown op,
 #: or a ``list`` or ``ingest`` usage error, prints.
 _CLI_USAGE = (
-    "Usage: prawduct-hook evidence {status|list [--kind <k>] [-n <count>]"
+    "Usage: prawduct-hook evidence {status|list [--kind <k>] [--id <fact-id>] [-n <count>] [--json]"
     "|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}"
 )
 
@@ -2271,7 +2271,13 @@ def _cmd_status(project_dir: Path) -> int:
 
 
 def _cmd_list(project_dir: Path, argv: list[str]) -> int:
+    """``evidence list``: newest first, one row per fact. ``--id`` narrows to
+    one fact, and ``--json`` prints each matching envelope whole as a JSON
+    line, body included, for a reader that needs a fact's fields (the
+    bug-report intake asks for a certifying review's chunk fields, #1141-R10)."""
     kind_filter: str | None = None
+    id_filter: str | None = None
+    as_json = False
     limit = 20
     i = 0
     while i < len(argv):
@@ -2279,6 +2285,12 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         if arg == "--kind" and i + 1 < len(argv):
             kind_filter = argv[i + 1]
             i += 2
+        elif arg == "--id" and i + 1 < len(argv):
+            id_filter = argv[i + 1]
+            i += 2
+        elif arg == "--json":
+            as_json = True
+            i += 1
         elif arg == "-n" and i + 1 < len(argv):
             try:
                 limit = max(1, int(argv[i + 1]))
@@ -2296,6 +2308,12 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
     facts = result["facts"]
     if kind_filter is not None:
         facts = [f for f in facts if f.get("kind") == kind_filter]
+    if id_filter is not None:
+        facts = [f for f in facts if f.get("id") == id_filter]
+    if as_json:
+        for fact in list(reversed(facts))[:limit]:
+            print(json.dumps(fact, sort_keys=True))
+        return 0
     if not facts:
         print("no matching facts")
         return 0

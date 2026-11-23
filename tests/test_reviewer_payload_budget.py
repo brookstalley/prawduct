@@ -293,7 +293,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
     # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): SKILL.md's exit-3 qualifier stops restating
     # which tree a pass anchored (`review-cycle.md` derives it). A READING; ceiling lowered with it.
-    "single-pass-inner": 5747,
+    # +22 on 2026-11-22 (chunk-plan-order Chunk 02, #1141), DECLARED: SKILL.md's exit table gains
+    # exit 8 (a `chunk` dispatch whose proposal names two chunks is refused), net of cutting step 4's
+    # restated definition of the proposal for a pointer to planning.md "Chunk state", which owns it.
+    # Priced against the SUM: ~22 tokens per fork review against a `chunk` review that certifies a
+    # second chunk nobody built, which costs a retraction and a re-review to undo.
+    "single-pass-inner": 5769,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -429,7 +434,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # grades a `fixed` resolution against. Priced against the SUM: ~40 tokens per review against a
     # class finding closed short of its members, measured well over 3 a month across the fleet
     # (`tools/measure-class-member-closure.py`), each one a further round.
-    "single-pass-full": 10151,
+    # +22 on 2026-11-22 (chunk-plan-order Chunk 02, #1141), DECLARED: SKILL.md's exit table gains
+    # exit 8 (a `chunk` dispatch whose proposal names two chunks is refused), net of cutting step 4's
+    # restated definition of the proposal for a pointer to planning.md "Chunk state", which owns it.
+    # Priced against the SUM: ~22 tokens per fork review against a `chunk` review that certifies a
+    # second chunk nobody built, which costs a retraction and a re-review to undo.
+    "single-pass-full": 10173,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -675,7 +685,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # grades a `fixed` resolution against. Priced against the SUM: ~40 tokens per review against a
     # class finding closed short of its members, measured well over 3 a month across the fleet
     # (`tools/measure-class-member-closure.py`), each one a further round.
-    "coordinator-fork": 10821,
+    # +22 on 2026-11-22 (chunk-plan-order Chunk 02, #1141), DECLARED: SKILL.md's exit table gains
+    # exit 8 (a `chunk` dispatch whose proposal names two chunks is refused), net of cutting step 4's
+    # restated definition of the proposal for a pointer to planning.md "Chunk state", which owns it.
+    # Priced against the SUM: ~22 tokens per fork review against a `chunk` review that certifies a
+    # second chunk nobody built, which costs a retraction and a re-review to undo.
+    "coordinator-fork": 10843,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -714,7 +729,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # property yourself" sentence — `critic-begin` now names the covering mode on every demotion.
     # -6 on 2026-11-18 (backlog-roi-wave2 Chunk 04, #723): SKILL.md's exit-3 qualifier stops restating
     # which tree a pass anchored (`review-cycle.md` derives it). A READING; ceiling lowered with it.
-    "coordinator-fork-inner": 6417,
+    # +22 on 2026-11-22 (chunk-plan-order Chunk 02, #1141), DECLARED: SKILL.md's exit table gains
+    # exit 8 (a `chunk` dispatch whose proposal names two chunks is refused), net of cutting step 4's
+    # restated definition of the proposal for a pointer to planning.md "Chunk state", which owns it.
+    # Priced against the SUM: ~22 tokens per fork review against a `chunk` review that certifies a
+    # second chunk nobody built, which costs a retraction and a re-review to undo.
+    "coordinator-fork-inner": 6439,
     # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
     # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
@@ -746,11 +766,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5748,
-    "single-pass-full": 10152,
+    "single-pass-inner": 5770,
+    "single-pass-full": 10174,
     "dispatched-reviewer": 9664,
-    "coordinator-fork": 10822,
-    "coordinator-fork-inner": 6418,
+    "coordinator-fork": 10844,
+    "coordinator-fork-inner": 6440,
     "dispatched-reviewer-inner": 5260,
 }
 

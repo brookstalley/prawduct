@@ -157,7 +157,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
   (`methodology/planning.md` "Chunk state") — a comma list,
   repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` (the old one-element
-  alias) is gone and is a usage error (exit 1) naming `--chunks`; omitted, the declared set is the code-derived proposal; an id the plan
+  alias) is gone and is a usage error (exit 1) naming `--chunks`; omitted, the declared set is the code-derived proposal
+  (a path proposes a chunk only while every earlier open chunk is proposed — `methodology/planning.md`
+  "Chunk state"), except that a `chunk` dispatch whose proposal names more than one chunk is refused
+  before anything is written (exit 8, `chunks-ambiguous`, § Error Model); the manifest and fact record
+  `chunks_declared` (whether `--chunks` was passed) and `chunks_evidence` (what named each proposed
+  chunk); an id the plan
   does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a
   usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note;
   `--session-model <id>` is the model the dispatcher runs as, from which code answers the
@@ -191,7 +196,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the newest by default, exit 0, or exit 1 with why), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
-  inverse), `evidence status|list` (`status` also prints `N transported fact(s) with no note on
+  inverse), `evidence status|list` (`list [--kind <k>] [--id <fact-id>] [-n <count>] [--json]`:
+  one row per fact, newest first, or with `--json` each matching envelope whole as a JSON line, body
+  included — added 2026-11-23, #1141; `status` also prints `N transported fact(s) with no note on
   their commit, on this branch's commits (merge base..HEAD)` — what `evidence sync` re-attaches
   before it pushes; older facts are not counted;
   every `evidence` op exits 0 ok, 1 a reported failure, 2 usage — an unknown op or a bad flag —
@@ -446,13 +453,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `built_unavailable` (null when git answered, else the cause — the plan unreadable, a declared
   `base:` naming no ref, `git log` failing — and the table ends with `built: unavailable (<cause>)`)
   and `chunks`, a list in plan order of `{id, state (open|done|dropped), fact_id, date, imported,
-  built, reason}`; `imported` marks a chunk completed by a `chunk-imported` fact or a legacy
+  built, reason, ahead_of}` (`ahead_of` added 2026-11-23, #1198: for a chunk `done` by a review fact,
+  the earliest open chunk before it, else null — advice, which no gate reads); `imported` marks a chunk completed by a `chunk-imported` fact or a legacy
   `## Status` tick read in memory, `built` is git-derived and certifies nothing (a commit naming the
   chunk in its subject or touching its deliverables, a change fragment still the `plan new` stub
   touching nothing; the short-plan Stop gate reads it only to arm its last-chunk block) and `reason` says why an entry that looked like an answer was not one (an
   unreadable `dropped:` line, a fact whose anchor is not in the branch's history), and for a
   `done` chunk certified by a fact that does not name it, that its review's interval carries a
-  commit whose scoped subject names the chunk (the span rule, `methodology/planning.md` "Chunk state"). It also
+  commit whose scoped subject names the chunk (the span rule, `methodology/planning.md` "Chunk state"),
+  and for one a fact names, how that fact came to name it (the proposal's path or commit, `--chunks`,
+  or that the fact predates the record, #1141). The table prints, under a row with `ahead_of`, a
+  line worded by that route. It also
   prints `lifecycle: <state>[ <released_in>] — <reason>`, and `--json` carries the same as
   `lifecycle: {state, reason, released_in, probed}` — `state` one of `in-progress`,
   `merged-unreleased`, `released`, `superseded`, `unknown`, observed from git, the review facts'
@@ -472,7 +483,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `status-block-undelimited`, `status-block-trailing-comment`, `fact-append-failed`,
   `plan-write-failed`; 2 usage or a path that is not a build plan. The preview is allowed inside a
   scratch worktree; `--apply` is a governance write and is refused there.
-  `plan retract <chunk> --reason R [--fact ID] [--plan <path>] [--json]` (mutating) withdraws one
+  `plan retract <chunk> --reason R [--fact ID | --all] [--plan <path>] [--json]` (mutating) withdraws one
   fact's certification of one chunk by appending a `chunk-retracted` fact (`{scope, chunk,
   fact_id, reason, retracted_at}`), attached as a note on HEAD like an import. `--fact` omitted
   names the fact certifying the chunk now — by name or by its interval; `--plan` omitted, the bound plan. It can only reopen a
@@ -483,7 +494,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `no-scope`, `unknown-chunk`, `box-import` (the chunk's `## Status` box is ticked, and certifies it
   after any withdrawal: untick it first), `not-certified`,
   `unknown-fact`, `other-scope`, `not-named` (the fact neither names the chunk nor certifies it by its interval), `fact-append-failed`; 2 usage or a path that is not
-  a build plan. Refused inside a scratch worktree.
+  a build plan. Refused inside a scratch worktree. `--all` (added 2026-11-23, #1198) withdraws EVERY
+  certification of the chunk, one `chunk-retracted` fact per pair: each fact naming it (a blocked one
+  too) and any span a withdrawal uncovers (`plan_status.retraction_plan`); with `--fact` it is a usage
+  error (2); `--json` carries `action`, `chunk`, `pairs[{fact_id, retraction_id}]`, `state` and
+  `certified_by`; a write failing partway exits 1 `fact-append-failed` naming what was written, and
+  a re-run converges.
   `plan check-claims [--json]` (read-only) asks, for every live plan declaring `branch:` or
   `working-branches:`, whether each named branch exists locally or on a remote. Three outcomes per
   claim, each reported distinctly and carried in `--json` as `outcome`: `exists` (nothing printed);
@@ -936,6 +952,12 @@ Fail-direction is deliberate and per-purpose:
   over the same stale suite; the remedy printed is `gates.suite_remedy`'s (wait for a record attempt
   still running, else run the suite), then the same mode. Absent evidence does not
   refuse. `--force` dispatches anyway;
+  `critic-begin` **8** = `chunk` dispatch refused because, with `--chunks` omitted, its proposal names
+  more than one chunk (added 2026-11-23, #1141) — a `chunk` review is one chunk's review, and the
+  plan-order rule cannot tell adjacent chunks apart. Refused before the manifest, marker or archive of
+  leftovers is written; stdout names each chunk's proposing paths and the two `--chunks` re-runs; one
+  `guard-refusal` fact is recorded. Distinct from **1** because the skill's exit-1 row reports and
+  stops, and the remedy here is one re-dispatch naming the chunk built;
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
   `test-status --wait` **75** = the wait timed out with the run still in progress (added
   2026-11-15, #1178). sysexits' EX_TEMPFAIL, "try again later", which is the remedy. Folded into

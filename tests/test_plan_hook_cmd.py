@@ -221,13 +221,17 @@ class TestStatus:
         assert (data["plan_path"], data["scope"], data["finished"]) == (
             ".prawduct/artifacts/build-plan-unit.md", "unit", True,
         )
+        # `ahead_of` joined for #1198 (null: every done row is in order), and a
+        # review-done row's `reason` says its route (#1141); this fixture's fact
+        # records no `chunks_proposed`, so the route is not recorded.
         assert data["chunks"] == [
             {"id": "01", "state": "done", "fact_id": None, "date": None,
-             "imported": True, "built": False, "reason": None},
+             "imported": True, "built": False, "reason": None, "ahead_of": None},
             {"id": "02", "state": "done", "fact_id": "R-two", "date": "2026-10-25",
-             "imported": False, "built": True, "reason": None},
+             "imported": False, "built": True,
+             "reason": "named; route not recorded (fact predates chunks_proposed)", "ahead_of": None},
             {"id": "03", "state": "dropped", "fact_id": None, "date": None,
-             "imported": False, "built": False, "reason": "folded into 02"},
+             "imported": False, "built": False, "reason": "folded into 02", "ahead_of": None},
         ]
 
     def test_the_human_table_renders_every_row_shape(self, tmp_path):
@@ -242,6 +246,8 @@ class TestStatus:
             "  chunk  state    fact   date        tags",
             "  01     done     -      -           imported",
             "  02     done     R-two  2026-10-25  built",
+            # The route under a review-done row (#1141-R7).
+            "      named; route not recorded (fact predates chunks_proposed)",
             "  03     dropped  -      -           -",
             "      folded into 02",
         ]

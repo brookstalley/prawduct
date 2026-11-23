@@ -18,11 +18,12 @@ pins that over every ``lib`` module and the hook.
   short plan's last chunk), never to disarm one; :func:`chunk_states` never
   calls it;
 - :func:`chunk_proposal` — the chunk set a review dispatch proposes (ST8),
-  with notes saying why it named fewer than it might; :func:`propose_chunks`
-  is its chunk list alone. It and :func:`built_chunks` are the two git-walking
+  under the one-owner and plan-order rules, with notes saying why it named
+  fewer than it might; :func:`propose_chunks` is its chunk list alone. It and :func:`built_chunks` are the two git-walking
   answers here, sharing one ``git log`` reader;
 - :func:`retraction_target` — whether a fact's certification of a chunk can be
-  withdrawn, the one check ``plan retract`` writes behind;
+  withdrawn, the one check ``plan retract`` writes behind, and
+  :func:`retraction_plan` every pair ``plan retract --all`` writes;
 - :func:`render_table` — the ``plan status`` table, the one renderer the CLI,
   the ``/clear`` handoff and the PR payload print;
 - :func:`built_not_done_notice` — the bound plan's chunks that are built and
@@ -110,7 +111,7 @@ so a chunk both ticked and reviewed reads ``done, imported`` with no fact cited.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterable, Literal
 
@@ -126,6 +127,20 @@ if TYPE_CHECKING:
     from . import plan_lifecycle
 
 State = Literal["open", "done", "dropped"]
+
+#: How a review fact came to name a chunk (:func:`_route`). ``subject`` is a
+#: whole-plan proposal's scoped ``(Chunk N)`` commit subject, and ``proposal``
+#: is a path (or a proposal that did not record which).
+Route = Literal["proposal", "subject", "declared", "span", "unrecorded"]
+
+#: The routes that are the builder's own words: ``--chunks``, a scoped commit
+#: subject, a span's scoped subject. A chunk certified by one of these was
+#: named on purpose, so the out-of-order flag expects it and the Stop-path
+#: deferral does not question it. What remains (``proposal``, ``unrecorded``)
+#: is the code's own naming, which is how a path a chunk merely touched once
+#: certified it (#1141). The one answer to "was this the builder's naming?":
+#: every reader asks :attr:`ChunkState.named_by_builder`.
+BUILDER_ROUTES: "frozenset[Route]" = frozenset({"declared", "subject", "span"})
 
 #: Frontmatter key declaring chunks the plan will not build.
 DROPPED_KEY = "dropped"
@@ -167,8 +182,17 @@ class ChunkState:
     a ``dropped`` chunk; for an ``open`` one it says why something that looked
     like an answer was not one (an unreadable ``dropped:`` entry, a review that
     names the chunk but cannot certify it, an unparseable heading); for a
-    ``done`` one certified by span it says so, since that fact does not name
-    it. ``None`` for a plain open chunk and a done one certified by name.
+    ``done`` one a review fact certified it says how that fact came to name it
+    (:func:`_route`: the proposal's path or commit, ``--chunks``, a span, or
+    that the fact predates the record), derived from the fact alone, with no
+    git. ``None`` for a plain open chunk and a done one from an import or a
+    box. ``route`` is that route's kind (:data:`Route`), and
+    :attr:`named_by_builder` is the one reading of it the out-of-order line
+    and the Stop-path deferral turn on.
+
+    ``ahead_of`` is, for a chunk ``done`` by a review fact, the earliest open
+    chunk before it in plan order, else ``None``. Advice: out of order is
+    legitimate for a delegated chunk, and no gate reads it.
 
     ``synthetic`` marks an entry that is not a chunk of the plan but stands in,
     open, for what could not be read — the :data:`UNREADABLE_PLAN` key and a
@@ -182,6 +206,14 @@ class ChunkState:
     imported: bool = False
     reason: str | None = None
     synthetic: bool = False
+    route: "Route | None" = None
+    ahead_of: str | None = None
+
+    @property
+    def named_by_builder(self) -> bool:
+        """Whether a review certified this chunk by the builder's own words
+        (:data:`BUILDER_ROUTES`)."""
+        return self.route in BUILDER_ROUTES
 
 
 # ---------------------------------------------------------------------------
@@ -803,6 +835,53 @@ def _extended_reviews(reviews: "list[dict]", fact: dict) -> "list[dict] | None":
 # ---------------------------------------------------------------------------
 
 
+def _route(body: dict, norm_id: str, by_norm: "dict[str, str]") -> "tuple[Route, str]":
+    """How a review fact came to name a chunk, as ``(kind, text)`` for the
+    ``done`` row: read off the fact alone (``chunks_declared``,
+    ``chunks_proposed``, ``chunks_evidence``), never recomputed with git.
+
+    A proposal never names outside itself, so a chunk outside
+    ``chunks_proposed`` was declared whatever ``chunks_declared`` says: on a
+    fact from before that field, and on an inconsistent store holding
+    ``False`` there. Inside it, a fact without the field cannot say which.
+
+    A chunk whose evidence records a commit was named by that commit's scoped
+    subject (``subject``), the builder's words, even where a path also
+    proposed it: the proposal records commits only for chunks the subject walk
+    kept (:func:`chunk_proposal`)."""
+    def shown(ids: object) -> str:
+        return ", ".join(by_norm.get(_norm(c), str(c)) for c in ids or []) or "none"
+
+    if not isinstance(body.get("chunks"), list) or not isinstance(body.get("chunks_proposed"), list):
+        return "unrecorded", "named; route not recorded (fact predates chunks_proposed)"
+    proposed = {_norm(c) for c in body.get("chunks_proposed") or []}
+    declared = body.get("chunks_declared")
+    if norm_id not in proposed:
+        return "declared", (
+            f"named by --chunks, outside the proposal ({shown(body.get('chunks_proposed'))})"
+        )
+    if declared is True:
+        return "declared", "named by --chunks (in the proposal)"
+    if declared is None:
+        return "unrecorded", (
+            "named; whether by --chunks or the proposal is not recorded (fact predates #1141)"
+        )
+    # Read defensively: `chunk_states` never raises, and a hand-edited store
+    # can hold what the dispatch's validator would have refused.
+    evidence_map = body.get("chunks_evidence") if isinstance(body.get("chunks_evidence"), dict) else {}
+    entry = next((v for k, v in evidence_map.items() if _norm(k) == norm_id), None)
+    entry = entry if isinstance(entry, dict) else {}
+    paths = [p for p in entry.get("paths") or [] if isinstance(p, str)] if isinstance(entry.get("paths"), list) else []
+    commits = [c for c in entry.get("commits") or [] if isinstance(c, str)] if isinstance(entry.get("commits"), list) else []
+    more = entry.get("paths_more")
+    if commits:
+        return "subject", f"named by commit {commits[0]}'s scoped subject"
+    if paths:
+        extra = f" (+{more} more)" if isinstance(more, int) and not isinstance(more, bool) and more > 0 else ""
+        return "proposal", f"named by its proposal: path `{paths[0]}`{extra}"
+    return "proposal", "named by its proposal; what proposed it is not recorded"
+
+
 def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str, ChunkState]:
     """Each chunk's :class:`ChunkState`, keyed by the id the plan prints, in plan order.
 
@@ -942,7 +1021,10 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
                     note(n, f"review {fact['id']} names it, but {why}")
                 continue
             for n in targets:
-                states[by_norm[n]] = ChunkState("done", fact["id"], _date(fact.get("ts")))
+                kind, text = _route(body, n, by_norm)
+                states[by_norm[n]] = ChunkState(
+                    "done", fact["id"], _date(fact.get("ts")), reason=text, route=kind,
+                )
 
         def line_refusal(line: "list[dict]") -> "str | None":
             """Why a review ``line`` an extended span stands on certifies
@@ -980,6 +1062,7 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
                         "done", fact["id"], _date(fact.get("ts")),
                         reason="by span: its review's interval carries a commit whose subject "
                         "names the chunk",
+                        route="span",
                     )
 
     for key, heading in plan.unparsed:
@@ -989,7 +1072,58 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             "heading the parser reads, so it cannot be certified — fix the heading",
             synthetic=True,
         )
+    # Out of order, flagged (#1198): one pass over plan order and the states
+    # just computed, no git. A box or an import is a hand claim on a retiring
+    # path, so only a review-certified chunk is flagged.
+    earliest_open: "str | None" = None
+    for key in list(plan.chunks):
+        st = states[key]
+        if st.state == "open" and earliest_open is None:
+            earliest_open = key
+        elif st.state == "done" and st.fact_id and not st.imported and earliest_open is not None:
+            states[key] = replace(st, ahead_of=earliest_open)
     return states
+
+
+def ahead_of_line(chunk_id: str, st: ChunkState) -> "str | None":
+    """The advice printed under a ``done`` row with an open chunk before it,
+    worded by its route: the builder's own words
+    (:attr:`ChunkState.named_by_builder`) make out of order expected, a path
+    proposal or an unrecorded route does not. ``None`` when the row is in order."""
+    if st.ahead_of is None:
+        return None
+    retract = f"`prawduct-hook plan retract {chunk_id} --all --reason …`"
+    if st.named_by_builder:
+        how = {"declared": "named by --chunks", "subject": "by its scoped subject"}.get(
+            st.route or "", "by span"
+        )
+        return (
+            f"done ahead of open chunk {st.ahead_of} ({how}) — expected when chunks are built "
+            f"out of order; if {chunk_id}'s work is not built, {retract}"
+        )
+    return f"done ahead of open chunk {st.ahead_of} — if chunk {chunk_id}'s work is not built, {retract}"
+
+
+def done_chunks_touched(
+    plan_path: Path, states: "dict[str, ChunkState]", paths: "Iterable[str]", *, repo_dir: Path,
+) -> "list[tuple[str, str]]":
+    """``(chunk id, certifying fact id)`` for each chunk ``done`` by a review
+    fact whose Deliverables cover one of ``paths``, in plan order — the path
+    rule's one home (:func:`_deliverable_chunks`, every owner credited, since
+    this names chunks to look at and certifies nothing). ``[]`` when the plan
+    cannot be read."""
+    try:
+        content = Path(plan_path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    done = [k for k, st in states.items() if st.state == "done" and st.fact_id and not st.imported]
+    if not done:
+        return []
+    hit = _deliverable_chunks(
+        content, done, _read_plan(content).chunks, paths, _read_worktree(Path(repo_dir)),
+        certifying=False,
+    ).chunks
+    return [(k, states[k].fact_id) for k in done if _norm(k) in hit]
 
 
 @dataclass(frozen=True)
@@ -1116,6 +1250,82 @@ def retraction_target(
             plan.scope, key, fact_id,
         )
     return RetractionTarget("ok", "", plan.scope, key, fact_id)
+
+
+def retraction_plan(
+    plan_path: Path, facts: object, chunk: str, *, repo_dir: Path
+) -> "list[RetractionTarget] | RetractionTarget":
+    """Every pair ``plan retract <chunk> --all`` writes, in the order to write
+    them — the answer, not a walker — or the one :class:`RetractionTarget`
+    that refuses (or says ``already``). It only reads, so nothing is half
+    written by the planning.
+
+    1. :func:`retraction_target` with no fact, once, for its refusals: a ticked
+       box refuses first. Its ``already`` (withdrawn, nothing certifying now)
+       is the answer only when steps 2 and 3 find nothing left to withdraw.
+    2. Every ``review`` and ``chunk-imported`` fact of the plan's scope that
+       names the chunk and is not yet withdrawn for it. Each must answer
+       ``ok``. A blocked fact naming it is taken too, since it certifies once
+       its blocker resolves.
+    3. Then, with those pairs added to an in-memory copy of the store, while
+       the chunk still reads ``done`` (by a span, since every naming fact is
+       withdrawn), that fact is added and the states re-read. The loop is
+       bounded by the store's review facts and stops on a repeated fact or a
+       refusal.
+    """
+    first = retraction_target(plan_path, facts, chunk, None, repo_dir=repo_dir)
+    # `already` and `not-certified` describe the chunk NOW; a blocked fact that
+    # names it still certifies once its blocker resolves, so step 2 runs for
+    # both, and `first` is the answer only when it finds nothing.
+    if first.status not in ("ok", "already", "not-certified"):
+        return first
+    scope, key = first.scope, first.chunk
+    store = _store(facts)
+    withdrawn = {fid for (fid, n) in retractions(store, scope) if n == _norm(key)}
+    planned: list[RetractionTarget] = []
+    for kind in ("review", IMPORTED_KIND):
+        for fact in evidence.facts_of_kind(store, kind):
+            body = fact.get("body") or {}
+            fid = fact.get("id")
+            if body.get("scope") != scope or not isinstance(fid, str) or fid in withdrawn:
+                continue
+            names = (
+                fact_chunks(body) if kind == "review"
+                else ([str(body["chunk"])] if body.get("chunk") is not None else [])
+            )
+            if _norm(key) not in {_norm(c) for c in names} or fid in {t.fact_id for t in planned}:
+                continue
+            target = retraction_target(plan_path, facts, key, fid, repo_dir=repo_dir)
+            if target.status == "already":
+                continue
+            if target.status != "ok":
+                return target
+            planned.append(target)
+
+    def with_planned() -> dict:
+        synthetic = [
+            {"schema": evidence.SCHEMA_VERSION, "kind": RETRACTED_KIND, "id": f"planned-{i}",
+             "ts": "", "actor": {},
+             "body": {"scope": scope, "chunk": key, "fact_id": t.fact_id, "reason": "planned"}}
+            for i, t in enumerate(planned)
+        ]
+        return {**store, "facts": [*(store.get("facts") or []), *synthetic]}
+
+    bound = len(evidence.facts_of_kind(store, "review")) + 1
+    for _ in range(bound):
+        augmented = with_planned()
+        state = chunk_states(plan_path, augmented, repo_dir=repo_dir).get(key)
+        if state is None or state.state != "done" or not state.fact_id:
+            break
+        if state.fact_id in {t.fact_id for t in planned}:
+            break
+        target = retraction_target(plan_path, augmented, key, state.fact_id, repo_dir=repo_dir)
+        if target.status != "ok":
+            return target
+        planned.append(target)
+    if not planned:
+        return first
+    return planned
 
 
 def is_finished(
@@ -1254,6 +1464,25 @@ class ChunkProposal:
 
     chunks: "list[str]"
     notes: "tuple[str, ...]" = ()
+    #: Open chunks a path alone proposed while an earlier open chunk was left
+    #: out (the plan-order rule), as the plan prints them, in plan order.
+    withheld: "tuple[str, ...]" = ()
+    #: Every open chunk whose Deliverables cover a changed path, before either
+    #: certifying rule (one owner, plan order): the Stop-path deferral's
+    #: question, "does this work touch an open chunk?", is wider than which
+    #: chunks a review may name.
+    touched: "tuple[str, ...]" = ()
+    #: Per proposed chunk, what named it: ``{"paths": [<=3], "paths_more": n,
+    #: "commits": [<=3 12-char ids]}`` — the paths that proposed it and the
+    #: commits whose scoped subject did. Recorded at dispatch, because the route
+    #: costs a git walk to recompute.
+    evidence: "dict[str, dict]" = field(default_factory=dict)
+    #: Whether the builder's words named these chunks, for the fact's
+    #: ``chunks_declared`` when the dispatch passed no ``--chunks``. ``False``
+    #: for a proposal this function derives. A ``verify-resolutions`` pass's
+    #: proposal is the review it verifies, so it carries that fact's value,
+    #: ``None`` included (critic_consolidate's verify proposal).
+    declared: "bool | None" = False
 
 
 def propose_chunks(
@@ -1293,12 +1522,19 @@ def chunk_proposal(
     subject half alone. A path proposal is a NAME the dispatch prints for the
     builder to keep or narrow with ``--chunks`` before the fact is written — the
     ruling that took path credit from spans kept naming as it was — so it stays,
-    with its one-owner rule.
+    with its two certifying rules (:func:`_deliverable_chunks`): one owner, and
+    plan order. Under plan order a path proposes a chunk only while every open
+    chunk before it is proposed too, in every mode, and a chunk it holds back is
+    in ``withheld`` with a note; a chunk a scoped subject names is kept out of
+    order, so the subject walk runs first. ``touched`` is every open chunk the
+    work covers before either rule, and ``evidence`` what named each proposed
+    chunk.
 
     ``chunk`` mode: the open chunks whose Deliverables paths intersect
     ``diff_paths`` (repo-relative; a deliverable directory matches what is
     under it), less a change fragment still the ``plan new`` stub
-    (:func:`_work_paths`). ``head_tree`` is the full id of the tree
+    (:func:`_work_paths`), less what the one-owner and plan-order rules hold
+    back. ``head_tree`` is the full id of the tree
     ``diff_paths`` ends at, which is where a fragment is read; without one,
     the working tree.
     ``final`` / ``cumulative``: those, and the open chunks a commit subject in
@@ -1343,11 +1579,11 @@ def chunk_proposal(
         read = _read_at(repo_dir, head_tree)
     else:
         read = lambda _rel: None  # noqa: E731 — never a git argv; every fragment unreadable, naming fewer
-    by_path = _deliverable_chunks(
-        content, open_ids, _read_plan(content).chunks, (str(p) for p in diff_paths), read
-    )
-    touched = {c for c in open_ids if _norm(c) in by_path.chunks}
     notes: list[str] = []
+    # The subject walk runs first: a chunk a scoped subject names is kept
+    # whatever the plan order, and the plan-order rule must know which.
+    by_words: set[str] = set()
+    walk: "_BranchWalk | str | None" = None
     if mode in _WHOLE_PLAN_MODES and open_ids:
         walk = _walk_branch(Path(plan_path), repo_dir, since)
         if isinstance(walk, str):
@@ -1355,10 +1591,10 @@ def chunk_proposal(
                 f"no chunk named only by a commit subject is proposed: {walk}"
             )
         elif walk is not None:
-            touched |= {c for c in open_ids if _norm(c) in walk.scoped_named}
+            by_words = {c for c in open_ids if _norm(c) in walk.scoped_named}
             unscoped = [
                 c for c in open_ids
-                if c not in touched and _norm(c) in walk.all_named
+                if c not in by_words and _norm(c) in walk.all_named
             ]
             if unscoped:
                 notes.append(
@@ -1367,10 +1603,30 @@ def chunk_proposal(
                     f"(`<type>({walk.plan.scope}): …`), and an unscoped subject may be "
                     "another plan's; pass --chunks if they are this plan's work"
                 )
+    by_path = _deliverable_chunks(
+        content, open_ids, _read_plan(content).chunks, (str(p) for p in diff_paths), read,
+        kept_by_words=by_words,
+    )
+    proposed = by_words | {c for c in open_ids if _norm(c) in by_path.chunks}
+    withheld = [c for c in open_ids if _norm(c) in by_path.withheld]
+    for c in withheld:
+        path, gap = by_path.withheld[_norm(c)]
+        notes.append(
+            f"chunk {c} not proposed: this diff touches `{path}`, which only chunk {c}'s "
+            f"Deliverables cover, but chunk {gap} is earlier in the plan, still open and not "
+            f"in this review, so the touch cannot say it was {c}'s work. "
+            + (
+                f"A scoped `(Chunk {c})` commit subject or `--chunks {c}` names it"
+                if mode in _WHOLE_PLAN_MODES
+                # A `chunk` review walks no commit subjects, so only the
+                # declaration reaches its proposal.
+                else f"`--chunks {c}` names it"
+            )
+        )
     # Whole-plan modes only: a `chunk` review mid-plan has every later, unbuilt
     # chunk open, and would note each one on every dispatch.
     for c in open_ids if mode in _WHOLE_PLAN_MODES else ():
-        if c in touched:
+        if c in proposed or c in withheld:
             continue
         bare = _bare_only(deliverable_paths(content, c), repo_dir)
         if bare:
@@ -1382,7 +1638,7 @@ def chunk_proposal(
             )
     # A shared path names no chunk; say so when it is why an open owner was left out.
     for path, owners in by_path.shared.items():
-        left_out = [c for c in owners if c in open_ids and c not in touched]
+        left_out = [c for c in owners if c in open_ids and c not in proposed]
         if left_out:
             notes.append(
                 f"`{path}` proposes none of chunk(s) {', '.join(owners)}: each lists it under "
@@ -1390,7 +1646,23 @@ def chunk_proposal(
                 "`(Chunk N)` subject or --chunks names "
                 f"{'it' if len(left_out) == 1 else 'them'}"
             )
-    return ChunkProposal([c for c in open_ids if c in touched], tuple(notes))
+    chunks = [c for c in open_ids if c in proposed]
+    commits = walk.scoped_commits if isinstance(walk, _BranchWalk) else {}
+    evidence = {}
+    for c in chunks:
+        paths = by_path.paths.get(_norm(c), [])
+        evidence[c] = {
+            "paths": paths[:3],
+            "paths_more": max(0, len(paths) - 3),
+            "commits": [sha[:12] for sha in commits.get(_norm(c), [])[:3]] if c in by_words else [],
+        }
+    return ChunkProposal(
+        chunks,
+        tuple(notes),
+        withheld=tuple(withheld),
+        touched=tuple(c for c in open_ids if _norm(c) in by_path.touched),
+        evidence=evidence,
+    )
 
 
 def _bare_only(deliverables: "list[str]", repo_dir: Path) -> "list[str]":
@@ -1506,12 +1778,21 @@ def _subject_chunks(subjects: "Iterable[str]", scope: "str | None", *, fallback:
 
 @dataclass(frozen=True)
 class _PathAnswer:
-    """:func:`_deliverable_chunks`' answer: the normalized ids credited, and
-    each touched path more than one chunk's Deliverables cover, with those
-    chunks (as the plan prints them), which the certifying rule credits to none."""
+    """:func:`_deliverable_chunks`' answer, every id normalized unless said.
+
+    ``chunks``: the ids of ``chunk_ids`` credited. ``shared``: each touched path
+    more than one chunk's Deliverables cover, with those chunks as the plan
+    prints them, which the certifying rule credits to none. ``withheld``: per
+    chunk the plan-order rule held back, the path that proposed it and the
+    earlier open chunk left out (as the plan prints it). ``touched``: every
+    chunk of ``chunk_ids`` a changed path covers, before either certifying rule.
+    ``paths``: per credited chunk, the changed paths that credited it, sorted."""
 
     chunks: "set[str]"
     shared: "dict[str, tuple[str, ...]]"
+    withheld: "dict[str, tuple[str, str]]" = field(default_factory=dict)
+    touched: "set[str]" = field(default_factory=set)
+    paths: "dict[str, list[str]]" = field(default_factory=dict)
 
 
 def _deliverable_chunks(
@@ -1522,6 +1803,7 @@ def _deliverable_chunks(
     read: "_ReadAt",
     *,
     certifying: bool = True,
+    kept_by_words: "Iterable[str]" = (),
 ) -> _PathAnswer:
     """The chunks of ``chunk_ids`` that touched ``paths`` attribute work to —
     the path half of the chunk-to-commit rule, the one home every reader of it
@@ -1530,25 +1812,58 @@ def _deliverable_chunks(
 
     A path is attributed by who OWNS it among all ``plan_chunks``: every chunk
     whose Deliverables cover it (the path itself, or a directory above it). The
-    certifying rule (``certifying``, for the proposal; a span takes no path
-    credit at all) credits a path only to its one owner: a path two chunks list cannot say whose work a
-    touch was, and crediting both certified the unbuilt one — such a chunk is
-    found by a scoped subject or a naming fact instead. The ``built`` tag,
-    which certifies nothing and arms a gate only early, passes
-    ``certifying=False`` and credits every owner."""
+    ``built`` tag, which certifies nothing and arms a gate only early, passes
+    ``certifying=False`` and credits every owner. The certifying rules (the
+    proposal; a span takes no path credit at all) are two, and this is the
+    home of both:
+
+    - **One owner.** A path two chunks list cannot say whose work a touch was,
+      and crediting both certified the unbuilt one, so it is credited to none.
+    - **Plan order.** ``chunk_ids`` are the open chunks in plan order. A chunk
+      credited by a path alone is kept only while every open chunk before it
+      is kept, by a path or by ``kept_by_words`` (normalized ids a scoped
+      subject names, which the caller walked first). Once one open chunk is
+      left out, every later path-only chunk is withheld: a later chunk's file
+      written early says what a commit changed, never that the chunk was
+      built. Words still name a chunk out of order, which is how a delegated
+      chunk landing first is credited."""
     changed = _work_paths(set(paths), read)
     deliverables = {c: deliverable_paths(content, c) for c in plan_chunks}
-    wanted = {_norm(c) for c in chunk_ids}
+    ordered = list(chunk_ids)
+    wanted = {_norm(c) for c in ordered}
     credited: set[str] = set()
+    owned: set[str] = set()
     shared: dict[str, tuple[str, ...]] = {}
+    by_chunk: dict[str, list[str]] = {}
     for path in sorted(changed):
         owners = tuple(c for c, d in deliverables.items() if _touches(d, {path}))
+        owned |= {_norm(c) for c in owners}
         if len(owners) > 1:
             shared[path] = owners
             if certifying:
                 continue
-        credited |= {_norm(c) for c in owners}
-    return _PathAnswer(credited & wanted, shared)
+        for c in owners:
+            credited.add(_norm(c))
+            by_chunk.setdefault(_norm(c), []).append(path)
+    withheld: dict[str, tuple[str, str]] = {}
+    if certifying:
+        words = {_norm(c) for c in kept_by_words}
+        gap: "str | None" = None
+        for c in ordered:
+            n = _norm(c)
+            if n in words:
+                continue
+            if n in credited and gap is None:
+                continue
+            if n in credited:
+                withheld[n] = (by_chunk[n][0], gap)
+                credited.discard(n)
+            elif gap is None:
+                gap = c
+    kept = credited & wanted
+    return _PathAnswer(
+        kept, shared, withheld, owned & wanted, {c: by_chunk[c] for c in kept},
+    )
 
 
 @dataclass(frozen=True)
@@ -1578,6 +1893,8 @@ class _BranchWalk:
     scoped_named: "set[str]"  # normalized ids a subject carrying the plan's scope names
     all_named: "set[str]"  # normalized ids any subject names
     changed: "set[str]"  # every path a commit on the branch touched
+    #: normalized id -> the commits (newest first) whose scope-carrying subject names it
+    scoped_commits: "dict[str, list[str]]" = field(default_factory=dict)
 
 
 def _walk_branch(
@@ -1619,12 +1936,17 @@ def _walk_branch(
         return commits
     subjects = [c.subject for c in commits]
     changed = set().union(*(c.files for c in commits)) if commits else set()
+    scoped_commits: dict[str, list[str]] = {}
+    for c in commits:
+        for n in _subject_chunks([c.subject], plan.scope):
+            scoped_commits.setdefault(n, []).append(c.sha)
     return _BranchWalk(
         content, plan, head,
         named=_subject_chunks(subjects, plan.scope, fallback=True),
-        scoped_named=_subject_chunks(subjects, plan.scope),
+        scoped_named=set(scoped_commits),
         all_named=_named_ids(subjects),
         changed=changed,
+        scoped_commits=scoped_commits,
     )
 
 
@@ -1709,7 +2031,8 @@ def render_table(
     Columns: chunk id, state, the certifying fact id, its date, and the tags
     ``imported`` and ``built`` (``built`` is :func:`built_chunks`' answer, passed
     in because it walks git and only the caller knows whether to pay for it);
-    a chunk's ``reason`` is indented beneath its row. ``plan status``, the
+    a chunk's ``reason`` is indented beneath its row, and beneath that the
+    out-of-order line (:func:`ahead_of_line`) when one applies. ``plan status``, the
     ``/clear`` handoff's progress block and the PR payload's build-plan section
     all print these lines, each under its own indent. ``[]`` for a plan with no
     chunks. ``built_unavailable`` is :class:`BuiltReport`'s cause: when set, a
@@ -1728,10 +2051,11 @@ def render_table(
                 tag for tag, on in (("imported", st.imported), ("built", chunk_id in built)) if on
             ) or "-",
             st.reason,
+            ahead_of_line(chunk_id, st),
         )
         for chunk_id, st in states.items()
     ]
-    table = [("chunk", "state", "fact", "date", "tags", None), *rows]
+    table = [("chunk", "state", "fact", "date", "tags", None, None), *rows]
     widths = [max(len(row[i]) for row in table) for i in range(4)]
     lines: list[str] = []
     for row in table:
@@ -1739,6 +2063,8 @@ def render_table(
         lines.append(f"{line}  {row[4]}".rstrip())
         if row[5]:
             lines.append(f"    {row[5]}")
+        if row[6]:
+            lines.append(f"    {row[6]}")
     if built_unavailable:
         lines.append(f"built: unavailable ({built_unavailable})")
     return lines
