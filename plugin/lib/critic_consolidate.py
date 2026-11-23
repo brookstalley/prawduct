@@ -3508,8 +3508,8 @@ def _dispatch_proposal(
             return none
         from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
-        chain = critic_mode.review_chain(
-            store.get("facts") or [], verify_anchor, bound=critic_mode.chain_bound(project_dir)
+        chain = critic_mode.branch_review_chain(
+            project_dir, store.get("facts") or [], verify_anchor
         )
         named = {
             buildplan_refs._normalize_chunk_id(c) for c in critic_mode.chain_named_chunks(chain)
@@ -6917,9 +6917,7 @@ def _plan_owes_a_later_review(
         if binding.plan_path is None:
             return None
         chain = (
-            critic_mode.review_chain(
-                facts or [], fact, bound=critic_mode.chain_bound(project_dir)
-            )
+            critic_mode.branch_review_chain(project_dir, facts or [], fact)
             if fact is not None else []
         )
         # Progress is read from the store AFTER this review's fact was appended,
