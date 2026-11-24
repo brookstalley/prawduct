@@ -500,3 +500,12 @@ static documents pays the full code path):
    `coverage_algebra.is_judgeable_path` is to make review cheap, not skippable.
 2. `fix/report-bug-triage-sync` is to be opened as a PR and merged.
 The #1239 work lands in that item's build plan.
+
+**2026-11-24.** "Yes on both, pr, merge, and get to develop and ../prawduct-live" — answering the two
+asks on PR #1241 (#1239, static content):
+1. PR #1241 is merged.
+2. The plan's reading of the 2026-11-24 "light rather than skipped" ruling is confirmed: the paired
+   native review stays out of scope, because it runs only on development builds and so is no
+   consumer cost (`.prawduct/artifacts/build-plan-static-content.md` Goals).
+The same message asked for this checkout to return to `develop` and for `../prawduct-live` to be
+advanced to `origin/develop` (the dogfood track, as on 2026-11-22).

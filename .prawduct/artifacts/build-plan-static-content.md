@@ -51,7 +51,7 @@ partition: serial — both chunks edit `coverage_algebra.py`, and Chunk 02's ros
 - *Inferred, then superseded by the boundary review (decisions below):* the declaration was first read from the working tree, as `risk_surfaces` is. Every check now reads the declarations in force for the tree it judges, and a static prefix counts only within what the integration branch declares.
 - *Owner-ruled (2026-11-24):* one reviewer instead of three for static-heavy diffs. #370's replay has no data on static content, so how many blockers a third reviewer would have found there is not measurable; the owner accepts that.
 - *Inferred:* the suite is not re-run for a static-only change. A test that does read a declared file is the case `suite_coupled_prefixes` exists for, and it wins.
-- Out of scope: the paired native review, which runs only on development builds (`native_review.py`) and so is not a consumer cost; and `critic_mode`'s mode inference, a different axis from the roster (#370).
+- Out of scope (*owner-confirmed 2026-11-24*): the paired native review, which runs only on development builds (`native_review.py`) and so is not a consumer cost; and `critic_mode`'s mode inference, a different axis from the roster (#370).
 
 **Decisions made mid-build:**
 - Chunk 01: the block reader already refuses an empty entry (`- ''`) as unparseable, so an empty prefix can never make every path static; a filter added for it was dead and removed. Settled by "authority fails closed".
