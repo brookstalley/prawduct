@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from test_critic_consolidate import MARKER_REL, PARTIALS_REL, _commit_file, _git, _init_repo, _run_begin, _store_facts
 
 from lib import critic_consolidate, pr_gate
@@ -73,6 +74,9 @@ class TestCumulativeRefusesWhatThePrGateWould:
         result = _run_begin(repo, "--mode", "cumulative", "--force")
         assert _dispatched(result), (result.stdout, result.stderr)
         assert _guard_facts(repo) == []
+        # Forced past the round budget, it must not lose this refusal silently.
+        assert "credential-shaped line(s)" in result.stderr and "settings.py:1" in result.stderr
+        assert "Xk9mQ2vLr7" not in result.stdout + result.stderr
 
 
 class TestEverythingElseDispatchesAsBefore:
@@ -87,13 +91,28 @@ class TestEverythingElseDispatchesAsBefore:
         assert _dispatched(result), (result.stdout, result.stderr)
         assert _guard_facts(repo) == []
 
-    def test_inner_modes_do_not_run_the_check(self, tmp_path):
-        """`final` reviews the same committed branch here and still dispatches:
-        only the review the PR gate composes meets the PR gate's check."""
+    @pytest.mark.parametrize("mode", ["chunk", "final", "verify-resolutions"])
+    def test_inner_modes_do_not_run_the_check(self, tmp_path, monkeypatch, mode):
+        """Only the review the PR gate composes meets the PR gate's check: the
+        check is never asked, whatever else the dispatch then answers."""
         repo = _branch(tmp_path, f'DSN = "{_REAL}"\n')
-        result = _run_begin(repo, "--mode", "final")
-        assert result.returncode != CREDENTIAL_EXIT, (result.stdout, result.stderr)
+        asked: list[str] = []
+        monkeypatch.setattr(pr_gate, "branch_credential_shapes", lambda d: asked.append(mode) or ([], None))
+
+        critic_consolidate.begin_review(repo, mode)
+
+        assert asked == []
         assert _guard_facts(repo) == []
+
+    def test_the_cumulative_does_ask_the_check(self, tmp_path, monkeypatch):
+        """The control for the test above: the same probe does see a cumulative."""
+        repo = _branch(tmp_path, f'DSN = "{_PLACEHOLDER}"\n')
+        asked: list[str] = []
+        monkeypatch.setattr(pr_gate, "branch_credential_shapes", lambda d: asked.append("c") or ([], None))
+
+        critic_consolidate.begin_review(repo, "cumulative")
+
+        assert asked == ["c"]
 
     def test_an_unreadable_span_dispatches_with_a_note(self, tmp_path, monkeypatch):
         """The check could not read the lines (a git fault): the PR gate fails

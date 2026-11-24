@@ -20,6 +20,11 @@ governed_by:
       - "authority fails closed; advice fails soft → conforms: the PR gate still fails closed; the earlier refusal at `critic-begin` dispatches when the diff cannot be read, with a note, since the PR gate will still check"
       - "every fact has one home → conforms: the credential shapes and the placeholder rule stay in `backlog.transport`; `critic-begin` calls the PR gate's own check rather than a copy"
       - "never specific to Python → conforms: the placeholder rule reads URL text, any language or file"
+      - "an independent reviewer never mutates the session it reviews → inapplicable because the refusal fires in `critic-begin`, before any reviewer exists, and writes only its guard-refusal fact"
+      - "local-first: process-spawn, atomic files, the git object database → conforms: git and the local evidence store only"
+      - "the plugin writes nothing into a governed repo but its own state → conforms: the only write is the guard-refusal fact in the shared evidence store"
+      - "prawduct guides and reviews; it never implements → inapplicable because this is framework code"
+      - "goals and verification bind; prescribed method is advice → conforms: the chunk routes are forecasts; the Constraints bind"
 partition: serial — Chunk 02's refusal calls the check Chunk 01 narrows, and both are small
 ---
 
@@ -34,12 +39,13 @@ partition: serial — Chunk 02's refusal calls the check Chunk 01 narrows, and b
 **Constraints:** A random-looking string must still be reported, so every exemption is a full match against a short, closed list. The earlier refusal must never refuse what the PR gate would pass, so it adds no refusal of its own: it moves one that was going to happen.
 
 **Tradeoffs accepted:**
-- *Inferred:* the placeholder set comes from a survey of every governed repo on this machine (2026-11-24). Of 202 url-embedded password matches in tracked files, the rule exempts 181, all placeholders: password equal to the username, a placeholder word, a template reference (`${VAR}`, `{name}`, `<password>`, `%(name)s`), a mask, or three characters or fewer. It keeps 21 random-looking test strings, including this repo's own `s3cr3tpass` fixture, which the check must still flag. A real secret that happens to equal its username or a placeholder word is exempted; that is the price of a backstop that people do not learn to waive by reflex.
+- *Inferred, then confirmed by the owner on 2026-11-24 (`.prawduct/owner-rulings.md`):* the exemption set. It comes from a survey of every governed repo on this machine (2026-11-24, tracked files): of 204 url-embedded password matches, the rule exempts 176, all placeholders, and keeps 28 random-looking test strings, including this repo's own fixtures, which the check must still flag. Exempt: a password of three characters or fewer; one equal to its user; a placeholder word (`password`, `secret`, `token`, …); a template or variable whose content is a single-case name (`${VAR}`, `$VAR`, `{name}`, `{{name}}`, `<password>`, `%(name)s`); a mask. **The residual risk:** a real secret of one of those forms passes, which means three characters or fewer, the same as the user, a placeholder word, or a single-case name in a wrapper (`$kx9fpq2mz`). A mixed-case secret in a wrapper, or one carrying an unencoded `@`, is still reported.
 - Only `cumulative` refuses, not `chunk` or `final`: `cumulative` is the review the PR gate composes, and an inner review refusing would add a cost to every chunk.
 - When the diff cannot be read, `critic-begin` dispatches with a `NOTE:`. The PR gate still fails closed on the same condition.
 
 **Decisions made mid-build:**
 - Chunk 01: `token` joined the placeholder words, so the documented `x-access-token:TOKEN@` form needs no waiver. The url shape's regex has one home, `transport._URL_CREDENTIAL`, read by both the shape table and the placeholder test.
+- Cumulative review (rev-20261124T154824Z-24a7cbfa): the template shapes bounded only the wrapper, so `$Kx9fPq2mZ`, `{Kx9fPq2mZ}` and `<Xk9mQ2vLr7>` passed (R-1), and an unencoded `@` in the password let the piece before it be judged (native review). A wrapper's content must now be a single-case name, wrappers must balance, and an authority holding a second `@` is never exempt. `--force` past a cumulative's other refusals now prints the credential lines it skipped.
 
 ## Build Chunks
 

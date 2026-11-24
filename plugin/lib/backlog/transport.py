@@ -79,19 +79,29 @@ _PLACEHOLDER_PASSWORDS = frozenset({
     "change_me", "example", "placeholder", "redacted", "hidden", "dummy", "fake",
     "test",
 })
+#: What a template or variable NAME looks like: one case throughout
+#: (``password``, ``db.password``, ``PG_PASS``). A generated secret mixes case,
+#: so ``$Kx9fPq2mZ`` or ``{Kx9fPq2mZ}`` is a password in a wrapper, not a name.
+_NAME = r"(?:[a-z_][a-z0-9_.]*|[A-Z_][A-Z0-9_.]*)"
 _PLACEHOLDER_PASSWORD_SHAPES: tuple[re.Pattern[str], ...] = (
-    re.compile(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"),  # $VAR, ${VAR}: read from the environment
-    re.compile(r"\{\{?\s*[A-Za-z_][\w.]*\s*\}?\}"),  # {name}, {{ name }}: a template field
-    re.compile(r"<[^<>\s]+>"),  # <password>
-    re.compile(r"%\([A-Za-z_]\w*\)s"),  # %(password)s
+    re.compile(rf"\$\{{{_NAME}\}}|\${_NAME}"),  # ${VAR}, $VAR: read from the environment
+    re.compile(rf"\{{\{{\s*{_NAME}\s*\}}\}}|\{{{_NAME}\}}"),  # {{ name }}, {name}: a template field
+    re.compile(rf"<{_NAME}>"),  # <password>
+    re.compile(rf"%\({_NAME}\)s"),  # %(password)s
     re.compile(r"\*+|[xX]{3,}|\.{3}|…|\[REDACTED\]"),  # masked
 )
+
+#: A URL's authority (user, password and host), to tell whether the password
+#: matched before the first `@` is all of it: an unencoded `@` inside a real
+#: password leaves a second `@` before the host.
+_URL_AUTHORITY = re.compile(r"://[^/\s]*")
 
 
 def _is_placeholder_password(user: str, password: str) -> bool:
     """Whether a url-embedded password is a placeholder rather than a secret:
     three characters or fewer, the same as its user (``postgres:postgres``, a
-    dev default), a placeholder word, or a template or mask shape."""
+    dev default), a placeholder word, or a template or mask shape whose content
+    is a single-case name."""
     if len(password) <= 3 or password == user:
         return True
     if password.lower() in _PLACEHOLDER_PASSWORDS:
@@ -100,9 +110,16 @@ def _is_placeholder_password(user: str, password: str) -> bool:
 
 
 def _has_real_url_password(line: str) -> bool:
-    return any(
-        not _is_placeholder_password(m.group(1), m.group(2)) for m in _URL_CREDENTIAL.finditer(line)
-    )
+    """Whether any url-embedded password on ``line`` is not a placeholder. One
+    whose authority holds a second `@` is never a placeholder: the first `@`
+    cut a longer password short, and the piece judged is not the password."""
+    for m in _URL_CREDENTIAL.finditer(line):
+        authority = _URL_AUTHORITY.match(line, m.start() - 3)
+        if authority is not None and authority.group(0).count("@") > 1:
+            return True
+        if not _is_placeholder_password(m.group(1), m.group(2)):
+            return True
+    return False
 
 
 def credential_shape(line: str) -> str | None:

@@ -12,10 +12,11 @@ PR creation, after the cumulative review, so the waiver moved HEAD and bought an
 suite run when the waiver landed in a code file.
 
 A url-embedded password is no longer reported when it is visibly a placeholder: the same as its user,
-three characters or fewer, a placeholder word (`password`, `secret`, `token`, …), a template field
-(`${VAR}`, `{name}`, `<password>`, `%(name)s`) or a mask (`****`). Each is a full match, so a
-real-looking secret, or one that merely contains such a word, is still reported. Output scrubbing is
-unchanged.
+three characters or fewer, a placeholder word (`password`, `secret`, `token`, …), a template field or
+variable whose content is a single-case name (`${VAR}`, `{name}`, `<password>`, `%(name)s`), or a mask
+(`****`). Each is a full match, so a real-looking secret, one that merely contains such a word, a
+mixed-case secret in a wrapper (`$Kx9fPq2mZ`) and a password holding an unencoded `@` are still
+reported. Output scrubbing is unchanged.
 
 `critic-begin --mode cumulative` now runs the same check over the same span first, and refuses with
 exit 9 when the PR would be refused, naming each line. Other modes, and every branch the PR gate passes,

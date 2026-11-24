@@ -3918,6 +3918,13 @@ def begin_review(
     can end but the gate can never be opened by ending it.
     ``force=True`` dispatches anyway.
 
+    ``{"status": CREDENTIAL_REFUSED, "findings"}`` — the CLI exits 9 — when
+    ``mode_token == "cumulative"`` and the branch adds a line `check-pr-hygiene`
+    would refuse the PR for (``findings`` are its ``path:line: shape`` items).
+    Checked after the in-flight and evidence guards, before anything is derived;
+    one ``guard-refusal`` fact is appended. ``force=True`` dispatches anyway,
+    with a note naming the lines; an unreadable span dispatches with a note.
+
     ``{"status": "precondition-failed", "reason"}`` — the CLI exits 7 — when
     ``mode_token == "verify-resolutions"`` and saved test evidence exists but
     is not current (:func:`_stale_test_evidence`; ``reason`` is
@@ -4058,11 +4065,19 @@ def begin_review(
     # refuses only what the PR would. A diff it cannot read dispatches with a
     # note: the PR gate still fails closed on it.
     credential_notes: list[str] = []
-    if mode_token == "cumulative" and not force:
+    if mode_token == "cumulative":
         from . import pr_gate  # noqa: PLC0415 — lazy; only this mode reads it
 
         found, unchecked = pr_gate.branch_credential_shapes(project_dir)
-        if found:
+        if found and force:
+            # `--force` overrides every pre-dispatch refusal at once, so one
+            # forced past the round budget must not lose this one silently.
+            credential_notes.append(
+                f"dispatched with --force past {len(found)} credential-shaped line(s) "
+                "`check-pr-hygiene` will refuse the PR for: "
+                + ", ".join(found)
+            )
+        elif found:
             _record_guard_refusal(
                 project_dir, CREDENTIAL_GUARD,
                 {"mode": mode_token, "lines": len(found),

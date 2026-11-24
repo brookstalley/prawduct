@@ -737,6 +737,8 @@ class TestCredentialShapeClassifier:
             "app:" + "$PG_PASS",
             "app:" + "{password}",  # a template field
             "app:" + "{{db.password}}",
+            "app:" + "{_PG_PASSWORD}",
+            "shop_dev:" + "$_pw",
             "app:" + "<password>",
             "app:" + "%(password)s",
             "app:" + "****",  # masked
@@ -757,6 +759,13 @@ class TestCredentialShapeClassifier:
             "url = https://" + "user:s3cr3tpass@github.com/o/r.git",  # random-looking
             "url = https://" + "user:password1@host",  # contains a word, is not one
             "url = https://" + "admin:" + "Xk9#mQ2vL@host",
+            # A generated secret inside a template wrapper is a secret in a wrapper.
+            "url = postgres://" + "app:$Kx9fPq2mZ@db",
+            "url = postgres://" + "app:{Kx9fPq2mZ}@db",
+            "url = postgres://" + "app:<Xk9mQ2vLr7>@db",
+            "url = postgres://" + "app:${PG_PASS@db",  # unbalanced: not a template field
+            # An unencoded `@` in the password: the piece before it is not the password.
+            "url = https://" + "admin:ab@Xk9mQ2vLr7@host/x",
             # One placeholder beside a real one on the same line is still reported.
             "a = postgres://" + "u:password@h  b = postgres://" + "u:hunter2x@h",
         ],
