@@ -70,6 +70,8 @@ def declared_product_name(prawduct_dir: Path) -> str | None:
         return None
     in_identity = False
     for line in content.splitlines():
+        if not strip_scalar_comment(line):
+            continue  # blank or comment-only: YAML does not end a mapping on one
         if "product_identity:" in line:
             in_identity = True
         elif in_identity and line.strip().startswith("name:"):

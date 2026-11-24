@@ -72,6 +72,30 @@ def test_work_in_progress_comment_lines_are_neither_keys_nor_fields(tmp_path):
     assert briefing._parse_all_wip_branches(prawduct) == {"feature/x": {"size": "medium"}}
 
 
+def test_a_column_zero_comment_does_not_end_the_work_in_progress_block(tmp_path):
+    """YAML does not end a mapping on a comment line, so the branches after it
+    are still read; the skip sits before the unindented-line break for this."""
+    prawduct = _state(
+        tmp_path,
+        "work_in_progress:\n"
+        "  feature/a:\n"
+        "    size: small\n"
+        "# divider\n"
+        "  feature/x:\n"
+        "    size: medium\n"
+        "    type: ~\n",
+    )
+    assert briefing._parse_wip(prawduct, branch="feature/x") == {"size": "medium"}
+    assert briefing._parse_all_wip_branches(prawduct) == {
+        "feature/a": {"size": "small"}, "feature/x": {"size": "medium"},
+    }
+
+
+def test_a_column_zero_comment_does_not_end_product_identity(tmp_path):
+    prawduct = _state(tmp_path, "product_identity:\n# the name, ruled 2026-11-17\n  name: acme\n")
+    assert gitstate.declared_product_name(prawduct) == "acme"
+
+
 def test_flat_work_in_progress_fields_drop_an_inline_comment(tmp_path):
     prawduct = _state(
         tmp_path,

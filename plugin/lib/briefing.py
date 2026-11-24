@@ -476,7 +476,7 @@ def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
                 if line.startswith("  ") and ":" in line:
                     key, _, val = stripped.partition(":")
                     val = unquote_scalar(strip_scalar_comment(val))
-                    if val and val != "null":
+                    if val and val.lower() not in ("null", "~"):
                         wip[key.strip()] = val
                 continue
 
@@ -493,7 +493,7 @@ def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
                 # 4-space indent = field under our branch
                 key, _, val = stripped.partition(":")
                 val = unquote_scalar(strip_scalar_comment(val))
-                if val and val != "null":
+                if val and val.lower() not in ("null", "~"):
                     wip[key.strip()] = val
 
         return wip
@@ -542,7 +542,7 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
                     if "_flat" not in branches:
                         branches["_flat"] = {}
                     val_part = unquote_scalar(strip_scalar_comment(stripped.partition(":")[2]))
-                    if val_part and val_part != "null":
+                    if val_part and val_part.lower() not in ("null", "~"):
                         branches["_flat"][key_part] = val_part
                 else:
                     # Branch key
@@ -552,7 +552,7 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
             elif current_branch and line.startswith("    ") and ":" in line:
                 key, _, val = stripped.partition(":")
                 val = unquote_scalar(strip_scalar_comment(val))
-                if val and val != "null":
+                if val and val.lower() not in ("null", "~"):
                     branches[current_branch][key.strip()] = val
 
         return branches
