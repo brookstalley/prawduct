@@ -72,6 +72,15 @@ def test_a_declared_product_name_wins_as_a_slug(tmp_path):
     assert gitstate.project_label(repo) == "acme-widgets"
 
 
+def test_an_annotated_name_labels_the_product_without_its_comment(tmp_path):
+    """An owner's annotated line: the label is the name alone."""
+    repo = _repo(tmp_path / "widgets", "git@github.com:x/other.git")
+    (repo / ".prawduct" / "project-state.yaml").write_text(
+        'product_identity:\n  name: "acme"          # Owner ruling 2026-11-17.\n'
+    )
+    assert gitstate.project_label(repo) == "acme"
+
+
 def test_a_placeholder_name_declares_nothing(tmp_path):
     repo = _repo(tmp_path / "checkout", "git@github.com:x/real.git")
     _declare(repo, "{{product_name}}")

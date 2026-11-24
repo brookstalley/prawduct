@@ -461,12 +461,22 @@ class TestBind:
             "scratch-branch", lambda: plan_mint.bind(repo, plan, "worktree-agent-0123456789"), repo
         )
 
-    def test_a_branch_the_reader_would_truncate_is_refused_not_written(self, tmp_path):
-        # Legal to git, but the frontmatter reader takes `#` as a comment, so the
-        # plan would claim `feature/a` — a branch nobody named.
+    def test_a_branch_the_reader_would_misread_is_refused_not_written(self, tmp_path):
+        # Legal to git, but written bare the frontmatter reader takes the wrapping
+        # quotes as YAML quoting, so the plan would claim `quoted` — a branch
+        # nobody named.
         repo = _repo(tmp_path)
         plan = _plan(repo, "build-plan.md", scope="u")
-        _refused("unrepresentable", lambda: plan_mint.bind(repo, plan, "feature/a#b"), repo)
+        _refused("unrepresentable", lambda: plan_mint.bind(repo, plan, '"quoted"'), repo)
+
+    def test_a_branch_with_a_hash_reads_back_whole_and_binds(self, tmp_path):
+        # The reader takes `#` as a comment only by YAML's rule (after
+        # whitespace), so `feature/a#b` round-trips rather than reading as
+        # `feature/a`.
+        repo = _repo(tmp_path)
+        plan = _plan(repo, "build-plan.md", scope="u")
+        plan_mint.bind(repo, plan, "feature/a#b")
+        assert plan_index.parse_build_plan_frontmatter_branch(plan.read_text()) == "feature/a#b"
 
     def test_an_illegal_branch_name_is_refused(self, tmp_path):
         repo = _repo(tmp_path)

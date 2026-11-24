@@ -648,9 +648,10 @@ def _verify_plan(
 ) -> None:
     """Read the text back through the resolver's own parsers before it is written.
 
-    A branch name the frontmatter reader would truncate (a ``#`` starts a comment
-    there) or a list it would read as none is caught here, as a refusal, rather
-    than as a plan that claims something other than what it was told to.
+    A branch name the frontmatter reader would misread (one wrapped in quotes,
+    which it takes as YAML quoting) or a list it would read as none is caught
+    here, as a refusal, rather than as a plan that claims something other than
+    what it was told to.
     """
     fm = plan_index.frontmatter_lines(text)
     _present, read_scope = plan_index.parse_build_plan_frontmatter_scope(text)

@@ -59,6 +59,8 @@ from .core import (
     atomic_write_text,
     pointer_plan_path,
     read_str_yaml_key,
+    strip_scalar_comment,
+    unquote_scalar,
 )
 
 
@@ -452,6 +454,12 @@ def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
             if not in_wip:
                 continue
 
+            # A comment is not content: a comment-only line is skipped (YAML does
+            # not end a mapping on one), and a trailing one leaves the key alone.
+            stripped = strip_scalar_comment(stripped)
+            if not stripped:
+                continue
+
             # Exit WIP section on unindented non-empty line
             if line and not line[0].isspace() and stripped:
                 break
@@ -467,15 +475,15 @@ def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
                 # Flat format: 2-space indent = field
                 if line.startswith("  ") and ":" in line:
                     key, _, val = stripped.partition(":")
-                    val = val.strip().strip("\"'")
-                    if val and val != "null":
+                    val = unquote_scalar(strip_scalar_comment(val))
+                    if val and val.lower() not in ("null", "~"):
                         wip[key.strip()] = val
                 continue
 
             # Branch-keyed format: look for our branch at 2-space indent
             if line.startswith("  ") and not line.startswith("    "):
                 # This is a branch key line like "  feature/foo:" or "  main:"
-                branch_key = stripped.rstrip(":").strip()
+                branch_key = unquote_scalar(stripped.rstrip(":").strip())
                 if branch_key == branch:
                     in_branch = True
                 elif in_branch:
@@ -484,8 +492,8 @@ def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
             elif in_branch and line.startswith("    ") and ":" in line:
                 # 4-space indent = field under our branch
                 key, _, val = stripped.partition(":")
-                val = val.strip().strip("\"'")
-                if val and val != "null":
+                val = unquote_scalar(strip_scalar_comment(val))
+                if val and val.lower() not in ("null", "~"):
                     wip[key.strip()] = val
 
         return wip
@@ -517,6 +525,12 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
             if not in_wip:
                 continue
 
+            # A comment is not content: a comment-only line is skipped (YAML does
+            # not end a mapping on one), and a trailing one leaves the key alone.
+            stripped = strip_scalar_comment(stripped)
+            if not stripped:
+                continue
+
             if line and not line[0].isspace() and stripped:
                 break
 
@@ -527,18 +541,18 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
                     # Flat format
                     if "_flat" not in branches:
                         branches["_flat"] = {}
-                    val_part = stripped.partition(":")[2].strip().strip("\"'")
-                    if val_part and val_part != "null":
+                    val_part = unquote_scalar(strip_scalar_comment(stripped.partition(":")[2]))
+                    if val_part and val_part.lower() not in ("null", "~"):
                         branches["_flat"][key_part] = val_part
                 else:
                     # Branch key
-                    current_branch = stripped.rstrip(":").strip()
+                    current_branch = unquote_scalar(stripped.rstrip(":").strip())
                     if current_branch not in branches:
                         branches[current_branch] = {}
             elif current_branch and line.startswith("    ") and ":" in line:
                 key, _, val = stripped.partition(":")
-                val = val.strip().strip("\"'")
-                if val and val != "null":
+                val = unquote_scalar(strip_scalar_comment(val))
+                if val and val.lower() not in ("null", "~"):
                     branches[current_branch][key.strip()] = val
 
         return branches
