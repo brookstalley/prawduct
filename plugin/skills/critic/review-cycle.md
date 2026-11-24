@@ -301,17 +301,17 @@ Fix-commit-verify per finding multiplies rounds and hands each new round the pro
 wrote. `critic-consolidate`'s close directive states the same order whenever a review lands
 findings, so the builder meets it holding the findings rather than remembering it from here.
 
-**Which writes are free while a review is in flight** — the question the builder actually has
-mid-review, answered by `coverage_algebra.is_judgeable_path`. Free: **everything under
-`.prawduct/`** (change-log, backlog, `project-state.yaml`, plan prose, and the gitignored session files), `.claude/settings.json`, and `.md` outside the protected
-set — README, `docs/**`, product prose. These are **non-judgeable**: a commit touching only those
-composes as a free edge, so it never needs new coverage and a fix confined to them cannot mandate
-another review. Two traps, both in the direction of *more* review than the extension suggests: a
-**comment-only edit to a `.py` file still counts as judgeable**, which is how a pure-prose fix
-commit gets pulled back into a full round; and a `.md` file under `skills/`, `methodology/`,
-`templates/` or `agents/`, or a root `CLAUDE.md` or `AGENTS.md`, is **governance-protected, so judgeable** —
-fork-skill prose is behavioural logic. When in doubt assume judgeable; the gate's answer
-binds.
+**Which writes cost no new review** — answered by `coverage_algebra.is_judgeable_path`. Free:
+**everything under `.prawduct/`** (change-log, backlog, `project-state.yaml`, plan prose, and the
+gitignored session files), `.claude/settings.json`, and `.md` outside the protected set — README,
+`docs/**`, product prose. These are **non-judgeable**: a commit touching only those composes as a
+free edge, so it never needs new coverage and a fix confined to them cannot mandate another review.
+Two traps, both in the direction of *more* review than the extension suggests: a **comment-only
+edit to a `.py` file still counts as judgeable**, which is how a pure-prose fix commit gets pulled
+back into a full round; and a governance-protected `.md` (`buildplan_refs.protected_path_violation`)
+is judgeable, because fork-skill prose is behavioural logic. When in doubt assume judgeable; the
+gate's answer binds. **While a review runs, write only session files**: any other change needs
+`--tree-changed-by-builder` at consolidation, the check that catches a reviewer's write.
 
 **The reviewer's half of the same rule is a separate pass, not a severity floor.** A record is not a
 per-round subject at all — the bars that decide when one is worth a finding, and the pass that
