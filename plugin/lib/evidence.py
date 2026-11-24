@@ -1545,8 +1545,8 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
     withholds too — as the live run path's before/after tree capture does.
 
     Three questions, each over the paths ``coverage_algebra.affects_test_outcome``
-    keeps (with the repo's ``suite_coupled_prefixes``), the predicate the tree
-    clause itself judges by:
+    keeps (with the declarations in force, ``coverage.suite_declarations``),
+    the predicate the tree clause itself judges by:
 
     1. **Edits.** A tracked or untracked (not ignored) file newer than the
        earliest run start — other than the reports and their scope records,
@@ -1580,7 +1580,7 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
     reason, which withholds the stamp: the safe direction costs a later re-run,
     never a false green.
     """
-    from . import core, coverage_algebra  # noqa: PLC0415 — lazy: leaf modules, ingest-only
+    from . import coverage_algebra  # noqa: PLC0415 — lazy: leaf modules, ingest-only
 
     if not reports:
         return None
@@ -1592,10 +1592,14 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
         starts.append(start_ns)
     report_ns = min(starts)
     root = Path(project_dir)
-    prefixes = core.suite_coupled_prefixes(gitstate.get_prawduct_dir(project_dir))
+    from . import coverage  # noqa: PLC0415 — lazy: coverage imports this module
+
+    declared = coverage.suite_declarations(project_dir, "HEAD")
 
     def coupled(paths: "list[str]") -> "list[str]":
-        return coverage_algebra.suite_coupled_files(sorted(set(paths)), prefixes)
+        return coverage_algebra.suite_coupled_files(
+            sorted(set(paths)), declared.coupled, declared.static
+        )
 
     rc, out, err = run_git(
         project_dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard",

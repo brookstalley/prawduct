@@ -55,7 +55,7 @@ from . import (
     verdict_cache,
     work_unit,
 )
-from .core import FLAG_UNREADABLE, read_bool_flag, suite_coupled_prefixes
+from .core import FLAG_UNREADABLE, read_bool_flag
 
 
 _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
@@ -98,7 +98,7 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # SHA the recorded run ran against, captured via ``evidence.capture_tree`` just
     # before a live run starts (omitted when a path that affects the test outcome
     # changed before it ended — ``_test_evidence_tree_valid``'s test, a superset of
-    # judgeable), or at ingest for ``--from-junit`` and a restamp. Read by the
+    # judgeable except for declared static content), or at ingest for ``--from-junit`` and a restamp. Read by the
     # tree-validity clause of ``tests_are_current`` and ``suite_vouches_for_tree``
     # (each directly and through ``_store_run_vouching``), and by the restamp guard
     # in ``test-evidence record``. A str when present, always omitted (never null)
@@ -516,7 +516,7 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
        structurally incapable of a false stale, the failure class that retired
        the removed content-hash "fingerprint" and ``git_sha`` mechanisms. It
        classifies *paths* (git tree-diff + ``affects_test_outcome``, which is
-       a strict superset of ``is_judgeable_path`` and the predicate
+       a superset of ``is_judgeable_path`` except for declared static content, and the predicate
        :func:`_test_evidence_tree_valid` actually calls), never file
        *contents* — the standing ``coverage_algebra`` rule that kept those
        mechanisms dead. Records without ``evidence_tree`` (pre-clause, or a
@@ -700,13 +700,13 @@ def _test_evidence_tree_valid(
         target_tree = capture["tree"]
         same = f"working tree identical to the recorded run ({recorded_tree[:12]})"
         differ = "changed since the run"
-        clean = "only non-judgeable paths changed since the run"
+        clean = "only paths that cannot change the suite's outcome changed since the run"
     else:
         same = f"the suite ran against this exact tree ({recorded_tree[:12]})"
         differ = "differ between the saved run and the tree this gate vouches for"
         clean = (
-            "only non-judgeable paths differ between the saved run and "
-            f"{target_tree[:12]}"
+            "only paths that cannot change the suite's outcome differ between the "
+            f"saved run and {target_tree[:12]}"
         )
     met, reason = _tree_met(project_dir, recorded_tree, target_tree, same, differ, clean)
     return bool(met), reason
@@ -718,26 +718,41 @@ def _tree_met(
     target_tree: str,
     same: str = "the run met this exact tree",
     differ: str = "differ between the run and the target",
-    clean: str = "only non-judgeable paths differ between the run and the target",
+    clean: str = "only paths that cannot change the suite's outcome differ between the run and the target",
+    *,
+    base: "coverage.IntegrationBase | None" = None,
 ) -> "tuple[bool | None, str]":
     """Did a run on ``recorded_tree`` meet ``target_tree``? ``True`` / ``False``,
     or ``None`` when the comparison itself could not run (a missing object, a
     git failure) — the third answer :func:`_test_evidence_tree_valid` folds into
     ``False`` for its callers, and :func:`_store_run_vouching` must keep apart:
-    "cannot tell" has to deny a red run's claim to this tree, never waive it."""
+    "cannot tell" has to deny a red run's claim to this tree, never waive it.
+    ``base`` is the integration base when the caller already resolved it."""
     if target_tree == recorded_tree:
         return True, same
     changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
     if changed is None:
         return None, "tree diff unavailable (missing object or git failure)"
-    # The repo's own declaration is passed HERE and NOT at the doc-only PR
-    # gate: this is the freshness question. See `affects_test_outcome`.
-    coupled = coverage_algebra.suite_coupled_files(
-        changed, suite_coupled_prefixes(project_dir / ".prawduct")
-    )
+    # The repo's own declarations are passed HERE and NOT at the doc-only PR
+    # gate: this is the freshness question. See `affects_test_outcome`. Read
+    # whenever anything changed: the coupling in force is a union reaching past
+    # the working tree, so no working-tree-only answer can be trusted first.
+    declared = coverage.suite_declarations(project_dir, recorded_tree, base=base)
+    coupled = coverage_algebra.suite_coupled_files(changed, declared.coupled, declared.static)
     if coupled:
         preview = ", ".join(coupled[:3]) + ("…" if len(coupled) > 3 else "")
-        return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview})"
+        why_not = declared.note_for(coupled)
+        why_not = f"; {why_not}" if why_not else ""
+        return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview}){why_not}"
+    n_static = sum(
+        1 for p in changed
+        if coverage_algebra.is_static_content(p, declared.static, declared.coupled)
+    )
+    if n_static:
+        return True, (
+            f"{clean} ({len(changed) - n_static} metadata/doc and "
+            f"{n_static} declared-static file(s))"
+        )
     return True, f"{clean} ({len(changed)} metadata/doc file(s))"
 
 
@@ -858,6 +873,7 @@ def _store_run_vouching(
     candidates.sort(key=lambda c: c["ts"], reverse=True)
 
     seen: set = set()
+    base: "coverage.IntegrationBase | None" = None  # resolved once, on first use
     for candidate in candidates:
         tree = candidate["tree"]
         key = tree if tree is not None else ("no-tree", candidate["ts"])
@@ -865,7 +881,9 @@ def _store_run_vouching(
             continue
         seen.add(key)
         refused = bool(run_refusal(candidate["run"]))
-        met, why = (None, "") if tree is None else _tree_met(project_dir, tree, target_tree)
+        if tree is not None and base is None:
+            base = coverage.integration_base(project_dir)
+        met, why = (None, "") if tree is None else _tree_met(project_dir, tree, target_tree, base=base)
         if met is None:
             met = refused  # cannot tell: a refused run denies, a green one proves nothing
         if not met:
@@ -4318,12 +4336,21 @@ def verify_coverage(project_dir: Path) -> int:
     # `coverage_algebra.is_executable_path` — the one predicate — so this stays
     # a reading of the CRT-5D8Q boundary rather than a second file-type table
     # beside it. `skipped` and `out_of_remit_changed` keep precedence: a file the
-    # verifier disclaimed is out of jurisdiction whatever its suffix.
+    # verifier disclaimed is out of jurisdiction whatever its suffix. A file the
+    # repo declares static content is not executable either, unless a test
+    # reads its prefix as data, which the coupling declaration says. The
+    # declarations in force are HEAD's, as the diff judged here is, and a
+    # static one only once the integration branch carries it
+    # (`coverage.suite_declarations`).
+    declared = coverage.suite_declarations(
+        project_dir, "HEAD", base=coverage.integration_base(project_dir, base)
+    )
+    static, coupled_prefixes = declared.static, declared.coupled
     nonexecutable = [
         f for f in changed
         if f not in skipped
         and f not in out_of_remit_changed
-        and not coverage_algebra.is_executable_path(f)
+        and not coverage_algebra.is_executable_path(f, static, coupled_prefixes)
     ]
     missing = [
         f for f in changed
@@ -4356,7 +4383,8 @@ def verify_coverage(project_dir: Path) -> int:
         )
         print(
             f"note: {len(nonexecutable)} changed file(s) no test can execute "
-            f"(prose / framework state) — reported, not gated ({preview})."
+            f"(prose / framework state / declared static content) — reported, not "
+            f"gated ({preview})."
         )
     if not missing:
         print(

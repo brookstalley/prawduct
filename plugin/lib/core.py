@@ -782,6 +782,53 @@ def suite_coupled_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
         text = state.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return ()
+    return suite_coupled_prefixes_from_text(text)
+
+
+#: Path prefixes a repo declares hold static content: files nothing in the
+#: product executes, serves as code or parses, such as stylesheets, static
+#: example pages and design-value files kept with its documents. The opposite
+#: direction from :data:`SUITE_COUPLED_PREFIXES_KEY`: that key can only make
+#: more changes count, and this one makes fewer, so it is read the other way
+#: on failure. ``coverage_algebra.is_static_content`` decides what the
+#: declaration covers.
+STATIC_CONTENT_PREFIXES_KEY = "static_content_prefixes"
+
+
+def static_content_declaration(text: "str | None") -> "tuple[str, tuple[str, ...]]":
+    """The :data:`STATIC_CONTENT_PREFIXES_KEY` declaration in a
+    ``project-state.yaml`` text: ``(status, prefixes)``, where ``status`` is
+    :func:`read_block_sequence`'s answer and ``None`` text (no such file) reads
+    as absent.
+
+    **A declaration the reader cannot read whole declares nothing** — ``()``
+    with ``YAML_UNPARSEABLE``, never a partial list. Being static only ever
+    lightens what a change costs (no suite re-run, no third reviewer), so a
+    misread entry must cost the full path: the reverse of
+    :func:`suite_coupled_prefixes`, whose unreadable form couples everything
+    for the same reason. The status is returned so a surface can say the
+    declaration was refused rather than read as nothing.
+
+    Entries are plain path prefixes against repo-relative paths, so a trailing
+    slash matters and is the caller's to write: ``doc/`` must not match
+    ``documentation/``. Which tree's text to read is
+    ``coverage.suite_declarations``' question, not this one's.
+    """
+    if text is None:
+        return YAML_ABSENT, ()
+    status, items = read_block_sequence(text, STATIC_CONTENT_PREFIXES_KEY)
+    if status == YAML_UNPARSEABLE:
+        return status, ()
+    return status, items
+
+
+def suite_coupled_prefixes_from_text(text: "str | None") -> tuple[str, ...]:
+    """:func:`suite_coupled_prefixes` over a ``project-state.yaml`` text in hand,
+    such as one read out of a committed tree, with the same couple-everything
+    answer for a declaration it cannot read whole. ``None`` (no such file)
+    couples nothing extra."""
+    if text is None:
+        return ()
     status, items = read_block_sequence(text, SUITE_COUPLED_PREFIXES_KEY)
     if status == YAML_UNPARSEABLE:
         return ("",)

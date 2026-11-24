@@ -86,7 +86,8 @@ deeper three-reviewer review at any size.
 Nothing asks for this list, and leaving it unset is a healthy state. Unset, two things escalate:
 prawduct's framework-shaped defaults (`skills/`, `lib/gates*`, `bin/*hook*`, plus any contract
 paths you list in boundary-patterns.md), which rarely match a product's own tree, and volume — 12
-or more judgeable files. There is no file-count fallback below that: prawduct will not review a
+or more judgeable files, not counting declared static content (`static_content_prefixes`). There
+is no file-count fallback below that: prawduct will not review a
 small change to your riskiest code more deeply unless you have named that code here.
 
 **A declared list REPLACES those defaults, it does not add to them** — the contract paths from
@@ -330,6 +331,48 @@ costs suite runs, never a false `current`. Absent or `[]` couples nothing extra.
 suite_coupled_prefixes:
   - documentation/
   - .prawduct/artifacts/data-model.md
+```
+
+## static_content_prefixes (opt-in)
+
+Declare the paths that hold static content: files nothing in the product executes, serves as code
+or parses, such as stylesheets, static example pages or a file of design values kept with the
+documents. Without it a branch made of such files pays the whole code path at the PR boundary: a
+fresh whole-suite run, and a three-reviewer boundary review once enough of them change.
+
+A declared static file is still reviewed. It still needs review coverage, so the doc-only PR fast
+path still refuses it, and it still needs a change record. What the declaration changes:
+
+- a change confined to static content leaves recorded suite evidence `current`, so the suite is
+  not re-run for it;
+- the coverage floor (`coverage_required`) asks no test to reference a static file;
+- static files do not count toward the boundary review's volume escalator, so a static-heavy
+  branch gets one reviewer instead of three unless it touches a risk surface.
+
+A declaration lightens work only once it is on the integration branch. Each check reads the
+declarations from the tree it judges (the tree the suite ran against, `HEAD`, or the tree under
+review), and a static prefix counts only when the merge-base with the integration branch declares
+it or a prefix containing it. So the branch that adds or widens a declaration pays the full path for
+its own suite runs, coverage floor and boundary review, a branch may narrow one, and an uncommitted
+edit lightens nothing. A repo whose integration branch does not resolve (no `main`, `origin/main` or
+`base_branch:`) gets nothing lighter from a declaration. A declaration the
+reader refuses, or one not yet on the integration branch, is named in the `test-status` reason and
+the roster rationale when it is why nothing was lightened.
+
+A path under a `suite_coupled_prefixes` entry is never static: a test reads it as data, and that
+declaration wins any overlap. Governance-protected prose is never static either, because an agent
+executes it; that bound matches a path segment, so a file under any `skills/`, `templates/`,
+`methodology/` or `agents/` directory is judged in full however you declare it.
+
+Entries are repo-relative path PREFIXES, not globs, and the trailing slash is yours to write
+(`site/` does not match `site-assets/`). Declare it ONLY as a block sequence of strings. A
+declaration the reader cannot read whole declares NOTHING static, the reverse of
+`suite_coupled_prefixes`, because being static only lightens a change's cost: a typo costs suite
+runs and reviewers, never a lighter path. Absent or `[]` declares nothing.
+
+```yaml
+static_content_prefixes:
+  - design-system/
 ```
 
 ## learnings_budgets (opt-in override)

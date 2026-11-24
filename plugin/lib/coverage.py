@@ -31,6 +31,7 @@ skipped both review gates.)
 from __future__ import annotations
 
 import contextlib
+from dataclasses import dataclass
 import io
 import json
 import subprocess
@@ -1195,8 +1196,9 @@ def _explain_uncovered(
     if target == "working":
         uncommitted = coverage_algebra.judgeable_files(changed)
     else:
+        declared = suite_declarations(project_dir, "HEAD")
         uncommitted = coverage_algebra.suite_coupled_files(
-            changed, suite_coupled_prefixes(project_dir / ".prawduct")
+            changed, declared.coupled, declared.static
         )
     explained = {
         "status": "no-branch-review",
@@ -1633,6 +1635,148 @@ def branch_open_blockers(
         "status": "ok",
         "blockers": [b for b in answer["blockers"] if b.get("review_id") in wanted],
     }
+
+
+@dataclass(frozen=True)
+class SuiteDeclarations:
+    """The repo's suite declarations in force for one judged tree.
+
+    ``coupled`` widens what can change the suite's outcome and ``static``
+    narrows it (``coverage_algebra.affects_test_outcome``). ``note`` is empty
+    or says, in a clause, why ``static`` is narrower than the judged tree
+    declares; ``pending`` holds the declared prefixes not in force, so a
+    caller prints ``note`` only when a path it judged sits under one of them
+    (:meth:`note_for`).
+    """
+
+    coupled: tuple[str, ...]
+    static: tuple[str, ...]
+    note: str = ""
+    pending: tuple[str, ...] = ()
+
+    def note_for(self, paths: "list[str]") -> str:
+        """``note`` when it bears on ``paths``, else ``""``: a refused or
+        unresolvable declaration always bears; a pending prefix only when one
+        of ``paths`` is under it."""
+        if not self.note:
+            return ""
+        if not self.pending or any(p.startswith(self.pending) for p in paths):
+            return self.note
+        return ""
+
+
+@dataclass(frozen=True)
+class IntegrationBase:
+    """The merge-base with the integration branch and its ``project-state.yaml``
+    text, resolved once per gate evaluation (:func:`integration_base`).
+    ``merge_base`` is ``None`` with ``refusal`` saying why when no base can
+    authorise a declaration."""
+
+    merge_base: "str | None"
+    state: "str | None"
+    refusal: str = ""
+
+
+def _state_in(project_dir: Path, rev: str) -> "str | None":
+    from . import evidence  # noqa: PLC0415 — lazy, as this module's other evidence imports are
+
+    rc, out, _err = evidence.run_git(project_dir, "show", f"{rev}:.prawduct/project-state.yaml")
+    return out if rc == 0 else None
+
+
+def integration_base(project_dir: Path, base_ref: "str | None" = None) -> IntegrationBase:
+    """Where the integration branch and HEAD last met, for
+    :func:`suite_declarations`. ``base_ref`` is the caller's already-resolved
+    base, so a gate that diffed against one base judges declarations against
+    the same one; ``None`` resolves it here.
+
+    The ``HEAD~1`` fallback is refused: its merge-base is the branch's own
+    previous commit, which would let a branch authorise its own declaration.
+    """
+    from . import evidence  # noqa: PLC0415
+
+    if base_ref is None:
+        base_ref, _note = _resolve_base_branch(project_dir)
+    if not base_ref or base_ref == MOVING_FALLBACK_BASE:
+        return IntegrationBase(
+            None, None,
+            "no integration branch resolves (set `base_branch:`), so no static declaration "
+            "is in force",
+        )
+    rc, out, _err = evidence.run_git(project_dir, "merge-base", base_ref, "HEAD")
+    if rc != 0 or not out:
+        return IntegrationBase(
+            None, None,
+            f"no merge-base with {base_ref} resolves, so no static declaration is in force",
+        )
+    return IntegrationBase(out, _state_in(project_dir, out))
+
+
+def suite_declarations(
+    project_dir: Path, tree: str, *, base: "IntegrationBase | None" = None
+) -> SuiteDeclarations:
+    """The suite declarations in force when ``tree`` (a tree or a commit) is
+    judged: the one owner of which ``project-state.yaml`` each comes from.
+
+    - **Static content is what ``tree`` declares, within what the merge-base
+      with the integration branch declares** (a prefix counts when a base
+      prefix covers it, so a branch may narrow an inherited declaration but
+      never widen it). A declaration lightens work only once it is on the
+      integration branch, where the PR that added it paid the full path. A
+      branch that adds or widens one gets nothing lighter from it, for its
+      suite runs, its coverage floor or its own boundary review: a governance
+      change cannot supply its own authority. Read from the working tree
+      instead, an uncommitted edit would lighten a comparison between trees
+      that never held it.
+    - **Coupling is the union** of the working tree, ``tree`` and the merge-base,
+      because widening can only cost a suite run.
+
+    ``base`` is :func:`integration_base`'s answer when the caller already holds
+    it (a loop over candidate runs resolves it once). Anything unreadable makes
+    nothing static, which costs the full path and never a lighter one.
+
+    **Residual, by the repo's own declaration:** the base comes from
+    ``_resolve_base_branch``, which reads ``base_branch:`` from the working
+    tree and a bound plan's ``base:``, both editable on the branch itself. One
+    naming the checked-out branch makes it its own integration branch. That is
+    also exactly what working on the integration branch itself looks like, and
+    both keys are the owner's statement of which branch that is.
+    """
+    from .core import (  # noqa: PLC0415
+        YAML_UNPARSEABLE,
+        static_content_declaration,
+        suite_coupled_prefixes_from_text,
+    )
+
+    judged = _state_in(project_dir, tree)
+    if base is None:
+        base = integration_base(project_dir)
+
+    coupled: list[str] = list(suite_coupled_prefixes(project_dir / ".prawduct"))
+    for text in (judged, base.state):
+        for prefix in suite_coupled_prefixes_from_text(text):
+            if prefix not in coupled:
+                coupled.append(prefix)
+
+    status, declared = static_content_declaration(judged)
+    if status == YAML_UNPARSEABLE:
+        return SuiteDeclarations(
+            tuple(coupled), (),
+            "static_content_prefixes is declared in a shape prawduct cannot read, so "
+            "nothing is static (use a block sequence of plain strings)",
+        )
+    if not declared:
+        return SuiteDeclarations(tuple(coupled), ())
+    if base.merge_base is None:
+        return SuiteDeclarations(tuple(coupled), (), base.refusal)
+    _status, on_base = static_content_declaration(base.state)
+    static = tuple(p for p in declared if on_base and p.startswith(on_base))
+    pending = tuple(p for p in declared if p not in static)
+    note = (
+        f"static_content_prefixes {', '.join(pending)} not yet on the integration branch, "
+        "so not in force" if pending else ""
+    )
+    return SuiteDeclarations(tuple(coupled), static, note, pending)
 
 
 def _coverage_resolve_base(project_dir: Path) -> tuple[str | None, str]:

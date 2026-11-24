@@ -388,9 +388,9 @@ class TestBoundedDispatch:
         seen = []
         real = cc._derive_roster
 
-        def spy(mode_token, files_changed, prawduct_dir):
+        def spy(mode_token, files_changed, prawduct_dir, **kwargs):
             seen.append(list(files_changed))
-            return real(mode_token, files_changed, prawduct_dir)
+            return real(mode_token, files_changed, prawduct_dir, **kwargs)
 
         monkeypatch.setattr(cc, "_derive_roster", spy)
         assert cc.begin_review(repo, "cumulative", chosen_by="rule-2", force=True)["status"] == "ok"
@@ -556,3 +556,52 @@ class TestProtocolAgreesWithCode:
         assert f"`{critic_mode.FULL_SPAN_RATIONALE}`" in cycle
         assert f"cumulative {critic_mode.FULL_SPAN_TOKEN}" in cycle
         assert f"cumulative [{critic_mode.FULL_SPAN_TOKEN}]" in skill
+
+
+class TestAStaticContentBranchDispatchesOneReviewer:
+    """#1239's acceptance, through `begin_review`: a boundary review of a
+    branch made of declared static content dispatches one reviewer, and the
+    same branch undeclared dispatches the coordinator."""
+
+    def _branch(self, tmp_path: Path, declare: str) -> Path:
+        """``declare`` is where the declaration lives: ``"base"`` (the
+        integration branch, merged in), ``"branch"`` (this branch only) or
+        ``""`` (nowhere)."""
+        repo = _repo(tmp_path)
+        state = "project_name: t\nrisk_surfaces:\n  - untouched/by/this/test/\n"
+        declared = state + "static_content_prefixes:\n  - design/\n"
+        if declare == "base":
+            _git(repo, "checkout", "-q", "main")
+            _commit(repo, ".prawduct/project-state.yaml", declared, "declare")
+            _git(repo, "checkout", "-q", "feat/bc")
+            _git(repo, "merge", "-q", "--no-edit", "main")
+        else:
+            _commit(repo, ".prawduct/project-state.yaml",
+                    declared if declare == "branch" else state, "state")
+        for i in range(cc.COORDINATOR_JUDGEABLE_THRESHOLD + 1):
+            _commit(repo, f"design/page-{i:02d}.html", f"<p>{i}</p>\n", f"page {i}")
+        return repo
+
+    def test_declared_it_is_single_pass(self, tmp_path):
+        repo = self._branch(tmp_path, declare="base")
+        assert cc.begin_review(repo, "cumulative", chosen_by="rule-2", force=True)["status"] == "ok"
+        m = _manifest(repo)
+        assert m["roster"] == list(cc.SINGLE_PASS_ROSTER), m["roster_chosen_by"]
+        assert "declared static, not counted" in m["roster_chosen_by"]
+        assert m["head_tree"] == _tree(repo)
+
+    def test_undeclared_it_is_the_coordinator(self, tmp_path):
+        repo = self._branch(tmp_path, declare="")
+        assert cc.begin_review(repo, "cumulative", chosen_by="rule-2", force=True)["status"] == "ok"
+        m = _manifest(repo)
+        assert m["roster"] == list(cc.COORDINATOR_ROSTER), m["roster_chosen_by"]
+
+    def test_a_declaration_only_this_branch_carries_buys_nothing(self, tmp_path):
+        """The branch that adds the declaration takes the full roster for its
+        own boundary review: a governance change cannot supply its own
+        authority."""
+        repo = self._branch(tmp_path, declare="branch")
+        assert cc.begin_review(repo, "cumulative", chosen_by="rule-2", force=True)["status"] == "ok"
+        m = _manifest(repo)
+        assert m["roster"] == list(cc.COORDINATOR_ROSTER), m["roster_chosen_by"]
+        assert "not yet on the integration branch" in m["roster_chosen_by"]
