@@ -56,7 +56,13 @@ def declared_product_name(prawduct_dir: Path) -> str | None:
     """``product_identity.name`` from ``project-state.yaml``, or ``None`` when
     it is absent, null or an unfilled template placeholder. The one reader of
     that field: the briefing shows it, and :func:`project_label` derives from
-    it."""
+    it.
+
+    The value goes through core's comment-then-quote pair: owners annotate this
+    line (``name: "acme"  # owner ruling …``), and a bare quote strip kept the
+    comment, so every ledger event carried it as the product's label."""
+    from .core import strip_scalar_comment, unquote_scalar  # noqa: PLC0415 — lazy: gitstate's top level stays stdlib-only
+
     state_path = prawduct_dir / "project-state.yaml"
     try:
         content = state_path.read_text(encoding="utf-8")
@@ -67,8 +73,8 @@ def declared_product_name(prawduct_dir: Path) -> str | None:
         if "product_identity:" in line:
             in_identity = True
         elif in_identity and line.strip().startswith("name:"):
-            val = line.split(":", 1)[1].strip().strip("\"'")
-            if val and val != "null" and not val.startswith("{{"):
+            val = unquote_scalar(strip_scalar_comment(line.split(":", 1)[1]))
+            if val and val.lower() not in ("null", "~") and not val.startswith("{{"):
                 return val
             return None
         elif in_identity and not line.startswith(" ") and line.strip():
