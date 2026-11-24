@@ -3409,6 +3409,14 @@ UNKNOWN_CHUNK_KIND = "unknown-chunk"
 #: written. Exit 8 (`api-contract.md`, Error Model).
 CHUNKS_AMBIGUOUS_KIND = "chunks-ambiguous"
 
+#: A `cumulative` dispatch on a branch whose added lines `check-pr-hygiene` would
+#: refuse for a credential shape: the waiver or removal belongs before the PR's
+#: boundary review, not after it. Exit 9 (`api-contract.md`, Error Model).
+CREDENTIAL_REFUSED = "credential-shape-refused"
+
+#: The guard-refusal fact's `guard` for that refusal.
+CREDENTIAL_GUARD = "critic-dispatch-credential-shape"
+
 
 def _declared_chunks(
     project_dir: Path, plan_path: "Path | None", chunks: "list | None"
@@ -4041,6 +4049,33 @@ def begin_review(
             )
             return {"status": "precondition-failed", "reason": stale, "remedy": step.remedy}
 
+    # CREDENTIAL GUARD — `cumulative` only, before anything is derived. It is the
+    # review `/prawduct:pr create` composes, and `check-pr-hygiene` refuses the
+    # PR on a credential-shaped line the branch adds. Met there, AFTER this
+    # review, the waiver or removal moves HEAD and buys another round; met here,
+    # it lands before the round is spent. The check is the PR gate's own, over
+    # the same span (merge-base…HEAD, committed lines — this mode's head), so it
+    # refuses only what the PR would. A diff it cannot read dispatches with a
+    # note: the PR gate still fails closed on it.
+    credential_notes: list[str] = []
+    if mode_token == "cumulative" and not force:
+        from . import pr_gate  # noqa: PLC0415 — lazy; only this mode reads it
+
+        found, unchecked = pr_gate.branch_credential_shapes(project_dir)
+        if found:
+            _record_guard_refusal(
+                project_dir, CREDENTIAL_GUARD,
+                {"mode": mode_token, "lines": len(found),
+                 "branch": gitstate.current_branch(project_dir)},
+                reason="credential-shape",
+            )
+            return {"status": CREDENTIAL_REFUSED, "findings": found}
+        if unchecked:
+            credential_notes.append(
+                "the credential check `check-pr-hygiene` runs could not read this "
+                f"branch's lines ({unchecked}); the PR gate will still refuse on that"
+            )
+
     # Which unit this review is OF: the dispatch's explicit override, else the
     # checkout's work-unit binding — computed in code (`work_unit.resolve`), the
     # one answer every gate and record shares, rather than read off a pointer by
@@ -4112,7 +4147,7 @@ def begin_review(
             "(commit an initial state first)",
         }
 
-    notes: list[str] = list(notes_scope)
+    notes: list[str] = list(notes_scope) + credential_notes
     # Judgeable work the chosen interval EXCLUDES, and the tree it chose, both
     # carried structurally so a REFUSAL can name them. A committed-tree anchor
     # over a dirty working tree grades a tree the builder's files are not in;

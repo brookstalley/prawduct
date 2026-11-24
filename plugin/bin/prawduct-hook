@@ -2504,6 +2504,26 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         print(f"PRAWDUCT: chunk review refused — {result['reason']}")
         return 8
+    if result["status"] == consolidate.CREDENTIAL_REFUSED:
+        # Exit 9, not 1: exit 1 reports and stops, and the remedy here is an
+        # edit, then the same mode again. The lines are `check-pr-hygiene`'s
+        # own, which names file, line and shape, never the text.
+        lines = "\n".join(f"    {item}" for item in result["findings"])
+        print(
+            "PRAWDUCT: cumulative review refused — `check-pr-hygiene` would refuse "
+            "the PR for these credential-shaped lines this branch adds:\n"
+            f"{lines}\n"
+            "  Answer them before the boundary review, so the answer is reviewed "
+            "with the branch instead of buying another round after it. A real "
+            "credential: treat it as leaked, rotate it, and rewrite the branch so "
+            "no commit carries it. Not one (a fixture, a documented example): put "
+            "`prawduct:allow prawduct/credential-shape -- <reason>` in a comment on "
+            "that line or the line above it. Commit, then re-dispatch "
+            "`/prawduct:critic cumulative`.\n"
+            "  To review anyway (only if the user asks): "
+            "`/prawduct:critic cumulative --force`."
+        )
+        return 9
     if result["status"] != "ok":
         # Notes first, then the reason: a failed dispatch still learned things
         # about the tree, and the reason is what the reader acts on. Most error

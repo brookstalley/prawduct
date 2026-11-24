@@ -153,7 +153,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force] [--chunks a,b]` (write dispatch manifest, mutating;
-  `--force` overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted
+  `--force` overrides the pre-dispatch refusals: exit-3 no-review-needed, exit-4 budget-exhausted,
+  exit-7 stale test evidence and exit-9 credential shapes
   — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
   (`methodology/planning.md` "Chunk state") — a comma list,
   repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` (the old one-element
@@ -973,6 +974,14 @@ Fail-direction is deliberate and per-purpose:
   leftovers is written; stdout names each chunk's proposing paths and the two `--chunks` re-runs; one
   `guard-refusal` fact is recorded. Distinct from **1** because the skill's exit-1 row reports and
   stops, and the remedy here is one re-dispatch naming the chunk built;
+  `critic-begin` **9** = `cumulative` dispatch refused because `check-pr-hygiene` would refuse the
+  PR for a credential-shaped line the branch adds (added 2026-11-24, `credential-placeholders`) — the
+  PR gate's own check over the same span (merge-base…HEAD), so it refuses only what the PR would,
+  before the boundary review instead of after it. Refused before anything is derived; stdout names
+  each line by file, line and shape, never the text; one `guard-refusal` fact is recorded. Distinct
+  from **1** because the skill's exit-1 row reports and stops, and the remedy here is an edit, then
+  the same mode. A diff the check cannot read dispatches with a note, since the PR gate still fails
+  closed on it. `--force` dispatches anyway;
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
   `test-status --wait` **75** = the wait timed out with the run still in progress (added
   2026-11-15, #1178). sysexits' EX_TEMPFAIL, "try again later", which is the remedy. Folded into

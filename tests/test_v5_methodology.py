@@ -1393,7 +1393,9 @@ LAST_MEASURED_TOKENS = {
     # +22 on 2026-11-22 (chunk-plan-order Chunk 02, #1141), DECLARED: the exit table gains exit 8
     # (chunks ambiguous), net of cutting step 4's restated definition of the proposal for a pointer
     # to planning.md "Chunk state", which owns it. Priced in `test_reviewer_payload_budget.py`.
-    "skills/critic/SKILL.md": 3247,
+    # +31 on 2026-11-24 (credential-placeholders Chunk 02), DECLARED: the exit table gains exit 9
+    # (credential lines the PR gate would refuse, on `cumulative`). Priced in `test_reviewer_payload_budget.py`.
+    "skills/critic/SKILL.md": 3278,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -6562,7 +6564,8 @@ class TestCriticSkillRoutesByMode:
         # LOWERED 3262 -> 3232 (backlog-roi Chunk 03, #662, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 3232 -> 3226 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
         # RAISED 3226 -> 3248 (chunk-plan-order Chunk 02, #1141): exit 8's row — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3248, f"SKILL.md is ~{tokens} tokens, should be <3248"
+        # RAISED 3248 -> 3279 (credential-placeholders Chunk 02): exit 9's row — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3279, f"SKILL.md is ~{tokens} tokens, should be <3279"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
