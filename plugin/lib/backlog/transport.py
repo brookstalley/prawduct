@@ -38,6 +38,11 @@ from typing import NamedTuple
 
 _REDACTED = "[REDACTED]"
 
+#: The url-embedded password shape. Its user and password are groups, because
+#: :func:`credential_shape` tests the password for a placeholder.
+_URL_PASSWORD = "url-embedded password"
+_URL_CREDENTIAL = re.compile(r"(?<=://)([^/\s:@]+):([^/\s@]+)(?=@)")
+
 # Denylist of credential shapes that must never reach any output sink (F2/N4).
 # The *primary* control is building errors from known fields (never echoing raw
 # output); this is the defense-in-depth backstop for anything that slips through.
@@ -57,13 +62,47 @@ _SECRET_SHAPES: tuple[tuple[str, re.Pattern[str], "re.Pattern[str] | None", bool
         re.compile(r"-----BEGIN[A-Z ]*PRIVATE KEY-----"),
         True,
     ),
-    ("url-embedded password", re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+(?=@)"), None, True),
+    (_URL_PASSWORD, _URL_CREDENTIAL, None, True),
     # The cloud token literal (N5) is a PLACEHOLDER the proxy substitutes, not a
     # credential: scrubbed from output because it marks where one would be, and
     # named in docs and tests as ordinary prose. A credential check skips it.
     ("cloud token placeholder", re.compile(r"proxy-injected"), None, False),
 )
 _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = tuple(shape[1] for shape in _SECRET_SHAPES)
+
+#: Password segments that are visibly not a secret: documentation, test DSNs and
+#: templates write them, and a check that refuses them gets waived by reflex.
+#: Each is a FULL match on the password, so a real secret that merely contains
+#: one of these words is still reported.
+_PLACEHOLDER_PASSWORDS = frozenset({
+    "password", "passwd", "pass", "pw", "pwd", "secret", "token", "changeme",
+    "change_me", "example", "placeholder", "redacted", "hidden", "dummy", "fake",
+    "test",
+})
+_PLACEHOLDER_PASSWORD_SHAPES: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"),  # $VAR, ${VAR}: read from the environment
+    re.compile(r"\{\{?\s*[A-Za-z_][\w.]*\s*\}?\}"),  # {name}, {{ name }}: a template field
+    re.compile(r"<[^<>\s]+>"),  # <password>
+    re.compile(r"%\([A-Za-z_]\w*\)s"),  # %(password)s
+    re.compile(r"\*+|[xX]{3,}|\.{3}|…|\[REDACTED\]"),  # masked
+)
+
+
+def _is_placeholder_password(user: str, password: str) -> bool:
+    """Whether a url-embedded password is a placeholder rather than a secret:
+    three characters or fewer, the same as its user (``postgres:postgres``, a
+    dev default), a placeholder word, or a template or mask shape."""
+    if len(password) <= 3 or password == user:
+        return True
+    if password.lower() in _PLACEHOLDER_PASSWORDS:
+        return True
+    return any(shape.fullmatch(password) for shape in _PLACEHOLDER_PASSWORD_SHAPES)
+
+
+def _has_real_url_password(line: str) -> bool:
+    return any(
+        not _is_placeholder_password(m.group(1), m.group(2)) for m in _URL_CREDENTIAL.finditer(line)
+    )
 
 
 def credential_shape(line: str) -> str | None:
@@ -72,11 +111,17 @@ def credential_shape(line: str) -> str | None:
     Reports the class (``"github token"``), never the matched text, so a caller
     can name a finding without echoing the secret it found. One line at a time:
     a multi-line private key is recognised by its ``BEGIN … PRIVATE KEY`` header.
-    The cloud token placeholder is not a credential and is never reported.
+    The cloud token placeholder is not a credential and is never reported, and
+    neither is a url-embedded password that is a placeholder
+    (:func:`_is_placeholder_password`). :func:`scrub_secrets` still redacts both:
+    hiding a placeholder from output costs nothing.
     """
     for name, pattern, line_form, is_credential in _SECRET_SHAPES:
-        if is_credential and (line_form or pattern).search(line):
-            return name
+        if not is_credential or not (line_form or pattern).search(line):
+            continue
+        if name == _URL_PASSWORD and not _has_real_url_password(line):
+            continue
+        return name
     return None
 
 

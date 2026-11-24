@@ -725,6 +725,53 @@ class TestCredentialShapeClassifier:
         for line in ("print('hello')", "https://example.com/a:b", "the " + "proxy-injected" + " token"):
             assert transport.credential_shape(line) is None, line
 
+    @pytest.mark.parametrize(
+        "creds",
+        [
+            "user:" + "password",  # a placeholder word
+            "app:" + "Secret",  # any case
+            "x-access-token:" + "TOKEN",  # the documented token-in-URL form
+            "orders:" + "orders",  # the same as its user: a dev default
+            "u:" + "p",  # three characters or fewer
+            "app:" + "${PG_PASS}",  # read from the environment
+            "app:" + "$PG_PASS",
+            "app:" + "{password}",  # a template field
+            "app:" + "{{db.password}}",
+            "app:" + "<password>",
+            "app:" + "%(password)s",
+            "app:" + "****",  # masked
+            "app:" + "xxxx",
+            "app:" + "...",
+        ],
+    )
+    def test_a_placeholder_url_password_is_not_a_credential(self, creds):
+        """The placeholder families a survey of every governed repo here found
+        refused at PR time (2026-11-24), none of them secrets."""
+        from lib.backlog import transport
+
+        assert transport.credential_shape(f"DSN = postgres://{creds}@db:5432/app") is None
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "url = https://" + "user:s3cr3tpass@github.com/o/r.git",  # random-looking
+            "url = https://" + "user:password1@host",  # contains a word, is not one
+            "url = https://" + "admin:" + "Xk9#mQ2vL@host",
+            # One placeholder beside a real one on the same line is still reported.
+            "a = postgres://" + "u:password@h  b = postgres://" + "u:hunter2x@h",
+        ],
+    )
+    def test_a_real_looking_url_password_is_still_a_credential(self, line):
+        from lib.backlog import transport
+
+        assert transport.credential_shape(line) == "url-embedded password", line
+
+    def test_a_placeholder_is_still_scrubbed_from_output(self):
+        """Exemption is the CHECK's; hiding a placeholder from output costs nothing."""
+        from lib.backlog import transport
+
+        assert transport.scrub_secrets("postgres://" + "u:password@h/x") == "postgres://[REDACTED]@h/x"
+
     def test_scrubbing_is_unchanged_by_the_classifier(self):
         """The scrub still reads every pattern, the placeholder and the whole
         multi-line key included."""
@@ -752,6 +799,25 @@ class TestCredentialShape:
         # A re-check of the unchanged branch is the same event, not a second one.
         _run(repo, "check-pr-hygiene")
         assert len(_refusals(repo, pr_gate.HYGIENE_GUARD)) == 1
+
+    def test_a_branch_adding_only_placeholder_dsns_passes_without_waivers(self, tmp_path):
+        """The consumer case: docs and tests carry `user:password@host` DSNs."""
+        repo = _repo(tmp_path, branch_files={
+            "README.md": "Connect with postgres://" + "shop:password@localhost/shop\n",
+            "settings.py": 'DATABASES = "postgres://' + 'app:${PG_PASS}@db/app"\n',
+        })
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert _refusals(repo, pr_gate.HYGIENE_GUARD) == []
+
+    def test_a_real_looking_dsn_beside_them_still_refuses(self, tmp_path):
+        repo = _repo(tmp_path, branch_files={
+            "README.md": "Connect with postgres://" + "shop:password@localhost/shop\n",
+            "settings.py": 'DATABASES = "postgres://' + 'app:Xk9mQ2vLr7@db/app"\n',
+        })
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        assert "settings.py:1" in r.stdout and "README.md" not in r.stdout
 
     def test_the_same_line_with_a_waiver_passes(self, tmp_path):
         repo = _repo(tmp_path, branch_files={"config.py": f"token = '{_TOKEN}'  # {_WAIVER}\n"})
