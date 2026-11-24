@@ -311,6 +311,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
+  **`check-boundary-coverage [--json]`** (read-only, advisory; owner `lib/boundary_coverage.py`)
+  classifies each release-pending scope by the first-parent commit on the integration base that added
+  its fragment: `no-judgeable`, `pr-covered`, `batch-covered`, `inner-only`, `uncovered`, `direct` or
+  `unknown`, each with its reason; the human form ends with a count line naming its denominator. Exit 0
+  whenever it answered, whatever it found; 2 on an unknown argument; 3 when it could not evaluate.
+  `--json` keys: `status` (`ok` | `unevaluable`), `base`, `reason` (`null` when `ok`), `counts` (one
+  key per classification), `entries[]{scope, classification, reason, commit, subject}` and
+  `refusals[]` (fragments the pending set refused, which are not classified).
   **`check-pr-hygiene [--json]`** (read-only; owner `lib/pr_gate.py`) answers over merge-base…HEAD of
   the checked-out branch, the base from the resolver `resolve-base` uses. Named results:
   `credential-shape` (refuses: a line the branch ADDS matches the plugin's one credential denylist,
@@ -887,6 +895,11 @@ would have said, because the argument is only convincing in the concrete.
   `no-upstream`, `upstream-ref-missing`), where a push or an integrate-then-push is the remedy in
   every case. Both codes BLOCK — the third outcome buys the caller an applicable remedy, not a
   different verdict.
+- `check-boundary-coverage` (2026-11-23), *no integration base, an unreadable change record, or
+  evidence facts a newer plugin wrote* — folded into 0 it prints a coverage count over a pending set or a store it never read, so
+  a release reads "all covered" off nothing; folded into 1 it would give advice a failing exit it
+  never has, since every answered run exits 0 whatever it found. It is advice, so 3 blocks nothing
+  that reads it as advice; it is the "could not answer" the scheme reserves.
 - `check-pr-hygiene` (2026-11-11), *no base or no merge-base* — folded into 0 it reports a clean
   branch off an interval it never had; folded into 1 it claims a refusing result it never computed.
   A single result it could not read is `unchecked` in the output, not a third exit, unless that

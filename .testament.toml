@@ -12,7 +12,8 @@
 # No lockfile: `uv.lock` is gitignored here (dependencies resolve fresh per environment, as CI's
 # `pip install ".[dev]"` does), so setup resolves the `dev` extra and the command runs `--no-sync`.
 #
-# A runner's checkout has the tree but no history and no backlog cache, so tests marked
+# A runner's checkout has the tree but no history and no local prawduct state (backlog cache,
+# evidence store), so tests marked
 # `requires_history` or `requires_local_cache` are selected out here; the evidence recorder runs
 # exactly those locally (`test_commands` in `.prawduct/project-state.yaml`), a plain `pytest` run
 # includes them, and CI runs them in its `pytest` job: `tools/ci-suite.py` reads the `-m`

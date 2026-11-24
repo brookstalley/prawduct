@@ -46,7 +46,7 @@ partition: serial — 02 reads 01's classification and its --json, and both chun
 **Constraints:** Read-only. Uses the existing evidence store, the coverage algebra and the pending-scope set; no new persisted format. Ships advisory: no exit code changes anywhere, check-releasability included.
 
 **Tradeoffs accepted:**
-- A squash-merged PR has no second parent to read a branch tip from, so it reads `unknown`. This repo merges with merge commits; revisit if a consumer squashes.
+- A squash-merged PR has no second parent to read a branch tip from, and git cannot tell it from work committed on the base, so it reads `direct` with a reason naming both. This repo merges with merge commits; revisit if a consumer squashes.
 - The PR skill's release guard gets prose naming the op, not a new gate. It is advice and the skill already stops there; wave 2 decides whether that stop becomes a check.
 
 **Inferred (owner did not rule these; the boundary review should check them):**
@@ -58,7 +58,11 @@ partition: serial — 02 reads 01's classification and its --json, and both chun
   A tail of new chunk reviews after a boundary review therefore does not pass: only fix verification may follow the boundary. On this repo the prototype classifies all 14 pending per-PR merges `pr-covered`. Candidate `B`s are bounded to reviews whose head tree is a tree of the branch's own commits, because looping over every boundary review in the store cost 15s for 15 scopes.
 - *Inferred:* a merge is `batch-covered` when some blocker-free boundary-stage review's base and head trees bracket it on the integration branch's first-parent line (base at or before the merge's first parent, head at or after the merge). The design's "relax-only rule" calls this; it adds nothing that coverage_verdict would refuse, because the merge's own span is not composed through it.
 
-**Decisions made mid-build:** *(appended while building)*
+**Decisions made mid-build:**
+- Chunk 01: a squash merge reads `direct`, not `unknown`. A squash commit has one parent, like work committed on the base, and the classification can't tell them apart; both are "no PR boundary on record". Settled by the Goals' strictness rule: the reading says not-covered either way.
+- Chunk 01: `pr-covered` also requires the composition over ALL facts to be covered, not only the restricted halves. An inner review's open blocker at the tip blocks the PR gate, so it must block this reading too. The surviving mutant of the sweep found this, and it is pinned.
+- Chunk 01 review round 1: the pending fragment joins to its NEWEST adding commit (a release deletes shipped fragments, so a reused scope is pending through its latest add). Refused fragments are named in the report, not dropped. Facts a newer plugin wrote make the report unevaluable, since one could be a review with an open blocker. The #1231 real-store test is `requires_local_cache`, because the evidence store is per clone and never committed.
+- Chunk 01: exit 0 whenever the op answered and 3 when it could not evaluate (no base, an unreadable change record or store), per the api-contract exit scheme. The op is in `_EPHEMERAL_SAFE_COMMANDS` because it writes no repo state; the shared tree-key cache it updates is the same write `check-cumulative-critic` makes.
 
 **Level:** High for the per-PR reading: a prototype over this repo's 15 pending scopes reproduced the known history (14 per-PR merges covered, and the v3.9.0 release-bookkeeping commit `direct`). Medium for `batch-covered`, which no history here exercises; only its fixture proves it, until wave 2 runs a batch review.
 
@@ -83,7 +87,7 @@ Run the op against this repo after each chunk and read the human output as an op
   - `inner-only`: coverage composes only with inner-stage edges;
   - `uncovered`: nothing composes;
   - `direct`: the fragment landed in a non-merge commit that changes a judgeable file (judgeability is asked first, for direct commits too, so release bookkeeping on `.prawduct/` reads `no-judgeable`);
-  - `unknown`: no adding commit, a squash merge, or git or the store unreadable.
+  - `unknown`: no adding commit (not merged yet, or the fragment is untracked), or git or the store unreadable.
 
   Each classification carries its reason. Human output is one line per scope plus a count line naming the denominator. `--json` is the same data, keyed for wave 2.
 - **Depends on:** none
@@ -92,7 +96,7 @@ Run the op against this repo after each chunk and read the human output as an op
   - A real-git fixture repo drives each classification, including:
     - a cumulative followed by a verify (`pr-covered`);
     - chunk reviews only (`inner-only`);
-    - a squash (`unknown`);
+    - a squash (`direct`, its reason naming the squash);
     - a review with an unresolved blocker (never `pr-covered`);
     - a batch review bracketing an uncovered merge (`batch-covered`).
   - One test reads this repo's real history and store and asserts the classification of a merge whose coverage is known. It is not a fixture; tests rule: a predicate over real artifacts reads one.

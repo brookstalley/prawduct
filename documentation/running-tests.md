@@ -44,8 +44,9 @@ first `test_commands` entry in `.prawduct/project-state.yaml` is
 `testament run --junit-xml {junit_xml}`, and the recorder ingests the JUnit report it writes.
 If no coordinator answers, testament runs the same tests on this machine and the recorder takes
 that run the same way. The other two entries run on this machine: the collector's node suite,
-and the tests the pool selects out because runners have no git history or backlog cache
-(`requires_history`, `requires_local_cache`). Together the three entries are the whole suite.
+and the tests the pool selects out because runners have no git history and no local prawduct
+state, meaning the backlog cache and the evidence store (`requires_history`,
+`requires_local_cache`). Together the three entries are the whole suite.
 
 A run that reaches no result leaves no report, and the recorder refuses to record it. So does a
 command that exits non-zero while its report shows no failing test, which is what a pool run

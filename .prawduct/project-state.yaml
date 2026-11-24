@@ -59,7 +59,8 @@ base_branch: develop
 # The pytest suite runs on the Testament pool (`.testament.toml`), which writes
 # the merged report as JUnit; with no coordinator it runs the same tests here.
 # The pool deselects `requires_history` and `requires_local_cache` tests
-# (runners have no git history and no backlog cache), so the third entry runs
+# (runners have no git history and no local prawduct state: backlog cache, evidence
+# store), so the third entry runs
 # exactly those here — together the three entries are the whole suite, and
 # evidence never silently covers a subset. The second entry is
 # the collector's suite (`collector/`, the stats collector for #950): node's
