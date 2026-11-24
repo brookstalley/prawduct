@@ -1,6 +1,6 @@
 # Discipline Corpus — where the fleet's portable rules live
 
-Ten lessons that governed products learned independently, two to five repos each. None ships as an
+Eleven lessons that governed products learned independently, two to five repos each. None ships as an
 always-loaded corpus: each is delivered where rules fire — in code at the moment of the action, in a
 Critic goal the review reads, in a methodology sentence at the step that needs it, or in a skill step
 when that step runs — and this table records which. A rule enters only if it is stack-agnostic, not
@@ -21,6 +21,7 @@ its surface, so a sentence that moves or goes has to take its row with it.
 | 8 | Test both directions of a contract — the consumer's read of the producer's real signals, not only the type they share | fleet-wide | methodology | `methodology/building.md` | `Both directions` |
 | 9 | A stated cause is a hypothesis until reproduced | fleet-wide | methodology | `methodology/reflection.md` | `treat a reported cause as a hypothesis until you reproduce it` |
 | 10 | Probe real output — launch it, call it, inspect what it emits; mocks are not verification | TangleClaw, hallucinote | methodology | `methodology/building.md` | `mocks are not verification` |
+| 11 | A test's result depends only on what it exercises, and is the same on any machine, any run | discodon, 3tears, arrt, hearsay, bzzt | methodology at test-writing (`methodology/building.md`) + the review's detector and the Critic's test-quality bullet | `methodology/building.md` | `A test's result depends only on what it exercises and is the same on any machine, any run` |
 
 A Goal 1–3 row appears in both `goals-1-3.md` and `review-protocol.md`, which must agree; a Goal 4
 row lives in `review-protocol.md` alone, because only the final and cumulative modes run Goal 4.

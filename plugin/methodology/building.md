@@ -98,7 +98,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you, and never narrate history.** Review and finding ids never ship — history's one home is commits and the change-log, so a comment recounting it (`// Critic caught Y`) is a deletion, not a rewrite. Carry the present-tense reason instead: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`.
 
-**Same decay: a count nothing reads is not worth writing.** Ask what gets decided differently if it is wrong by two; if nothing, omit it, make it relational ("the table's rows"), or cite the command that regenerates it. Numbers something *relies* on stay exact. Suite totals are the common case: the evidence store holds pass/fail per tree, so say "suite green" and cite `test-status`; never copy a total into a record or add a field for one.
+**Same decay: a count nothing reads is not worth writing.** Ask what gets decided differently if it is wrong by two; if nothing, omit it, make it relational ("the table's rows"), or cite the command that regenerates it. Numbers something *relies* on stay exact.
 
 **Verify.** Two layers:
 
@@ -173,7 +173,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Tests are behavioral.** Test what the code does, not how it does it.
 
-**Tests are independent.** No shared mutable state, no ordering dependency.
+**Tests are independent.** No shared mutable state, no ordering dependency. A test's result depends only on what it exercises and is the same on any machine, any run: `docs/test-determinism.md` names the patterns that break it.
 
 **Tests never weaken.** Consolidation is fine — name the reason in the change-log (Principle 1 — a bright line).
 

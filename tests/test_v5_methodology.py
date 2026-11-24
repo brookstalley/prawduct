@@ -601,7 +601,11 @@ LAST_MEASURED_TOKENS = {
     # "What to return" (the line above was wrong that it already did).
     # 0 on 2026-11-24 (static-content, #1239): the roster unit is "12+ non-static judgeable files",
     # paid by dropping "honest" from the same sentence.
-    "methodology/building.md": 5651,
+    # -11 on 2026-11-24 (test-determinism Chunk 02): Test Discipline gains the determinism
+    # principle and its pointer to docs/test-determinism.md (+24 words). Paid in place: the
+    # count-decay paragraph drops its suite-totals sentence, a class record-lint's
+    # `suite-total-claim` rule owns in code. A READING; ceiling lowered with it.
+    "methodology/building.md": 5640,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -805,7 +809,11 @@ LAST_MEASURED_TOKENS = {
     # +40 on 2026-11-18 (backlog-roi-wave2 Chunk 02, #847), DECLARED: the Scope bullet asks for
     # the answer as data (`scope`, `closure`, `members`), which consolidation grades a `fixed`
     # resolution against. Priced in `test_reviewer_payload_budget.py`.
-    "skills/critic/review-protocol.md": 4110,
+    # +91 on 2026-11-24 (test-determinism Chunk 02), DECLARED: Goal 1 gains the determinism and
+    # dependency-scope bullet (what a static read cannot judge, plus the deference to the detector).
+    # The bullet is pinned identical in both carriers and the detector's results arrive by another
+    # channel, so nothing another file owns was left to cut. A READING; ceiling raised with it.
+    "skills/critic/review-protocol.md": 4201,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -931,7 +939,11 @@ LAST_MEASURED_TOKENS = {
     # +16 on 2026-11-16 (coherence-pass Chunk 01), DECLARED: the same two Goal 1 clauses as
     # review-protocol.md — `test-status` and `verify-coverage` exit 1 on a suite in flight (`running:`, a `(running)` void), which the protocol rated as stale or missing evidence — a WARNING or BLOCKING for a non-defect. Paid in part by cutting the wall-clock figure, which
     # review-cycle.md's "Target wall-clock" row owns. Priced in `test_reviewer_payload_budget.py`.
-    "skills/critic/goals-1-3.md": 2522,
+    # +91 on 2026-11-24 (test-determinism Chunk 02), DECLARED: Goal 1 gains the determinism and
+    # dependency-scope bullet (what a static read cannot judge, plus the deference to the detector).
+    # The bullet is pinned identical in both carriers and the detector's results arrive by another
+    # channel, so nothing another file owns was left to cut. A READING; ceiling raised with it.
+    "skills/critic/goals-1-3.md": 2613,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -4117,7 +4129,7 @@ class TestBuildingMethodology:
         # LOWERED 5667 -> 5659 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
         # LOWERED 5659 -> 5657 (delegate-ceiling-whole-tree-guards, 2026-11-22) with the reading — see LAST_MEASURED_TOKENS.
         # LOWERED 5657 -> 5652 (same scope, Critic round on a04758d4) with the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 5652, f"building.md is ~{tokens} tokens, should be <5652"
+        assert tokens < 5641, f"building.md is ~{tokens} tokens, should be <5641"
 
 
 # =============================================================================
@@ -5989,7 +6001,7 @@ class TestCriticSkill:
         # RAISED 4049 -> 4062 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
         # RAISED 4062 -> 4071 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4071 -> 4111 (backlog-roi-wave2 Chunk 02, #847) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 4111, f"review-protocol.md is ~{tokens} tokens, should be <4111"
+        assert tokens < 4202, f"review-protocol.md is ~{tokens} tokens, should be <4202"
 
 
 # =============================================================================
@@ -6300,7 +6312,7 @@ class TestCriticGoals13:
         # LOWERED 2499 -> 2494 (pr-reviewer-fold, 2026-11-11) with the reading.
         # RAISED 2494 -> 2507 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 2507 -> 2523 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 2523, f"goals-1-3.md is ~{tokens} tokens, should be <2523"
+        assert tokens < 2614, f"goals-1-3.md is ~{tokens} tokens, should be <2614"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
