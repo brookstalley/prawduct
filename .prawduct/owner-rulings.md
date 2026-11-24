@@ -27,6 +27,23 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-24.** "Agreed on all counts" (said in the testament session and relayed here by it), then
+"Agreed to all recommendations" here — the design of #1243 (test determinism and dependency-scope
+patterns P1–P8):
+1. The measured check (test-evidence keeps the runner's per-test determinism causes so the Critic
+   can flag a cause site a diff introduced) is a follow-up, gated on #1096's ledger.
+2. A newly introduced P1 (a root conftest's module-level import of the app or its core modules) or
+   P2 (an autouse fixture or package `__init__` that imports everything) is BLOCKING at the
+   merge-boundary review.
+3. That verdict comes from a mechanical base-vs-head detector, not the reviewer's reading, and is
+   waivable with `prawduct:allow prawduct/test-scope -- reason`; the detector also feeds
+   onboard/doctor and the janitor sweep.
+4. P1–P8 and their remedies live in one doc, `plugin/docs/test-determinism.md`, which
+   `building.md` points to in one sentence and the discipline table registers as a row.
+5. The issue's "measured improvement on two products" acceptance item moves to the follow-up as
+   its success measure, since a merge cannot verify it.
+These land in #1243's build plan and the follow-up backlog item.
+
 **2026-11-22.** "1. yes keep running 2. yes agred 3. yes please do fix" — answering three asks
 from the post-v3.9.0 orientation:
 1. The #1130 paired experiment runs to its stop condition (four weeks, about 2026-12-10), even
