@@ -2157,3 +2157,84 @@ class TestCollateralIsDeclared:
         stale = next(x for x in err.splitlines() if "no longer open" in x)
         assert "small-fix (withheld as collateral of big-feature, behind BKL-6J2X" in stale
         assert "big-feature (withheld behind BKL-6J2X" in stale
+
+
+def _git_run(repo: Path, *args: str) -> str:
+    proc = subprocess.run(["git", *args], cwd=str(repo), capture_output=True, text=True, timeout=15)
+    assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
+    return proc.stdout.strip()
+
+
+def _merged_release(tmp_path: Path, *, reviewed: bool) -> Path:
+    """A passing release (one scope, `ships`) whose scope arrived by a real merge
+    on `main`; `reviewed` records a boundary review over the branch."""
+    from lib import evidence  # noqa: PLC0415
+
+    project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification="| alpha | ships | |\n")
+    fragment = project / ".prawduct" / "changes" / "alpha.md"
+    text = fragment.read_text(encoding="utf-8")
+    fragment.unlink()
+    _git_run(project, "init", "-q", "-b", "main")
+    _git_run(project, "add", "-A")
+    _git_run(project, "commit", "-q", "-m", "base")
+    base_tree = _git_run(project, "rev-parse", "HEAD^{tree}")
+    _git_run(project, "checkout", "-q", "-b", "alpha")
+    _write(project / "src" / "alpha.py", "a = 1\n")
+    _write(fragment, text)
+    _git_run(project, "add", "-A")
+    _git_run(project, "commit", "-q", "-m", "alpha")
+    if reviewed:
+        head_tree = _git_run(project, "rev-parse", "HEAD^{tree}")
+        files = evidence.tree_diff(project, base_tree, head_tree)
+        body = {"base_tree": base_tree, "head_tree": head_tree, "files_changed": files,
+                "files_reviewed": files, "findings": [], "mode": "cumulative (bundle review)"}
+        assert evidence.append_fact(project, "review", "rev-rr-0001", body)["status"] == "appended"
+    _git_run(project, "checkout", "-q", "main")
+    _git_run(project, "merge", "-q", "--no-ff", "-m", "merge alpha", "alpha")
+    return project
+
+
+class TestTheBoundaryAdviceNeverMovesTheVerdict:
+    """#1223 wave 1: which pending merges a boundary review covered is printed
+    beside the verdict and never changes it. Each test compares a covered and an
+    uncovered release, or a repository the op cannot read, at the same exit."""
+
+    def test_an_uncovered_merge_is_noted_and_the_release_still_passes(self, tmp_path, capsys):
+        covered = _merged_release(tmp_path / "covered", reviewed=True)
+        assert release_readiness.check_releasability(covered, release="v3.2.0") == 0
+        clean = capsys.readouterr()
+        assert "boundary coverage: 1 of 1 release-pending scope(s) covered" in clean.out
+        assert "NOTE: boundary-coverage:" not in clean.err
+
+        bare = _merged_release(tmp_path / "bare", reviewed=False)
+        assert release_readiness.check_releasability(bare, release="v3.2.0") == 0
+        noisy = capsys.readouterr()
+        assert "boundary coverage: 0 of 1 release-pending scope(s) covered" in noisy.out
+        notes = [line for line in noisy.err.splitlines() if line.startswith("NOTE: boundary-coverage:")]
+        assert len(notes) == 1 and "alpha is uncovered" in notes[0], noisy.err
+        assert "releasable: v3.2.0" in noisy.out
+
+    def test_a_repository_it_cannot_read_is_noted_and_the_verdict_holds(self, tmp_path, capsys):
+        """Not a git repository: the op cannot evaluate, says so as a NOTE, and the
+        pass the rest of the gate computed is still a pass."""
+        project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification="| alpha | ships | |\n")
+        assert release_readiness.check_releasability(project, release="v3.2.0") == 0
+        out = capsys.readouterr()
+        assert "NOTE: boundary-coverage: could not evaluate" in out.err
+        assert "releasable: v3.2.0" in out.out
+
+    def test_a_fault_inside_the_advice_is_a_note_and_never_the_exit(self, tmp_path, capsys, monkeypatch):
+        """Advice fails soft: whatever the classifier raises, the gate reports it as
+        a NOTE and returns the verdict the rest of the gate computed."""
+        from lib import boundary_coverage  # noqa: PLC0415
+
+        project = _merged_release(tmp_path, reviewed=True)
+
+        def boom(_project_dir):
+            raise RuntimeError("a store line no reader expected")
+
+        monkeypatch.setattr(boundary_coverage, "classify_pending", boom)
+        assert release_readiness.check_releasability(project, release="v3.2.0") == 0
+        out = capsys.readouterr()
+        assert "NOTE: boundary-coverage: could not evaluate — RuntimeError: a store line" in out.err
+        assert "releasable: v3.2.0" in out.out

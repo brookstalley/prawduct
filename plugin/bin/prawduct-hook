@@ -7235,6 +7235,35 @@ def cmd_check_releasability(project_dir: Path, args: list[str] | None = None) ->
     return _release_readiness().check_releasability(project_dir, release)
 
 
+def cmd_check_boundary_coverage(project_dir: Path, args: list[str] | None = None) -> int:
+    """Which release-pending merges did a boundary review cover? (#1223 wave 1).
+
+    Advice: exit 0 whenever it answered, whatever it found, and 3 when it could
+    not evaluate (no integration base, an unreadable change record, facts a
+    newer plugin wrote, or a fault inside the classification, which is named
+    rather than raised), the exit-code scheme's "could not answer". The classification and its reasons
+    live in ``lib.boundary_coverage``, reached lazily so the hook's top level
+    stays lib-free."""
+    argv = list(args or [])
+    rejected = _reject_unknown_args("check-boundary-coverage", argv, {"--json"})
+    if rejected is not None:
+        return rejected
+    as_json = "--json" in argv
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import boundary_coverage  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    report = boundary_coverage.classify_pending(project_dir)
+    if as_json:
+        print(json.dumps(report.as_dict(), indent=2, sort_keys=True))
+    elif report.status == "ok":
+        print(boundary_coverage.render(report))
+    else:
+        print(boundary_coverage.render(report), file=sys.stderr)
+    return 0 if report.status == "ok" else 3
+
+
 def cmd_archive_plan(project_dir: Path, args: list[str] | None = None) -> int:
     """Give a build plan its end of life: stamp it, then move it into `archive/`.
 
@@ -11304,6 +11333,7 @@ _USAGE = (
     "check-pr-doc-only|check-change-log-entry|check-branch-pushed [<branch>]|"
     "check-pr-hygiene [--json]|check-pr-body [<body file>] [--template <path>] [--json]|"
     "check-releasability [--release vX.Y.Z]|"
+    "check-boundary-coverage [--json]|"
     "check-plugin-active [--path P] [--context onboard|doctor|migrate] [--json]|"
     "check-learnings-pairing [deprecated, inert]|"
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
@@ -11772,6 +11802,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "check-pr-hygiene",
     "check-pr-body",
     "check-releasability",
+    "check-boundary-coverage",
     "check-released",
     "classify-diff-risk",
     "cost-of-commit",
@@ -12528,6 +12559,8 @@ def _dispatch() -> int:
         return cmd_check_change_log_entry(project_dir)
     elif command == "check-releasability":
         return cmd_check_releasability(project_dir, sys.argv[2:])
+    elif command == "check-boundary-coverage":
+        return cmd_check_boundary_coverage(project_dir, sys.argv[2:])
     elif command == "archive-plan":
         return cmd_archive_plan(project_dir, sys.argv[2:])
     elif command == "check-released":
