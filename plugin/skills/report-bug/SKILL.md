@@ -325,7 +325,11 @@ a count at session start and points here; it never quotes a report, so the count
 is the signal and reading them is the work. Triage each as below, and staging one
 is what takes it out of the count.
 
-**List the set the advisory counts with the query it counts from**:
+**Refresh the local copy first**: `prawduct-hook backlog sync --repo <backlog_service_repo>`.
+`cache-query` never touches the network, so it, and the advisory's count, see only what the
+last sync fetched. A report filed since then is missing from both, and an empty answer from a
+stale cache looks exactly like an empty intake. **Then list the set the advisory counts with the
+query it counts from**:
 `prawduct-hook backlog cache-query unstaged --repo <backlog_service_repo> --json`,
 keeping the rows whose title starts `[prawduct]`. Not `backlog list --untriaged`:
 that lists issues carrying no prawduct label *and* no `prawduct:` body block, and
