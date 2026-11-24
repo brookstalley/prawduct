@@ -2257,7 +2257,7 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     no store to dispatch against. Exit 2 = verify-resolutions scope widened
     past the demotion threshold (the skill re-dispatches in the mode the
     refusal names); **exit 3 =
-    no review needed** — the interval holds no judgeable file and no finding
+    no review needed** — the interval holds no judgeable file and no blocker
     this mode could resolve, so the coverage gate already composes it as a free
     edge (`--force` dispatches anyway; no session state is written and no marker
     is set, so a 3 needs no `critic-end` — it does append one inert
@@ -2437,6 +2437,18 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             "marker with no reviewer behind it, and the next `/prawduct:critic` then "
             "refuses as if a review were live (clear it with `prawduct-hook critic-end`)."
         )
+        # The anchor's warnings (owner ruling 2026-11-23, decision 6): a fix of
+        # them confined to records no longer buys this pass, so this is where
+        # the builder learns how to record it. Above the NOT REVIEWED block,
+        # which must stay the last word when it prints.
+        warned = result.get("open_warnings") or {}
+        if warned.get("fids"):
+            print(
+                f"  Open warnings on {warned['review_id']}: {', '.join(warned['fids'])}. "
+                "A warning fixed here bought no round; record each fix with "
+                f"`prawduct-hook disposition {warned['review_id']} <fid> --fixed "
+                "<path>[,<path>...]`, or accept it with `--accept \"<reason>\"`."
+            )
         # LAST, deliberately. A reader of a multi-line block acts on the final
         # imperative, and above it that imperative is `--force` — which reviews
         # the same interval that already excluded these files and would change

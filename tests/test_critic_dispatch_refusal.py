@@ -30,6 +30,7 @@ fire, not a way it could work.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -421,7 +422,7 @@ class TestNeverRefusesJudgeableWork:
         only a BLOCKING finding keeps a free interval dispatchable. The anti-deadlock
         reason above is about blockers: the gate counts no warning, so a records-only
         fix after a warnings-only review is a round the gate does not need, and the
-        fix is recorded through `disposition --fixed --paths` at no review cost."""
+        fix is recorded through `disposition <review-id> <fid> --fixed <path>[,...]` at no review cost."""
         repo = tmp_path / "r"
         _init_repo(repo)
         _seed_prior_review(repo, findings=[self._WARNING])
@@ -434,6 +435,104 @@ class TestNeverRefusesJudgeableWork:
             f"rc={result.returncode} out={result.stdout!r} err={result.stderr!r}"
         )
         assert not (repo / PARTIALS_REL / "manifest.json").is_file()
+
+        # The refusal names the open warning and the route that records its fix,
+        # and following that route works: a printed remedy is tested by its EFFECT.
+        line = next(
+            (ln for ln in result.stdout.splitlines() if ln.strip().startswith("Open warnings on")),
+            None,
+        )
+        assert line is not None, f"the refusal never names the open warnings: {result.stdout!r}"
+        command = re.search(r"`prawduct-hook (disposition \S+) <fid> --fixed", line)
+        fid = re.search(r"Open warnings on \S+: ([^.]+)\.", line)
+        assert command and fid, line
+        followed = subprocess.run(
+            [sys.executable, str(HOOK), *command.group(1).split(), fid.group(1).strip(),
+             "--fixed", "docs/notes.md"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert followed.returncode == 0, (
+            f"the printed route does not record the fix: {followed.stdout!r} {followed.stderr!r}"
+        )
+
+    def test_a_clean_prior_review_names_no_open_warnings(self, tmp_path):
+        """Control for the line above: no warnings, no line."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 3
+        assert "Open warnings on" not in result.stdout
+
+    def test_an_unchanged_tree_after_a_warnings_only_review_is_nothing_to_verify(self, tmp_path):
+        """One counter for both exits: with no delta at all, the answer is the
+        nothing-to-verify guard's, not a free-interval refusal over no files."""
+        import lib.critic_consolidate as cc
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        # Ignore what consolidation writes, as a real repo does, so the tree the
+        # prior reviewed IS the tree now (the precondition, asserted below).
+        _commit_file(repo, ".gitignore", ".prawduct/.critic-findings.json\n"
+                     ".prawduct/.governance-ledger.jsonl\n", "ignore session files")
+        _seed_prior_review(repo, findings=[self._WARNING])
+
+        result = cc.begin_review(repo, "verify-resolutions")
+
+        assert result["status"] == "no-review-needed", result
+        assert result.get("free_files") == [], f"precondition: no delta — {result}"
+        assert result["reason"].startswith("nothing to verify"), result["reason"]
+
+    def test_an_earlier_rounds_blocker_the_gate_counts_keeps_a_free_interval_dispatchable(
+        self, tmp_path, monkeypatch
+    ):
+        """The anti-deadlock case one round back (#334): the anchor is clean, but
+        the gate still counts an earlier round's blocker, and this pass is the one
+        that can clear it. Control: the same tree with the gate counting nothing
+        is refused."""
+        import lib.critic_consolidate as cc
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        monkeypatch.setattr(cc, "gate_counted_blockers", lambda *a, **k: [])
+        assert cc.begin_review(repo, "verify-resolutions")["status"] == "no-review-needed"
+
+        monkeypatch.setattr(
+            cc, "gate_counted_blockers",
+            lambda *a, **k: [{"review_id": "rev-19700101T000000Z-earlier", "fid": "R-9",
+                              "title": "one round back", "severity": "BLOCKING"}],
+        )
+        result = cc.begin_review(repo, "verify-resolutions")
+        assert result["status"] == "ok", result
+
+    def test_an_anchor_blocker_the_gate_no_longer_counts_does_not_buy_a_round(
+        self, tmp_path, monkeypatch
+    ):
+        """The anchor's raw count still holds a blocker the gate has stopped
+        counting (waived as inherited-baseline, or resolved): over a free interval
+        that is a round the gate does not need. Control: the same blocker, counted,
+        dispatches (the deadlock case above)."""
+        import lib.critic_consolidate as cc
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[{
+            "name": "A waived problem", "goal": "Nothing Is Broken", "severity": "blocking",
+            "detail": "the gate no longer counts it", "recommendation": "none",
+        }])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        monkeypatch.setattr(cc, "gate_counted_blockers", lambda *a, **k: [])
+        result = cc.begin_review(repo, "verify-resolutions")
+
+        assert result["status"] == "no-review-needed", result
 
     def test_a_judgeable_fix_after_a_warnings_only_review_still_dispatches(self, tmp_path):
         """Control: the narrowing is the free-interval conjunct only. A warning fixed
