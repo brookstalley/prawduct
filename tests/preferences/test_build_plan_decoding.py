@@ -42,6 +42,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 PLUGIN = Path(__file__).resolve().parent.parent.parent / "plugin"
 
 # Modules that exist to read the build plan — swept exhaustively (mechanism 1).
@@ -104,7 +106,7 @@ def _guard_for(func: ast.AST, call: ast.Call) -> str | None:
 
 def _plan_reads() -> list[_Read]:
     out: list[_Read] = []
-    for path in sorted(PLUGIN.rglob("*.py")):
+    for path in plugin_python_sources():
         rel = path.relative_to(PLUGIN).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8"))
         in_plan_module = rel in PLAN_MODULES
@@ -180,7 +182,7 @@ def test_every_parser_name_still_exists():
     rather than left to make the sweep read broader than it is."""
     defined = {
         n.name
-        for path in PLUGIN.rglob("*.py")
+        for path in plugin_python_sources()
         for n in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
     }

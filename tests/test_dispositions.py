@@ -28,6 +28,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
@@ -1737,7 +1739,7 @@ class TestFindingTitleAccessor:
         """
         import re as _re
         offenders = []
-        for path in sorted((ROOT / "lib").rglob("*.py")):
+        for path in plugin_python_sources():
             src = path.read_text(encoding="utf-8")
             for num, line in enumerate(src.splitlines(), 1):
                 if _re.search(r'get\("(title|summary|name)"\)\s+or\s+\w+\.get\("(title|summary|name)"\)', line):

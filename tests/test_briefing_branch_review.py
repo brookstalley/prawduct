@@ -273,6 +273,41 @@ class TestTheBriefingShowsThisBranchsReview:
         assert json.loads((repo / FINDINGS_REL).read_text()) == shown
         assert "B's own defect" in out, "the carried blocker reaches the briefing"
 
+    def _verify_on_b(self, tmp_path):
+        repo = _two_branches(tmp_path)
+        _git(repo, "checkout", "--quiet", "feature/b")
+        rev_b = next(f for f in _store_facts(repo, "review") if f["id"] == "rev-b-000001")
+        verify = {**rev_b, "id": "rev-b-verify1", "ts": "2099-01-01T00:00:00Z",
+                  "body": {**rev_b["body"], "findings": [],
+                           "mode": cc._VERBOSE_VERIFY_RESOLUTIONS,
+                           "base_tree": rev_b["body"]["head_tree"]}}
+        assert evidence.append_envelope(repo, verify)["status"] == "appended"
+        return repo, evidence.read_facts(repo)["facts"], [_git(repo, "rev-parse", "HEAD").stdout.strip()]
+
+    def test_the_writer_stages_under_the_temp_suffix_and_leaves_nothing(self, tmp_path, monkeypatch):
+        """The candidate renamed into place carries ``core.TEMP_SUFFIX`` (so a
+        crash before the rename leaves an ignored session file), and a write
+        that completes leaves no candidate behind."""
+        from lib import core
+        repo, facts, commits = self._verify_on_b(tmp_path)
+        prawduct = repo / ".prawduct"
+        renamed: list[str] = []
+        real = cc.os.replace
+        monkeypatch.setattr(cc.os, "replace", lambda src, dst: (renamed.append(Path(src).name), real(src, dst)))
+        assert cc.derive_branch_cache(prawduct, facts, commits)["status"] == "derived"
+        assert renamed == [".critic-findings.json.derived" + core.TEMP_SUFFIX]
+        assert not list(prawduct.glob("*.derived*")), list(prawduct.iterdir())
+
+    def test_an_invalid_candidate_leaves_the_cache_and_no_staging_file(self, tmp_path, monkeypatch):
+        repo, facts, commits = self._verify_on_b(tmp_path)
+        prawduct = repo / ".prawduct"
+        cache = repo / FINDINGS_REL
+        before = cache.read_bytes() if cache.exists() else None
+        monkeypatch.setattr(cc.gates, "validate_critic_findings", lambda _p: False)
+        assert cc.derive_branch_cache(prawduct, facts, commits)["status"] == "invalid"
+        assert (cache.read_bytes() if cache.exists() else None) == before
+        assert not list(prawduct.glob("*.derived*")), list(prawduct.iterdir())
+
 
 def _branch_line(out: str) -> str:
     lines = [ln for ln in out.splitlines() if ln.startswith("Branch findings")]

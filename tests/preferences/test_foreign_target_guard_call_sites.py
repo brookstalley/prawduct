@@ -13,6 +13,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 PLUGIN = Path(__file__).resolve().parents[2] / "plugin"
 GUARDED = {"set_status", "update_item", "comment_item", "link", "unlink"}
 
@@ -28,7 +30,7 @@ def _is_guarded_ref(node: ast.AST) -> bool:
 
 def _call_sites() -> list[tuple[str, int, bool]]:
     sites = []
-    for path in sorted(PLUGIN.rglob("*.py")):
+    for path in plugin_python_sources():
         if path.name == "core.py" and path.parent.name == "backlog":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))

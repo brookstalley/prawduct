@@ -81,7 +81,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from . import coverage, coverage_algebra, critic_marker, dispositions, evidence, evidence_notes, gates, gitstate, ledger, model_tier
-from .core import GITIGNORE_ENTRIES, atomic_write_text
+from .core import GITIGNORE_ENTRIES, TEMP_SUFFIX, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
 MANIFEST_NAME = "manifest.json"
@@ -7165,15 +7165,20 @@ def derive_branch_cache(
     if held is not None and held.get("fact_id") == review:
         return {"status": "current", "review": review, "reason": None}
     # Validated before it replaces anything: a record no reader trusts is worse
-    # than the one it would displace, since they would anchor on it.
+    # than the one it would displace, since they would anchor on it. The
+    # candidate is itself the staging file renamed into place, so it carries
+    # TEMP_SUFFIX: a crash before the rename leaves a file the ignore contract
+    # and the session-file exemption already cover. Written directly, not
+    # through atomic_write_text: a torn candidate fails validation and never
+    # reaches the cache, so a second staging layer would buy nothing.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
-    candidate = prawduct_dir / ".critic-findings.json.derived"
-    atomic_write_text(candidate, json.dumps(
+    candidate = prawduct_dir / (".critic-findings.json.derived" + TEMP_SUFFIX)
+    candidate.write_text(json.dumps(
         branch_review_record(
             prawduct_dir, fact, facts if read is not None and read.get("facts") is facts else usable,
             read=read,
         ), indent=2
-    ))
+    ), encoding="utf-8", errors="backslashreplace")
     if not gates.validate_critic_findings(candidate):
         candidate.unlink(missing_ok=True)
         return {"status": "invalid", "review": review,

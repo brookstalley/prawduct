@@ -33,6 +33,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = REPO_ROOT / "plugin"
 
@@ -44,11 +46,7 @@ _TOLERANT_ERRORS = {"surrogateescape", "replace", "backslashreplace"}
 
 def _sources() -> list[Path]:
     """Every Python file the plugin ships, the extensionless binaries included."""
-    found = sorted(PLUGIN.rglob("*.py"))
-    for path in sorted((PLUGIN / "bin").iterdir()):
-        if path.is_file() and path.suffix == "" and path.read_text(encoding="utf-8").startswith("#!"):
-            found.append(path)
-    return found
+    return plugin_python_sources()
 
 
 def _literal(node: ast.expr) -> object:
