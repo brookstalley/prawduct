@@ -278,7 +278,7 @@ class TestRefusesWhatTheGateWouldPass:
         question here rather than an obvious one — and the answer shipped
         untested. A free interval is free whatever mode is asked for: only
         verify-resolutions can carry outstanding findings, and for every other
-        mode `pending_actionable` is 0 by construction.
+        mode `pending_blocking` is 0 by construction.
 
         `chunk`/`final` diff HEAD against the WORKING tree, so their free
         interval is an uncommitted `.prawduct/` edit; `cumulative` diffs
@@ -406,6 +406,47 @@ class TestNeverRefusesJudgeableWork:
         assert result.returncode == 0, (
             "a review that could resolve outstanding findings must never be "
             f"refused — rc={result.returncode} out={result.stdout!r}"
+        )
+
+    _WARNING = {
+        "name": "A real but non-blocking problem",
+        "goal": "Nothing Is Broken",
+        "severity": "warning",
+        "detail": "seeded so the prior review carries only a warning",
+        "recommendation": "fix it",
+    }
+
+    def test_free_interval_after_a_warnings_only_review_is_refused(self, tmp_path):
+        """Owner ruling 2026-11-23 (decision 6, documentation/issues/1222-1223-design.md):
+        only a BLOCKING finding keeps a free interval dispatchable. The anti-deadlock
+        reason above is about blockers: the gate counts no warning, so a records-only
+        fix after a warnings-only review is a round the gate does not need, and the
+        fix is recorded through `disposition --fixed --paths` at no review cost."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[self._WARNING])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 3, (
+            "a warnings-only prior over a free interval needs no round — "
+            f"rc={result.returncode} out={result.stdout!r} err={result.stderr!r}"
+        )
+        assert not (repo / PARTIALS_REL / "manifest.json").is_file()
+
+    def test_a_judgeable_fix_after_a_warnings_only_review_still_dispatches(self, tmp_path):
+        """Control: the narrowing is the free-interval conjunct only. A warning fixed
+        in judgeable code is still verified, because the delta itself needs review."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[self._WARNING])
+        _commit_file(repo, "src/app.py", "x = 3\n", "fix: the warning")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, (
+            f"a judgeable fix must be reviewed — rc={result.returncode} err={result.stderr!r}"
         )
 
     def test_force_dispatches_over_a_free_interval(self, tmp_path):

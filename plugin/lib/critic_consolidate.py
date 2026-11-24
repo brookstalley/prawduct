@@ -4137,14 +4137,17 @@ def begin_review(
     base_reviewed = None
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
-    # Findings a THIS-mode review could still resolve. Only verify-resolutions
-    # records resolution facts for an EARLIER review's findings (a review's own
-    # inherited-baseline waivers are written when it consolidates), so it is
-    # the only mode that can carry a nonzero
-    # value; for every other mode there is nothing outstanding that running it
-    # would clear. Read by the free-interval refusal below, where it is the
-    # conjunct that keeps the gate from deadlocking.
-    pending_actionable = 0
+    # BLOCKING findings a THIS-mode review could still resolve. Only
+    # verify-resolutions records resolution facts for an EARLIER review's
+    # findings (a review's own inherited-baseline waivers are written when it
+    # consolidates), so it is the only mode that can carry a nonzero value; for
+    # every other mode there is nothing outstanding that running it would clear.
+    # Read by the free-interval refusal below, where it is the conjunct that
+    # keeps the gate from deadlocking. Blockers only (owner ruling 2026-11-23,
+    # decision 6 of documentation/issues/1222-1223-design.md): the gate counts
+    # no warning, so a warning cannot wedge it, and a warning fixed over a free
+    # interval is recorded by `disposition --fixed --paths` without a round.
+    pending_blocking = 0
     # The blockers the gate still counts at a `verify-resolutions` dispatch's
     # anchor tree, composed once (#334): they count as actionable below, and the
     # roll-call the reviewer reads names them. `None` for every other mode, and
@@ -4454,9 +4457,10 @@ def begin_review(
                 ),
             }
         prior_counts = prior_body.get("counts") or {}
-        actionable = (prior_counts.get("blocking") or 0) + (
-            prior_counts.get("warning") or 0
-        )
+        prior_blocking = prior_counts.get("blocking") or 0
+        # Warnings still count as something to VERIFY (the nothing-to-verify
+        # answer below): a warning fixed in judgeable code is reviewed as before.
+        actionable = prior_blocking + (prior_counts.get("warning") or 0)
         # An EARLIER round's blocker the gate still counts is as actionable as
         # the anchor's: this pass's roll-call names it (#334), and the gate's
         # remedy routes it here. Not counting it would refuse, as "nothing to
@@ -4470,14 +4474,15 @@ def begin_review(
         counted_blockers = gate_counted_blockers(
             project_dir, store_facts, base_tree, read=read_store()
         )
-        actionable += sum(
+        carried = sum(
             1
             for c in carried_blocking(
                 store_facts, base_tree, None, counted_blockers, anchor_id=verify_prior_id
             )
             if c.get("review_id") != verify_prior_id
         )
-        pending_actionable = actionable
+        actionable += carried
+        pending_blocking = prior_blocking + carried
         if not delta and not actionable:
             # Name the tree that was compared. Under the tree-inequality anchor
             # above, an empty delta means the working tree AND committed HEAD
@@ -4606,7 +4611,7 @@ def begin_review(
     if (
         not force
         and not coverage_algebra.judgeable_files(files_changed)
-        and not pending_actionable
+        and not pending_blocking
     ):
         # Record the firing. The norm this control ships under ("a control
         # names the yield it expects and emits it observably") is what makes
