@@ -469,3 +469,16 @@ recommended there:
 6. A free interval after a review whose only open findings are warnings is refused as needing no round:
    `pending_actionable` counts blocking findings only. This is its own small change.
 The same message also answered the #987 ask; #987's re-run is not due until its `revisit: 2026-12-01`.
+
+**2026-11-24.** "Yes agreed" — the "covered" definition wave 1 of #1223 shipped (`check-boundary-coverage`,
+PR #1233) is accepted as written, and wave 2 (#1232) gates on it. A merge is covered at its PR when a
+boundary-stage review read the branch from where it left the integration branch, and only
+`verify-resolutions` passes (and free edges) composed what followed. The composition over all facts must also
+read `covered`. This settles the three inferences in `build-plan-boundary-coverage-check.md` Goals:
+1. The release unit is the pending fragment set. Each fragment is joined to the first-parent commit that added
+   `.prawduct/changes/<scope>.md`, not to the merges since a tag.
+2. A verify-resolutions pass is trusted to carry only fixes, so a verify-only tail after the boundary review
+   keeps the merge covered. A tail containing a new chunk review does not.
+3. A blocker-free boundary review counts as `batch-covered` when its base and head trees bracket the merge
+   on the integration branch's first-parent line.
+This also settles the correction to design doc §3 that was marked "pending the owner's ruling".
