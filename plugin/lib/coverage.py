@@ -31,6 +31,7 @@ skipped both review gates.)
 from __future__ import annotations
 
 import contextlib
+from dataclasses import dataclass
 import io
 import json
 import subprocess
@@ -38,7 +39,7 @@ import sys
 from pathlib import Path
 
 from .change_log import CHANGE_LOG_REL_PATH
-from .core import read_str_yaml_key, static_content_prefixes, suite_coupled_prefixes
+from .core import read_str_yaml_key, suite_coupled_prefixes
 
 _BASE_BRANCH_KEY = "base_branch"
 #: The last-resort candidate: a COMMIT relative to HEAD, not a branch. It moves
@@ -1195,9 +1196,9 @@ def _explain_uncovered(
     if target == "working":
         uncommitted = coverage_algebra.judgeable_files(changed)
     else:
-        prawduct_dir = project_dir / ".prawduct"
+        declared = suite_declarations(project_dir, "HEAD")
         uncommitted = coverage_algebra.suite_coupled_files(
-            changed, suite_coupled_prefixes(prawduct_dir), static_content_prefixes(prawduct_dir)
+            changed, declared.coupled, declared.static
         )
     explained = {
         "status": "no-branch-review",
@@ -1634,6 +1635,90 @@ def branch_open_blockers(
         "status": "ok",
         "blockers": [b for b in answer["blockers"] if b.get("review_id") in wanted],
     }
+
+
+@dataclass(frozen=True)
+class SuiteDeclarations:
+    """The repo's suite declarations in force for one judged tree.
+
+    ``coupled`` widens what can change the suite's outcome and ``static``
+    narrows it (``coverage_algebra.affects_test_outcome``). ``note`` is empty
+    or says, in a clause, why ``static`` is narrower than the judged tree
+    declares, so a surface that lightened less than the reader expected can
+    say why.
+    """
+
+    coupled: tuple[str, ...]
+    static: tuple[str, ...]
+    note: str = ""
+
+
+def suite_declarations(project_dir: Path, tree: str) -> SuiteDeclarations:
+    """The suite declarations in force when ``tree`` (a tree or a commit) is
+    judged: the one owner of which ``project-state.yaml`` each comes from.
+
+    - **Static content is the intersection** of what ``tree`` declares and what
+      the merge-base with the integration branch declares. A declaration
+      lightens work only once it is on the integration branch, where the PR
+      that added it paid the full path. A branch that adds or widens one gets
+      nothing lighter from it, for its suite runs, its coverage floor or its
+      own boundary review: a governance change cannot supply its own
+      authority. Read from the working tree instead, an uncommitted edit would
+      lighten a comparison between trees that never held it.
+    - **Coupling is the union** of the working tree, ``tree`` and the merge-base,
+      because widening can only cost a suite run.
+
+    Anything unreadable (no such file in a tree, an unresolvable base, a git
+    failure) makes nothing static, which costs the full path and never a
+    lighter one.
+    """
+    from . import evidence  # noqa: PLC0415 — lazy, as this module's other evidence imports are
+    from .core import (  # noqa: PLC0415
+        YAML_UNPARSEABLE,
+        static_content_declaration,
+        suite_coupled_prefixes_from_text,
+    )
+
+    def state_in(rev: str) -> "str | None":
+        rc, out, _err = evidence.run_git(project_dir, "show", f"{rev}:.prawduct/project-state.yaml")
+        return out if rc == 0 else None
+
+    judged = state_in(tree)
+    base_ref, _note = _resolve_base_branch(project_dir)
+    merge_base = None
+    if base_ref:
+        rc, out, _err = evidence.run_git(project_dir, "merge-base", base_ref, "HEAD")
+        merge_base = out if rc == 0 and out else None
+    base = state_in(merge_base) if merge_base else None
+
+    coupled: list[str] = list(suite_coupled_prefixes(project_dir / ".prawduct"))
+    for text in (judged, base):
+        for prefix in suite_coupled_prefixes_from_text(text):
+            if prefix not in coupled:
+                coupled.append(prefix)
+
+    status, declared = static_content_declaration(judged)
+    if status == YAML_UNPARSEABLE:
+        return SuiteDeclarations(
+            tuple(coupled), (),
+            "static_content_prefixes is declared in a shape prawduct cannot read, so "
+            "nothing is static (use a block sequence of plain strings)",
+        )
+    if not declared:
+        return SuiteDeclarations(tuple(coupled), ())
+    if merge_base is None:
+        return SuiteDeclarations(
+            tuple(coupled), (),
+            "the integration branch could not be resolved, so no static declaration is in force",
+        )
+    _status, on_base = static_content_declaration(base)
+    static = tuple(p for p in declared if p in on_base)
+    pending = [p for p in declared if p not in on_base]
+    note = (
+        f"static_content_prefixes {', '.join(pending)} not yet on the integration branch, "
+        "so not in force" if pending else ""
+    )
+    return SuiteDeclarations(tuple(coupled), static, note)
 
 
 def _coverage_resolve_base(project_dir: Path) -> tuple[str | None, str]:

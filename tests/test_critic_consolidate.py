@@ -6120,6 +6120,22 @@ class TestDeclaredStaticContentDoesNotBuyTheCoordinator:
         roster, why = self._roster(tmp_path, self.STATIC, tree=False)
         assert roster == list(cc.COORDINATOR_ROSTER), why
 
+    def test_a_declaration_only_this_branch_carries_discounts_nothing(self, tmp_path):
+        """A governance change cannot supply its own authority: the branch that
+        adds the declaration takes the full roster for its own review."""
+        repo, _head = self._repo(tmp_path, "")
+        _git(repo, "checkout", "-q", "-b", "feat")
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - untouched/by/these/tests/\nstatic_content_prefixes:\n  - design/\n"
+        )
+        _git(repo, "commit", "-q", "-am", "declare on the branch")
+        head = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        roster, why = cc._derive_roster(
+            "cumulative", self.STATIC, repo / ".prawduct", project_dir=repo, head_tree=head
+        )
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+        assert "not yet on the integration branch" in why
+
     def test_an_uncommitted_declaration_discounts_nothing(self, tmp_path):
         """The reviewed tree declares nothing; only the working tree does."""
         repo, head = self._repo(tmp_path, "")

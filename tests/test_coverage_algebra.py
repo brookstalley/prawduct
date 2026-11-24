@@ -1313,25 +1313,25 @@ class TestDeclaredStaticContent:
     def test_the_reported_shape_is_static_and_still_judgeable(self):
         for path in self.BRANCH:
             assert ca.is_judgeable_path(path) is True, path
-            assert ca.is_static_content(path, self.STATIC) is True, path
+            assert ca.is_static_content(path, self.STATIC, ()) is True, path
             assert ca.affects_test_outcome(path, (), self.STATIC) is False, path
             assert ca.is_executable_path(path, self.STATIC) is False, path
 
     def test_undeclared_the_same_files_cost_the_full_path(self):
         """The control: every narrowing above is the declaration's doing."""
         for path in self.BRANCH:
-            assert ca.is_static_content(path, ()) is False, path
+            assert ca.is_static_content(path, (), ()) is False, path
             assert ca.affects_test_outcome(path) is True, path
             assert ca.is_executable_path(path) is True, path
 
     def test_a_file_outside_the_prefix_is_untouched(self):
-        assert ca.is_static_content("src/app.py", self.STATIC) is False
+        assert ca.is_static_content("src/app.py", self.STATIC, ()) is False
         assert ca.affects_test_outcome("src/app.py", (), self.STATIC) is True
         assert ca.is_executable_path("src/app.py", self.STATIC) is True
 
     def test_prefixes_are_not_substring_matches(self):
-        assert ca.is_static_content("designs/site.css", self.STATIC) is False
-        assert ca.is_static_content("design/site.css", ("design",)) is True, (
+        assert ca.is_static_content("designs/site.css", self.STATIC, ()) is False
+        assert ca.is_static_content("design/site.css", ("design",), ()) is True, (
             "no slash is the caller's choice, and then it matches as written"
         )
 
@@ -1348,7 +1348,7 @@ class TestDeclaredStaticContent:
 
     def test_test_coupled_state_is_never_static(self):
         for path in ca.TEST_COUPLED_STATE:
-            assert ca.is_static_content(path, (".prawduct/",)) is False, path
+            assert ca.is_static_content(path, (".prawduct/",), ()) is False, path
             assert ca.affects_test_outcome(path, (), (".prawduct/",)) is True, path
 
     def test_governance_protected_prose_is_never_static(self):
@@ -1356,11 +1356,11 @@ class TestDeclaredStaticContent:
         file under any `skills/` or `templates/` directory stays judged in full."""
         for path in ("design/skills/guide/SKILL.md", "design/templates/page.html"):
             assert ca.is_judgeable_path(path) is True, path
-            assert ca.is_static_content(path, self.STATIC) is False, path
+            assert ca.is_static_content(path, self.STATIC, ()) is False, path
             assert ca.affects_test_outcome(path, (), self.STATIC) is True, path
 
     def test_a_non_judgeable_file_is_not_static_because_it_is_already_free(self):
-        assert ca.is_static_content("design/notes.md", self.STATIC) is False
+        assert ca.is_static_content("design/notes.md", self.STATIC, ()) is False
         assert ca.affects_test_outcome("design/notes.md", (), self.STATIC) is False
 
     def test_a_repo_that_declares_nothing_is_unchanged(self):

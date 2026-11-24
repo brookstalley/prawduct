@@ -1522,29 +1522,6 @@ def _split_z(out: str) -> list[str]:
     return [p for p in out.split("\0") if p]
 
 
-def static_declaration_in_tree(project_dir: Path, tree: str) -> tuple[str, ...]:
-    """The ``static_content_prefixes`` declaration as ``tree`` (a tree or a
-    commit) holds it, never as the working tree does. The freshness check asks
-    it of the recorded run's tree, the coverage floor of ``HEAD``, and the
-    boundary review's roster of the tree it reviews.
-
-    The declaration narrows what can change the suite's outcome, so it must be
-    one the compared trees actually carry. Read from the working tree, an
-    uncommitted declaration would relax a comparison between two trees that
-    never contained it. The run's own tree is the one that matters: when
-    ``project-state.yaml`` differs between the run and the target, that file is
-    test-coupled state and the comparison is already stale. Anything that
-    cannot be read (no such file in the tree, a git failure) declares nothing,
-    which costs a suite run and never a false ``current``.
-    """
-    rc, out, _err = run_git(project_dir, "show", f"{tree}:.prawduct/project-state.yaml")
-    if rc != 0:
-        return ()
-    from .core import static_content_prefixes_from_text  # noqa: PLC0415 — lazy, as this module's other core reads
-
-    return static_content_prefixes_from_text(out)
-
-
 def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str | None":
     """Why the working tree may hold content these reports never ran against,
     or ``None`` when every file the suite reads predates the start of the run
@@ -1568,8 +1545,8 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
     withholds too — as the live run path's before/after tree capture does.
 
     Three questions, each over the paths ``coverage_algebra.affects_test_outcome``
-    keeps (with the repo's ``suite_coupled_prefixes`` and
-    ``static_content_prefixes``), the predicate the tree clause itself judges by:
+    keeps (with the declarations in force, ``coverage.suite_declarations``),
+    the predicate the tree clause itself judges by:
 
     1. **Edits.** A tracked or untracked (not ignored) file newer than the
        earliest run start — other than the reports and their scope records,
@@ -1615,12 +1592,14 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
         starts.append(start_ns)
     report_ns = min(starts)
     root = Path(project_dir)
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    prefixes = core.suite_coupled_prefixes(prawduct_dir)
-    static = core.static_content_prefixes(prawduct_dir)
+    from . import coverage  # noqa: PLC0415 — lazy: coverage imports this module
+
+    declared = coverage.suite_declarations(project_dir, "HEAD")
 
     def coupled(paths: "list[str]") -> "list[str]":
-        return coverage_algebra.suite_coupled_files(sorted(set(paths)), prefixes, static)
+        return coverage_algebra.suite_coupled_files(
+            sorted(set(paths)), declared.coupled, declared.static
+        )
 
     rc, out, err = run_git(
         project_dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard",

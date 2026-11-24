@@ -266,6 +266,7 @@ COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
 
 #: Judgeable-file count at which volume alone buys the coordinator, with no
 #: risk surface touched. Below it the replay shows an empty blocking record.
+#: Declared static content in force is not counted (:func:`_derive_roster`).
 COORDINATOR_JUDGEABLE_THRESHOLD = 12
 
 # Background reviewers run for minutes after the dispatching fork returns, so
@@ -2523,13 +2524,15 @@ def _derive_roster(
     every changed file. The owner ruled the lighter review on 2026-11-24
     (#1239). The 82-review replay above holds no static content, so how many
     blockers a third reviewer would find there is not measured. The
-    declaration is read from ``head_tree``, the tree under review, so an
-    uncommitted one lightens nothing; with no tree, nothing is discounted.
+    declarations in force come from ``coverage.suite_declarations`` for
+    ``head_tree``, the tree under review: a static one only once the
+    integration branch carries it, so a branch cannot lighten its own review
+    by declaring. With no tree, nothing is discounted.
     """
     if mode_token in ("chunk", "verify-resolutions"):
         return list(SINGLE_PASS_ROSTER), f"mode={mode_token} is always single-pass"
 
-    from . import core, coverage_algebra, evidence, risk  # noqa: PLC0415 — lazy; keeps the import graph flat
+    from . import coverage, coverage_algebra, risk  # noqa: PLC0415 — lazy; keeps the import graph flat
 
     touched, why = risk.paths_touch_risk_surface(prawduct_dir, files_changed)
     if touched:
@@ -2538,15 +2541,20 @@ def _derive_roster(
         )
 
     judgeable = coverage_algebra.judgeable_files(files_changed)
-    static: tuple[str, ...] = ()
-    if project_dir is not None and head_tree:
-        static = evidence.static_declaration_in_tree(project_dir, head_tree)
-    coupled = core.suite_coupled_prefixes(prawduct_dir)
-    nj = sum(1 for p in judgeable if not coverage_algebra.is_static_content(p, static, coupled))
-    discounted = len(judgeable) - nj
+    nj, discounted, why_not = len(judgeable), 0, ""
+    # Read only when the count would buy the coordinator: below the threshold
+    # the answer is single-pass whatever is declared.
+    if nj >= COORDINATOR_JUDGEABLE_THRESHOLD and project_dir is not None and head_tree:
+        declared = coverage.suite_declarations(project_dir, head_tree)
+        nj = sum(
+            1 for p in judgeable
+            if not coverage_algebra.is_static_content(p, declared.static, declared.coupled)
+        )
+        discounted = len(judgeable) - nj
+        why_not = f"; {declared.note}" if declared.note else ""
     counted = f"{nj} judgeable file(s)" + (
         f" ({discounted} declared static, not counted)" if discounted else ""
-    )
+    ) + why_not
     if nj >= COORDINATOR_JUDGEABLE_THRESHOLD:
         return list(COORDINATOR_ROSTER), (
             f"mode={mode_token}, no risk surface, {counted} >= "

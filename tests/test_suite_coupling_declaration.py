@@ -187,14 +187,12 @@ class TestTheStaticContentHintReadsAsWritten:
             block.append(line[2:])
         return "\n".join(block) + "\n"
 
-    def test_uncommenting_the_hint_declares_only_its_prefix(self, tmp_path: Path):
+    def test_uncommenting_the_hint_declares_only_its_prefix(self):
         hint = self._uncommented_hint()
-        (tmp_path / "project-state.yaml").write_text(hint, encoding="utf-8")
-        assert core.static_content_prefixes(tmp_path) == ("design-system/",), hint
+        assert core.static_content_declaration(hint) == (core.YAML_DECLARED, ("design-system/",)), hint
 
-    def test_a_flow_style_hint_would_declare_nothing(self, tmp_path: Path):
+    def test_a_flow_style_hint_would_declare_nothing(self):
         """Control: the refused shape reads as nothing static."""
-        (tmp_path / "project-state.yaml").write_text(
-            "static_content_prefixes: [design-system/]\n", encoding="utf-8"
+        assert core.static_content_declaration("static_content_prefixes: [design-system/]\n") == (
+            core.YAML_UNPARSEABLE, (),
         )
-        assert core.static_content_prefixes(tmp_path) == ()

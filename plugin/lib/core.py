@@ -782,10 +782,7 @@ def suite_coupled_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
         text = state.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return ()
-    status, items = read_block_sequence(text, SUITE_COUPLED_PREFIXES_KEY)
-    if status == YAML_UNPARSEABLE:
-        return ("",)
-    return items
+    return suite_coupled_prefixes_from_text(text)
 
 
 #: Path prefixes a repo declares hold static content: files nothing in the
@@ -798,38 +795,43 @@ def suite_coupled_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
 STATIC_CONTENT_PREFIXES_KEY = "static_content_prefixes"
 
 
-def static_content_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
-    """Path prefixes this repo declares hold static content.
+def static_content_declaration(text: "str | None") -> "tuple[str, tuple[str, ...]]":
+    """The :data:`STATIC_CONTENT_PREFIXES_KEY` declaration in a
+    ``project-state.yaml`` text: ``(status, prefixes)``, where ``status`` is
+    :func:`read_block_sequence`'s answer and ``None`` text (no such file) reads
+    as absent.
 
-    Reads :data:`STATIC_CONTENT_PREFIXES_KEY` from ``project-state.yaml`` as a
-    block sequence of strings via :func:`read_block_sequence`. ``()`` on a
-    missing file, an absent key or ``[]``.
-
-    **A declaration the reader cannot read whole declares nothing** — ``()``,
-    never a partial list. Being static only ever lightens what a change costs
-    (no suite re-run, no third reviewer), so a misread entry must cost the
-    full path, never lighten it: the reverse of :func:`suite_coupled_prefixes`,
-    whose unreadable form couples everything for the same reason.
+    **A declaration the reader cannot read whole declares nothing** — ``()``
+    with ``YAML_UNPARSEABLE``, never a partial list. Being static only ever
+    lightens what a change costs (no suite re-run, no third reviewer), so a
+    misread entry must cost the full path: the reverse of
+    :func:`suite_coupled_prefixes`, whose unreadable form couples everything
+    for the same reason. The status is returned so a surface can say the
+    declaration was refused rather than read as nothing.
 
     Entries are plain path prefixes against repo-relative paths, so a trailing
     slash matters and is the caller's to write: ``doc/`` must not match
-    ``documentation/``.
+    ``documentation/``. Which tree's text to read is
+    ``coverage.suite_declarations``' question, not this one's.
     """
-    state = prawduct_dir / "project-state.yaml"
-    try:
-        text = state.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ()
-    return static_content_prefixes_from_text(text)
-
-
-def static_content_prefixes_from_text(text: str) -> tuple[str, ...]:
-    """:func:`static_content_prefixes` over a ``project-state.yaml`` text already
-    in hand, such as one read out of a committed tree, with the same refusal:
-    a declaration that cannot be read whole declares nothing."""
+    if text is None:
+        return YAML_ABSENT, ()
     status, items = read_block_sequence(text, STATIC_CONTENT_PREFIXES_KEY)
     if status == YAML_UNPARSEABLE:
+        return status, ()
+    return status, items
+
+
+def suite_coupled_prefixes_from_text(text: "str | None") -> tuple[str, ...]:
+    """:func:`suite_coupled_prefixes` over a ``project-state.yaml`` text in hand,
+    such as one read out of a committed tree, with the same couple-everything
+    answer for a declaration it cannot read whole. ``None`` (no such file)
+    couples nothing extra."""
+    if text is None:
         return ()
+    status, items = read_block_sequence(text, SUITE_COUPLED_PREFIXES_KEY)
+    if status == YAML_UNPARSEABLE:
+        return ("",)
     return items
 
 

@@ -1181,10 +1181,10 @@ LAST_MEASURED_TOKENS = {
     # rewritten, because neither of its cases is fully refused by code. "Never a chunk's first
     # review" is refused only when the branch has no review at all, and drift unrelated to the
     # findings only past the Demotion table's scope-widened threshold.
-    # -3 on 2026-11-24 (static-content, #1239): the roster paragraph says declared static content
-    # does not count toward the 12. Paid in place by pointing the derived default surfaces at
+    # -5 on 2026-11-24 (static-content, #1239): the Execution row and the roster paragraph count
+    # "12+ non-static judgeable files". Paid in place by pointing the derived default surfaces at
     # `lib/risk.py`, which owns that list, instead of restating it. A READING; ceiling lowered with it.
-    "skills/critic/review-cycle.md": 8262,
+    "skills/critic/review-cycle.md": 8260,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -6921,8 +6921,8 @@ class TestReviewCycle:
         # LOWERED 8240 -> 8230 (backlog-roi-wave2, #606, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 8230 -> 8223 (round-budget-cadence, 2026-11-23) — see LAST_MEASURED_TOKENS.
         # RAISED 8223 -> 8266 (verify-links-review-id, #1220, 2026-11-23) — see LAST_MEASURED_TOKENS.
-        # LOWERED 8266 -> 8263 (static-content, #1239, 2026-11-24) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8263, f"review-cycle.md is ~{tokens} tokens, should be <8263"
+        # LOWERED 8266 -> 8261 (static-content, #1239, 2026-11-24) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8261, f"review-cycle.md is ~{tokens} tokens, should be <8261"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

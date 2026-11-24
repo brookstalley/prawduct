@@ -348,9 +348,13 @@ path still refuses it, and it still needs a change record. What the declaration 
 - static files do not count toward the boundary review's volume escalator, so a static-heavy
   branch gets one reviewer instead of three unless it touches a risk surface.
 
-The declaration takes effect once it is committed: the freshness check reads it from the tree the
-suite ran against, the coverage floor from `HEAD`, and the boundary review from the tree it
-reviews. An uncommitted declaration lightens nothing.
+A declaration lightens work only once it is on the integration branch. Each check reads the
+declarations from the tree it judges (the tree the suite ran against, `HEAD`, or the tree under
+review), and a static prefix counts only when the merge-base with the integration branch declares
+it too. So the branch that adds or widens a declaration pays the full path for its own suite runs,
+coverage floor and boundary review, and an uncommitted edit lightens nothing. A declaration the
+reader refuses, or one not yet on the integration branch, is named in the `test-status` reason and
+the roster rationale when it is why nothing was lightened.
 
 A path under a `suite_coupled_prefixes` entry is never static: a test reads it as data, and that
 declaration wins any overlap. Governance-protected prose is never static either, because an agent

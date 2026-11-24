@@ -284,12 +284,14 @@ def suite_coupled_files(
 def is_static_content(
     path: str,
     static_prefixes: "tuple[str, ...]",
-    coupled_prefixes: "tuple[str, ...]" = (),
+    coupled_prefixes: "tuple[str, ...]",
 ) -> bool:
     """True if ``path`` is static content by this repo's declaration: a judgeable
     file nothing in the product executes, serves as code or parses, such as a
     stylesheet, a static example page or a design-value file kept with its
-    documents (``core.static_content_prefixes``, from ``project-state.yaml``).
+    documents. Both declarations are the ones in force for the judged tree
+    (``coverage.suite_declarations``), and the coupling one is required so no
+    caller can classify a path without the declaration that overrides this.
 
     Static content still needs review coverage. :func:`is_judgeable_path` is
     not asked to change, so a static file is reviewed, never rides the doc-only
@@ -308,7 +310,7 @@ def is_static_content(
 
     Never static, whatever the declaration says:
 
-    - a path under ``coupled_prefixes`` (``core.suite_coupled_prefixes``),
+    - a path under ``coupled_prefixes``,
       because a test reads it as data. The declaration that widens the suite's
       reach wins an overlap;
     - governance-protected prose (``buildplan_refs.protected_path_violation``),

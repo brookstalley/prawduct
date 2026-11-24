@@ -55,14 +55,14 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 | **Goals skipped** | 4-7; Records Pass; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
 | **New findings rated** | The inner BLOCKING set only — every other rated item is an OBSERVATION (see "Severity is stage-keyed") | Same as `chunk`, Goals 4–7 included | BLOCKING and WARNING; anything lesser is an OBSERVATION | **BLOCKING only**, and only from the inner set — anything lesser is an OBSERVATION in the reviewer's report, never a `findings` entry (see "A re-review does not manufacture work") |
 | **Review interval** (derived by `critic-begin`, recorded in the manifest) | Last blocker-free reviewed tree (else the merge-base if nothing judgeable is uncommitted, else HEAD's) → captured working tree | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle; bounded to the last clean boundary review's tree → HEAD when one stands on this branch and base (manifest `span`) | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
-| **Execution** (roster derived by `critic-begin`) | Always single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Always single-pass |
+| **Execution** (roster derived by `critic-begin`) | Always single-pass | Coordinator when a risk surface is touched or 12+ non-static judgeable files change; else single-pass | Coordinator when a risk surface is touched or 12+ non-static judgeable files change; else single-pass | Always single-pass |
 | **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min | 1-2 min |
 | **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to the mode its refusal names when no usable prior fact exists or scope widens past the threshold. |
 
 **Risk surface** = a changed path matching this repo's `risk_surfaces:` in `project-state.yaml` — the
 same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo that declares none runs
-the same two escalators — the derived defaults (`lib/risk.py`) and volume at 12 judgeable files,
-declared static content not counted (`docs/project-state-keys.md`) — and no file-count fallback
+the same two escalators — the derived defaults (`lib/risk.py`) and volume at 12 non-static
+judgeable files (`docs/project-state-keys.md`) — and no file-count fallback
 beneath them (the roster config block in `lib/critic_consolidate.py` carries the measurement that
 retired it). What declaring buys is the paths it names.
 

@@ -735,23 +735,28 @@ def _tree_met(
     if changed is None:
         return None, "tree diff unavailable (missing object or git failure)"
     # The repo's own declarations are passed HERE and NOT at the doc-only PR
-    # gate: this is the freshness question. See `affects_test_outcome`.
-    prawduct_dir = project_dir / ".prawduct"
-    coupled_prefixes = suite_coupled_prefixes(prawduct_dir)
-    static = evidence.static_declaration_in_tree(project_dir, recorded_tree)
-    coupled = coverage_algebra.suite_coupled_files(changed, coupled_prefixes, static)
+    # gate: this is the freshness question. See `affects_test_outcome`. They are
+    # read only when something judgeable is left to classify, because a repo
+    # that declares nothing must not pay git reads for an answer it cannot use.
+    coupled = coverage_algebra.suite_coupled_files(
+        changed, suite_coupled_prefixes(project_dir / ".prawduct")
+    )
+    if not coupled:
+        return True, f"{clean} ({len(changed)} metadata/doc file(s))"
+    declared = coverage.suite_declarations(project_dir, recorded_tree)
+    coupled = coverage_algebra.suite_coupled_files(changed, declared.coupled, declared.static)
     if coupled:
         preview = ", ".join(coupled[:3]) + ("…" if len(coupled) > 3 else "")
-        return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview})"
+        why_not = f"; {declared.note}" if declared.note else ""
+        return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview}){why_not}"
     n_static = sum(
-        1 for p in changed if coverage_algebra.is_static_content(p, static, coupled_prefixes)
+        1 for p in changed
+        if coverage_algebra.is_static_content(p, declared.static, declared.coupled)
     )
-    if n_static:
-        return True, (
-            f"{clean} ({len(changed) - n_static} metadata/doc and "
-            f"{n_static} declared-static file(s))"
-        )
-    return True, f"{clean} ({len(changed)} metadata/doc file(s))"
+    return True, (
+        f"{clean} ({len(changed) - n_static} metadata/doc and "
+        f"{n_static} declared-static file(s))"
+    )
 
 
 def _store_run_vouching(
@@ -4334,13 +4339,11 @@ def verify_coverage(project_dir: Path) -> int:
     # verifier disclaimed is out of jurisdiction whatever its suffix. A file the
     # repo declares static content is not executable either, unless a test
     # reads its prefix as data, which the coupling declaration says. The
-    # declaration is HEAD's, as the diff judged here is: an uncommitted one
-    # must not exempt committed files.
-    # `evidence` is the record in this function, so the module is named here.
-    from . import evidence as evidence_mod  # noqa: PLC0415
-
-    static = evidence_mod.static_declaration_in_tree(project_dir, "HEAD")
-    coupled_prefixes = suite_coupled_prefixes(prawduct_dir)
+    # declarations in force are HEAD's, as the diff judged here is, and a
+    # static one only once the integration branch carries it
+    # (`coverage.suite_declarations`).
+    declared = coverage.suite_declarations(project_dir, "HEAD")
+    static, coupled_prefixes = declared.static, declared.coupled
     nonexecutable = [
         f for f in changed
         if f not in skipped

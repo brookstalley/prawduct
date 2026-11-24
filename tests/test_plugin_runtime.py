@@ -3502,9 +3502,8 @@ class TestSuiteCoupledPrefixesDeclaration:
 class TestStaticContentPrefixesDeclaration:
     """`static_content_prefixes:` is read the opposite way on failure from
     `suite_coupled_prefixes:`. Being static only lightens what a change costs,
-    so a declaration the reader cannot read whole must declare nothing."""
-
-    _state = TestSuiteCoupledPrefixesDeclaration._state
+    so a declaration the reader cannot read whole must declare nothing, and say
+    it was refused."""
 
     def _core(self):
         if str(ROOT) not in sys.path:
@@ -3512,18 +3511,18 @@ class TestStaticContentPrefixesDeclaration:
         from lib import core  # noqa: PLC0415 — mirrors the other lib unit tests
         return core
 
-    def test_a_declared_block_is_read(self, tmp_path):
+    def test_a_declared_block_is_read(self):
         core = self._core()
-        prawduct = self._state(tmp_path, "static_content_prefixes:\n  - design/\n  - 'site/'\n")
-        assert core.static_content_prefixes(prawduct) == ("design/", "site/")
+        status, items = core.static_content_declaration(
+            "static_content_prefixes:\n  - design/\n  - 'site/'\n"
+        )
+        assert (status, items) == (core.YAML_DECLARED, ("design/", "site/"))
 
-    def test_absent_key_missing_file_and_empty_list_declare_nothing(self, tmp_path):
+    def test_absent_key_missing_file_and_empty_list_declare_nothing(self):
         core = self._core()
-        assert core.static_content_prefixes(self._state(tmp_path / "a", "other_key: 1\n")) == ()
-        assert core.static_content_prefixes(tmp_path / "nonexistent") == ()
-        assert core.static_content_prefixes(
-            self._state(tmp_path / "c", "static_content_prefixes: []\n")
-        ) == ()
+        assert core.static_content_declaration("other_key: 1\n")[1] == ()
+        assert core.static_content_declaration(None) == (core.YAML_ABSENT, ())
+        assert core.static_content_declaration("static_content_prefixes: []\n")[1] == ()
 
     @pytest.mark.parametrize(
         "body",
@@ -3532,34 +3531,21 @@ class TestStaticContentPrefixesDeclaration:
             "static_content_prefixes:\n  - design/\n  site/\n",  # mis-indented root
             "static_content_prefixes: [design/, site/]\n",  # flow style
             "static_content_prefixes:\n  - design/\n  -\n",  # bare dash
+            "static_content_prefixes:\n  - ''\n  - design/\n",  # empty entry
+            'static_content_prefixes:\n  - ""\n  - design/\n',  # empty entry
         ],
     )
-    def test_a_declaration_it_cannot_read_whole_declares_nothing(self, tmp_path, body):
+    def test_a_declaration_it_cannot_read_whole_declares_nothing_and_says_so(self, body):
+        """An empty entry is a prefix of every path; it is refused with the rest."""
         core = self._core()
-        from lib import coverage_algebra as ca  # noqa: PLC0415
+        status, items = core.static_content_declaration(body)
+        assert (status, items) == (core.YAML_UNPARSEABLE, ())
 
-        declared = core.static_content_prefixes(self._state(tmp_path, body))
-        assert declared == ()
-        assert ca.affects_test_outcome("design/site.css", (), declared) is True
-        # control: the same root, declared readably, is static
-        readable = core.static_content_prefixes(
-            self._state(tmp_path / "ok", "static_content_prefixes:\n  - design/\n")
-        )
-        assert ca.affects_test_outcome("design/site.css", (), readable) is False
-
-    @pytest.mark.parametrize("empty", ["''", '""'])
-    def test_an_empty_entry_cannot_make_every_path_static(self, tmp_path, empty):
-        """`""` is a prefix of every path. The block reader refuses an empty
-        entry as unparseable, so the whole declaration reads as nothing, and the
-        file every path would have matched keeps its full cost."""
+    def test_the_coupling_text_reader_matches_the_file_reader(self, tmp_path):
         core = self._core()
-        from lib import coverage_algebra as ca  # noqa: PLC0415
-
-        declared = core.static_content_prefixes(
-            self._state(tmp_path, f"static_content_prefixes:\n  - {empty}\n  - design/\n")
-        )
-        assert declared == ()
-        assert ca.affects_test_outcome("src/app.py", (), declared) is True
+        for body in ("suite_coupled_prefixes:\n  - documentation/\n", "suite_coupled_prefixes: [x]\n", "k: 1\n"):
+            prawduct = TestSuiteCoupledPrefixesDeclaration._state(self, tmp_path / str(abs(hash(body))), body)
+            assert core.suite_coupled_prefixes_from_text(body) == core.suite_coupled_prefixes(prawduct)
 
     def test_this_repo_declares_no_static_content(self):
         """This repo's suite reads `plugin/` and `documentation/` as data, so
@@ -3567,20 +3553,28 @@ class TestStaticContentPrefixesDeclaration:
         against those couplings, which win any overlap anyway."""
         core = self._core()
         repo_root = Path(__file__).resolve().parents[1]
-        assert core.static_content_prefixes(repo_root / ".prawduct") == ()
+        text = (repo_root / ".prawduct" / "project-state.yaml").read_text(encoding="utf-8")
+        assert core.static_content_declaration(text)[1] == ()
 
-    def _trees(self, tmp_path: Path, *, committed: str, working: "str | None" = None):
-        """A run's tree T0 and a later committed tree T1 that changes only
-        `design/site.css`. ``committed`` is the state file both trees carry;
+    def _trees(
+        self, tmp_path: Path, *, committed: str, working: "str | None" = None,
+        on_main: "str | None" = None,
+    ):
+        """A run's tree T0 and a later committed tree T1 on a feature branch that
+        changes only `design/site.css`. ``committed`` is the state file both
+        trees carry; ``on_main`` the integration branch's (default: the same);
         ``working``, when given, replaces it in the working tree, uncommitted."""
         repo = tmp_path / "repo"
         (repo / ".prawduct").mkdir(parents=True)
-        (repo / ".prawduct" / "project-state.yaml").write_text(committed)
+        (repo / ".prawduct" / "project-state.yaml").write_text(on_main if on_main is not None else committed)
         (repo / "design").mkdir()
         (repo / "design" / "site.css").write_text("body { margin: 0 }\n")
         _git(repo, "init", "-b", "main")
         _git(repo, "add", "-A")
-        _git(repo, "commit", "-m", "c1")
+        _git(repo, "commit", "-m", "c0 on the integration branch")
+        _git(repo, "checkout", "-b", "feat")
+        (repo / ".prawduct" / "project-state.yaml").write_text(committed)
+        _git(repo, "commit", "-am", "c1", "--allow-empty")
         t0 = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
         (repo / "design" / "site.css").write_text("body { margin: 1rem }\n")
         _git(repo, "commit", "-am", "c2")
@@ -3613,7 +3607,32 @@ class TestStaticContentPrefixesDeclaration:
 
     def test_a_tree_that_cannot_be_read_declares_nothing(self, tmp_path):
         gates, repo, _t0, _t1 = self._trees(tmp_path, committed=self.DECLARES)
-        assert gates.evidence.static_declaration_in_tree(repo, "0" * 40) == ()
+        assert gates.coverage.suite_declarations(repo, "0" * 40).static == ()
+        assert gates.coverage.suite_declarations(repo, "HEAD").static == ("design/",), "control"
+
+    def test_a_declaration_only_this_branch_carries_relaxes_nothing(self, tmp_path):
+        """A governance change cannot supply its own authority: the branch that
+        adds the declaration pays the full path, and says why."""
+        gates, repo, t0, t1 = self._trees(
+            tmp_path, committed=self.DECLARES, on_main="other_key: 1\n"
+        )
+        met, reason = gates._tree_met(repo, t0, t1)
+        assert met is False, reason
+        assert "not yet on the integration branch" in reason
+
+    def test_a_refused_declaration_says_so(self, tmp_path):
+        refused = "static_content_prefixes: [design/]\n"
+        gates, repo, t0, t1 = self._trees(tmp_path, committed=refused)
+        met, reason = gates._tree_met(repo, t0, t1)
+        assert met is False, reason
+        assert "cannot read" in reason
+
+    def test_an_uncommitted_coupling_removal_relaxes_nothing(self, tmp_path):
+        """Both trees couple `design/`; only the working tree has dropped it."""
+        coupled = self.DECLARES + "suite_coupled_prefixes:\n  - design/\n"
+        gates, repo, t0, t1 = self._trees(tmp_path, committed=coupled, working=self.DECLARES)
+        met, reason = gates._tree_met(repo, t0, t1)
+        assert met is False, reason
 
     def test_a_metadata_only_diff_does_not_claim_static_files(self, tmp_path):
         """The success line counts static files only when one changed."""

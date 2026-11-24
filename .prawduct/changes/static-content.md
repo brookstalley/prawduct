@@ -21,7 +21,9 @@ A change confined to declared static content leaves recorded suite evidence `cur
 suite is not re-run for it. The same holds when a JUnit report is ingested, and in the PR gate's
 explanation of an uncovered span. The coverage floor asks no test to reference a static file.
 A declaration the reader cannot read whole declares nothing static, so a typo costs the full
-path, never a lighter one.
+path, never a lighter one, and the `test-status` reason says the declaration was refused. Every
+check reads the declarations from the tree it judges, and a static prefix counts only once the
+integration branch carries it too, so no branch lightens its own checks by declaring.
 
 ### Chunk 02: the boundary review's roster
 Declared static content does not count toward the boundary review's volume escalator (12
@@ -34,4 +36,5 @@ To stop a static-document branch paying for a suite run and a three-reviewer bou
 under `static_content_prefixes:` in `.prawduct/project-state.yaml` (a block sequence of path
 prefixes; see `/prawduct:methodology project-state`). Do not list a path your tests read as data.
 Put that one under `suite_coupled_prefixes:`, which wins any overlap. The declaration takes effect
-once committed. Nothing changes for a repo that declares nothing.
+once it is on the integration branch: the branch that adds it pays the full path itself. Nothing
+changes for a repo that declares nothing.
