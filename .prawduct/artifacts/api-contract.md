@@ -896,8 +896,9 @@ would have said, because the argument is only convincing in the concrete.
   `no-upstream`, `upstream-ref-missing`), where a push or an integrate-then-push is the remedy in
   every case. Both codes BLOCK — the third outcome buys the caller an applicable remedy, not a
   different verdict.
-- `check-boundary-coverage` (2026-11-23), *no integration base, an unreadable change record, or
-  evidence facts a newer plugin wrote* — folded into 0 it prints a coverage count over a pending set or a store it never read, so
+- `check-boundary-coverage` (2026-11-23), *no integration base, an unreadable change record,
+  evidence facts a newer plugin wrote, or a fault inside the classification (named, never a
+  traceback)* — folded into 0 it prints a coverage count over a pending set or a store it never read, so
   a release reads "all covered" off nothing; folded into 1 it would give advice a failing exit it
   never has, since every answered run exits 0 whatever it found. It is advice, so 3 blocks nothing
   that reads it as advice; it is the "could not answer" the scheme reserves.

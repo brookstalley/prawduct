@@ -7239,8 +7239,9 @@ def cmd_check_boundary_coverage(project_dir: Path, args: list[str] | None = None
     """Which release-pending merges did a boundary review cover? (#1223 wave 1).
 
     Advice: exit 0 whenever it answered, whatever it found, and 3 when it could
-    not evaluate (no integration base, an unreadable change record, or facts a
-    newer plugin wrote), the exit-code scheme's "could not answer". The classification and its reasons
+    not evaluate (no integration base, an unreadable change record, facts a
+    newer plugin wrote, or a fault inside the classification, which is named
+    rather than raised), the exit-code scheme's "could not answer". The classification and its reasons
     live in ``lib.boundary_coverage``, reached lazily so the hook's top level
     stays lib-free."""
     argv = list(args or [])

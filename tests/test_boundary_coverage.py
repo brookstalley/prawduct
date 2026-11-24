@@ -539,3 +539,27 @@ def test_the_pr_skill_names_only_ops_the_hook_dispatches():
     named = set(_re.findall(r"`prawduct-hook ([a-z][a-z0-9-]*)", skill))
     assert "check-boundary-coverage" in named, "the release guard must name the op"
     assert named <= dispatched, sorted(named - dispatched)
+
+
+def test_a_fault_in_the_classification_is_an_attributed_exit_3(repo, tmp_path):
+    """The op as used: a store line that breaks the classifier gives exit 3 and a
+    named reason, never a traceback (exit 1). The fault is injected in a child
+    process through a sitecustomize that breaks one helper the classifier calls."""
+    _branch(repo, "f")
+    _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+    _merge(repo, "f")
+    inject = tmp_path / "inject"
+    inject.mkdir()
+    (inject / "sitecustomize.py").write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(ROOT / 'plugin')!r})\n"
+        "from lib import boundary_coverage as bc\n"
+        "def boom(*_a, **_k):\n    raise RuntimeError('injected')\n"
+        "bc._Classifier.classify = boom\n",
+        encoding="utf-8",
+    )
+    env = scrubbed_env(tmp_path / "home", CLAUDE_PROJECT_DIR=str(repo), PYTHONPATH=str(inject))
+    proc = subprocess.run([sys.executable, str(HOOK), "check-boundary-coverage"], cwd=str(repo),
+                          capture_output=True, text=True, timeout=60, env=env)
+    assert proc.returncode == 3, (proc.stdout, proc.stderr)
+    assert "RuntimeError: injected" in proc.stderr and "Traceback" not in proc.stderr

@@ -316,7 +316,19 @@ class _Classifier:
 
 
 def classify_pending(project_dir: Path) -> Report:
-    """Classify every release-pending scope against the repo's integration base."""
+    """Classify every release-pending scope against the repo's integration base.
+
+    Never raises: a fault anywhere in the classification is an ``unevaluable``
+    report naming it, so the op exits 3 with an attributed reason (api-contract:
+    errors are attributed, never stack traces across the boundary), and no caller
+    reading this as advice can be failed by it."""
+    try:
+        return _classify_pending(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice: a fault becomes the "could not evaluate" answer, attributed, never a traceback or a moved exit
+        return Report("unevaluable", reason=f"the classification failed: {type(exc).__name__}: {exc}")
+
+
+def _classify_pending(project_dir: Path) -> Report:
     from . import release_readiness  # noqa: PLC0415 — lazy: release_readiness imports widely
 
     base, why = coverage.repo_base_branch(project_dir)
