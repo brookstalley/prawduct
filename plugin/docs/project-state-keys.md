@@ -332,6 +332,42 @@ suite_coupled_prefixes:
   - .prawduct/artifacts/data-model.md
 ```
 
+## static_content_prefixes (opt-in)
+
+Declare the paths that hold static content: files nothing in the product executes, serves as code
+or parses, such as stylesheets, static example pages or a file of design values kept with the
+documents. Without it a branch made of such files pays the whole code path at the PR boundary: a
+fresh whole-suite run, and a three-reviewer boundary review once enough of them change.
+
+A declared static file is still reviewed. It still needs review coverage, so the doc-only PR fast
+path still refuses it, and it still needs a change record. What the declaration changes:
+
+- a change confined to static content leaves recorded suite evidence `current`, so the suite is
+  not re-run for it;
+- the coverage floor (`coverage_required`) asks no test to reference a static file;
+- static files do not count toward the boundary review's volume escalator, so a static-heavy
+  branch gets one reviewer instead of three unless it touches a risk surface.
+
+The declaration takes effect once it is committed: the freshness check reads it from the tree the
+suite ran against, the coverage floor from `HEAD`, and the boundary review from the tree it
+reviews. An uncommitted declaration lightens nothing.
+
+A path under a `suite_coupled_prefixes` entry is never static: a test reads it as data, and that
+declaration wins any overlap. Governance-protected prose is never static either, because an agent
+executes it; that bound matches a path segment, so a file under any `skills/`, `templates/`,
+`methodology/` or `agents/` directory is judged in full however you declare it.
+
+Entries are repo-relative path PREFIXES, not globs, and the trailing slash is yours to write
+(`site/` does not match `site-assets/`). Declare it ONLY as a block sequence of strings. A
+declaration the reader cannot read whole declares NOTHING static, the reverse of
+`suite_coupled_prefixes`, because being static only lightens a change's cost: a typo costs suite
+runs and reviewers, never a lighter path. Absent or `[]` declares nothing.
+
+```yaml
+static_content_prefixes:
+  - design-system/
+```
+
 ## learnings_budgets (opt-in override)
 
 Learnings live in `.claude/rules/learnings/`: `core.md` is in every session's context from launch,

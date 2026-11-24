@@ -788,6 +788,51 @@ def suite_coupled_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
     return items
 
 
+#: Path prefixes a repo declares hold static content: files nothing in the
+#: product executes, serves as code or parses, such as stylesheets, static
+#: example pages and design-value files kept with its documents. The opposite
+#: direction from :data:`SUITE_COUPLED_PREFIXES_KEY`: that key can only make
+#: more changes count, and this one makes fewer, so it is read the other way
+#: on failure. ``coverage_algebra.is_static_content`` decides what the
+#: declaration covers.
+STATIC_CONTENT_PREFIXES_KEY = "static_content_prefixes"
+
+
+def static_content_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
+    """Path prefixes this repo declares hold static content.
+
+    Reads :data:`STATIC_CONTENT_PREFIXES_KEY` from ``project-state.yaml`` as a
+    block sequence of strings via :func:`read_block_sequence`. ``()`` on a
+    missing file, an absent key or ``[]``.
+
+    **A declaration the reader cannot read whole declares nothing** — ``()``,
+    never a partial list. Being static only ever lightens what a change costs
+    (no suite re-run, no third reviewer), so a misread entry must cost the
+    full path, never lighten it: the reverse of :func:`suite_coupled_prefixes`,
+    whose unreadable form couples everything for the same reason.
+
+    Entries are plain path prefixes against repo-relative paths, so a trailing
+    slash matters and is the caller's to write: ``doc/`` must not match
+    ``documentation/``.
+    """
+    state = prawduct_dir / "project-state.yaml"
+    try:
+        text = state.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ()
+    return static_content_prefixes_from_text(text)
+
+
+def static_content_prefixes_from_text(text: str) -> tuple[str, ...]:
+    """:func:`static_content_prefixes` over a ``project-state.yaml`` text already
+    in hand, such as one read out of a committed tree, with the same refusal:
+    a declaration that cannot be read whole declares nothing."""
+    status, items = read_block_sequence(text, STATIC_CONTENT_PREFIXES_KEY)
+    if status == YAML_UNPARSEABLE:
+        return ()
+    return items
+
+
 def oversized_file_threshold(prawduct_dir: Path) -> int:
     """Bytes above which a governance file earns a size nudge, for this repo.
 

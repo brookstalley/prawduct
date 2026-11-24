@@ -464,6 +464,60 @@ class TestNonExecutableFilesAreNotGated:
         assert result.returncode == 1
         assert "missing-coverage: config/app.yaml" in result.stderr
 
+    def _declare(self, repo: Path, extra: str = "") -> None:
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\nstatic_content_prefixes:\n  - design/\n" + extra
+        )
+
+    def _add_static(self, repo: Path) -> None:
+        (repo / "design").mkdir(exist_ok=True)
+        (repo / "design" / "site.css").write_text("body { margin: 0 }\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-q", "-m", "static")
+        _write_evidence(repo, changes_referenced=[], changes_unjudged=[])
+
+    def test_declared_static_content_is_a_note_not_a_blocker(self, gated_repo: Path):
+        """#1239: nothing executes a declared static file, so the floor asks no
+        test to reference it, and says so rather than dropping it silently."""
+        self._declare(gated_repo)
+        self._add_static(gated_repo)
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        assert "missing-coverage" not in result.stderr
+        assert "design/site.css" in result.stdout
+
+    def test_the_same_file_undeclared_still_gates(self, gated_repo: Path):
+        self._add_static(gated_repo)
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 1
+        assert "missing-coverage: design/site.css" in result.stderr
+
+    def test_an_uncommitted_declaration_exempts_nothing(self, gated_repo: Path):
+        """The floor judges the committed diff, so it reads HEAD's declaration.
+        One only in the working tree must not exempt a committed file."""
+        self._add_static(gated_repo)
+        self._declare(gated_repo)  # after the commit: working tree only
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 1
+        assert "missing-coverage: design/site.css" in result.stderr
+
+    def test_a_coupled_prefix_under_the_declaration_still_gates(self, gated_repo: Path):
+        """A path a test reads as data is never static, here as at the
+        freshness check."""
+        self._declare(gated_repo, "suite_coupled_prefixes:\n  - design/\n")
+        self._add_static(gated_repo)
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 1
+        assert "missing-coverage: design/site.css" in result.stderr
+
     @pytest.mark.parametrize(
         "bucket,note",
         [

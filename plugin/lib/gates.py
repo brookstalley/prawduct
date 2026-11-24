@@ -55,7 +55,12 @@ from . import (
     verdict_cache,
     work_unit,
 )
-from .core import FLAG_UNREADABLE, read_bool_flag, suite_coupled_prefixes
+from .core import (
+    FLAG_UNREADABLE,
+    read_bool_flag,
+    static_content_prefixes_from_text,
+    suite_coupled_prefixes,
+)
 
 
 _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
@@ -98,7 +103,7 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # SHA the recorded run ran against, captured via ``evidence.capture_tree`` just
     # before a live run starts (omitted when a path that affects the test outcome
     # changed before it ended — ``_test_evidence_tree_valid``'s test, a superset of
-    # judgeable), or at ingest for ``--from-junit`` and a restamp. Read by the
+    # judgeable except for declared static content), or at ingest for ``--from-junit`` and a restamp. Read by the
     # tree-validity clause of ``tests_are_current`` and ``suite_vouches_for_tree``
     # (each directly and through ``_store_run_vouching``), and by the restamp guard
     # in ``test-evidence record``. A str when present, always omitted (never null)
@@ -516,7 +521,7 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
        structurally incapable of a false stale, the failure class that retired
        the removed content-hash "fingerprint" and ``git_sha`` mechanisms. It
        classifies *paths* (git tree-diff + ``affects_test_outcome``, which is
-       a strict superset of ``is_judgeable_path`` and the predicate
+       a superset of ``is_judgeable_path`` except for declared static content, and the predicate
        :func:`_test_evidence_tree_valid` actually calls), never file
        *contents* — the standing ``coverage_algebra`` rule that kept those
        mechanisms dead. Records without ``evidence_tree`` (pre-clause, or a
@@ -700,13 +705,13 @@ def _test_evidence_tree_valid(
         target_tree = capture["tree"]
         same = f"working tree identical to the recorded run ({recorded_tree[:12]})"
         differ = "changed since the run"
-        clean = "only non-judgeable paths changed since the run"
+        clean = "only paths that cannot change the suite's outcome changed since the run"
     else:
         same = f"the suite ran against this exact tree ({recorded_tree[:12]})"
         differ = "differ between the saved run and the tree this gate vouches for"
         clean = (
-            "only non-judgeable paths differ between the saved run and "
-            f"{target_tree[:12]}"
+            "only paths that cannot change the suite's outcome differ between the "
+            f"saved run and {target_tree[:12]}"
         )
     met, reason = _tree_met(project_dir, recorded_tree, target_tree, same, differ, clean)
     return bool(met), reason
@@ -718,7 +723,7 @@ def _tree_met(
     target_tree: str,
     same: str = "the run met this exact tree",
     differ: str = "differ between the run and the target",
-    clean: str = "only non-judgeable paths differ between the run and the target",
+    clean: str = "only paths that cannot change the suite's outcome differ between the run and the target",
 ) -> "tuple[bool | None, str]":
     """Did a run on ``recorded_tree`` meet ``target_tree``? ``True`` / ``False``,
     or ``None`` when the comparison itself could not run (a missing object, a
@@ -730,15 +735,44 @@ def _tree_met(
     changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
     if changed is None:
         return None, "tree diff unavailable (missing object or git failure)"
-    # The repo's own declaration is passed HERE and NOT at the doc-only PR
+    # The repo's own declarations are passed HERE and NOT at the doc-only PR
     # gate: this is the freshness question. See `affects_test_outcome`.
-    coupled = coverage_algebra.suite_coupled_files(
-        changed, suite_coupled_prefixes(project_dir / ".prawduct")
-    )
+    prawduct_dir = project_dir / ".prawduct"
+    coupled_prefixes = suite_coupled_prefixes(prawduct_dir)
+    static = _static_declaration_in_tree(project_dir, recorded_tree)
+    coupled = coverage_algebra.suite_coupled_files(changed, coupled_prefixes, static)
     if coupled:
         preview = ", ".join(coupled[:3]) + ("…" if len(coupled) > 3 else "")
         return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview})"
+    n_static = sum(
+        1 for p in changed if coverage_algebra.is_static_content(p, static, coupled_prefixes)
+    )
+    if n_static:
+        return True, (
+            f"{clean} ({len(changed) - n_static} metadata/doc and "
+            f"{n_static} declared-static file(s))"
+        )
     return True, f"{clean} ({len(changed)} metadata/doc file(s))"
+
+
+def _static_declaration_in_tree(project_dir: Path, tree: str) -> tuple[str, ...]:
+    """The ``static_content_prefixes`` declaration as ``tree`` (a tree or a
+    commit) holds it, never as the working tree does. The freshness check asks
+    it of the recorded run's tree, and the coverage floor of ``HEAD``.
+
+    The declaration narrows what can change the suite's outcome, so it must be
+    one the compared trees actually carry. Read from the working tree, an
+    uncommitted declaration would relax a comparison between two trees that
+    never contained it. The run's own tree is the one that matters: when
+    ``project-state.yaml`` differs between the run and the target, that file is
+    test-coupled state and the comparison is already stale. Anything that
+    cannot be read (no such file in the tree, a git failure) declares nothing,
+    which costs a suite run and never a false ``current``.
+    """
+    rc, out, _err = evidence.run_git(project_dir, "show", f"{tree}:.prawduct/project-state.yaml")
+    if rc != 0:
+        return ()
+    return static_content_prefixes_from_text(out)
 
 
 def _store_run_vouching(
@@ -4318,12 +4352,18 @@ def verify_coverage(project_dir: Path) -> int:
     # `coverage_algebra.is_executable_path` — the one predicate — so this stays
     # a reading of the CRT-5D8Q boundary rather than a second file-type table
     # beside it. `skipped` and `out_of_remit_changed` keep precedence: a file the
-    # verifier disclaimed is out of jurisdiction whatever its suffix.
+    # verifier disclaimed is out of jurisdiction whatever its suffix. A file the
+    # repo declares static content is not executable either, unless a test
+    # reads its prefix as data, which the coupling declaration says. The
+    # declaration is HEAD's, as the diff judged here is: an uncommitted one
+    # must not exempt committed files.
+    static = _static_declaration_in_tree(project_dir, "HEAD")
+    coupled_prefixes = suite_coupled_prefixes(prawduct_dir)
     nonexecutable = [
         f for f in changed
         if f not in skipped
         and f not in out_of_remit_changed
-        and not coverage_algebra.is_executable_path(f)
+        and not coverage_algebra.is_executable_path(f, static, coupled_prefixes)
     ]
     missing = [
         f for f in changed
@@ -4356,7 +4396,8 @@ def verify_coverage(project_dir: Path) -> int:
         )
         print(
             f"note: {len(nonexecutable)} changed file(s) no test can execute "
-            f"(prose / framework state) — reported, not gated ({preview})."
+            f"(prose / framework state / declared static content) — reported, not "
+            f"gated ({preview})."
         )
     if not missing:
         print(

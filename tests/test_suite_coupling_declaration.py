@@ -167,3 +167,34 @@ class TestTheTemplateHintReadsAsWritten:
             "suite_coupled_prefixes: [documentation/]\n", encoding="utf-8"
         )
         assert core.suite_coupled_prefixes(tmp_path) == ("",)
+
+
+class TestTheStaticContentHintReadsAsWritten:
+    """The same guarantee for the template's `static_content_prefixes:` hint. A
+    refused declaration here declares nothing static, so a hint the reader
+    refuses would leave a product paying the full path while believing it had
+    opted out of it."""
+
+    def _uncommented_hint(self) -> str:
+        lines = (REPO / "plugin" / "templates" / "project-state.yaml").read_text(
+            encoding="utf-8"
+        ).splitlines()
+        start = lines.index("# static_content_prefixes:")
+        block = [lines[start][2:]]
+        for line in lines[start + 1:]:
+            if not line.startswith("#   - "):
+                break
+            block.append(line[2:])
+        return "\n".join(block) + "\n"
+
+    def test_uncommenting_the_hint_declares_only_its_prefix(self, tmp_path: Path):
+        hint = self._uncommented_hint()
+        (tmp_path / "project-state.yaml").write_text(hint, encoding="utf-8")
+        assert core.static_content_prefixes(tmp_path) == ("design-system/",), hint
+
+    def test_a_flow_style_hint_would_declare_nothing(self, tmp_path: Path):
+        """Control: the refused shape reads as nothing static."""
+        (tmp_path / "project-state.yaml").write_text(
+            "static_content_prefixes: [design-system/]\n", encoding="utf-8"
+        )
+        assert core.static_content_prefixes(tmp_path) == ()

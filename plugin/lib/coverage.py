@@ -38,7 +38,7 @@ import sys
 from pathlib import Path
 
 from .change_log import CHANGE_LOG_REL_PATH
-from .core import read_str_yaml_key, suite_coupled_prefixes
+from .core import read_str_yaml_key, static_content_prefixes, suite_coupled_prefixes
 
 _BASE_BRANCH_KEY = "base_branch"
 #: The last-resort candidate: a COMMIT relative to HEAD, not a branch. It moves
@@ -1195,8 +1195,9 @@ def _explain_uncovered(
     if target == "working":
         uncommitted = coverage_algebra.judgeable_files(changed)
     else:
+        prawduct_dir = project_dir / ".prawduct"
         uncommitted = coverage_algebra.suite_coupled_files(
-            changed, suite_coupled_prefixes(project_dir / ".prawduct")
+            changed, suite_coupled_prefixes(prawduct_dir), static_content_prefixes(prawduct_dir)
         )
     explained = {
         "status": "no-branch-review",

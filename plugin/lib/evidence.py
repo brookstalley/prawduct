@@ -1545,8 +1545,8 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
     withholds too — as the live run path's before/after tree capture does.
 
     Three questions, each over the paths ``coverage_algebra.affects_test_outcome``
-    keeps (with the repo's ``suite_coupled_prefixes``), the predicate the tree
-    clause itself judges by:
+    keeps (with the repo's ``suite_coupled_prefixes`` and
+    ``static_content_prefixes``), the predicate the tree clause itself judges by:
 
     1. **Edits.** A tracked or untracked (not ignored) file newer than the
        earliest run start — other than the reports and their scope records,
@@ -1592,10 +1592,12 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
         starts.append(start_ns)
     report_ns = min(starts)
     root = Path(project_dir)
-    prefixes = core.suite_coupled_prefixes(gitstate.get_prawduct_dir(project_dir))
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    prefixes = core.suite_coupled_prefixes(prawduct_dir)
+    static = core.static_content_prefixes(prawduct_dir)
 
     def coupled(paths: "list[str]") -> "list[str]":
-        return coverage_algebra.suite_coupled_files(sorted(set(paths)), prefixes)
+        return coverage_algebra.suite_coupled_files(sorted(set(paths)), prefixes, static)
 
     rc, out, err = run_git(
         project_dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard",

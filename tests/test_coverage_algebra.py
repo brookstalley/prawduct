@@ -1296,3 +1296,86 @@ def test_reviews_linked_from_tolerates_an_unhashable_tree():
     odd = {"id": "r-odd", "kind": "review", "body": {"base_tree": ["t0"], "head_tree": "t9"}}
     good = {"id": "r-ok", "kind": "review", "body": {"base_tree": "t0", "head_tree": "t1"}}
     assert [f["id"] for f in ca.reviews_linked_from([odd, good], "t0")] == ["r-ok"]
+
+
+class TestDeclaredStaticContent:
+    """#1239: a repo declares the paths that hold static content, files nothing
+    executes or parses. They stay judgeable, so review still runs, but they
+    cannot change what the suite says and no test can execute them."""
+
+    STATIC = ("design/",)
+    BRANCH = (  # the reported branch's shape, abstracted
+        "design/site.css",
+        "design/examples/page.html",
+        "design/tokens.json",
+    )
+
+    def test_the_reported_shape_is_static_and_still_judgeable(self):
+        for path in self.BRANCH:
+            assert ca.is_judgeable_path(path) is True, path
+            assert ca.is_static_content(path, self.STATIC) is True, path
+            assert ca.affects_test_outcome(path, (), self.STATIC) is False, path
+            assert ca.is_executable_path(path, self.STATIC) is False, path
+
+    def test_undeclared_the_same_files_cost_the_full_path(self):
+        """The control: every narrowing above is the declaration's doing."""
+        for path in self.BRANCH:
+            assert ca.is_static_content(path, ()) is False, path
+            assert ca.affects_test_outcome(path) is True, path
+            assert ca.is_executable_path(path) is True, path
+
+    def test_a_file_outside_the_prefix_is_untouched(self):
+        assert ca.is_static_content("src/app.py", self.STATIC) is False
+        assert ca.affects_test_outcome("src/app.py", (), self.STATIC) is True
+        assert ca.is_executable_path("src/app.py", self.STATIC) is True
+
+    def test_prefixes_are_not_substring_matches(self):
+        assert ca.is_static_content("designs/site.css", self.STATIC) is False
+        assert ca.is_static_content("design/site.css", ("design",)) is True, (
+            "no slash is the caller's choice, and then it matches as written"
+        )
+
+    def test_a_coupled_prefix_wins_an_overlap(self):
+        """A test reads `design/data/` as data, so a change there can flip it,
+        whatever the static declaration says."""
+        coupled = ("design/data/",)
+        path = "design/data/values.json"
+        assert ca.is_static_content(path, self.STATIC, coupled) is False
+        assert ca.affects_test_outcome(path, coupled, self.STATIC) is True
+        assert ca.is_executable_path(path, self.STATIC, coupled) is True
+        # control: its sibling outside the coupled prefix is still static
+        assert ca.affects_test_outcome("design/site.css", coupled, self.STATIC) is False
+
+    def test_test_coupled_state_is_never_static(self):
+        for path in ca.TEST_COUPLED_STATE:
+            assert ca.is_static_content(path, (".prawduct/",)) is False, path
+            assert ca.affects_test_outcome(path, (), (".prawduct/",)) is True, path
+
+    def test_governance_protected_prose_is_never_static(self):
+        """An agent executes it. The bounds match a path segment, so a declared
+        file under any `skills/` or `templates/` directory stays judged in full."""
+        for path in ("design/skills/guide/SKILL.md", "design/templates/page.html"):
+            assert ca.is_judgeable_path(path) is True, path
+            assert ca.is_static_content(path, self.STATIC) is False, path
+            assert ca.affects_test_outcome(path, (), self.STATIC) is True, path
+
+    def test_a_non_judgeable_file_is_not_static_because_it_is_already_free(self):
+        assert ca.is_static_content("design/notes.md", self.STATIC) is False
+        assert ca.affects_test_outcome("design/notes.md", (), self.STATIC) is False
+
+    def test_a_repo_that_declares_nothing_is_unchanged(self):
+        """With no declaration the three predicates answer exactly as before,
+        over a corpus that covers every branch of each."""
+        corpus = (
+            "src/app.py", "design/site.css", "README.md", "docs/a.md",
+            ".prawduct/project-state.yaml", ".prawduct/backlog.md",
+            "plugin/skills/pr/SKILL.md", "config/app.yaml",
+        )
+        for path in corpus:
+            assert ca.affects_test_outcome(path, (), ()) == (
+                ca.is_judgeable_path(path) or path in ca.TEST_COUPLED_STATE
+            ), path
+            assert ca.is_executable_path(path, (), ()) == (
+                ca.is_judgeable_path(path) and not path.endswith(".md")
+            ), path
+        assert ca.suite_coupled_files(list(corpus)) == ca.suite_coupled_files(list(corpus), (), ())

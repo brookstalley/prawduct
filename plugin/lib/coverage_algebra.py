@@ -205,10 +205,15 @@ TEST_COUPLED_STATE = frozenset(
 )
 
 
-def affects_test_outcome(path: str, extra_prefixes: "tuple[str, ...]" = ()) -> bool:
+def affects_test_outcome(
+    path: str,
+    extra_prefixes: "tuple[str, ...]" = (),
+    static_prefixes: "tuple[str, ...]" = (),
+) -> bool:
     """True if a change to ``path`` can change what the test suite says.
 
-    A strict superset of :func:`is_judgeable_path`, and the distinction is the
+    A superset of :func:`is_judgeable_path` except for declared static content
+    (``static_prefixes`` below), and the distinction is the
     point. "Does this need review coverage?" and "can this flip a test red?"
     are different questions that the metadata boundary answers differently:
     framework state needs no reviewer, and a non-hermetic test still reads it.
@@ -245,26 +250,90 @@ def affects_test_outcome(path: str, extra_prefixes: "tuple[str, ...]" = ()) -> b
     widening it there would make a documentation-only PR buy a full Critic
     review, which nothing priced. Passing them is therefore a deliberate act
     at each site, not a default the predicate applies on its own.
+
+    ``static_prefixes`` is the repo's static-content declaration, the one
+    narrowing input: a judgeable file it covers cannot change what the suite
+    says (:func:`is_static_content`). The freshness callers pass it beside
+    ``extra_prefixes``, and a coupled path is never static, so the widening
+    declaration always wins an overlap.
     """
-    return (
-        is_judgeable_path(path)
-        or path in TEST_COUPLED_STATE
-        or bool(extra_prefixes) and path.startswith(tuple(extra_prefixes))
-    )
+    if path in TEST_COUPLED_STATE:
+        return True
+    if extra_prefixes and path.startswith(tuple(extra_prefixes)):
+        return True
+    if is_static_content(path, static_prefixes, extra_prefixes):
+        return False
+    return is_judgeable_path(path)
 
 
 def suite_coupled_files(
-    paths: "list[str] | None", extra_prefixes: "tuple[str, ...]" = ()
+    paths: "list[str] | None",
+    extra_prefixes: "tuple[str, ...]" = (),
+    static_prefixes: "tuple[str, ...]" = (),
 ) -> list[str]:
     """The subset of ``paths`` a test outcome can depend on (order preserved,
     None-safe) — :func:`affects_test_outcome` over :func:`judgeable_files`.
 
-    ``extra_prefixes`` is forwarded unchanged; see that function for why the
-    freshness callers pass it and the review callers must not."""
-    return [p for p in (paths or []) if affects_test_outcome(p, extra_prefixes)]
+    Both declarations are forwarded unchanged; see that function for why the
+    freshness callers pass them and the review callers must not."""
+    return [
+        p for p in (paths or []) if affects_test_outcome(p, extra_prefixes, static_prefixes)
+    ]
 
 
-def is_executable_path(path: str) -> bool:
+def is_static_content(
+    path: str,
+    static_prefixes: "tuple[str, ...]",
+    coupled_prefixes: "tuple[str, ...]" = (),
+) -> bool:
+    """True if ``path`` is static content by this repo's declaration: a judgeable
+    file nothing in the product executes, serves as code or parses, such as a
+    stylesheet, a static example page or a design-value file kept with its
+    documents (``core.static_content_prefixes``, from ``project-state.yaml``).
+
+    Static content still needs review coverage. :func:`is_judgeable_path` is
+    not asked to change, so a static file is reviewed, never rides the doc-only
+    fast path, and still owes a change record. What the declaration buys is
+    narrower: such a file cannot change what the suite says
+    (:func:`affects_test_outcome`), no test can execute it
+    (:func:`is_executable_path`), and it does not count toward the boundary
+    review's volume escalator (``critic_consolidate._derive_roster``). The
+    review still runs because one over static pages has found real defects
+    (a design value contradicting an owner ruling, accessibility faults in
+    reference markup); it just runs lighter.
+
+    **Paths classify, and the declaration is the whole claim.** There is no
+    extension table: a second suffix table beside the one predicate is the
+    divergence :func:`is_executable_path` records as removed.
+
+    Never static, whatever the declaration says:
+
+    - a path under ``coupled_prefixes`` (``core.suite_coupled_prefixes``),
+      because a test reads it as data. The declaration that widens the suite's
+      reach wins an overlap;
+    - governance-protected prose (``buildplan_refs.protected_path_violation``),
+      because an agent executes it. Its bounds match a path SEGMENT, so a
+      declared file under any ``skills/`` or ``templates/`` directory stays
+      judged in full; the safe direction;
+    - a path that is not judgeable anyway (metadata, unprotected ``.md``),
+      which already costs nothing. :data:`TEST_COUPLED_STATE` is metadata, so it
+      is never static, and :func:`affects_test_outcome` asks it first in any
+      case.
+    """
+    if not static_prefixes or not path.startswith(tuple(static_prefixes)):
+        return False
+    if coupled_prefixes and path.startswith(tuple(coupled_prefixes)):
+        return False
+    if buildplan_refs.protected_path_violation(path) is not None:
+        return False
+    return is_judgeable_path(path)
+
+
+def is_executable_path(
+    path: str,
+    static_prefixes: "tuple[str, ...]" = (),
+    coupled_prefixes: "tuple[str, ...]" = (),
+) -> bool:
     """True if a test could execute this path — the coverage floor's
     jurisdiction (COV-8R2K).
 
@@ -274,7 +343,7 @@ def is_executable_path(path: str) -> bool:
     this asks whether a test can *run* it — which is what the symbol-grep
     coverage floor is actually measuring when it demands a reference.
 
-    One clause on top of the judgeability answer, deliberately not a second
+    Clauses on top of the judgeability answer, deliberately not a second
     suffix table: **no ``.md`` is executable**, protected or not. Governance
     protection makes fork-skill prose review-worthy, which is a different claim
     from testable — demanding an executing test for ``methodology/building.md``
@@ -289,8 +358,14 @@ def is_executable_path(path: str) -> bool:
     file genuinely can be the subject of a test — and closing it properly needs
     the ``coverage_exempt_paths:`` knob COV-6T3P asks for, which is a question
     for the owner (binary vs path-scoped, and how it interacts with the
-    doc-only fast path) rather than a default anyone should pick here.
+    doc-only fast path) rather than a default anyone should pick here. Declared
+    static content (:func:`is_static_content`, given both declarations) is the
+    path-scoped half for files nothing parses: it is not executable. A config
+    the product reads is parsed, so it is not static by that declaration's own
+    definition, and this residual stands for it.
     """
+    if is_static_content(path, static_prefixes, coupled_prefixes):
+        return False
     return is_judgeable_path(path) and not path.endswith(".md")
 
 
