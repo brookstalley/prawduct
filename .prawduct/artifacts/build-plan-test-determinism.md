@@ -11,9 +11,9 @@ governed_by:
   - artifact: architecture
     dispositions:
       - "an independent reviewer never mutates the session it reviews → inapplicable because the detector runs in critic-begin (code) and reviewers only read its results"
-      - "authority fails closed; advice fails soft → conforms; a Python test file the detector cannot parse is an `unchecked` entry the boundary rates, never a pass; the doctor and janitor uses are advice and degrade to a note"
+      - "authority fails closed; advice fails soft → conforms; a Python test file the detector cannot parse is an `unchecked` entry the boundary rates, never a pass; the janitor's whole-tree scan is advice: exit 0 whatever it lists, 3 when it could not run"
       - "local-first → conforms; the detector reads the git object database and the tree, with no network"
-      - "the plugin writes only its own state → conforms; the detector and the doctor check read the product's files and write nothing into them"
+      - "the plugin writes only its own state → conforms; the detector and `determinism-scan` read the product's tree through git and write nothing into it"
       - "written in Python, never specific to Python → conforms; checks dispatch per file by language, Python rules are populated first, and a changed test file in a language with no rules is reported `unchecked`, never silently passed"
       - "guides and reviews, never implements → conforms; it is a review instrument, and no product tool checks a diff for these shapes statically (testament measures them after a run, which #1244 consumes rather than re-derives)"
       - "goals and verification bind, method is advice → conforms; Deliverables below are a forecast, and a better route is taken and recorded under Decisions made mid-build"
@@ -28,7 +28,7 @@ governed_by:
     dispositions:
       - "verdicts from the append-only fact ledger, no model in the write path → conforms; the detector is deterministic code whose results consolidation writes into the review fact"
       - "facts immutable and append-only → conforms; nothing edits a fact"
-      - "derived views never authoritative → conforms; no gate reads the doctor listing"
+      - "derived views never authoritative → conforms; no gate reads the `determinism-scan` listing"
       - "governance documents archived, never deleted → inapplicable because no document's lifecycle changes"
       - "backlog titles conform on every write path → inapplicable because no backlog write path changes"
       - "newer-schema facts block loudly → conforms; any new manifest or fact key is additive, read by readers that tolerate unknown keys"
@@ -37,13 +37,13 @@ governed_by:
   - artifact: api-contract
     dispositions:
       - "whole-surface semver; evidence store independently schema-versioned → conforms; additive keys only, so no schema bump"
-      - "exit codes are the contract → conforms; the doctor check uses doctor's existing exit scheme"
+      - "exit codes are the contract → conforms; `determinism-scan` exits 0 when it ran, 2 on usage and 3 when it could not run, the scheme `check-plugin-active` uses"
       - "additive-first evolution → conforms; new check ids and keys are added, none repurposed"
   - artifact: observability-strategy
     dispositions:
-      - "stable severity-prefix vocabulary → conforms; the doctor lines use the existing prefixes"
+      - "stable severity-prefix vocabulary → inapplicable because `determinism-scan` prints a report the janitor reads, not a terminal signal"
       - "the ledger has a single writer → conforms; results reach it only through consolidation"
-      - "text emitted into a governed product names no prawduct-internal identifier → conforms; a finding and a doctor line state the shape and its remedy in plain words and cite the shipped doc and the waiver, never the P-numbers, this plan, #1243 or a chunk"
+      - "text emitted into a governed product names no prawduct-internal identifier → conforms; a finding and a `determinism-scan` line state the shape and its remedy in plain words and cite the shipped doc and the waiver, never the P-numbers, this plan, #1243 or a chunk"
 ---
 
 ## Goals
@@ -60,8 +60,8 @@ per-product evidence). prawduct writes and reviews those tests, so the regime le
 patterns. Its review blocks the two costliest ones when a change introduces them.
 
 **Architecture:** one detector, three consumers. A static, per-language detector finds the
-mechanisable shapes. It runs base-vs-head inside the review, and whole-tree for doctor/onboard and the
-janitor. Reviewers judge the shapes that can't be detected statically (P3 deep reads, P5, P7, P8). Must
+mechanisable shapes. It runs base-vs-head inside the review, and whole-tree for the janitor (a command
+the janitor's Test Fitness theme runs). Reviewers judge the shapes that can't be detected statically (P3 deep reads, P5, P7, P8). Must
 stay possible: #1244's measured channel. When a runner reports determinism causes, those causes join
 the same check ids rather than adding a parallel vocabulary.
 
@@ -105,7 +105,7 @@ the same check ids rather than adding a parallel vocabulary.
 - Python/pytest rules only in this plan. Other languages report `unchecked` and are left to the
   reviewer's reading. Revisit when a non-Python product's measured closures show the same breadth
   (Swift in arrt-player is the likely first).
-- No session-start advisory. The whole-tree check runs in doctor and onboard only, because a
+- No session-start advisory. The whole-tree check runs when the janitor asks for it, because a
   per-session probe is a cost every consumer pays (memory: don't default to adding tax).
 - No backlog item for either: each may never matter.
 
@@ -127,8 +127,21 @@ the same check ids rather than adding a parallel vocabulary.
   architecture.md's Critic Data Plane and the `record-lint` CLI docstring. Consolidation already rates
   record-lint results into the review (`record_lint_partial`). Settled by the standing rule that there is no
   "pre-existing" exception.
-- Not yet done: the cross-cutting concerns registry's Testing row gains this plan's coverage (methodology,
-  Critic, detection leg) in Chunk 03, once the doctor leg exists.
+- Chunk 03: the whole-tree listing is a read-only command, `prawduct-hook determinism-scan`, which
+  `/prawduct:janitor`'s Test Fitness theme runs. It was planned as a doctor check, but
+  `docs/doctor-vs-janitor.md`'s placement rule puts the product's own test craft with the janitor;
+  doctor is for prawduct conformance. The owner ruled "Janitor only" (2026-11-24, owner-rulings.md), so
+  doctor and onboard don't run it.
+- Chunk 03: the only tool-state shape is hypothesis's in-checkout example database. An unredirected
+  `.pytest_cache` is dropped: it changes no test outcome, and the owner's "prawduct does not require
+  testament" rules out a shape that only a caching runner feels.
+- Chunk 03: `time.monotonic` and `time.perf_counter` are not ambient reads. They are interval clocks for
+  timeouts and durations, and dogfooding against prawduct flagged four such reads in a latency helper as
+  warnings.
+- Chunk 03: first-party code is found under every project root (any directory with a `pyproject.toml`,
+  `setup.py` or `setup.cfg`), not only the repo root. A read-only scan of local products found arrt's
+  root-conftest imports (arrt#450) only after this, because arrt keeps its package at `arrt/src/arrt`.
+- The cross-cutting concerns registry's Testing row carries this plan's coverage.
 
 **Level:** Medium. The goals and severities are owner-ruled. The detection rules above are my
 inference, and the route into review isn't verified yet: record-lint delivers deterministic checks
@@ -145,8 +158,8 @@ Beyond the unit tests, each chunk is exercised as a reviewer meets it:
   the waiver, and with an untouched pre-existing P1.
 - Chunk 02: a fresh agent reads `building.md` § Test Discipline and is asked to write a fake with a
   timestamp, to see whether the pointer changes what it writes (`tests.md`: model the reader).
-- Chunk 03: run `/prawduct:doctor` against a real governed checkout known to carry P1, read-only, and
-  check that it names the site.
+- Chunk 03: run the scan read-only against real governed checkouts known to carry P1, and check that
+  it names the sites.
 
 ## Build Chunks
 
@@ -233,28 +246,30 @@ Beyond the unit tests, each chunk is exercised as a reviewer meets it:
   2. `/prawduct:critic` run and blocking findings resolved.
   3. Committed as `docs(test-determinism): … (Chunk 02)`.
 
-### Chunk 03: Doctor and onboard flag the existing shapes
+### Chunk 03: The janitor lists the existing shapes
 
 - **Description:**
-  - `/prawduct:doctor`, and onboard's report, run Chunk 01's detector over the whole tree (current
-    state, not base-vs-head) and list existing P1–P4 sites, largest blast radius first.
-  - They also flag two cheap P6 shapes: hypothesis in use with its example database left in the
-    checkout, and a pytest cache directory not redirected out of the tree where a caching runner is
-    configured.
-  - These are advice: each is a note with its remedy, never a gate.
+  - A read-only command, new `prawduct-hook determinism-scan [--json]`, runs Chunk 01's detector over
+    HEAD's whole tree (current state, not base-vs-head). It lists the existing P1–P4 sites, largest
+    blast radius first, and one P6 shape: hypothesis in use with its example database left in the
+    checkout.
+  - `/prawduct:janitor`'s Test Fitness theme runs it (owner ruling "Janitor only", 2026-11-24).
+  - It is advice: exit 0 whenever the scan ran, 3 when HEAD can't be read, never a gate.
 - **Depends on:** Chunk 01
 - **Type:** cumulative-final
-- **Deliverables:** a whole-tree entry point on the detector; the doctor check; onboard's report line;
-  tests.
+- **Deliverables:** the whole-tree entry point on the detector; the command and its hook registration;
+  the janitor's grant and theme bullet; the cross-cutting registry's Testing row; tests.
 - **Tests:**
-  - A fixture repo carrying P1 and P3 is listed. A clean fixture lists nothing, with a control showing
-    the clean fixture was scanned (corpus size in the output).
-  - The doctor check is tested on its effect: follow the remedy on a fixture and the site drops out
-    (`tests.md`: test a recommendation's effect).
+  - A fixture repo carrying P1 and P3 is listed in rank order. A clean fixture lists nothing, with a
+    control showing it was scanned (`scanned > 0`).
+  - The hypothesis advice is tested on its effect: point the database out of the checkout as the detail
+    says, and the finding goes (`tests.md`: test a recommendation's effect).
+  - At the CLI layer: human and JSON output, the usage refusal, and exit 3 on an unreadable HEAD.
 - **Acceptance criteria:**
-  - Doctor on a fixture with P1 names the conftest and line.
+  - The command on a fixture with P1 names the conftest and line.
   - A clean repo reports zero sites over a non-empty scanned set.
   - Nothing is written into the product.
+  - A read-only scan of real governed products finds the sites #1243's evidence names.
 - **Done when:**
   1. Acceptance criteria met; full suite recorded with `testament run`.
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved.

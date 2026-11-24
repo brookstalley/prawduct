@@ -27,6 +27,13 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-24.** "Janitor only (Recommended)" — answering where the scan of a product's existing
+test-determinism sites lives. `/prawduct:janitor`'s Test Fitness theme runs
+`prawduct-hook determinism-scan`, and doctor and onboard do not, per `docs/doctor-vs-janitor.md`'s
+placement rule (the product's own test craft is the janitor's). This replaces the "onboard/doctor"
+part of the earlier 2026-11-24 #1243 entry below, item 3. Landed in
+`.prawduct/artifacts/build-plan-test-determinism.md` (Decisions made mid-build).
+
 **2026-11-24.** "Remember that prawduct does not require testament, but I think these are all
 best practices anyway right?" — a constraint on #1243 and its follow-up #1244. No part of the test
 determinism work may depend on testament. The patterns are defined tool-agnostically

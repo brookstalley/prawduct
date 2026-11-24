@@ -39,15 +39,17 @@ reviewer never raises, restates or re-derives them.
 | P4 | `test-clock-import` | warning | observation |
 
 - Only sites a change introduces count. A product's existing P1 never blocks an unrelated change,
-  and a renamed file introduces nothing. `/prawduct:doctor` lists the sites that already exist.
+  and a renamed file introduces nothing. `prawduct-hook determinism-scan` lists the sites that
+  already exist, which `/prawduct:janitor`'s Test Fitness theme reads.
 - What the detector reads today is Python. A *root* conftest is a `conftest.py` with none in any
-  directory above it. *First-party* code is a package or module at the repo root or under `src/`,
-  outside a test directory; a tree put on the import path some other way is not seen. An import
+  directory above it. *First-party* code is a package or module at a project root (the repo root, or any
+  directory holding a `pyproject.toml`, `setup.py` or `setup.cfg`) or under its `src/`, outside a
+  test directory; a tree put on the import path some other way is not seen. An import
   under `if TYPE_CHECKING:` is exempt. A package `__init__` counts under P2 when it imports every one
   of its submodules and has at least three. P3 counts in conftests, fakes and helpers, not in a test
   module's own tests.
 - A changed test file in a language with no rules is reported unchecked, never silently passed.
-- The reviewer judges what a static read cannot: a P3 read made several calls deep, and P5, P7 and
+- The reviewer judges what a static read cannot: a P3 read made several calls deep, and P5 through
   P8. Each is a warning at the boundary and an observation inside; process- or conftest-wide
   outranks a single test.
 

@@ -12,13 +12,13 @@ that imports everything, fakes or import-time code reading the real clock or ran
 output or tool state inside the checkout, whole-repo scans at collection time, and writes into the
 checkout from shared test code. They are catalogued in one doc. A static detector checks changed
 files at review: a change that newly introduces either of the first two is blocking at the merge
-boundary, and the fake and import-time clock reads are warnings. `/prawduct:doctor` and onboard list
-the existing sites.
+boundary, and the fake and import-time clock reads are warnings. `prawduct-hook determinism-scan`
+lists the sites that already exist, and the janitor's Test Fitness theme reads it.
 
 ## Consumer note
 
 A boundary review now blocks a change that adds a first-party module-level import to a root
 `conftest.py`, an autouse fixture that imports first-party code, or a package `__init__.py` that
 imports every submodule. A deliberate case is waived on its line with
-`prawduct:allow prawduct/test-scope -- reason`. Existing sites don't block; `/prawduct:doctor` lists
-them.
+`prawduct:allow prawduct/test-scope -- reason`. Existing sites don't block;
+`prawduct-hook determinism-scan` lists them.

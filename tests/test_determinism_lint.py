@@ -154,6 +154,28 @@ class TestRootConftestImport:
         )
         assert _sites(findings) == [(determinism_lint.CONFTEST_CHECK, "conftest.py", 1)]
 
+    def test_a_monorepo_subproject_is_first_party(self, tmp_path):
+        """A directory holding a `pyproject.toml` is a project root of its own: arrt
+        keeps its package at `arrt/src/arrt`, which the repo root alone never sees."""
+        repo, changed, base_tree, head_tree = _change(
+            tmp_path,
+            {
+                "svc/pyproject.toml": "[project]\nname = 'svc'\n",
+                "svc/src/svc/__init__.py": "",
+                "svc/src/svc/a.py": "", "svc/src/svc/b.py": "", "svc/src/svc/c.py": "",
+                "svc/tests/conftest.py": "\n",
+            },
+            {
+                "svc/tests/conftest.py": "import svc.a\n",
+                "svc/src/svc/__init__.py": "from svc import a, b, c\n",
+            },
+        )
+        findings, _, _ = determinism_lint.check(repo, changed, base_tree, head_tree)
+        assert _sites(findings) == [
+            (determinism_lint.CONFTEST_CHECK, "svc/tests/conftest.py", 1),
+            (determinism_lint.INIT_CHECK, "svc/src/svc/__init__.py", 1),
+        ]
+
     def test_a_src_layout_package_is_first_party(self, tmp_path):
         repo, changed, base_tree, head_tree = _change(
             tmp_path,
@@ -334,6 +356,27 @@ class TestClockAndRandomness:
             (determinism_lint.CLOCK_IMPORT_CHECK, "tests/test_t.py", 3),
             (determinism_lint.CLOCK_IMPORT_CHECK, "tests/test_t.py", 4),
         ]
+
+    def test_an_interval_clock_for_a_deadline_is_not_an_ambient_read(self, tmp_path):
+        """`time.monotonic` and `time.perf_counter` time a wait or a duration; no
+        result carries their value. A polling helper is the population this rule
+        would otherwise flood, so it must stay silent — and `time.time` beside it
+        must not."""
+        findings, _ = _run(
+            tmp_path,
+            {},
+            {"tests/helpers.py": (
+                "import time\n\n"
+                "def wait_for(cond, timeout=5):\n"
+                "    deadline = time.monotonic() + timeout\n"
+                "    started = time.perf_counter()\n"
+                "    while time.monotonic() < deadline:\n"
+                "        if cond():\n"
+                "            return time.perf_counter() - started\n"
+                "    return time.time()\n"
+            )},
+        )
+        assert [(f["check"], f["line"]) for f in findings] == [(determinism_lint.CLOCK_FAKE_CHECK, 9)]
 
     def test_a_seeded_generator_is_deterministic_and_an_unseeded_one_is_not(self, tmp_path):
         findings, _ = _run(
@@ -556,3 +599,81 @@ class TestScanTree:
     def test_an_unreadable_tree_is_none(self, tmp_path):
         repo, _changed, _base, _head = _change(tmp_path, {}, {})
         assert determinism_lint.scan_tree(repo, "0" * 40) is None
+
+
+# ---------------------------------------------------------------------------
+# The doctor's command
+# ---------------------------------------------------------------------------
+
+
+def _scan(repo: Path, *args: str):
+    from _hook_inproc import run_hook  # noqa: PLC0415 — only the CLI tests need it
+
+    return run_hook("determinism-scan", *args, cwd=repo,
+                    env={"CLAUDE_PLUGIN_ROOT": str(_PLUGIN)})
+
+
+class TestDeterminismScanCommand:
+    def test_it_lists_the_sites_at_head_and_exits_zero(self, tmp_path):
+        repo, _c, _b, _h = _change(
+            tmp_path, {"tests/conftest.py": "import myapp\n"}, {},
+        )
+        result = _scan(repo)
+        assert result.returncode == 0, result.stderr
+        lines = result.stdout.splitlines()
+        assert lines[0].startswith("determinism-scan: 1 site(s) and 0 tool-state finding(s) over ")
+        assert lines[1].startswith(f"  {determinism_lint.CONFTEST_CHECK}  tests/conftest.py:1 — ")
+
+    def test_json_carries_the_listing_and_its_scanned_count(self, tmp_path):
+        import json
+
+        repo, _c, _b, _h = _change(tmp_path, {"tests/conftest.py": "import pytest\n"}, {})
+        result = _scan(repo, "--json")
+        assert result.returncode == 0, result.stderr
+        body = json.loads(result.stdout)
+        assert body["status"] == "scanned"
+        assert body["sites"] == [] and body["scanned"] > 0
+
+    def test_an_unknown_argument_is_a_usage_error(self, tmp_path):
+        repo, _c, _b, _h = _change(tmp_path, {}, {})
+        result = _scan(repo, "--apply")
+        assert result.returncode == 2
+        assert "determinism-scan: unknown argument '--apply'" in result.stderr
+
+    def test_a_repo_with_no_commit_is_unchecked(self, tmp_path):
+        repo = tmp_path / "empty"
+        repo.mkdir()
+        _git(repo, "init", "-q")
+        result = _scan(repo)
+        assert result.returncode == 3
+        assert "unchecked" in result.stdout
+
+
+class TestHypothesisDatabase:
+    def test_an_in_tree_example_database_is_reported(self, tmp_path):
+        repo, _c, _b, _h = _change(
+            tmp_path,
+            {"tests/test_p.py": "from hypothesis import given\n"},
+            {},
+        )
+        [item] = determinism_lint.scan_tree(repo)["tool_state"]
+        assert item["path"] == "tests/test_p.py"
+        assert "example database" in item["detail"]
+
+    def test_following_the_remedy_clears_it(self, tmp_path):
+        """The advice's effect, not its wording: point the database out of the
+        checkout as the detail says, and the finding goes."""
+        repo, _c, _b, _h = _change(
+            tmp_path,
+            {"tests/test_p.py": "from hypothesis import given\n"},
+            {"tests/conftest.py": (
+                "from hypothesis import settings\n"
+                "settings.register_profile('ci', database=None)\n"
+                "settings.load_profile('ci')\n"
+            )},
+        )
+        assert determinism_lint.scan_tree(repo)["tool_state"] == []
+
+    def test_a_suite_without_hypothesis_has_nothing_to_report(self, tmp_path):
+        repo, _c, _b, _h = _change(tmp_path, {"tests/test_p.py": "import pytest\n"}, {})
+        assert determinism_lint.scan_tree(repo)["tool_state"] == []

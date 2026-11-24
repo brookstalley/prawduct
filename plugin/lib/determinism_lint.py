@@ -22,7 +22,7 @@ judge: ``docs/test-determinism.md``):
 **Introduced, not present.** Each site is keyed by what it is (file, importer, imported
 module, API), not by line, and only a site whose key the base did not carry is
 reported. A product's existing sites therefore never block an unrelated change; the
-whole-tree listing (:func:`scan_tree`) is the doctor's and the janitor's, which advise.
+whole-tree listing (:func:`scan_tree`) is the janitor's, which advises.
 A renamed file is compared with its old path, so a move introduces nothing.
 
 **Per file, by language** (``architecture.md`` § Direction: written in Python, never
@@ -67,11 +67,14 @@ WAIVER_REF = "prawduct/test-scope"
 
 #: Calls that read the real clock or real randomness, by fully qualified name. A seeded
 #: ``random.Random(seed)`` is deterministic and is not here; ``random.Random()`` with no
-#: argument is handled in :func:`_is_ambient_call`.
+#: argument is handled in :func:`_ambient_name`. ``time.monotonic`` and
+#: ``time.perf_counter`` are not here either: they are interval clocks, read for
+#: timeouts, polling deadlines and durations, not for a value a result carries, and
+#: rating every polling loop a warning would teach products to waive the check.
 AMBIENT_CALLS = frozenset({
     "datetime.datetime.now", "datetime.datetime.utcnow", "datetime.datetime.today",
     "datetime.date.today",
-    "time.time", "time.time_ns", "time.monotonic", "time.monotonic_ns",
+    "time.time", "time.time_ns",
     "uuid.uuid1", "uuid.uuid4",
     "os.urandom", "os.getrandom",
     "random.random", "random.randint", "random.randrange", "random.choice",
@@ -138,18 +141,47 @@ def _is_test_module(path: str) -> bool:
     return (name.startswith("test_") or name.endswith("_test.py")) and name.endswith(".py")
 
 
-def _first_party(listing: "set[str]") -> "set[str]":
-    """Top-level importable names this repo provides: a package (a directory with an
-    ``__init__.py``) or a module, at the root or under ``src/``."""
-    names: set[str] = set()
+_PROJECT_FILES = frozenset({"pyproject.toml", "setup.py", "setup.cfg"})
+
+
+def _project_roots(listing: "set[str]") -> "list[tuple[str, ...]]":
+    """The repo root and every directory that declares a Python project, deepest
+    first, so a monorepo's subprojects (``packages/agent/acl/``, ``app/``) are roots
+    in their own right."""
+    roots = {()}
     for path in listing:
         parts = _parts(path)
-        if parts and parts[0] == "src":
-            parts = parts[1:]
-        if len(parts) == 2 and parts[1] == "__init__.py":
-            names.add(parts[0])
-        elif len(parts) == 1 and parts[0].endswith(".py"):
-            names.add(parts[0][:-3])
+        if parts and parts[-1] in _PROJECT_FILES:
+            roots.add(parts[:-1])
+    return sorted(roots, key=len, reverse=True)
+
+
+def _importable(path: str, roots: "list[tuple[str, ...]]") -> "tuple[str, ...] | None":
+    """The import path of a file, relative to the deepest project root holding it,
+    with a ``src/`` layout's ``src`` dropped; ``None`` outside every root."""
+    parts = _parts(path)
+    for root in roots:
+        if parts[: len(root)] == root and len(parts) > len(root):
+            rel = parts[len(root):]
+            return rel[1:] if rel[0] == "src" and len(rel) > 1 else rel
+    return None
+
+
+def _first_party(listing: "set[str]") -> "set[str]":
+    """Top-level importable names this repo provides: a package (a directory with an
+    ``__init__.py``) or a module directly under a project root or its ``src/``."""
+    roots = _project_roots(listing)
+    names: set[str] = set()
+    for path in listing:
+        if not path.endswith(".py"):
+            continue
+        rel = _importable(path, roots)
+        if rel is None:
+            continue
+        if len(rel) == 2 and rel[1] == "__init__.py":
+            names.add(rel[0])
+        elif len(rel) == 1:
+            names.add(rel[0][:-3])
     return {n for n in names if n.isidentifier() and n not in _NOT_FIRST_PARTY}
 
 
@@ -166,17 +198,18 @@ def _is_root_conftest(path: str, listing: "set[str]") -> bool:
     return True
 
 
-def _package_of_init(path: str, first_party: "set[str]") -> "tuple[str, str] | None":
+def _package_of_init(
+    path: str, first_party: "set[str]", listing: "set[str]"
+) -> "tuple[str, str] | None":
     """``(directory, dotted package name)`` for a first-party package's
     ``__init__.py``, else ``None``."""
     parts = _parts(path)
     if not parts or parts[-1] != "__init__.py":
         return None
-    pkg = parts[:-1]
-    dotted_parts = pkg[1:] if pkg and pkg[0] == "src" else pkg
-    if not dotted_parts or dotted_parts[0] not in first_party:
+    rel = _importable(path, _project_roots(listing))
+    if not rel or len(rel) < 2 or rel[0] not in first_party:
         return None
-    return "/".join(pkg), ".".join(dotted_parts)
+    return "/".join(parts[:-1]), ".".join(rel[:-1])
 
 
 def _siblings(directory: str, listing: "set[str]") -> "set[str]":
@@ -400,7 +433,7 @@ def python_sites(
                                 "opt-in, or import lazily where a test needs it",
                             ))
 
-    package = _package_of_init(path, first_party)
+    package = _package_of_init(path, first_party, listing)
     if package is not None:
         directory, dotted = package
         siblings = _siblings(directory, listing)
@@ -653,20 +686,58 @@ def check(
     return findings, unchecked, set()
 
 
-def scan_tree(project_dir: Path, tree: str = "HEAD") -> "dict | None":
-    """Every site in a tree, unwaived, largest blast radius first — the doctor's and
-    the janitor's view of what already exists. ``None`` when the tree cannot be read.
+#: Where a project can point hypothesis's example database out of the checkout: the
+#: config files and every conftest (read whole), searched for these markers.
+_HYPOTHESIS_CONFIG_FILES = ("pyproject.toml", "setup.cfg", "pytest.ini", "tox.ini")
+_HYPOTHESIS_REDIRECTS = ("HYPOTHESIS_STORAGE_DIRECTORY", "ExampleDatabase", "database=")
 
-    Returns ``{"sites": [{check, path, line, detail}], "scanned": N, "unparsed": [...],
-    "unruled": [...]}``; ``scanned`` is the number of files the rules read, so an empty
-    ``sites`` is visibly a scan of something."""
+
+def _uses_hypothesis(source: str) -> bool:
+    return any(
+        line.lstrip().startswith(("import hypothesis", "from hypothesis"))
+        for line in source.splitlines()
+    )
+
+
+def _tool_state(listing: "set[str]", sources: "dict[str, str]", config: "dict[str, str]") -> "list[dict]":
+    """Tool state that changes test outcomes and lives in the checkout. Today one
+    shape: hypothesis keeps the failing examples it found in ``.hypothesis/`` under
+    the working directory and replays them first, so a result depends on what earlier
+    runs on that machine found, unless the project points the database elsewhere."""
+    users = sorted(p for p, src in sources.items() if is_test_path(p) and _uses_hypothesis(src))
+    if not users:
+        return []
+    texts = list(config.values()) + [
+        src for p, src in sources.items() if _parts(p)[-1] == "conftest.py"
+    ]
+    if any(marker in text for text in texts for marker in _HYPOTHESIS_REDIRECTS):
+        return []
+    return [{
+        "path": users[0],
+        "detail": (
+            f"hypothesis is used ({len(users)} test file(s)) and its example database is "
+            "left in the checkout, so a run replays whatever earlier runs on this machine "
+            "found; point it outside the checkout (a settings profile's `database=`, or "
+            "HYPOTHESIS_STORAGE_DIRECTORY)"
+        ),
+    }]
+
+
+def scan_tree(project_dir: Path, tree: str = "HEAD") -> "dict | None":
+    """Every site in a tree, unwaived, largest blast radius first — the janitor's view
+    of what already exists. ``None`` when the tree cannot be read.
+
+    Returns ``{"sites": [{check, path, line, detail}], "tool_state": [{path, detail}],
+    "scanned": N, "unparsed": [...], "unruled": [...]}``; ``scanned`` is the number of
+    files the rules read, so an empty ``sites`` is visibly a scan of something."""
     listing = _listing(project_dir, tree)
     if listing is None:
         return None
     python = sorted(p for p in listing if _subject(p) == "python")
     unruled = sorted(p for p in listing if _subject(p) == "other")
     sources = _blobs(project_dir, tree, python)
-    if sources is None:
+    config = _blobs(project_dir, tree, [p for p in _HYPOTHESIS_CONFIG_FILES if p in listing])
+    if sources is None or config is None:
         return None
     first_party = _first_party(listing)
     rank = {c: n for n, c in enumerate(CHECKS)}
@@ -683,4 +754,46 @@ def scan_tree(project_dir: Path, tree: str = "HEAD") -> "dict | None":
             continue
         sites.extend(_finding(site, path) for site in _unwaived(found, source))
     sites.sort(key=lambda s: (rank[s["check"]], s["path"], s["line"]))
-    return {"sites": sites, "scanned": len(python), "unparsed": unparsed, "unruled": unruled}
+    return {
+        "sites": sites,
+        "tool_state": _tool_state(listing, sources, config),
+        "scanned": len(python),
+        "unparsed": unparsed,
+        "unruled": unruled,
+    }
+
+
+def scan_cmd(project_dir: Path, argv: "list[str]") -> int:
+    """``prawduct-hook determinism-scan [--json]`` — the existing sites in HEAD, for
+    ``/prawduct:janitor``'s Test Fitness theme to relay. Read-only, and advice: exit 0 whenever
+    the scan ran, whatever it found; 3 when the tree could not be read."""
+    import json  # noqa: PLC0415 — only this entry point prints JSON
+
+    as_json = "--json" in argv  # the hook's wrapper refuses any other token
+    result = scan_tree(project_dir)
+    if result is None:
+        if as_json:
+            print(json.dumps({"status": "unchecked", "reason": "HEAD could not be read"}))
+        else:
+            print("determinism-scan: unchecked — HEAD could not be read, so nothing was scanned")
+        return 3
+    if as_json:
+        print(json.dumps({"status": "scanned", **result}, indent=2))
+        return 0
+    sites, tool_state = result["sites"], result["tool_state"]
+    print(
+        f"determinism-scan: {len(sites)} site(s) and {len(tool_state)} tool-state finding(s) "
+        f"over {result['scanned']} Python file(s) at HEAD"
+    )
+    for site in sites:
+        print(f"  {site['check']}  {site['path']}:{site['line']} — {site['detail']}")
+    for item in tool_state:
+        print(f"  tool-state  {item['path']} — {item['detail']}")
+    if result["unparsed"]:
+        print(f"  not read (does not parse): {', '.join(result['unparsed'])}")
+    if result["unruled"]:
+        print(
+            f"  not read (no rules for the language yet): {len(result['unruled'])} test "
+            "file(s); judge them against prawduct's docs/test-determinism.md"
+        )
+    return 0
