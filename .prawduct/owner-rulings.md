@@ -509,3 +509,6 @@ asks on PR #1241 (#1239, static content):
    consumer cost (`.prawduct/artifacts/build-plan-static-content.md` Goals).
 The same message asked for this checkout to return to `develop` and for `../prawduct-live` to be
 advanced to `origin/develop` (the dogfood track, as on 2026-11-22).
+
+**2026-11-24.** "Yes to your recommendations" — PR #1242 (`fix/live-review-writes`) is merged, this
+checkout returns to `develop`, and `../prawduct-live` is advanced to the new `origin/develop`.
