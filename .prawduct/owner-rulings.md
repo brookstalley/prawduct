@@ -27,6 +27,16 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-24.** "Remember that prawduct does not require testament, but I think these are all
+best practices anyway right?" — a constraint on #1243 and its follow-up #1244. No part of the test
+determinism work may depend on testament. The patterns are defined tool-agnostically
+(`plugin/docs/test-determinism.md`), the detector reads only source and git
+(`plugin/lib/determinism_lint.py`), and #1244's measured check runs only when the project's runner
+reports per-test causes, doing nothing otherwise. Agreed in reply: each pattern is general
+practice. The clock, randomness, in-tree-state and write patterns cost correctness on any runner.
+The import-scope patterns cost collection time and isolation on any runner, and reuse on any
+incremental runner (pytest-testmon, Bazel/Pants, Jest's changed-files mode, testament).
+
 **2026-11-24.** "Agreed on all counts" (said in the testament session and relayed here by it), then
 "Agreed to all recommendations" here — the design of #1243 (test determinism and dependency-scope
 patterns P1–P8):

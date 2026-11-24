@@ -109,8 +109,26 @@ the same check ids rather than adding a parallel vocabulary.
   per-session probe is a cost every consumer pays (memory: don't default to adding tax).
 - No backlog item for either: each may never matter.
 
-**Decisions made mid-build:** *(append one line each, naming the goal or prior choice that settled
-it)*
+**Decisions made mid-build:**
+- Chunk 01, route: the detector is a sibling module (`plugin/lib/determinism_lint.py`) plugged into
+  `record_lint.lint_records` as an arm, the way `retired_claims` is. Its check ids go into record-lint's
+  `CHECKS` and its one `SEVERITY` table. Settled by "every fact has one home": one severity table and one
+  delivery into the review (`record_lint_partial`), rather than a second table.
+- Chunk 01: a test file in a language without rules is reported `unchecked` under `test-scope`, a name
+  the severity table doesn't rate, so it is an observation. A Python file that won't parse is reported
+  against `test-scope-conftest`, which record-lint rates one step down (a warning). Settled by
+  "authority fails closed; advice fails soft" and by not making every Swift change a warning the
+  product can't clear.
+- Chunk 01: a renamed file is compared with its old path, so a move introduces nothing. Settled by
+  "only introduced sites count".
+- Chunk 01: test-directory names match case-insensitively, because Swift and .NET spell it `Tests/`. The
+  first fixture run found this.
+- Chunk 01: two stale claims that record-lint "never gates" were corrected rather than added beside:
+  architecture.md's Critic Data Plane and the `record-lint` CLI docstring. Consolidation already rates
+  record-lint results into the review (`record_lint_partial`). Settled by the standing rule that there is no
+  "pre-existing" exception.
+- Not yet done: the cross-cutting concerns registry's Testing row gains this plan's coverage (methodology,
+  Critic, detection leg) in Chunk 03, once the doctor leg exists.
 
 **Level:** Medium. The goals and severities are owner-ruled. The detection rules above are my
 inference, and the route into review isn't verified yet: record-lint delivers deterministic checks

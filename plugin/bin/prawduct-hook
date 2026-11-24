@@ -6866,11 +6866,12 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     told, and one that grades a different plan than the dispatch will is
     answering a different question, confidently.
 
-    **Advice, not authority — so exit 0 on findings.** Record-lint reports to
-    the builder; the review gates keep composing over facts, and a lint finding
-    has never been able to block. Exit 1 is reserved for "the check could not
-    run" (unresolvable interval, unreadable state), which is the one outcome
-    that must not read as clean.
+    **A preview, not a gate — so exit 0 on findings.** This form reports to the
+    builder before dispatch. A result gains force only as a finding of the review
+    that carries it, which consolidation rates at record-lint's severities, so a
+    blocking result here is a blocker the next review will raise. Exit 1 is
+    reserved for "the check could not run" (unresolvable interval, unreadable
+    state), which is the one outcome that must not read as clean.
     """
     opts: dict[str, str] = {}
     as_json = False
