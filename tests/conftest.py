@@ -11,6 +11,7 @@ from __future__ import annotations
 import atexit
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -116,11 +117,15 @@ def plugin_python_sources() -> list[Path]:
     ``*.py`` scan of ``plugin/`` to it."""
     found = sorted(p for p in _PLUGIN_ROOT.rglob("*.py") if "__pycache__" not in p.parts)
     for path in sorted((_PLUGIN_ROOT / "bin").iterdir()):
-        if path.is_file() and path.suffix == "" and path.read_text(
-            encoding="utf-8", errors="replace"
-        ).startswith("#!/usr/bin/env python"):
+        if path.is_file() and path.suffix == "" and _PYTHON_SHEBANG.match(
+            path.read_text(encoding="utf-8", errors="replace").partition("\n")[0]
+        ):
             found.append(path)
     return found
+
+
+#: Any Python interpreter line: `env python3`, `/usr/bin/python3`, `#! /usr/bin/env python`.
+_PYTHON_SHEBANG = re.compile(r"#!.*\bpython[0-9.]*\b")
 
 
 def scrubbed_env(home: "Path | str", **extra: str) -> dict[str, str]:

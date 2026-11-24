@@ -426,7 +426,7 @@ class TestNoUngatedBacklogFileReaders:
             rel = path.relative_to(REPO_ROOT).as_posix()
             if rel.startswith("lib/backlog/"):
                 continue
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
             if not path_expr.search(content):
                 continue
             if rel in scaffolding:
@@ -435,7 +435,7 @@ class TestNoUngatedBacklogFileReaders:
             if "post_cutover" not in content and "backlog_service_repo" not in content:
                 offenders.append(rel)
         assert not offenders, (
-            f"These lib modules path to the markdown backlog with no cutover guard: "
+            f"These plugin sources path to the markdown backlog with no cutover guard: "
             f"{offenders}."
         )
         # A scaffolding exemption for a module that no longer paths to the file is
