@@ -433,17 +433,45 @@ def _checks(base: str, merge_base: str):
     )
 
 
-def hygiene(project_dir: Path) -> HygieneReport:
-    """Every hygiene result over merge-base…HEAD. Never raises."""
+def _hygiene_span(project_dir: Path) -> tuple[str | None, str | None, str | None]:
+    """``(base, merge_base, error)``: the span every hygiene check reads, or why
+    there is none. One answer for :func:`hygiene` and
+    :func:`branch_credential_shapes`, so the review that meets the credential
+    check early reads the lines the PR gate will."""
     from . import coverage  # noqa: PLC0415
 
     base, why = coverage._resolve_base_branch(project_dir)
     if not base:
-        return HygieneReport(error=f"could not resolve a base branch: {why}")
+        return None, None, f"could not resolve a base branch: {why}"
     code, merge_base = _git(project_dir, "merge-base", base, "HEAD")
     merge_base = merge_base.strip()
     if code != 0 or not merge_base:
-        return HygieneReport(base=base, error=f"no merge-base between {base} and HEAD")
+        return base, None, f"no merge-base between {base} and HEAD"
+    return base, merge_base, None
+
+
+def branch_credential_shapes(project_dir: Path) -> tuple[list[str], str | None]:
+    """``(findings, unchecked)``: the credential-shape result `check-pr-hygiene`
+    would refuse on, over the same span. ``findings`` are ``path:line: shape``
+    (never the text); ``unchecked`` says why the lines could not be read.
+    Never raises: a failure to look is ``unchecked``, for the caller to rule on."""
+    try:
+        _base, merge_base, error = _hygiene_span(project_dir)
+        if error is not None:
+            return [], error
+        results = _credential_shape(project_dir, merge_base)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a failure to look is reported as unchecked, never as clean
+        return [], f"the credential-shape check raised {type(exc).__name__}: {exc}"
+    if not results:
+        return [], None
+    return list(results[0].items), results[0].unchecked
+
+
+def hygiene(project_dir: Path) -> HygieneReport:
+    """Every hygiene result over merge-base…HEAD. Never raises."""
+    base, merge_base, error = _hygiene_span(project_dir)
+    if error is not None:
+        return HygieneReport(base=base, error=error)
     _, head = _git(project_dir, "rev-parse", "HEAD")
     report = HygieneReport(base=base, merge_base=merge_base, head=head.strip())
     for group, severity, check in _checks(base, merge_base):

@@ -482,3 +482,11 @@ read `covered`. This settles the three inferences in `build-plan-boundary-covera
 3. A blocker-free boundary review counts as `batch-covered` when its base and head trees bracket the merge
    on the integration branch's first-parent line.
 This also settles the correction to design doc §3 that was marked "pending the owner's ruling".
+
+**2026-11-24.** "Yes, agreed. PR and merge." — the credential check's placeholder exemption set is accepted
+as the plan states it (`build-plan-credential-placeholders.md` Goals), residual risk included. A url-embedded
+password needs no waiver when it is three characters or fewer, equal to its user, a placeholder word, a
+template or variable whose content is a single-case name, or a mask. A real secret of one of those forms
+passes `check-pr-hygiene`; a mixed-case secret in a wrapper, or one holding an unencoded `@`, still refuses.
+The same message asked for both of the session's branches (`fix/yaml-inline-comment`,
+`fix/credential-placeholders`) to be opened as PRs and merged.

@@ -298,7 +298,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # restated definition of the proposal for a pointer to planning.md "Chunk state", which owns it.
     # Priced against the SUM: ~22 tokens per fork review against a `chunk` review that certifies a
     # second chunk nobody built, which costs a retraction and a re-review to undo.
-    "single-pass-inner": 5769,
+    # +31 on 2026-11-24 (credential-placeholders Chunk 02), DECLARED: SKILL.md's exit table gains
+    # exit 9 (a `cumulative` dispatch on a branch the PR's credential check would refuse), one row
+    # pointing at the remedy stdout prints. Priced against the SUM: ~31 tokens per review against a
+    # waiver met after the boundary review, which costs a verify round and, in a code file, a suite run.
+    "single-pass-inner": 5800,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -439,7 +443,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # restated definition of the proposal for a pointer to planning.md "Chunk state", which owns it.
     # Priced against the SUM: ~22 tokens per fork review against a `chunk` review that certifies a
     # second chunk nobody built, which costs a retraction and a re-review to undo.
-    "single-pass-full": 10173,
+    # +31 on 2026-11-24 (credential-placeholders Chunk 02), DECLARED: SKILL.md's exit table gains
+    # exit 9 (a `cumulative` dispatch on a branch the PR's credential check would refuse), one row
+    # pointing at the remedy stdout prints. Priced against the SUM: ~31 tokens per review against a
+    # waiver met after the boundary review, which costs a verify round and, in a code file, a suite run.
+    "single-pass-full": 10204,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -690,7 +698,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # restated definition of the proposal for a pointer to planning.md "Chunk state", which owns it.
     # Priced against the SUM: ~22 tokens per fork review against a `chunk` review that certifies a
     # second chunk nobody built, which costs a retraction and a re-review to undo.
-    "coordinator-fork": 10843,
+    # +31 on 2026-11-24 (credential-placeholders Chunk 02), DECLARED: SKILL.md's exit table gains
+    # exit 9 (a `cumulative` dispatch on a branch the PR's credential check would refuse), one row
+    # pointing at the remedy stdout prints. Priced against the SUM: ~31 tokens per review against a
+    # waiver met after the boundary review, which costs a verify round and, in a code file, a suite run.
+    "coordinator-fork": 10874,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -734,7 +746,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # restated definition of the proposal for a pointer to planning.md "Chunk state", which owns it.
     # Priced against the SUM: ~22 tokens per fork review against a `chunk` review that certifies a
     # second chunk nobody built, which costs a retraction and a re-review to undo.
-    "coordinator-fork-inner": 6439,
+    # +31 on 2026-11-24 (credential-placeholders Chunk 02), DECLARED: SKILL.md's exit table gains
+    # exit 9 (a `cumulative` dispatch on a branch the PR's credential check would refuse), one row
+    # pointing at the remedy stdout prints. Priced against the SUM: ~31 tokens per review against a
+    # waiver met after the boundary review, which costs a verify round and, in a code file, a suite run.
+    "coordinator-fork-inner": 6470,
     # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
     # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
@@ -766,11 +782,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5770,
-    "single-pass-full": 10174,
+    "single-pass-inner": 5801,
+    "single-pass-full": 10205,
     "dispatched-reviewer": 9664,
-    "coordinator-fork": 10844,
-    "coordinator-fork-inner": 6440,
+    "coordinator-fork": 10875,
+    "coordinator-fork-inner": 6471,
     "dispatched-reviewer-inner": 5260,
 }
 
