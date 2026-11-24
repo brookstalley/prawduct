@@ -360,7 +360,9 @@ _BATCH_FIX_DIRECTIVE = (
     " gate anything; the verify pass is owed only if the fixes touch judgeable"
     " files and no later review the plan owes will carry them. "
     + gates.FIX_ORDER_AFTER_CUMULATIVE +
-    " Free to write at any time: everything under `.prawduct/` (change-log,"
+    " While a review runs, only prawduct's session files are free to write; any"
+    " other change needs `--tree-changed-by-builder` at its consolidation. Free of new"
+    " review once a review is recorded: everything under `.prawduct/` (change-log,"
     " backlog, project-state, build plans), `.claude/settings.json`, and `.md`"
     " files outside `skills/`, `methodology/`, `templates/`, `agents/` and a"
     " root `CLAUDE.md` or `AGENTS.md`. Everything else moves the tree: code,"

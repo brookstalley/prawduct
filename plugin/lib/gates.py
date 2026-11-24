@@ -672,7 +672,7 @@ def _test_evidence_tree_valid(
     **The question here is the suite's, not the reviewer's (COV-4H7N).** This
     asks ``affects_test_outcome``, not ``is_judgeable_path``, because a
     non-hermetic test reads live repo state that needs no review: a
-    ``.prawduct/project-state.yaml`` edit is free to write mid-review and can
+    ``.prawduct/project-state.yaml`` edit costs no new review between rounds and can
     still turn ``test_norm_probes`` red, so evidence recorded before it does
     not vouch for the tree after it.
 

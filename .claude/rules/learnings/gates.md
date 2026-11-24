@@ -27,3 +27,4 @@ paths:
 - A documented "clears when X"/"exempt when X" arm is NOT evidence X is implemented — grep the module first; unworkable compliance routes operators to the forbidden lever. Tell: the promised state change doesn't move
 - A persisted memo key must cover every input for the VALUE's lifetime — a key borrowed from a shorter-lived memo carries gaps its expiry hid (a verdict died at the next append; a tree key lives to eviction). Tell: reused another cache's identity
 - A predicate a gate relies on must answer the GATE's question, not a nearby one — 'who ran git commit' is not 'who authored the change' (#1071 blocker). Tell: your fail-safe argument is about the predicate's inputs, not the gate's subject.
+- A lightening declaration's authority has several inputs: each key, the base ref and its fallbacks, any shortcut. List them all before the first fix of a 'read from the wrong tree' defect. Tell: round N+1 finds the same class one input over.
