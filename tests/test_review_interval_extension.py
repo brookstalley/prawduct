@@ -19,6 +19,8 @@ import sys
 import subprocess
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 import pytest
 
 from lib import critic_consolidate as cc
@@ -943,7 +945,7 @@ class TestEveryChainConsumerPassesTheBranchBound:
 
         direct: set = set()
         through: set = set()
-        for path in sorted(ROOT.rglob("*.py")):
+        for path in plugin_python_sources():
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for fn in ast.walk(tree):
                 if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):

@@ -32,6 +32,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
@@ -1080,9 +1082,8 @@ class TestNextActionLine:
             assert act in text, act
 
     def test_the_blast_radius_check_has_one_home(self):
-        lib = ROOT / "lib"
         homes = [
-            p.name for p in sorted(lib.glob("*.py"))
+            p.name for p in plugin_python_sources()
             if "check each fix's dependents" in p.read_text(encoding="utf-8")
         ]
         assert homes == ["gates.py"], homes

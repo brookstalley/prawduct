@@ -18,6 +18,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 REFERENCE = ROOT / "docs" / "project-state-keys.md"
 TEMPLATE = ROOT / "templates" / "project-state.yaml"
@@ -84,7 +86,7 @@ def test_every_key_an_advisory_tells_owners_to_set_is_documented():
     a rename owes it no deprecation and the owner's override is silently dropped
     (Critic R-12 on the backlog-burndown branch)."""
     named = set()
-    for path in sorted((ROOT / "lib").rglob("*.py")):
+    for path in plugin_python_sources():
         named |= set(re.findall(
             r"`([a-z]+(?:_[a-z]+)+)`\s+in\s+`?project-state\.yaml",
             path.read_text(encoding="utf-8"),

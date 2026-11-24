@@ -14,18 +14,18 @@ import ast
 import subprocess
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 from lib import core
 from lib import critic_consolidate as cc
 
 ROOT = Path(__file__).resolve().parent.parent
-PLUGIN = ROOT / "plugin"
 
 
 def _plugin_sources() -> list[Path]:
     """Every Python source under ``plugin/`` (the extensionless hook included) and
     this repo's ``tools/``, which write into ``.prawduct/research/``."""
-    files = sorted(p for p in PLUGIN.rglob("*.py") if "__pycache__" not in p.parts)
-    files.append(PLUGIN / "bin" / "prawduct-hook")
+    files = plugin_python_sources()
     files += sorted((ROOT / "tools").glob("*.py"))
     return files
 
@@ -84,6 +84,179 @@ class TestWritersUseTheSuffix:
         assert replaced == [("state.json" + core.TEMP_SUFFIX, "state.json")]
 
 
+#: Renames that move a finished file rather than stage one, by (file, function).
+_MOVES_NOT_STAGING = {
+    # Moves a dead review's leftover files into the archive; nothing is written.
+    ("critic_consolidate.py", "_archive_leftovers"),
+}
+
+
+def _staged_renames(path: Path) -> list[tuple[int, str, str]]:
+    """``(line, function, source)`` for each rename-into-place in ``path`` whose
+    source is not built with the temp suffix.
+
+    Keyed on the ACT, not the name shape: a write renamed into place leaves its
+    source behind on a crash whatever it is called, which is how
+    ``.critic-findings.json.derived`` escaped a ``.tmp``-name sweep. The act is
+    ``os.replace``/``os.rename``/``shutil.move`` (or a bare ``replace``/``rename``
+    imported from ``os``), and a one-argument, keyword-free ``.replace``/``.rename``
+    on any receiver (``str.replace`` takes two). A source carries the suffix when
+    it calls ``temp_sibling``, names ``TEMP_SUFFIX``, or spells a constant ending
+    in it, directly or through names in the same function EVERY binding of which
+    carries it. **What slips it:** a source passed in as a parameter, or built in
+    another function; those read as unsuffixed and land in the exemption list."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    from_os = {
+        a.asname or a.name
+        for n in ast.walk(tree)
+        if isinstance(n, ast.ImportFrom) and n.module == "os"
+        for a in n.names
+        if a.name in ("replace", "rename")
+    }
+    out = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if (path.name, fn.name) in _MOVES_NOT_STAGING:
+            continue
+        bindings: dict[str, list[ast.AST]] = {}
+        for node in ast.walk(fn):
+            targets, value = [], None
+            if isinstance(node, ast.Assign):
+                targets, value = node.targets, node.value
+            elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)) and node.value is not None:
+                targets, value = [node.target], node.value
+            elif isinstance(node, ast.withitem) and node.optional_vars is not None:
+                targets, value = [node.optional_vars], node.context_expr
+            for target in targets:
+                for leaf in ast.walk(target):
+                    if isinstance(leaf, ast.Name):
+                        bindings.setdefault(leaf.id, []).append(value)
+        for node in ast.walk(fn):
+            source = _rename_source(node, from_os)
+            if source is not None and not _carries_suffix(source, bindings, frozenset()):
+                out.append((node.lineno, fn.name, ast.unparse(source)))
+    return out
+
+
+def _rename_source(node: ast.AST, from_os: set[str]) -> "ast.expr | None":
+    if not isinstance(node, ast.Call) or node.keywords:
+        return None
+    func = node.func
+    if isinstance(func, ast.Name) and func.id in from_os and len(node.args) == 2:
+        return node.args[0]
+    if not isinstance(func, ast.Attribute):
+        return None
+    recv = func.value
+    module = recv.id if isinstance(recv, ast.Name) else None
+    if module == "os" and func.attr in ("replace", "rename") and len(node.args) == 2:
+        return node.args[0]
+    if module == "shutil" and func.attr == "move" and len(node.args) == 2:
+        return node.args[0]
+    if module not in ("os", "shutil") and func.attr in ("replace", "rename") and len(node.args) == 1:
+        return recv
+    return None
+
+
+def _carries_suffix(value: ast.AST, bindings: dict, seen: frozenset) -> bool:
+    for n in ast.walk(value):
+        if isinstance(n, ast.Name) and n.id in ("TEMP_SUFFIX", "temp_sibling"):
+            return True
+        if isinstance(n, ast.Attribute) and n.attr in ("TEMP_SUFFIX", "temp_sibling"):
+            return True
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.endswith(core.TEMP_SUFFIX):
+            return True
+    names = [n.id for n in ast.walk(value) if isinstance(n, ast.Name) and n.id in bindings and n.id not in seen]
+    return any(
+        all(_carries_suffix(v, bindings, seen | {name}) for v in bindings[name])
+        for name in names
+    )
+
+
+class TestEveryRenameIntoPlaceStagesASuffixedFile:
+    def test_every_staged_rename_source_carries_the_suffix(self):
+        sources = _plugin_sources()
+        offenders = [
+            f"{path.relative_to(ROOT)}:{line} in {fn}(): {src}"
+            for path in sources
+            for line, fn, src in _staged_renames(path)
+        ]
+        assert offenders == [], (
+            "a file renamed into place must be staged under core.TEMP_SUFFIX "
+            "(core.temp_sibling), or a crash leaves it untracked: " + "; ".join(offenders)
+        )
+
+    def test_the_sweep_reaches_the_renames_it_polices(self):
+        """Non-vacuous: the act is seen at every kind of site — the core writer,
+        the hook, a spelled suffix, a mkstemp suffix, and the findings candidate."""
+        reached = set()
+        for path in _plugin_sources():
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "replace" and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id == "os" and len(node.args) == 2):
+                    reached.add(path.name)
+        assert {"core.py", "prawduct-hook", "host.py", "snapshot.py", "critic_consolidate.py"} <= reached
+
+    def test_every_exempt_move_still_exists(self):
+        """An exemption naming a function that is gone would exempt its successor
+        silently, so each entry must still name a function in that file."""
+        defined = {
+            (path.name, n.name)
+            for path in _plugin_sources()
+            for n in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        assert _MOVES_NOT_STAGING <= defined
+
+    def test_it_catches_an_unsuffixed_stage_and_passes_a_suffixed_one(self, tmp_path):
+        planted = tmp_path / "planted.py"
+        planted.write_text(
+            "import os\n"
+            "def bad(d, f):\n"
+            "    candidate = d / '.x.json.derived'\n"
+            "    candidate.write_text('{}')\n"
+            "    os.replace(candidate, f)\n"
+            "def bad_method(d, f):\n"
+            "    tmp = d / 'x.tmp'\n"
+            "    tmp.replace(f)\n"
+            "def good(d, f):\n"
+            "    tmp = d / ('.x.json.derived' + TEMP_SUFFIX)\n"
+            "    os.replace(tmp, f)\n"
+            "def good_sibling(f):\n"
+            "    tmp = temp_sibling(f)\n"
+            "    tmp.replace(f)\n"
+            "def not_a_rename(s):\n"
+            "    return s.replace('a', 'b')\n"
+            "def bad_expr(d, f):\n"
+            "    (d / '.x.json.derived').replace(f)\n"
+            "def bad_rebound(d, f, cond):\n"
+            "    tmp = temp_sibling(f)\n"
+            "    if cond:\n"
+            "        tmp = d / 'plain'\n"
+            "    os.replace(tmp, f)\n"
+            "def bad_move(d, f):\n"
+            "    shutil.move(d / 'x', f)\n"
+            "from os import replace as swap\n"
+            "def bad_bare(d, f):\n"
+            "    swap(d / 'x', f)\n"
+            "def good_chain(d, f):\n"
+            "    fd, staged = tempfile.mkstemp(dir=d, suffix=TEMP_SUFFIX)\n"
+            "    candidate = Path(staged)\n"
+            "    os.replace(candidate, f)\n"
+            "def good_expr(f):\n"
+            "    temp_sibling(f).replace(f)\n"
+            "def not_a_move(dt):\n"
+            "    return dt.replace(tzinfo=None)\n",
+            encoding="utf-8",
+        )
+        assert [(fn, src) for _l, fn, src in _staged_renames(planted)] == [
+            ("bad", "candidate"), ("bad_method", "tmp"), ("bad_expr", "d / '.x.json.derived'"),
+            ("bad_rebound", "tmp"), ("bad_move", "d / 'x'"), ("bad_bare", "d / 'x'"),
+        ]
+
+
 class TestTheContractCoversTheSuffix:
     def test_the_session_contract_ignores_the_suffix_under_prawduct(self):
         """Anchored under `.prawduct/`, so a wholesale `.prawduct/` rule in a
@@ -101,6 +274,7 @@ class TestTheContractCoversTheSuffix:
 
         assert ignored(".prawduct/.critic-findings.json" + core.TEMP_SUFFIX)
         assert ignored(".prawduct/artifacts/build-plan.md" + core.TEMP_SUFFIX)
+        assert ignored(".prawduct/.critic-findings.json.derived.k3x9q_ab" + core.TEMP_SUFFIX)
         assert not ignored("src/scratch.tmp")
         assert not ignored(".prawduct/.critic-findings.json.tmp")
 

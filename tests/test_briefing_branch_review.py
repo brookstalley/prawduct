@@ -273,6 +273,75 @@ class TestTheBriefingShowsThisBranchsReview:
         assert json.loads((repo / FINDINGS_REL).read_text()) == shown
         assert "B's own defect" in out, "the carried blocker reaches the briefing"
 
+    def _verify_on_b(self, tmp_path):
+        repo = _two_branches(tmp_path)
+        _git(repo, "checkout", "--quiet", "feature/b")
+        rev_b = next(f for f in _store_facts(repo, "review") if f["id"] == "rev-b-000001")
+        verify = {**rev_b, "id": "rev-b-verify1", "ts": "2099-01-01T00:00:00Z",
+                  "body": {**rev_b["body"], "findings": [],
+                           "mode": cc._VERBOSE_VERIFY_RESOLUTIONS,
+                           "base_tree": rev_b["body"]["head_tree"]}}
+        assert evidence.append_envelope(repo, verify)["status"] == "appended"
+        return repo, evidence.read_facts(repo)["facts"], [_git(repo, "rev-parse", "HEAD").stdout.strip()]
+
+    def test_the_writer_stages_under_the_temp_suffix_and_leaves_nothing(self, tmp_path, monkeypatch):
+        """The candidate renamed into place carries ``core.TEMP_SUFFIX`` (so a
+        crash before the rename leaves an ignored session file), and a write
+        that completes leaves no candidate behind."""
+        from lib import core
+        repo, facts, commits = self._verify_on_b(tmp_path)
+        prawduct = repo / ".prawduct"
+        cache = repo / FINDINGS_REL
+        into_cache: list[str] = []
+        real = cc.os.replace
+
+        def spy(src, dst):
+            if Path(dst) == cache:
+                into_cache.append(Path(src).name)
+            real(src, dst)
+
+        monkeypatch.setattr(cc.os, "replace", spy)
+        assert cc.derive_branch_cache(prawduct, facts, commits)["status"] == "derived"
+        assert len(into_cache) == 1, into_cache
+        assert into_cache[0].startswith(".critic-findings.json.derived.")
+        assert into_cache[0].endswith(core.TEMP_SUFFIX)
+        assert not list(prawduct.glob("*.derived*")), list(prawduct.iterdir())
+
+    def test_two_writers_never_share_a_candidate(self, tmp_path, monkeypatch):
+        """Each derivation stages under its own name, so a second writer cannot
+        truncate the file the first has validated and is about to rename. The
+        first writer's rename is held while the second derives in full."""
+        repo, facts, commits = self._verify_on_b(tmp_path)
+        prawduct = repo / ".prawduct"
+        cache = repo / FINDINGS_REL
+        staged: list[str] = []
+        real = cc.os.replace
+        state = {"nested": False}
+
+        def spy(src, dst):
+            if Path(dst) == cache:
+                staged.append(Path(src).name)
+                if not state["nested"]:
+                    state["nested"] = True
+                    (repo / FINDINGS_REL).unlink(missing_ok=True)
+                    assert cc.derive_branch_cache(prawduct, facts, commits)["status"] == "derived"
+                assert Path(src).exists(), "the candidate this writer validated is gone"
+            real(src, dst)
+
+        monkeypatch.setattr(cc.os, "replace", spy)
+        assert cc.derive_branch_cache(prawduct, facts, commits)["status"] == "derived"
+        assert len(staged) == 2 and staged[0] != staged[1], staged
+
+    def test_an_invalid_candidate_leaves_the_cache_and_no_staging_file(self, tmp_path, monkeypatch):
+        repo, facts, commits = self._verify_on_b(tmp_path)
+        prawduct = repo / ".prawduct"
+        cache = repo / FINDINGS_REL
+        before = cache.read_bytes() if cache.exists() else None
+        monkeypatch.setattr(cc.gates, "validate_critic_findings", lambda _p: False)
+        assert cc.derive_branch_cache(prawduct, facts, commits)["status"] == "invalid"
+        assert (cache.read_bytes() if cache.exists() else None) == before
+        assert not list(prawduct.glob("*.derived*")), list(prawduct.iterdir())
+
 
 def _branch_line(out: str) -> str:
     lines = [ln for ln in out.splitlines() if ln.startswith("Branch findings")]

@@ -11,6 +11,7 @@ from __future__ import annotations
 import atexit
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -103,6 +104,28 @@ os.environ.update(TEST_ENV)
 
 #: The PATH a scrubbed child gets: the system tools and git, wherever the machine keeps them.
 SCRUBBED_PATH = "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"
+
+
+def plugin_python_sources() -> list[Path]:
+    """Every Python source the plugin ships: ``*.py`` anywhere under ``plugin/``
+    and the extensionless Python executables in ``plugin/bin/``.
+
+    The hook's whole CLI lives in the extensionless ``bin/prawduct-hook``, so a
+    structural scan that globs ``*.py`` alone passes over the largest module in
+    the runtime and goes green on a defect there. A scan over the shipped runtime
+    reads this set; ``tests/test_source_scans_reach_the_hook.py`` holds every
+    ``*.py`` scan of ``plugin/`` to it."""
+    found = sorted(p for p in _PLUGIN_ROOT.rglob("*.py") if "__pycache__" not in p.parts)
+    for path in sorted((_PLUGIN_ROOT / "bin").iterdir()):
+        if path.is_file() and path.suffix == "" and _PYTHON_SHEBANG.match(
+            path.read_text(encoding="utf-8", errors="replace").partition("\n")[0]
+        ):
+            found.append(path)
+    return found
+
+
+#: Any Python interpreter line: `env python3`, `/usr/bin/python3`, `#! /usr/bin/env python`.
+_PYTHON_SHEBANG = re.compile(r"#!.*\bpython[0-9.]*\b")
 
 
 def scrubbed_env(home: "Path | str", **extra: str) -> dict[str, str]:

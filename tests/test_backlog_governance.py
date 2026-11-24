@@ -26,6 +26,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 _TESTS_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _TESTS_DIR.parent
 for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
@@ -281,7 +283,7 @@ class TestEveryDetachedWarmRecordsItsOutcome:
 
         plugin = _REPO_ROOT / "plugin"
         callers: set[tuple[str, str]] = set()
-        for path in sorted(plugin.rglob("*.py")):
+        for path in plugin_python_sources():
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for fn in ast.walk(tree):
                 if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
