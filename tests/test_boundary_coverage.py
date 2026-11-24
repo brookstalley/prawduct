@@ -297,6 +297,8 @@ class TestTheReport:
         monkeypatch.setattr(bc.evidence, "read_facts", ahead)
         report = bc.classify_pending(repo)
         assert report.status == "unevaluable" and "newer plugin" in report.reason, report
+        single = bc.classify_merge(repo, _git(repo, "rev-parse", "main"))
+        assert single.classification == bc.UNKNOWN and "newer plugin" in single.reason, single
         monkeypatch.setattr(bc.evidence, "read_facts", real)
         assert bc.classify_pending(repo).status == "ok"  # control
 

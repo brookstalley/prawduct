@@ -315,18 +315,24 @@ def classify_merge(project_dir: Path, commit: str) -> Entry:
     return _Classifier(project_dir, read.get("facts", []), base).classify_commit(commit)
 
 
+def count_line(report: Report) -> str:
+    """The one summary line, with its denominator: the report's last word, and the
+    line check-releasability prints on every run."""
+    counts = report.counts()
+    covered = sum(counts[name] for name in COVERED)
+    detail = ", ".join(f"{counts[name]} {name}" for name in CLASSES if counts[name])
+    return (
+        f"boundary coverage: {covered} of {len(report.entries)} release-pending scope(s) covered "
+        f"on {report.base}" + (f" ({detail})" if detail else "")
+    )
+
+
 def render(report: Report) -> str:
     """The human report: one line per scope, then the count line with its denominator."""
     if report.status != "ok":
         return f"check-boundary-coverage: could not evaluate — {report.reason}"
     lines = [f"{e.classification:13} {e.scope}  {(e.commit or '')[:8]}  {e.reason}" for e in report.entries]
-    counts = report.counts()
-    covered = sum(counts[name] for name in COVERED)
-    detail = ", ".join(f"{counts[name]} {name}" for name in CLASSES if counts[name])
-    lines.append(
-        f"boundary coverage: {covered} of {len(report.entries)} release-pending scope(s) covered "
-        f"on {report.base}" + (f" ({detail})" if detail else "")
-    )
+    lines.append(count_line(report))
     if report.refusals:
         lines.append(f"not classified: {len(report.refusals)} fragment(s) the pending set refused — "
                      + "; ".join(report.refusals))

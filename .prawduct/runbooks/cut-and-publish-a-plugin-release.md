@@ -40,7 +40,8 @@ not grading a plan:
 ```
 
 **Read the scope list, not the exit code.** Two outcomes matter — plus one that gives you no
-scope list to read at all:
+scope list to read at all. (The `boundary coverage:` line and any `NOTE: boundary-coverage:` lines
+are advice about which pending merges a boundary review covered; they never decide an outcome here.)
 
 - **A record refusal on stderr, exit 1, and NO scope list** — `bad-change-fragment:` or
   `legacy-pending-entry:`. The gate refused the pending record itself before it could be trusted,
