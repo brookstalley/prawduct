@@ -775,6 +775,18 @@ class TestCredentialShapeClassifier:
 
         assert transport.credential_shape(line) == "url-embedded password", line
 
+    def test_an_at_sign_past_the_host_is_not_the_passwords(self):
+        """The authority ends at the path, query or fragment: an `@` there (an
+        email in a query) does not make a placeholder refuse."""
+        from lib.backlog import transport
+
+        for line in (
+            "postgres://" + "app:password@db?notify=ops@example.com",
+            "postgres://" + "app:password@db#owner@example.com",
+            "postgres://" + "app:password@db/app?owner=ops@example.com",
+        ):
+            assert transport.credential_shape(line) is None, line
+
     def test_a_placeholder_is_still_scrubbed_from_output(self):
         """Exemption is the CHECK's; hiding a placeholder from output costs nothing."""
         from lib.backlog import transport
@@ -827,6 +839,27 @@ class TestCredentialShape:
         r = _run(repo, "check-pr-hygiene")
         assert r.returncode == 1, (r.stdout, r.stderr)
         assert "settings.py:1" in r.stdout and "README.md" not in r.stdout
+
+    def test_the_branch_entry_point_reports_what_it_could_not_read(self, tmp_path, monkeypatch):
+        """`branch_credential_shapes` is what `critic-begin` asks before a
+        cumulative: a span it cannot read, or a check that raises, comes back
+        `unchecked`, never as a clean empty answer."""
+        repo = _repo(tmp_path, branch_files={"config.py": f"token = '{_TOKEN}'\n"})
+        found, unchecked = pr_gate.branch_credential_shapes(repo)
+        assert found and unchecked is None, (found, unchecked)
+
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: f\nbase_branch: nowhere\n")
+        found, unchecked = pr_gate.branch_credential_shapes(repo)
+        assert found == [] and unchecked and "base branch" in unchecked, unchecked
+
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: f\nbase_branch: develop\n")
+
+        def _boom(*_a, **_k):
+            raise RuntimeError("diff reader fell over")
+
+        monkeypatch.setattr(pr_gate, "_credential_shape", _boom)
+        found, unchecked = pr_gate.branch_credential_shapes(repo)
+        assert found == [] and "RuntimeError" in unchecked, unchecked
 
     def test_the_same_line_with_a_waiver_passes(self, tmp_path):
         repo = _repo(tmp_path, branch_files={"config.py": f"token = '{_TOKEN}'  # {_WAIVER}\n"})

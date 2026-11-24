@@ -91,10 +91,11 @@ _PLACEHOLDER_PASSWORD_SHAPES: tuple[re.Pattern[str], ...] = (
     re.compile(r"\*+|[xX]{3,}|\.{3}|…|\[REDACTED\]"),  # masked
 )
 
-#: A URL's authority (user, password and host), to tell whether the password
+#: A URL's authority (user, password and host; it ends at the path, query or
+#: fragment, whose own `@`s are not the password's), to tell whether the password
 #: matched before the first `@` is all of it: an unencoded `@` inside a real
 #: password leaves a second `@` before the host.
-_URL_AUTHORITY = re.compile(r"://[^/\s]*")
+_URL_AUTHORITY = re.compile(r"://[^/?#\s]*")
 
 
 def _is_placeholder_password(user: str, password: str) -> bool:

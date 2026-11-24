@@ -2274,6 +2274,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     more than one chunk — refused before anything is written, the paths that
     proposed each chunk and the two `--chunks` re-runs on stdout, and one inert
     `guard-refusal` fact appended;
+    exit 9 = a `cumulative` dispatch on a branch that adds a line
+    `check-pr-hygiene` would refuse the PR for as credential-shaped — refused
+    before anything is derived, the lines (file, line, shape; never the text) on
+    stdout, one inert `guard-refusal` fact appended (`--force` dispatches anyway,
+    with a note naming the lines);
     exit 1 = any other
     dispatch failure (reason on stderr). The scheme these cite is prawduct's own API contract — its
     Error Model section, in the framework repo rather than in yours.
