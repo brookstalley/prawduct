@@ -6076,6 +6076,91 @@ class TestRosterKeyedToRiskSurface:
         assert (stale / "manifest.json").is_file()
 
 
+class TestDeclaredStaticContentDoesNotBuyTheCoordinator:
+    """#1239: a static-heavy boundary review takes one reviewer. Declared static
+    content is still reviewed but does not count toward the judgeable-volume
+    escalator; the risk check still runs first over every file. The owner ruled
+    the lighter review on 2026-11-24."""
+
+    STATIC = [f"design/page-{i:02d}.html" for i in range(40)] + ["design/site.css", "design/tokens.json"]
+    PROSE = [f"design/guide-{i}.md" for i in range(5)]
+
+    def _repo(self, tmp_path: Path, state: str) -> "tuple[Path, str]":
+        repo = tmp_path / "repo"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - untouched/by/these/tests/\n" + state
+        )
+        _init_repo(repo)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "state")
+        head = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        return repo, head
+
+    def _roster(self, tmp_path, files, state="static_content_prefixes:\n  - design/\n", tree=True):
+        repo, head = self._repo(tmp_path, state)
+        return cc._derive_roster(
+            "cumulative", list(files), repo / ".prawduct",
+            project_dir=repo, head_tree=head if tree else None,
+        )
+
+    def test_the_reported_shape_takes_one_reviewer(self, tmp_path):
+        roster, why = self._roster(tmp_path, self.STATIC + self.PROSE)
+        assert roster == list(cc.SINGLE_PASS_ROSTER), why
+        assert f"0 judgeable file(s) ({len(self.STATIC)} declared static, not counted)" in why
+
+    def test_undeclared_the_same_shape_takes_the_coordinator(self, tmp_path):
+        roster, why = self._roster(tmp_path, self.STATIC + self.PROSE, state="")
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+        assert "declared static" not in why
+
+    def test_without_the_reviewed_tree_nothing_is_discounted(self, tmp_path):
+        """The declaration is read from the tree under review; with none named,
+        the working tree's is never consulted."""
+        roster, why = self._roster(tmp_path, self.STATIC, tree=False)
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+
+    def test_an_uncommitted_declaration_discounts_nothing(self, tmp_path):
+        """The reviewed tree declares nothing; only the working tree does."""
+        repo, head = self._repo(tmp_path, "")
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - untouched/by/these/tests/\nstatic_content_prefixes:\n  - design/\n"
+        )
+        roster, why = cc._derive_roster(
+            "cumulative", self.STATIC, repo / ".prawduct", project_dir=repo, head_tree=head
+        )
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+
+    def test_a_static_file_on_a_risk_surface_still_takes_the_coordinator(self, tmp_path):
+        roster, why = self._roster(
+            tmp_path, ["design/site.css"],
+            state="static_content_prefixes:\n  - design/\n",
+        )
+        assert roster == list(cc.SINGLE_PASS_ROSTER), "control: off the surface it is light"
+        repo, head = self._repo(tmp_path / "risk", "static_content_prefixes:\n  - design/\n")
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - design/\nstatic_content_prefixes:\n  - design/\n"
+        )
+        roster, why = cc._derive_roster(
+            "cumulative", ["design/site.css"], repo / ".prawduct", project_dir=repo, head_tree=head
+        )
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+        assert "risk surface touched" in why
+
+    def test_twelve_counted_files_beside_static_ones_still_take_the_coordinator(self, tmp_path):
+        code = [f"src/m{i}.py" for i in range(cc.COORDINATOR_JUDGEABLE_THRESHOLD)]
+        roster, why = self._roster(tmp_path, code + self.STATIC)
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+        assert f"{cc.COORDINATOR_JUDGEABLE_THRESHOLD} judgeable file(s)" in why
+
+    def test_a_coupled_prefix_under_the_declaration_is_counted(self, tmp_path):
+        roster, why = self._roster(
+            tmp_path, self.STATIC,
+            state="static_content_prefixes:\n  - design/\nsuite_coupled_prefixes:\n  - design/\n",
+        )
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+
+
 class TestBeginArchivesLeftovers:
     """A leftover manifest at critic-begin belongs to a review that never
     consolidated (consolidate removes everything on success). Deleting it

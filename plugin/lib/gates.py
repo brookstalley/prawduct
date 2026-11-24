@@ -58,7 +58,6 @@ from . import (
 from .core import (
     FLAG_UNREADABLE,
     read_bool_flag,
-    static_content_prefixes_from_text,
     suite_coupled_prefixes,
 )
 
@@ -739,7 +738,7 @@ def _tree_met(
     # gate: this is the freshness question. See `affects_test_outcome`.
     prawduct_dir = project_dir / ".prawduct"
     coupled_prefixes = suite_coupled_prefixes(prawduct_dir)
-    static = _static_declaration_in_tree(project_dir, recorded_tree)
+    static = evidence.static_declaration_in_tree(project_dir, recorded_tree)
     coupled = coverage_algebra.suite_coupled_files(changed, coupled_prefixes, static)
     if coupled:
         preview = ", ".join(coupled[:3]) + ("…" if len(coupled) > 3 else "")
@@ -753,26 +752,6 @@ def _tree_met(
             f"{n_static} declared-static file(s))"
         )
     return True, f"{clean} ({len(changed)} metadata/doc file(s))"
-
-
-def _static_declaration_in_tree(project_dir: Path, tree: str) -> tuple[str, ...]:
-    """The ``static_content_prefixes`` declaration as ``tree`` (a tree or a
-    commit) holds it, never as the working tree does. The freshness check asks
-    it of the recorded run's tree, and the coverage floor of ``HEAD``.
-
-    The declaration narrows what can change the suite's outcome, so it must be
-    one the compared trees actually carry. Read from the working tree, an
-    uncommitted declaration would relax a comparison between two trees that
-    never contained it. The run's own tree is the one that matters: when
-    ``project-state.yaml`` differs between the run and the target, that file is
-    test-coupled state and the comparison is already stale. Anything that
-    cannot be read (no such file in the tree, a git failure) declares nothing,
-    which costs a suite run and never a false ``current``.
-    """
-    rc, out, _err = evidence.run_git(project_dir, "show", f"{tree}:.prawduct/project-state.yaml")
-    if rc != 0:
-        return ()
-    return static_content_prefixes_from_text(out)
 
 
 def _store_run_vouching(
@@ -4357,7 +4336,10 @@ def verify_coverage(project_dir: Path) -> int:
     # reads its prefix as data, which the coupling declaration says. The
     # declaration is HEAD's, as the diff judged here is: an uncommitted one
     # must not exempt committed files.
-    static = _static_declaration_in_tree(project_dir, "HEAD")
+    # `evidence` is the record in this function, so the module is named here.
+    from . import evidence as evidence_mod  # noqa: PLC0415
+
+    static = evidence_mod.static_declaration_in_tree(project_dir, "HEAD")
     coupled_prefixes = suite_coupled_prefixes(prawduct_dir)
     nonexecutable = [
         f for f in changed

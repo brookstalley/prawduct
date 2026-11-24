@@ -61,10 +61,10 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 
 **Risk surface** = a changed path matching this repo's `risk_surfaces:` in `project-state.yaml` — the
 same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo that declares none runs
-the same two escalators — the framework-shaped derived defaults (`skills/`, `lib/gates*`,
-`bin/*hook*`, plus contract paths in `boundary-patterns.md`) and volume at 12 judgeable files — and
-no file-count fallback beneath them (the roster config block in `lib/critic_consolidate.py` carries
-the measurement that retired it). What declaring buys is the paths it names.
+the same two escalators — the derived defaults (`lib/risk.py`) and volume at 12 judgeable files,
+declared static content not counted (`docs/project-state-keys.md`) — and no file-count fallback
+beneath them (the roster config block in `lib/critic_consolidate.py` carries the measurement that
+retired it). What declaring buys is the paths it names.
 
 **Two-form rule for the `mode` value:**
 - **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument, `critic-begin --mode`): the short token — `chunk`, `final`, `cumulative`, or `verify-resolutions`.

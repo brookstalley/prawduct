@@ -141,7 +141,7 @@ Main Claude session  (the monolith / coordinator of work)
   ▼
 Critic coordinator  (forked skill context)
   │  small change  → reviews itself, single-pass
-  │  risk surface / 12+ judgeable → dispatches worker subagents, then STOPS
+  │  risk surface / 12+ judgeable (static not counted) → dispatches worker subagents, then STOPS
   ▼
 critic-reviewer subagents (parallel workers, read-only + Write-partial only)
   │  each writes exactly one partial findings file

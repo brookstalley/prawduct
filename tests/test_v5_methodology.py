@@ -599,6 +599,8 @@ LAST_MEASURED_TOKENS = {
     # as if the guards joined only the fallback; it now says "either way plus the whole-tree
     # guards", paid by dropping an article. "The files it touched" now lives in delegation.md's
     # "What to return" (the line above was wrong that it already did).
+    # 0 on 2026-11-24 (static-content, #1239): the roster unit is "12+ non-static judgeable files",
+    # paid by dropping "honest" from the same sentence.
     "methodology/building.md": 5651,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
@@ -1179,7 +1181,10 @@ LAST_MEASURED_TOKENS = {
     # rewritten, because neither of its cases is fully refused by code. "Never a chunk's first
     # review" is refused only when the branch has no review at all, and drift unrelated to the
     # findings only past the Demotion table's scope-widened threshold.
-    "skills/critic/review-cycle.md": 8265,
+    # -3 on 2026-11-24 (static-content, #1239): the roster paragraph says declared static content
+    # does not count toward the 12. Paid in place by pointing the derived default surfaces at
+    # `lib/risk.py`, which owns that list, instead of restating it. A READING; ceiling lowered with it.
+    "skills/critic/review-cycle.md": 8262,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -6916,7 +6921,8 @@ class TestReviewCycle:
         # LOWERED 8240 -> 8230 (backlog-roi-wave2, #606, 2026-11-18) — see LAST_MEASURED_TOKENS.
         # LOWERED 8230 -> 8223 (round-budget-cadence, 2026-11-23) — see LAST_MEASURED_TOKENS.
         # RAISED 8223 -> 8266 (verify-links-review-id, #1220, 2026-11-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 8266, f"review-cycle.md is ~{tokens} tokens, should be <8266"
+        # LOWERED 8266 -> 8263 (static-content, #1239, 2026-11-24) — see LAST_MEASURED_TOKENS.
+        assert tokens < 8263, f"review-cycle.md is ~{tokens} tokens, should be <8263"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

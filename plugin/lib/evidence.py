@@ -1522,6 +1522,29 @@ def _split_z(out: str) -> list[str]:
     return [p for p in out.split("\0") if p]
 
 
+def static_declaration_in_tree(project_dir: Path, tree: str) -> tuple[str, ...]:
+    """The ``static_content_prefixes`` declaration as ``tree`` (a tree or a
+    commit) holds it, never as the working tree does. The freshness check asks
+    it of the recorded run's tree, the coverage floor of ``HEAD``, and the
+    boundary review's roster of the tree it reviews.
+
+    The declaration narrows what can change the suite's outcome, so it must be
+    one the compared trees actually carry. Read from the working tree, an
+    uncommitted declaration would relax a comparison between two trees that
+    never contained it. The run's own tree is the one that matters: when
+    ``project-state.yaml`` differs between the run and the target, that file is
+    test-coupled state and the comparison is already stale. Anything that
+    cannot be read (no such file in the tree, a git failure) declares nothing,
+    which costs a suite run and never a false ``current``.
+    """
+    rc, out, _err = run_git(project_dir, "show", f"{tree}:.prawduct/project-state.yaml")
+    if rc != 0:
+        return ()
+    from .core import static_content_prefixes_from_text  # noqa: PLC0415 — lazy, as this module's other core reads
+
+    return static_content_prefixes_from_text(out)
+
+
 def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str | None":
     """Why the working tree may hold content these reports never ran against,
     or ``None`` when every file the suite reads predates the start of the run

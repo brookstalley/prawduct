@@ -388,9 +388,9 @@ class TestBoundedDispatch:
         seen = []
         real = cc._derive_roster
 
-        def spy(mode_token, files_changed, prawduct_dir):
+        def spy(mode_token, files_changed, prawduct_dir, **kwargs):
             seen.append(list(files_changed))
-            return real(mode_token, files_changed, prawduct_dir)
+            return real(mode_token, files_changed, prawduct_dir, **kwargs)
 
         monkeypatch.setattr(cc, "_derive_roster", spy)
         assert cc.begin_review(repo, "cumulative", chosen_by="rule-2", force=True)["status"] == "ok"
@@ -556,3 +556,33 @@ class TestProtocolAgreesWithCode:
         assert f"`{critic_mode.FULL_SPAN_RATIONALE}`" in cycle
         assert f"cumulative {critic_mode.FULL_SPAN_TOKEN}" in cycle
         assert f"cumulative [{critic_mode.FULL_SPAN_TOKEN}]" in skill
+
+
+class TestAStaticContentBranchDispatchesOneReviewer:
+    """#1239's acceptance, through `begin_review`: a boundary review of a
+    branch made of declared static content dispatches one reviewer, and the
+    same branch undeclared dispatches the coordinator."""
+
+    def _branch(self, tmp_path: Path, declare: bool) -> Path:
+        repo = _repo(tmp_path)
+        state = "project_name: t\nrisk_surfaces:\n  - untouched/by/this/test/\n"
+        if declare:
+            state += "static_content_prefixes:\n  - design/\n"
+        _commit(repo, ".prawduct/project-state.yaml", state, "declare")
+        for i in range(cc.COORDINATOR_JUDGEABLE_THRESHOLD + 1):
+            _commit(repo, f"design/page-{i:02d}.html", f"<p>{i}</p>\n", f"page {i}")
+        return repo
+
+    def test_declared_it_is_single_pass(self, tmp_path):
+        repo = self._branch(tmp_path, declare=True)
+        assert cc.begin_review(repo, "cumulative", chosen_by="rule-2", force=True)["status"] == "ok"
+        m = _manifest(repo)
+        assert m["roster"] == list(cc.SINGLE_PASS_ROSTER), m["roster_chosen_by"]
+        assert "declared static, not counted" in m["roster_chosen_by"]
+        assert m["head_tree"] == _tree(repo)
+
+    def test_undeclared_it_is_the_coordinator(self, tmp_path):
+        repo = self._branch(tmp_path, declare=False)
+        assert cc.begin_review(repo, "cumulative", chosen_by="rule-2", force=True)["status"] == "ok"
+        m = _manifest(repo)
+        assert m["roster"] == list(cc.COORDINATOR_ROSTER), m["roster_chosen_by"]

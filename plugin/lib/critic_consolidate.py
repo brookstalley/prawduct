@@ -2499,7 +2499,12 @@ def _dispatch_chunk_type(prawduct_dir: Path, lint: dict) -> "str | None":
 
 
 def _derive_roster(
-    mode_token: str, files_changed: list[str], prawduct_dir: Path
+    mode_token: str,
+    files_changed: list[str],
+    prawduct_dir: Path,
+    *,
+    project_dir: "Path | None" = None,
+    head_tree: "str | None" = None,
 ) -> tuple[list[str], str]:
     """The roster this dispatch requires, plus the rationale (Q7 debugging).
 
@@ -2508,11 +2513,23 @@ def _derive_roster(
     measured yield of the file-count fallback this used to carry for repos
     with no declaration. A repo that declares nothing runs the same two
     escalators as one that does; what a declaration buys is the paths it names.
+
+    **Declared static content does not count toward the volume escalator**
+    (``coverage_algebra.is_static_content``). Depth is a risk question, not a
+    judgeability one, and the declaration is the repo saying those paths carry
+    none a third reviewer would find: files nothing executes or parses. They
+    are still reviewed, by the single pass, and a static file on a risk
+    surface still buys the coordinator, because the risk check runs first over
+    every changed file. The owner ruled the lighter review on 2026-11-24
+    (#1239). The 82-review replay above holds no static content, so how many
+    blockers a third reviewer would find there is not measured. The
+    declaration is read from ``head_tree``, the tree under review, so an
+    uncommitted one lightens nothing; with no tree, nothing is discounted.
     """
     if mode_token in ("chunk", "verify-resolutions"):
         return list(SINGLE_PASS_ROSTER), f"mode={mode_token} is always single-pass"
 
-    from . import coverage_algebra, risk  # noqa: PLC0415 — lazy; keeps the import graph flat
+    from . import core, coverage_algebra, evidence, risk  # noqa: PLC0415 — lazy; keeps the import graph flat
 
     touched, why = risk.paths_touch_risk_surface(prawduct_dir, files_changed)
     if touched:
@@ -2520,15 +2537,24 @@ def _derive_roster(
             f"mode={mode_token}, risk surface touched: {why} — coordinator"
         )
 
-    nj = len(coverage_algebra.judgeable_files(files_changed))
+    judgeable = coverage_algebra.judgeable_files(files_changed)
+    static: tuple[str, ...] = ()
+    if project_dir is not None and head_tree:
+        static = evidence.static_declaration_in_tree(project_dir, head_tree)
+    coupled = core.suite_coupled_prefixes(prawduct_dir)
+    nj = sum(1 for p in judgeable if not coverage_algebra.is_static_content(p, static, coupled))
+    discounted = len(judgeable) - nj
+    counted = f"{nj} judgeable file(s)" + (
+        f" ({discounted} declared static, not counted)" if discounted else ""
+    )
     if nj >= COORDINATOR_JUDGEABLE_THRESHOLD:
         return list(COORDINATOR_ROSTER), (
-            f"mode={mode_token}, no risk surface, {nj} judgeable file(s) >= "
+            f"mode={mode_token}, no risk surface, {counted} >= "
             f"{COORDINATOR_JUDGEABLE_THRESHOLD} — coordinator"
         )
 
     return list(SINGLE_PASS_ROSTER), (
-        f"mode={mode_token}, {why}, {nj} judgeable file(s) < "
+        f"mode={mode_token}, {why}, {counted} < "
         f"{COORDINATOR_JUDGEABLE_THRESHOLD} — single-pass"
     )
 
@@ -4811,7 +4837,9 @@ def begin_review(
             f for f in bundle_files if f not in files_reviewed and f not in files_oracle
         ]
 
-    roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
+    roster, roster_chosen_by = _derive_roster(
+        mode_token, files_changed, prawduct_dir, project_dir=project_dir, head_tree=head_tree
+    )
     review_id = mint_review_id()
 
     # ST8: the code-derived proposal from THIS interval, then the declared set

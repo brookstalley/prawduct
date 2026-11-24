@@ -3613,7 +3613,7 @@ class TestStaticContentPrefixesDeclaration:
 
     def test_a_tree_that_cannot_be_read_declares_nothing(self, tmp_path):
         gates, repo, _t0, _t1 = self._trees(tmp_path, committed=self.DECLARES)
-        assert gates._static_declaration_in_tree(repo, "0" * 40) == ()
+        assert gates.evidence.static_declaration_in_tree(repo, "0" * 40) == ()
 
     def test_a_metadata_only_diff_does_not_claim_static_files(self, tmp_path):
         """The success line counts static files only when one changed."""

@@ -23,8 +23,14 @@ explanation of an uncovered span. The coverage floor asks no test to reference a
 A declaration the reader cannot read whole declares nothing static, so a typo costs the full
 path, never a lighter one.
 
+### Chunk 02: the boundary review's roster
+Declared static content does not count toward the boundary review's volume escalator (12
+judgeable files), so a static-heavy branch takes one reviewer instead of three. A static file on
+a risk surface still takes the coordinator. The roster reads the declaration from the tree it
+reviews, and its rationale says how many files it did not count.
+
 ## Consumer note
-To stop a static-document branch paying for a suite run, list the directories that hold such files
+To stop a static-document branch paying for a suite run and a three-reviewer boundary review, list the directories that hold such files
 under `static_content_prefixes:` in `.prawduct/project-state.yaml` (a block sequence of path
 prefixes; see `/prawduct:methodology project-state`). Do not list a path your tests read as data.
 Put that one under `suite_coupled_prefixes:`, which wins any overlap. The declaration takes effect
