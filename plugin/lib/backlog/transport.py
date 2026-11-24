@@ -91,11 +91,16 @@ _PLACEHOLDER_PASSWORD_SHAPES: tuple[re.Pattern[str], ...] = (
     re.compile(r"\*+|[xX]{3,}|\.{3}|…|\[REDACTED\]"),  # masked
 )
 
-#: A URL's authority (user, password and host; it ends at the path, query or
-#: fragment, whose own `@`s are not the password's), to tell whether the password
-#: matched before the first `@` is all of it: an unencoded `@` inside a real
-#: password leaves a second `@` before the host.
-_URL_AUTHORITY = re.compile(r"://[^/?#\s]*")
+#: A URL as one token: it runs to whitespace or a quote or comma, which end it in
+#: prose, code and JSON alike. Any second `@` inside it disqualifies the
+#: placeholder test, because `pw@Xk9/mQ@host` (a password holding an unencoded
+#: `@`) and `pw@host/x?to=a@b` (a placeholder, then an email) read alike, and
+#: the ambiguity is settled toward reporting: a waiver answers the second.
+_URL_TOKEN = re.compile(r"://[^\s\"'`,]*")
+
+#: A user segment that is a NAME (`postgres`, `x-access-token`, `APP_USER`),
+#: not a secret in the user position (an API key with a dummy password).
+_USER_NAME = re.compile(r"[a-z0-9_.-]{1,24}|[A-Z0-9_.-]{1,24}")
 
 
 def _is_placeholder_password(user: str, password: str) -> bool:
@@ -111,12 +116,15 @@ def _is_placeholder_password(user: str, password: str) -> bool:
 
 
 def _has_real_url_password(line: str) -> bool:
-    """Whether any url-embedded password on ``line`` is not a placeholder. One
-    whose authority holds a second `@` is never a placeholder: the first `@`
-    cut a longer password short, and the piece judged is not the password."""
+    """Whether any url-embedded credential on ``line`` may be real. It is a
+    placeholder only when its user is a name, its URL holds no second `@`, and
+    its password passes :func:`_is_placeholder_password`; anything else is
+    reported, because the piece judged might not be the secret."""
     for m in _URL_CREDENTIAL.finditer(line):
-        authority = _URL_AUTHORITY.match(line, m.start() - 3)
-        if authority is not None and authority.group(0).count("@") > 1:
+        token = _URL_TOKEN.match(line, m.start() - 3)
+        if token is None or token.group(0).count("@") > 1:
+            return True
+        if not _USER_NAME.fullmatch(m.group(1)):
             return True
         if not _is_placeholder_password(m.group(1), m.group(2)):
             return True

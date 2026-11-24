@@ -775,17 +775,48 @@ class TestCredentialShapeClassifier:
 
         assert transport.credential_shape(line) == "url-embedded password", line
 
-    def test_an_at_sign_past_the_host_is_not_the_passwords(self):
-        """The authority ends at the path, query or fragment: an `@` there (an
-        email in a query) does not make a placeholder refuse."""
+    @pytest.mark.parametrize(
+        "line",
+        [
+            # A password holding an unencoded `@`, then a `/`, `?` or `#`: the
+            # piece before the first `@` is not the password.
+            "url = https://" + "admin:ab@Xk9/mQ2vLr7@host",
+            "url = postgres://" + "app:password@Kx9fPq?2mZ@db",
+            "url = postgres://" + "app:pw@Kx9#2mZ@db",
+            # The same syntax as a placeholder followed by an email in the query:
+            # settled toward reporting, and a waiver answers it.
+            "url = postgres://" + "app:password@db?notify=ops@example.com",
+        ],
+    )
+    def test_a_second_at_sign_anywhere_in_the_url_reports(self, line):
+        from lib.backlog import transport
+
+        assert transport.credential_shape(line) == "url-embedded password", line
+
+    def test_the_url_ends_at_a_quote_or_comma(self):
+        """A later `@` on the same line is outside the URL: an email beside a DSN
+        in JSON or a quoted assignment does not make the placeholder refuse."""
         from lib.backlog import transport
 
         for line in (
-            "postgres://" + "app:password@db?notify=ops@example.com",
-            "postgres://" + "app:password@db#owner@example.com",
-            "postgres://" + "app:password@db/app?owner=ops@example.com",
+            '{"dsn":"postgres://' + 'app:password@db","owner":"ops@example.com"}',  # compact JSON
+            "DSN = 'postgres://" + "app:password@db'  # ask ops@example.com",
+            "postgres://" + "app:password@db, ops@example.com",
         ):
             assert transport.credential_shape(line) is None, line
+
+    @pytest.mark.parametrize(
+        "creds",
+        [
+            "Ab3kZ9qLmX2pT7:" + "X",  # an API key as the user, a dummy password
+            "sk_live_" + "Ab3kZ9qLmX2p:" + "password",
+            "a" * 30 + ":" + "x",  # too long to be a name
+        ],
+    )
+    def test_a_secret_in_the_user_position_reports(self, creds):
+        from lib.backlog import transport
+
+        assert transport.credential_shape(f"url = https://{creds}@api.example.com") == "url-embedded password"
 
     def test_a_placeholder_is_still_scrubbed_from_output(self):
         """Exemption is the CHECK's; hiding a placeholder from output costs nothing."""
