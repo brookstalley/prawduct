@@ -6186,7 +6186,13 @@ class TestEveryStatementOfTheVolumeThresholdNamesTheStaticException:
     before static content existed, so code comments are not scanned."""
 
     REPO = ROOT.parent
-    PATTERN = re.compile(r"\b12\+?\s+(?:non-static\s+)?judgeable|judgeable[^.]{0,20}>=\s*12")
+    # The concept, not a wording: "12" or "twelve" within forty characters of
+    # "judgeable", in either order and across a line break. A wording-shaped
+    # pattern missed "12 or more judgeable files" the first time.
+    PATTERN = re.compile(
+        r"(?:\b12\b|twelve)[\s\S]{0,40}?judgeable|judgeable[\s\S]{0,40}?(?:\b12\b|twelve)",
+        re.IGNORECASE,
+    )
 
     def _surfaces(self) -> list[Path]:
         return [
@@ -6208,7 +6214,7 @@ class TestEveryStatementOfTheVolumeThresholdNamesTheStaticException:
                 line = text.count("\n", 0, m.start()) + 1
                 window = text[m.start(): m.end() + 60]
                 found.append((str(path.relative_to(self.REPO)), line, "static" in window))
-        assert len(found) >= 6, f"the scan reached too few statements to mean anything: {found}"
+        assert len(found) >= 7, f"the scan reached too few statements to mean anything: {found}"
         assert [f for f in found if not f[2]] == [], found
 
     def test_the_constant_names_it_too(self):

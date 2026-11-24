@@ -86,7 +86,8 @@ deeper three-reviewer review at any size.
 Nothing asks for this list, and leaving it unset is a healthy state. Unset, two things escalate:
 prawduct's framework-shaped defaults (`skills/`, `lib/gates*`, `bin/*hook*`, plus any contract
 paths you list in boundary-patterns.md), which rarely match a product's own tree, and volume — 12
-or more judgeable files. There is no file-count fallback below that: prawduct will not review a
+or more judgeable files, not counting declared static content (`static_content_prefixes`). There
+is no file-count fallback below that: prawduct will not review a
 small change to your riskiest code more deeply unless you have named that code here.
 
 **A declared list REPLACES those defaults, it does not add to them** — the contract paths from
