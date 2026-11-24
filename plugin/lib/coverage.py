@@ -1735,10 +1735,12 @@ def suite_declarations(
     it (a loop over candidate runs resolves it once). Anything unreadable makes
     nothing static, which costs the full path and never a lighter one.
 
-    **Residual, by the repo's own declaration:** a ``base_branch:`` naming the
-    checked-out branch makes that branch its own integration branch. That is
+    **Residual, by the repo's own declaration:** the base comes from
+    ``_resolve_base_branch``, which reads ``base_branch:`` from the working
+    tree and a bound plan's ``base:``, both editable on the branch itself. One
+    naming the checked-out branch makes it its own integration branch. That is
     also exactly what working on the integration branch itself looks like, and
-    ``base_branch:`` is the owner's statement of which branch that is.
+    both keys are the owner's statement of which branch that is.
     """
     from .core import (  # noqa: PLC0415
         YAML_UNPARSEABLE,
