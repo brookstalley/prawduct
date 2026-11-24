@@ -1,9 +1,15 @@
 ---
-description: File a bug report about PRAWDUCT ITSELF (its skills, hooks, gates, or methodology — not a bug in this product) as an issue on prawduct's own public tracker. Recomposes the report in prawduct's terms, shows you the exact bytes that would leave this repo, and sends nothing without your approval of them. Use when a prawduct gate/skill/hook misbehaves while you work in a product repo.
+description: File a bug report about PRAWDUCT ITSELF (its skills, hooks, gates, or methodology — not a bug in this product) as an issue on prawduct's own public tracker. Recomposes the report in prawduct's terms, shows you the exact bytes that would leave this repo, and sends nothing without your approval of them. Use when a prawduct gate/skill/hook misbehaves while you work in a product repo; in prawduct's own repo, use its receiving side to triage the reports products filed.
 argument-hint: "[short description of the prawduct bug]"
 user-invocable: true
 disable-model-invocation: false
 ---
+
+**Here to triage reports that products filed, in prawduct's own repo** (the
+`untriaged-upstream-reports` advisory sends you here)? Go straight to the
+section `## Receiving side — triage (when you ARE in the prawduct repo)` at the end of
+this file.
+Steps 1–6 are the filing side and do not apply.
 
 You are filing a bug report about **prawduct itself** — a defect in its skills,
 hooks, gates, `prawduct-hook` subcommands, `lib/`, or methodology — discovered
@@ -43,7 +49,8 @@ confirm before filing.
 **In the prawduct checkout itself, this skill is also the wrong channel.** A bug
 in prawduct found while working *on* prawduct is ordinary backlog work —
 `/prawduct:backlog add`. The adapter refuses a self-filing on its own (`self-file`),
-so you will be told; you can just skip the round trip.
+so you will be told; you can just skip the round trip. Triaging reports that
+products filed is the other end of this channel: § Receiving side, below.
 
 ## 2. Recompose the report in prawduct's terms
 
@@ -325,7 +332,15 @@ a count at session start and points here; it never quotes a report, so the count
 is the signal and reading them is the work. Triage each as below, and staging one
 is what takes it out of the count.
 
-**List the set the advisory counts with the query it counts from**:
+**Refresh the local copy first**: `prawduct-hook backlog sync --repo <backlog_service_repo>`.
+`cache-query` never touches the network, so a report someone filed after the last sync is
+missing from it, and an empty answer from a stale cache looks exactly like an empty intake. The
+session briefing's count was taken before this refresh, so the list may be longer than that
+count; that is not a defect. **If the sync exits non-zero, or the listing below carries
+`sync_error` or exits 6 (`unavailable`), the list is a floor, not the set.** Tell the operator the
+feed is stuck and how many reports it shows ("at least N"), never "none waiting"
+(`skills/backlog/cache-reads.md` "Reading the answer"). **Then list the set the advisory counts
+with the query it counts from**:
 `prawduct-hook backlog cache-query unstaged --repo <backlog_service_repo> --json`,
 keeping the rows whose title starts `[prawduct]`. Not `backlog list --untriaged`:
 that lists issues carrying no prawduct label *and* no `prawduct:` body block, and

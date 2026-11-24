@@ -181,7 +181,7 @@ class TestItCountsTheIntakeSet:
         assert len(out) == 1
         assert out[0].type == "untriaged-upstream-reports"
         assert out[0].trigger_summary.startswith("2 ")
-        assert out[0].recommended_action == "/prawduct:backlog"
+        assert out[0].recommended_action == "/prawduct:report-bug"
 
     def test_a_staged_report_has_been_triaged_and_drops_out(self, fake, tmp_path):
         """The whole point of the set: it empties as a maintainer works it."""
@@ -472,6 +472,59 @@ class TestUnknownIsNotNone:
             return compute_id(up.FEATURE, candidate.type, up.PROBE_VERSION, candidate.evidence)
 
         assert _id(counted) != _id(unknown)
+
+
+class TestEveryShapeRoutesToTheTriageSteps:
+    """The advisory's recommendation is the reader's next move, so it must lead to
+    the skill that holds the receiving-side steps, including the refresh before
+    listing. `/prawduct:backlog` has no upstream-triage route: an agent following
+    it listed from a stale cache, or with `list --untriaged`, which can never
+    show a report, and found nothing while reports waited."""
+
+    SKILL = _REPO_ROOT / "plugin" / "skills" / "report-bug" / "SKILL.md"
+
+    def _shapes(self, fake, tmp_path):
+        """One candidate per shape the probe can emit: a healthy count, a stalled
+        count, a stalled zero, and an unreadable cache."""
+        out = {}
+        (tmp_path / "healthy").mkdir()
+        (tmp_path / "empty").mkdir()
+        healthy = _repo(tmp_path / "healthy")
+        _filed_report(fake, component="pr", symptom="merge falls back to squash")
+        _rebuild(fake, healthy)
+        out["count"] = _run(healthy)
+        _stall_the_sync(healthy, failure="HTTP 401: Bad credentials")
+        out["stalled-count"] = _run(healthy)
+
+        fake_zero = FakeGitHub(user={"login": "agent-a", "id": 1})
+        empty = _repo(tmp_path / "empty")
+        _own_item(fake_zero, title="backlog: an item nobody has staged yet", area="backlog")
+        _rebuild(fake_zero, empty)
+        _stall_the_sync(empty, failure="HTTP 401: Bad credentials")
+        out["stalled-zero"] = _run(empty)
+
+        store = cache.cache_path(healthy)
+        store.unlink()
+        out["unreadable"] = _run(healthy)
+        return out
+
+    def test_each_shape_names_the_report_bug_skill(self, fake, tmp_path):
+        shapes = self._shapes(fake, tmp_path)
+        for name, candidates in shapes.items():
+            assert len(candidates) == 1, f"{name}: the shape did not fire"
+            assert candidates[0].recommended_action == "/prawduct:report-bug", name
+        # The four are distinct candidates, so a route fixed on one shape and
+        # not the others cannot pass by all four collapsing into one.
+        assert len({c[0].trigger_summary for c in shapes.values()}) == 4
+
+    def test_the_named_skill_holds_the_refresh_before_the_listing(self):
+        """Following the route reaches the steps: the skill it names carries the
+        receiving side, and that side refreshes before it lists."""
+        text = self.SKILL.read_text(encoding="utf-8")
+        receiving = text.split("## Receiving side", 1)[1]
+        sync = receiving.index("prawduct-hook backlog sync --repo")
+        listing = receiving.index("prawduct-hook backlog cache-query unstaged")
+        assert sync < listing
 
 
 class TestNothingAFilerWroteReachesTheReader:
