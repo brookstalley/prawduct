@@ -137,7 +137,7 @@ class TestSuiteCoupledState:
 
     def test_the_repro_path_is_suite_coupled_but_not_judgeable(self):
         """Both halves matter. Judgeable would demand a reviewer for a file the
-        batch-fix directive promises is free to write mid-review; not
+        batch-fix directive promises costs no new review between rounds; not
         suite-coupled is what let the change skip the suite."""
         path = ".prawduct/project-state.yaml"
         assert ca.is_judgeable_path(path) is False

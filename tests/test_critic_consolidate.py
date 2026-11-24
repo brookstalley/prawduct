@@ -1957,7 +1957,7 @@ _DIRECTIVE_PATH_CLASSES = {
 
 
 class TestBatchFixDirective:
-    """The directive states which writes are free mid-review. That is a prose
+    """The directive states which writes cost no new review between rounds. That is a prose
     restatement of ``coverage_algebra.is_judgeable_path``, so these tests parse
     the directive's own text and drive the assertions from it — drift in either
     direction fails, not just a predicate change.
@@ -1966,7 +1966,7 @@ class TestBatchFixDirective:
     catches a predicate that narrows, but leaves the cheaper mistake unguarded —
     editing the free-list alone (adding `docs/`, dropping `.claude/settings.json`)
     would keep the suite green while shipping a runtime message that tells a
-    builder to commit mid-review and lose their coverage."""
+    builder to commit between rounds and lose their coverage."""
 
     def test_the_directive_makes_no_positional_cross_reference(self):
         """It has TWO emission sites and they print different things after it:
@@ -2030,7 +2030,7 @@ class TestBatchFixDirective:
         With a hardcoded flag, *moving* a token between clauses — dropping
         `templates/` into the free list — left the suite green while shipping a
         message that tells a builder to edit a governance-protected file
-        mid-review and lose their coverage: the higher-cost direction.
+        between rounds and lose their coverage: the higher-cost direction.
         """
         from lib import coverage_algebra
 
@@ -2057,7 +2057,7 @@ class TestBatchFixDirective:
             assert coverage_algebra.is_judgeable_path(path) is expected_judgeable, (
                 f"the directive classifies {token} as "
                 f"{'costly' if expected_judgeable else 'free'} to write "
-                f"mid-review, but is_judgeable_path({path!r}) now disagrees. "
+                f"between rounds, but is_judgeable_path({path!r}) now disagrees. "
                 "Amend both together: a wrong 'free' claim costs a reader their "
                 "coverage, and a wrong 'costly' claim sends them to a round they "
                 "did not owe."
@@ -2091,7 +2091,7 @@ class TestBatchFixDirective:
         """The other direction, and the one hand-maintenance missed: every bound
         in the protected set (`buildplan_refs._GOVERNANCE_PROTECTED_PATHS`, the one
         home) must be named, or the directive calls a protected `.md` free to
-        write mid-review — which moves the tree the review is judging. Derived
+        write between rounds — which moves the tree the next review judges. Derived
         from the set, so a new member is covered the day it lands."""
         from lib import buildplan_refs
 
@@ -2099,6 +2099,28 @@ class TestBatchFixDirective:
             assert f"`{path}`" in cc._BATCH_FIX_DIRECTIVE, (
                 f"the directive does not name protected path `{path}`"
             )
+
+    def test_both_carriers_say_a_live_review_frees_only_session_files(self):
+        """`.prawduct/` is free of new review, not free while a review runs:
+        consolidation refuses any change outside prawduct's session files until
+        the builder attests it. The directive and `review-cycle.md` both carry
+        that, naming the flag the refusal asks for."""
+        flag = cc.TREE_CHANGED_FLAG
+        d = cc._BATCH_FIX_DIRECTIVE
+        assert f"`{flag}`" in d
+        assert d.index("While a review runs") < d.index("Free of new review")
+        cycle = (ROOT / "skills" / "critic" / "review-cycle.md").read_text(encoding="utf-8")
+        start = cycle.index("**Which writes cost no new review**")
+        paragraph = cycle[start: cycle.index("\n\n", start)]
+        assert "While a review runs, write only session files" in paragraph
+        assert f"`{flag}`" in paragraph
+
+    def test_the_session_files_a_builder_writes_are_exempt_from_the_tree_check(self):
+        """The two files the guidance sends a builder to while a review runs
+        must be ones consolidation exempts, or the advice buys the refusal."""
+        for path in (".prawduct/.session-reflected", ".prawduct/.handoff-notes.md"):
+            assert cc._is_session_file(path, ""), path
+        assert not cc._is_session_file(".prawduct/backlog.md", ""), "control"
 
     def test_directive_names_the_comment_only_trap(self):
         # The single most expensive misread of "free": a `.py` comment edit

@@ -222,8 +222,8 @@ def affects_test_outcome(
 
     Kept as a second function rather than a second rule inside
     :func:`is_judgeable_path` because review coverage must NOT widen here: the
-    ``_BATCH_FIX_DIRECTIVE`` tells a builder that ``.prawduct/`` writes are
-    free mid-review, and that promise stays true.
+    ``_BATCH_FIX_DIRECTIVE`` tells a builder that ``.prawduct/`` writes cost no
+    new review between review rounds, and that promise stays true.
 
     ``extra_prefixes`` carries the half that CANNOT ship: path prefixes a repo
     declares its own non-hermetic tests read. **Prefixes, not a prose rule** —
