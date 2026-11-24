@@ -91,12 +91,15 @@ _PLACEHOLDER_PASSWORD_SHAPES: tuple[re.Pattern[str], ...] = (
     re.compile(r"\*+|[xX]{3,}|\.{3}|…|\[REDACTED\]"),  # masked
 )
 
-#: A URL as one token: it runs to whitespace or a quote or comma, which end it in
-#: prose, code and JSON alike. Any second `@` inside it disqualifies the
-#: placeholder test, because `pw@Xk9/mQ@host` (a password holding an unencoded
-#: `@`) and `pw@host/x?to=a@b` (a placeholder, then an email) read alike, and
-#: the ambiguity is settled toward reporting: a waiver answers the second.
-_URL_TOKEN = re.compile(r"://[^\s\"'`,]*")
+#: A URL as one token. It ends ONLY at a character no URL holds unencoded:
+#: whitespace, a double quote or a backtick. Anything a URL may hold (`,` `'`
+#: `/` `?` `#` `<` …) may be inside a password, so ending earlier would let the
+#: piece before an unencoded `@` be judged as the password. Any second `@` in
+#: the token disqualifies the placeholder test: `pw@Xk9,mQ@host` (a password
+#: holding `@`) and `pw@host/x?to=a@b` (a placeholder, then an email) read
+#: alike, and the ambiguity is settled toward reporting; a waiver answers the
+#: second.
+_URL_TOKEN = re.compile(r"://[^\s\"`]*")
 
 #: A user segment that is a NAME (`postgres`, `x-access-token`, `APP_USER`),
 #: not a secret in the user position (an API key with a dummy password).

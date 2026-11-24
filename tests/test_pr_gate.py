@@ -783,6 +783,10 @@ class TestCredentialShapeClassifier:
             "url = https://" + "admin:ab@Xk9/mQ2vLr7@host",
             "url = postgres://" + "app:password@Kx9fPq?2mZ@db",
             "url = postgres://" + "app:pw@Kx9#2mZ@db",
+            # `,` `'` and `<` are legal in a URL too, so they cannot end it.
+            "url = https://" + "admin:ab@Xk9,mQ2vLr7@host",
+            "url = postgres://" + "app:pw@Kx9'2mZ@db",
+            "url = postgres://" + "app:<x>@Kx9mQ2vL@db",
             # The same syntax as a placeholder followed by an email in the query:
             # settled toward reporting, and a waiver answers it.
             "url = postgres://" + "app:password@db?notify=ops@example.com",
