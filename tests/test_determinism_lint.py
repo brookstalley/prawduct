@@ -530,7 +530,8 @@ class TestScanTree:
         repo, _changed, _base, _head = _change(
             tmp_path,
             {
-                "tests/fakes.py": "import time\nclass F:\n    def now(self):\n        return time.time()\n",
+                # Sorts BEFORE the conftest by path, so only the rank can put it second.
+                "tests/a_fakes.py": "import time\nclass F:\n    def now(self):\n        return time.time()\n",
                 "tests/conftest.py": (
                     "import myapp\n"
                     "import myapp.db  # prawduct:allow prawduct/test-scope -- registers fixtures\n"
@@ -541,7 +542,7 @@ class TestScanTree:
         result = determinism_lint.scan_tree(repo)
         assert [(s["check"], s["path"], s["line"]) for s in result["sites"]] == [
             (determinism_lint.CONFTEST_CHECK, "tests/conftest.py", 1),
-            (determinism_lint.CLOCK_FAKE_CHECK, "tests/fakes.py", 4),
+            (determinism_lint.CLOCK_FAKE_CHECK, "tests/a_fakes.py", 4),
         ]
         assert result["scanned"] >= 4  # conftest, fakes, helpers, both __init__s
 
