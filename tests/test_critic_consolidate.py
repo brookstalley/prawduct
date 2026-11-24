@@ -6177,6 +6177,46 @@ class TestDeclaredStaticContentDoesNotBuyTheCoordinator:
         assert roster == list(cc.COORDINATOR_ROSTER), why
 
 
+class TestEveryStatementOfTheVolumeThresholdNamesTheStaticException:
+    """The coordinator's volume threshold is restated wherever the roster rule
+    is explained. Each restatement must say declared static content is not
+    counted, or it tells its reader a static-heavy branch buys three reviewers.
+    Found by pattern, never by a list, so a new restatement is held to it too.
+    The replay table in `critic_consolidate.py` is a dated measurement taken
+    before static content existed, so code comments are not scanned."""
+
+    REPO = ROOT.parent
+    PATTERN = re.compile(r"\b12\+?\s+(?:non-static\s+)?judgeable|judgeable[^.]{0,20}>=\s*12")
+
+    def _surfaces(self) -> list[Path]:
+        return [
+            *sorted(ROOT.rglob("*.md")),
+            self.REPO / ".prawduct" / "artifacts" / "architecture.md",
+            self.REPO / ".prawduct" / "cross-cutting-concerns.md",
+        ]
+
+    def test_each_statement_names_the_exception(self):
+        # Each statement is judged on its own, with the words just after it,
+        # across line breaks: one line can hold two statements (a table row's
+        # cells), and one statement can wrap onto the next line.
+        found = []
+        for path in self._surfaces():
+            if "CHANGELOG" in path.name:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for m in self.PATTERN.finditer(text):
+                line = text.count("\n", 0, m.start()) + 1
+                window = text[m.start(): m.end() + 60]
+                found.append((str(path.relative_to(self.REPO)), line, "static" in window))
+        assert len(found) >= 6, f"the scan reached too few statements to mean anything: {found}"
+        assert [f for f in found if not f[2]] == [], found
+
+    def test_the_constant_names_it_too(self):
+        text = (ROOT / "lib" / "critic_consolidate.py").read_text(encoding="utf-8")
+        comment = text[: text.index("COORDINATOR_JUDGEABLE_THRESHOLD = ")].rsplit("\n\n", 1)[1]
+        assert "static" in comment, comment
+
+
 class TestBeginArchivesLeftovers:
     """A leftover manifest at critic-begin belongs to a review that never
     consolidated (consolidate removes everything on success). Deleting it

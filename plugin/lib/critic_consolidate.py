@@ -230,7 +230,8 @@ FULL_ROUND_MODES = tuple(t for t in MODE_TOKEN_TO_VERBOSE if t != "verify-resolu
 #
 # Size is kept only as an escalator, at the one threshold the data supports:
 # 5-11 judgeable files with no risk surface touched is 13 coordinator reviews
-# with ZERO blocking findings, so it demotes; 12+ escalates on volume alone.
+# with ZERO blocking findings, so it demotes; 12+ escalates on volume alone
+# (declared static content not counted: `_derive_roster`).
 SINGLE_PASS_ROSTER = ("reviewer",)
 COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
 
