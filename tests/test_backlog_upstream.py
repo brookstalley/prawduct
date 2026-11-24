@@ -341,6 +341,53 @@ class TestTheIntakeAsksForWhatDecidesAChunkRow:
             assert f"`{field}`" in ask, field
 
 
+class TestTheIntakeIsListedFresh:
+    """The intake listing reads the local cache, which holds nothing filed since
+    the last sync. So the receiving side refreshes first, and a refresh that fails
+    turns the list into a floor rather than an all-clear."""
+
+    SKILL = TestTheIntakeAsksForWhatDecidesAChunkRow.SKILL
+
+    def _step(self) -> str:
+        text = self.SKILL.read_text(encoding="utf-8")
+        start = text.index("**Refresh the local copy first**")
+        return text[start : text.index("Triage is done **on the issue itself**", start)]
+
+    def test_the_refresh_comes_before_the_listing(self):
+        step = self._step()
+        assert step.index("`prawduct-hook backlog sync --repo") < step.index(
+            "`prawduct-hook backlog cache-query unstaged --repo"
+        )
+
+    def test_a_failed_refresh_is_a_floor_never_an_all_clear(self):
+        step = self._step()
+        for signal in ("exits non-zero", "`sync_error`", "exits 6"):
+            assert signal in step, signal
+        assert '"at least N"' in step
+        assert 'never "none waiting"' in step
+        assert "`skills/backlog/cache-reads.md`" in step
+
+    def test_a_triage_caller_is_routed_past_the_filing_steps(self):
+        """The intake advisory sends its reader to this skill, which opens on the
+        filing side and whose step 1 calls itself the wrong channel in prawduct's
+        repo. So the opening, read before any step, must route a triager to the
+        receiving side by its exact heading."""
+        text = self.SKILL.read_text(encoding="utf-8")
+        body = text.split("\n---\n", 1)[1]
+        opening = body[: body.index("## 1.")]
+        heading = next(line for line in text.splitlines() if line.startswith("## Receiving side"))
+        assert "untriaged-upstream-reports" in opening
+        assert f"`{heading}`" in opening, heading
+
+    def test_both_named_ops_are_ones_the_cli_accepts(self):
+        result = subprocess.run(
+            [sys.executable, str(self.SKILL.parents[2] / "bin" / "prawduct-hook"), "backlog", "--help"],
+            capture_output=True, text=True, timeout=60,
+        )
+        ops = {line.split()[0] for line in result.stdout.splitlines() if line.startswith("  ") and line.split()}
+        assert {"sync", "cache-query"} <= ops, sorted(ops)
+
+
 class TestTheTrimmedBlockCarriesNothingElse:
     @pytest.mark.parametrize(
         "overrides",
