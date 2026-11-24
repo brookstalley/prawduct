@@ -5,8 +5,8 @@ A test's result depends only on what it exercises, and is the same on any machin
 A test that breaks this costs one of two things. Either its result cannot be trusted to repeat
 (determinism), or no runner can reuse a prior result, because the test depends on far more than it
 exercises, so an edit to any file re-runs it (reuse and closure breadth). The tests still pass,
-which is why none of this shows up until something measures it. Eight patterns account for nearly
-all of it. Stack-agnostic phrasing comes first; pytest names are examples.
+which is why none of this shows up until something measures it. The same eight patterns recur
+across products. Stack-agnostic phrasing comes first; pytest names are examples.
 
 ## The patterns
 
@@ -38,7 +38,14 @@ reviewer never raises, restates or re-derives them.
 | P3 (in a fake, helper or conftest) | `test-clock-fake` | warning | observation |
 | P4 | `test-clock-import` | warning | observation |
 
-- Only sites a change introduces count. A product's existing P1 never blocks an unrelated change.
+- Only sites a change introduces count. A product's existing P1 never blocks an unrelated change,
+  and a renamed file introduces nothing. `/prawduct:doctor` lists the sites that already exist.
+- What the detector reads today is Python. A *root* conftest is a `conftest.py` with none in any
+  directory above it. *First-party* code is a package or module at the repo root or under `src/`,
+  outside a test directory; a tree put on the import path some other way is not seen. An import
+  under `if TYPE_CHECKING:` is exempt. A package `__init__` counts under P2 when it imports every one
+  of its submodules and has at least three. P3 counts in conftests, fakes and helpers, not in a test
+  module's own tests.
 - A changed test file in a language with no rules is reported unchecked, never silently passed.
 - The reviewer judges what a static read cannot: a P3 read made several calls deep, and P5, P7 and
   P8. Each is a warning at the boundary and an observation inside; process- or conftest-wide

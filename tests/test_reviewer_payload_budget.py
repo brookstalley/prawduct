@@ -302,7 +302,7 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # exit 9 (a `cumulative` dispatch on a branch the PR's credential check would refuse), one row
     # pointing at the remedy stdout prints. Priced against the SUM: ~31 tokens per review against a
     # waiver met after the boundary review, which costs a verify round and, in a code file, a suite run.
-    "single-pass-inner": 5891,
+    "single-pass-inner": 5861,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -447,7 +447,7 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # exit 9 (a `cumulative` dispatch on a branch the PR's credential check would refuse), one row
     # pointing at the remedy stdout prints. Priced against the SUM: ~31 tokens per review against a
     # waiver met after the boundary review, which costs a verify round and, in a code file, a suite run.
-    "single-pass-full": 10295,
+    "single-pass-full": 10265,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -590,7 +590,7 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # partial schema admits `scope`, `closure` and `members`, the schema a reviewer is told to match
     # exactly. Priced as `failed_tests` was: ~33 tokens per dispatched reviewer against a class
     # finding closed short of its members (`tools/measure-class-member-closure.py`).
-    "dispatched-reviewer": 9754,
+    "dispatched-reviewer": 9724,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -702,7 +702,7 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # exit 9 (a `cumulative` dispatch on a branch the PR's credential check would refuse), one row
     # pointing at the remedy stdout prints. Priced against the SUM: ~31 tokens per review against a
     # waiver met after the boundary review, which costs a verify round and, in a code file, a suite run.
-    "coordinator-fork": 10965,
+    "coordinator-fork": 10935,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -750,7 +750,7 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # exit 9 (a `cumulative` dispatch on a branch the PR's credential check would refuse), one row
     # pointing at the remedy stdout prints. Priced against the SUM: ~31 tokens per review against a
     # waiver met after the boundary review, which costs a verify round and, in a code file, a suite run.
-    "coordinator-fork-inner": 6561,
+    "coordinator-fork-inner": 6531,
     # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
     # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
@@ -778,20 +778,22 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # partial schema admits `scope`, `closure` and `members`, the schema a reviewer is told to match
     # exactly. Priced as `failed_tests` was: ~33 tokens per dispatched reviewer against a class
     # finding closed short of its members (`tools/measure-class-member-closure.py`).
-    # +91 to every route on 2026-11-24 (test-determinism Chunk 02), DECLARED: Goal 1 gains the determinism
-    # and dependency-scope bullet in both `goals-1-3.md` and `review-protocol.md` (+91 each; every route
-    # reads one). Priced against the SUM: ~91 tokens per review against a clock read three calls deep in a
-    # fake, or a whole-tree scan at collection, shipping unflagged: the shapes no detector reads.
-    "dispatched-reviewer-inner": 5350,
+    # +61 to every route on 2026-11-24 (test-determinism Chunk 02), DECLARED: Goal 1 gains the determinism
+    # and dependency-scope bullet in both `goals-1-3.md` and `review-protocol.md` (+61 each; every route
+    # reads one). It names only what a reviewer judges: the detector's results reach the review through
+    # record-lint, whose never-restate rule both files already carry. Priced against the SUM: ~61 tokens
+    # per review against a clock read three calls deep in a fake, or a whole-tree scan at collection,
+    # shipping unflagged: the shapes no detector reads.
+    "dispatched-reviewer-inner": 5320,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5892,
-    "single-pass-full": 10296,
-    "dispatched-reviewer": 9755,
-    "coordinator-fork": 10966,
-    "coordinator-fork-inner": 6562,
-    "dispatched-reviewer-inner": 5351,
+    "single-pass-inner": 5862,
+    "single-pass-full": 10266,
+    "dispatched-reviewer": 9725,
+    "coordinator-fork": 10936,
+    "coordinator-fork-inner": 6532,
+    "dispatched-reviewer-inner": 5321,
 }
 
 
