@@ -490,3 +490,13 @@ template or variable whose content is a single-case name, or a mask. A real secr
 passes `check-pr-hygiene`; a mixed-case secret in a wrapper, or one holding an unencoded `@`, still refuses.
 The same message asked for both of the session's branches (`fix/yaml-inline-comment`,
 `fix/credential-placeholders`) to be opened as PRs and merged.
+
+**2026-11-24.** "Yep, let's PR and merge. And let's take care of the static documents. I agree with your
+interpretation about making it light rather than skipped." Answering the triage of #1239 (a branch of
+static documents pays the full code path):
+1. A repo-declared set of static-document paths gets a **lighter** review at the PR boundary (one
+   independent reviewer, no paired native review), **not** the doc-only route that skips review. The
+   review on the reporting branch found real defects in such content, and the standing ruling in
+   `coverage_algebra.is_judgeable_path` is to make review cheap, not skippable.
+2. `fix/report-bug-triage-sync` is to be opened as a PR and merged.
+The #1239 work lands in that item's build plan.
