@@ -453,3 +453,19 @@ PR are each merged once their gates pass.
 2. #1220's link rule is confirmed: an anchored verify-resolutions pass links to its recorded anchor alone. The accepted cost is that, in one worktree, a pass anchored to a `chunk` re-review of an already cumulative-reviewed tree does not credit that cumulative. Lands in `coverage_algebra.linked_reviews` and `critic_mode.review_chain`'s docstring.
 3. #1218's remaining cacheability blockers are filed as one backlog item.
 4. Testament's reading of an absolute `git log --since=<stamp>` / `HEAD@{@<epoch>}` as a clock read is reported to the testament repo.
+
+**2026-11-23.** "Yes to all": the six decisions in `documentation/issues/1222-1223-design.md` are accepted as
+recommended there:
+1. A blocker-free fix tail may reach the integration branch before a review reads it, as a deferral to the
+   release review only, and only together with the release check. No file-level coverage grant.
+2. The NFR "Review rigor is stage-keyed … the boundary runs everything and is never skipped" is to be amended
+   so the boundary may run per release batch for eligible work, as a per-repo opt-in.
+3. Eligibility is derived (no risk surface touched, judgeable files at or under a bound, the plan
+   short-plan-eligible), never declared. No `Review lane:` field.
+4. The opt-in is one repo-level key, `boundary_review: per_pr | per_release`, defaulting to `per_pr`. This repo
+   stays `per_pr`.
+5. The release check is one `check-boundary-coverage` op, called by `check-releasability` and the PR skill's
+   release guard. It ships advisory first, to count uncovered merges.
+6. A free interval after a review whose only open findings are warnings is refused as needing no round:
+   `pending_actionable` counts blocking findings only. This is its own small change.
+The same message also answered the #987 ask; #987's re-run is not due until its `revisit: 2026-12-01`.

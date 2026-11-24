@@ -971,7 +971,7 @@ Fail-direction is deliberate and per-purpose:
   an old number.)
 
   **`critic-begin` 3 — no review needed.** The dispatch interval holds no judgeable file
-  (`coverage_algebra.is_judgeable_path`) and no finding this mode could resolve, so the coverage gate
+  (`coverage_algebra.is_judgeable_path`) and no blocker this mode could resolve, so the coverage gate
   already composes it as a **free edge** and a review would record a fact nothing needs. It is a
   distinct code for the same reason `check-released` 3 is: both foldings are wrong. Folded into
   **0** the caller proceeds to spawn reviewers against a manifest that was never written; folded into

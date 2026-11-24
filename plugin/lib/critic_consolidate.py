@@ -3889,8 +3889,10 @@ def begin_review(
     "cleared_leftovers": bool, "manifest": {...}}`` or ``{"status": "error",
     "reason", "kind"?}`` where ``kind == "scope-widened"`` tells the CLI to
     exit 2 (the skill's demote-to-a-full-review signal), or ``{"status":
-    "no-review-needed", "reason", "free_files"}`` when the interval holds no
-    judgeable file and no finding this mode could resolve — the CLI exits 3.
+    "no-review-needed", "reason", "free_files", "open_warnings"?}`` when the
+    interval holds no judgeable file and no blocker this mode could resolve — the
+    CLI exits 3. ``open_warnings`` (a ``verify-resolutions`` refusal whose anchor
+    has warnings) names them with the disposition that records a free fix.
     That is a NO-OP, not a failure: the coverage gate already composes such an
     interval as a free edge, so the review would record a fact nothing needs.
     A ``verify-resolutions`` anchored to an unchanged tree with nothing
@@ -4137,14 +4139,22 @@ def begin_review(
     base_reviewed = None
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
-    # Findings a THIS-mode review could still resolve. Only verify-resolutions
-    # records resolution facts for an EARLIER review's findings (a review's own
-    # inherited-baseline waivers are written when it consolidates), so it is
-    # the only mode that can carry a nonzero
-    # value; for every other mode there is nothing outstanding that running it
-    # would clear. Read by the free-interval refusal below, where it is the
-    # conjunct that keeps the gate from deadlocking.
-    pending_actionable = 0
+    # BLOCKING findings a THIS-mode review could still resolve. Only
+    # verify-resolutions records resolution facts for an EARLIER review's
+    # findings (a review's own inherited-baseline waivers are written when it
+    # consolidates), so it is the only mode that can carry a nonzero value; for
+    # every other mode there is nothing outstanding that running it would clear.
+    # Read by the free-interval refusal below, where it is the conjunct that
+    # keeps the gate from deadlocking. Blockers only, and only those the gate
+    # still counts (owner ruling 2026-11-23, decision 6 of
+    # documentation/issues/1222-1223-design.md): the gate counts no warning, so
+    # a warning cannot wedge it, and a warning fixed over a free interval is
+    # recorded with `prawduct-hook disposition <review-id> <fid> --fixed
+    # <path>[,<path>...]` without a round (the refusal names them, below).
+    pending_blocking = 0
+    # The anchor's warnings, named by the free-interval refusal so a builder who
+    # fixed them in records is told how to record that rather than "Nothing to do".
+    prior_warnings: "list[str]" = []
     # The blockers the gate still counts at a `verify-resolutions` dispatch's
     # anchor tree, composed once (#334): they count as actionable below, and the
     # roll-call the reviewer reads names them. `None` for every other mode, and
@@ -4453,31 +4463,37 @@ def begin_review(
                     f"Re-dispatch as `{fallback}`: {why}."
                 ),
             }
-        prior_counts = prior_body.get("counts") or {}
-        actionable = (prior_counts.get("blocking") or 0) + (
-            prior_counts.get("warning") or 0
-        )
+        prior_warnings = [
+            str(f.get("fid"))
+            for f in (prior_body.get("findings") or [])
+            if isinstance(f, dict) and str(f.get("severity", "")).lower() == "warning" and f.get("fid")
+        ]
         # An EARLIER round's blocker the gate still counts is as actionable as
         # the anchor's: this pass's roll-call names it (#334), and the gate's
         # remedy routes it here. Not counting it would refuse, as "nothing to
         # verify", the one pass that can clear it. One the gate no longer counts
         # (a clean spanning review routed around it) is NOT actionable: counting
         # it would manufacture the round `no-review-needed` exists to spare.
-        # The prior's own findings are already in `prior_counts`, so they are
-        # excluded by the prior THIS dispatch chose, not by a re-derived anchor.
+        # The same holds for the anchor's own blockers, so they come from the
+        # same count (below), anchored on the prior THIS dispatch chose.
         store_facts = read_store().get("facts") or []
         verify_prior_id = prior.get("id")
         counted_blockers = gate_counted_blockers(
             project_dir, store_facts, base_tree, read=read_store()
         )
-        actionable += sum(
-            1
-            for c in carried_blocking(
+        # One counter for both exits below: the blockers the gate still counts at
+        # the anchor's tree, the anchor's own included (`carried_blocking` with no
+        # review of its own to exclude), or the anchor's unresolved blockers when
+        # that composition is unavailable. Not the anchor's raw count, which still
+        # holds a blocker since waived or resolved and so dispatched a round the
+        # gate no longer needs. A judgeable fix is reviewed whatever this says,
+        # because the free-interval refusal also requires no judgeable file.
+        actionable = len(
+            carried_blocking(
                 store_facts, base_tree, None, counted_blockers, anchor_id=verify_prior_id
             )
-            if c.get("review_id") != verify_prior_id
         )
-        pending_actionable = actionable
+        pending_blocking = actionable
         if not delta and not actionable:
             # Name the tree that was compared. Under the tree-inequality anchor
             # above, an empty delta means the working tree AND committed HEAD
@@ -4510,9 +4526,9 @@ def begin_review(
             return {
                 "status": "no-review-needed",
                 "reason": (
-                    "nothing to verify: the prior review has no blocking/warning "
-                    "findings, no earlier review of this branch carries an "
-                    f"unresolved blocker, and {head_anchor} ({head_tree[:12]}) is the same "
+                    "nothing to verify: no blocker the gate counts is open at "
+                    "the prior review's tree (its own or an earlier round's), and "
+                    f"{head_anchor} ({head_tree[:12]}) is the same "
                     f"tree it reviewed ({base_tree[:12]})"
                 ),
                 "free_files": [],
@@ -4599,14 +4615,15 @@ def begin_review(
     # BOTH conjuncts are load-bearing. Without the first, reviews of real code
     # are refused. Without the second the gate DEADLOCKS: a `blocked` verdict's
     # only remedy is a verify-resolutions pass, and refusing that pass over a
-    # free interval would leave findings raised on prose permanently
-    # unresolvable, with no command that clears them.
+    # free interval would leave blockers raised on prose permanently
+    # unresolvable, with no command that clears them. Warnings are not in it:
+    # the gate counts none, so none can deadlock it (`pending_blocking`).
     from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
 
     if (
         not force
         and not coverage_algebra.judgeable_files(files_changed)
-        and not pending_actionable
+        and not pending_blocking
     ):
         # Record the firing. The norm this control ships under ("a control
         # names the yield it expects and emits it observably") is what makes
@@ -4673,6 +4690,14 @@ def begin_review(
             # rides — this path used to drop the lot.
             "notes": notes,
             "recorded": recorded,
+            # The anchor's warnings, and how to record a fix of them that bought no
+            # round. Before decision 6 this pass ran and recorded them; now it is
+            # refused, so the refusal is where the builder learns the route.
+            **(
+                {"open_warnings": {"review_id": verify_prior_id, "fids": list(prior_warnings)}}
+                if mode_token == "verify-resolutions" and prior_warnings and verify_prior_id
+                else {}
+            ),
         }
 
     # Untracked files inside the tree this review will vouch for, named while
