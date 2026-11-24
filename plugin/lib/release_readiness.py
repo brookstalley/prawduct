@@ -624,7 +624,10 @@ def _boundary_coverage_lines(project_dir: Path) -> "list[tuple[str, bool]]":
     detail."""
     from . import boundary_coverage  # noqa: PLC0415 — lazy: it imports the consolidator
 
-    report = boundary_coverage.classify_pending(project_dir)
+    try:
+        report = boundary_coverage.classify_pending(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice beside a release gate: any fault in it is reported as a NOTE and must never become the gate's exit
+        return [(f"NOTE: boundary-coverage: could not evaluate — {type(exc).__name__}: {exc}.", True)]
     if report.status != "ok":
         return [(f"NOTE: boundary-coverage: could not evaluate — {report.reason}.", True)]
     # No refusal line: this runs below check-releasability's refusal return, so a
@@ -633,8 +636,8 @@ def _boundary_coverage_lines(project_dir: Path) -> "list[tuple[str, bool]]":
     for entry in report.entries:
         if entry.classification not in boundary_coverage.COVERED:
             lines.append((
-                f"NOTE: boundary-coverage: {entry.scope} is {entry.classification} — {entry.reason} "
-                "(`prawduct-hook check-boundary-coverage` lists every scope).",
+                f"NOTE: boundary-coverage: {entry.scope} is {entry.classification}, not covered — "
+                f"{entry.reason} (`prawduct-hook check-boundary-coverage` lists every scope).",
                 True,
             ))
     return lines

@@ -123,6 +123,11 @@ def _is_verify(fact: dict) -> bool:
     return critic_consolidate.mode_token_of((fact.get("body") or {}).get("mode")) == _VERIFY
 
 
+def _has_span(fact: dict) -> bool:
+    body = fact.get("body") or {}
+    return all(isinstance(body.get(k), str) and body.get(k) for k in ("base_tree", "head_tree"))
+
+
 class _Classifier:
     """One store read and one set of git answers, shared by every scope."""
 
@@ -134,7 +139,11 @@ class _Classifier:
         self.facts = facts
         reviews = [f for f in facts if f.get("kind") == "review"]
         others = [f for f in facts if f.get("kind") != "review"]
-        self.boundary = [f for f in reviews if _is_boundary(f)]
+        # A boundary fact whose trees are not strings cannot be a span: the store
+        # keeps every line it was ever given, so a malformed one is skipped here
+        # rather than crashing every later release check.
+        self.boundary = [f for f in reviews if _is_boundary(f) and _has_span(f)]
+        self.others = others
         self.boundary_facts = others + self.boundary
         self.tail_facts = others + [f for f in reviews if _is_verify(f)]
         self._diff_fn = gates._cached_diff_fn(project_dir)
@@ -167,7 +176,12 @@ class _Classifier:
 
     def adding_commit(self, scope: str) -> "str | None":
         rel = f"{change_fragments.FRAGMENT_DIR_REL}/{scope}.md"
-        out = self._git("log", "--first-parent", "--diff-filter=A", "--format=%H", self.base, "--", rel)
+        # `-m` with `--first-parent` diffs each merge against its first parent on
+        # every git (only 2.31+ implies it). A fragment moved in from another path
+        # still reads as an add: the pathspec filters before rename detection runs,
+        # so the deleted source is never in the diff to be paired with it.
+        out = self._git("log", "--first-parent", "-m", "--diff-filter=A",
+                        "--format=%H", self.base, "--", rel)
         if not out:
             return None
         # The NEWEST add: a release deletes shipped fragments, so a scope name used
@@ -186,10 +200,17 @@ class _Classifier:
         return entry
 
     def classify_commit(self, commit: str) -> Entry:
+        resolved = self._git("rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}")
+        if not resolved:
+            return Entry("", UNKNOWN, "git does not know that commit", commit)
+        commit = resolved  # the full name, which the first-parent line is keyed by
         subject = self._git("log", "-1", "--format=%s", commit) or ""
         parents = (self._git("rev-list", "--parents", "-n", "1", commit) or "").split()[1:]
         if not parents:
             return Entry("", UNKNOWN, "a root commit, or git could not read its parents", commit, subject)
+        if len(parents) > 2:
+            return Entry("", UNKNOWN, f"an octopus merge of {len(parents) - 1} branches, which this "
+                                      "classification reads one branch at a time", commit, subject)
         if len(parents) == 1:
             changed = self._judgeable(parents[0], commit)
             if changed is None:
@@ -213,20 +234,39 @@ class _Classifier:
         if not span_base or not span_head:
             return Entry("", UNKNOWN, "git could not read the merged branch's trees", commit, subject)
 
+        # The merge commit's own content (a conflict resolution, or an edit made in
+        # the merge) is in neither parent, so no review of the branch read it.
+        resolved_here = self._merge_only_judgeable(commit)
         overall = self._verdict(self.facts, span_base, span_head)
-        if overall == "covered" and self._boundary_split(merge_base, tip, span_base, span_head):
+        if (overall == "covered" and not resolved_here
+                and self._boundary_split(merge_base, tip, span_base, span_head)):
             return Entry("", PR_COVERED, "a boundary review covered the branch at its PR; only fix "
                                          "verification followed it", commit, subject)
         batch = self._batch_review(commit, first)
         if batch is not None:
             return Entry("", BATCH_COVERED, f"boundary review {batch} spans the merge", commit, subject)
+        if resolved_here:
+            return Entry("", UNCOVERED, f"the merge commit itself changes {len(resolved_here)} judgeable "
+                                       "file(s) beyond both parents, and no review read the merge",
+                         commit, subject)
         if overall == "covered":
             return Entry("", INNER_ONLY, "the branch's coverage composes only through inner-stage reviews",
                          commit, subject)
         if overall == "blocked":
             return Entry("", UNCOVERED, "an unresolved blocking finding stands on the branch's coverage",
                          commit, subject)
-        return Entry("", UNCOVERED, "no review evidence composes over the branch", commit, subject)
+        return Entry("", UNCOVERED, "no review evidence composes over the branch (if it was reviewed "
+                                    "in another clone, `prawduct-hook evidence sync` brings the "
+                                    "reviews here)", commit, subject)
+
+    def _merge_only_judgeable(self, commit: str) -> list:
+        """Judgeable files the merge's tree holds in a state neither parent had: the
+        combined diff (`--cc`) lists exactly those. An unreadable answer counts as
+        one, so the merge reads not covered rather than covered."""
+        out = self._git("diff-tree", "--cc", "--no-commit-id", "--name-only", "-r", commit)
+        if out is None:
+            return ["<git could not read the merge's combined diff>"]
+        return [p for p in out.splitlines() if p and coverage_algebra.is_judgeable_path(p)]
 
     def _boundary_split(self, merge_base: str, tip: str, span_base: str, span_head: str) -> bool:
         trees = self._git("log", "--format=%T", f"{merge_base}..{tip}")
@@ -234,8 +274,12 @@ class _Classifier:
             return False
         branch_trees = set(trees.split()) | {span_head}
         for fact in self.boundary:
-            split = (fact.get("body") or {}).get("head_tree")
-            if split not in branch_trees:
+            body = fact.get("body") or {}
+            split = body["head_tree"]
+            # A candidate's head is a tree of the branch, or its base is the span's
+            # base or a tree of the branch: a cumulative over a dirty tree records
+            # a head no commit has, and still splits the span if the tail composes.
+            if split not in branch_trees and body["base_tree"] not in branch_trees | {span_base}:
                 continue
             if (self._verdict(self.boundary_facts, span_base, split) == "covered"
                     and self._verdict(self.tail_facts, split, span_head) == "covered"):
@@ -261,7 +305,12 @@ class _Classifier:
             # before the merge's first parent; its head at or after the merge.
             if not any(i >= before for i in older) or not any(i <= at_merge for i in newer):
                 continue
-            if self._verdict(self.facts, body["base_tree"], body["head_tree"]) == "covered":
+            # The review it names must itself span the bracket: composing over every
+            # fact would let chunk reviews carry it, naming a review that never
+            # vouched for the merge. Blockers still settle over every fact.
+            alone = self.others + [fact]
+            if (self._verdict(alone, body["base_tree"], body["head_tree"]) == "covered"
+                    and self._verdict(self.facts, body["base_tree"], body["head_tree"]) == "covered"):
                 return str(fact.get("id"))
         return None
 
@@ -331,7 +380,11 @@ def render(report: Report) -> str:
     """The human report: one line per scope, then the count line with its denominator."""
     if report.status != "ok":
         return f"check-boundary-coverage: could not evaluate — {report.reason}"
-    lines = [f"{e.classification:13} {e.scope}  {(e.commit or '')[:8]}  {e.reason}" for e in report.entries]
+    lines = [
+        f"{e.classification:13} {e.scope}  {(e.commit or '')[:8]}  {e.reason}"
+        + ("" if e.classification in COVERED else "  [not covered]")
+        for e in report.entries
+    ]
     lines.append(count_line(report))
     if report.refusals:
         lines.append(f"not classified: {len(report.refusals)} fragment(s) the pending set refused — "

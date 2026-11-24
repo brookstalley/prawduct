@@ -417,3 +417,125 @@ class TestThisRepositorysHistory:
             pytest.skip(f"this clone's evidence store lacks #1231's reviews {missing}")
         entry = bc.classify_merge(ROOT, _PR_1231_MERGE)
         assert entry.classification == bc.PR_COVERED, entry
+
+
+class TestTheBoundaryReviewsFixes:
+    """The strict direction, against the shapes the boundary review found: each
+    one could otherwise have read covered over work no boundary review read."""
+
+    def test_a_batch_review_that_never_read_the_merge_does_not_cover_it(self, repo):
+        """The named review must span the bracket on its own. Here the boundary
+        fact reviewed none of the changed files, so only a chunk review composes,
+        and naming the boundary review would claim it vouched for the merge."""
+        before = _tree(repo, "main")
+        _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
+        merge = _merge(repo, "f")
+        after = _tree(repo, merge)
+        hollow = {"base_tree": before, "head_tree": after, "files_changed": evidence.tree_diff(repo, before, after),
+                  "files_reviewed": [], "findings": [], "mode": CUMULATIVE}
+        assert evidence.append_fact(repo, "review", "rev-bc-hollow", hollow)["status"] == "appended"
+        _review(repo, before, after, CHUNK)
+        entry = _classify(repo, merge)
+        assert entry.classification == bc.UNCOVERED and "rev-bc-hollow" not in entry.reason, entry
+
+    def test_a_merge_commits_own_edit_blocks_pr_covered(self, repo):
+        base = _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        _review(repo, base, _tree(repo), CUMULATIVE)
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "--no-commit", "f")
+        _write(repo, "src/a.py", "a = 999  # changed in the merge\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "merge f, edited")
+        entry = _classify(repo, _git(repo, "rev-parse", "HEAD"))
+        assert entry.classification == bc.UNCOVERED and "merge commit itself" in entry.reason, entry
+
+    def test_a_clean_merge_has_no_merge_only_content(self, repo):
+        """Control for the test above: the same merge, not edited, stays covered."""
+        base = _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        _review(repo, base, _tree(repo), CUMULATIVE)
+        assert _classify(repo, _merge(repo, "f")).classification == bc.PR_COVERED
+
+    def test_a_cumulative_over_a_dirty_tree_still_splits_the_span(self, repo):
+        """The review's head is a tree no commit has (the working tree it captured);
+        the fix verification from it to the tip completes the span."""
+        base = _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        _write(repo, "src/a.py", "a = 2\n")
+        _git(repo, "add", "-A")
+        dirty = _git(repo, "write-tree")
+        _git(repo, "reset", "-q", "--hard", "HEAD")
+        _review(repo, base, dirty, CUMULATIVE)
+        _commit(repo, {"src/a.py": "a = 3\n"}, "fix")
+        _review(repo, dirty, _tree(repo), VERIFY)
+        assert _classify(repo, _merge(repo, "f")).classification == bc.PR_COVERED
+
+    def test_a_short_commit_name_reads_as_the_full_one(self, repo):
+        before = _tree(repo, "main")
+        _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
+        merge = _merge(repo, "f")
+        _review(repo, before, _tree(repo, merge), CUMULATIVE)
+        entry = _classify(repo, merge[:9])
+        assert (entry.classification, entry.commit) == (bc.BATCH_COVERED, merge), entry
+
+    def test_an_octopus_merge_is_unknown(self, repo):
+        for name in ("o1", "o2"):
+            _branch(repo, name)
+            _commit(repo, {f"src/{name}.py": "x = 1\n"}, name)
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "octopus", "o1", "o2")
+        entry = _classify(repo, _git(repo, "rev-parse", "HEAD"))
+        assert entry.classification == bc.UNKNOWN and "octopus" in entry.reason, entry
+
+    def test_a_fragment_git_would_pair_as_a_rename_is_still_found(self, repo):
+        text = _fragment("f")[".prawduct/changes/f.md"]
+        _commit(repo, {"notes/draft.md": text}, "a draft on main")
+        _branch(repo, "f")
+        (repo / ".prawduct" / "changes").mkdir(parents=True)
+        _git(repo, "mv", "notes/draft.md", ".prawduct/changes/f.md")
+        _commit(repo, {"src/a.py": "a = 1\n"}, "work")
+        merge = _merge(repo, "f")
+        (entry,) = bc.classify_pending(repo).entries
+        assert entry.commit == merge and entry.classification == bc.UNCOVERED, entry
+
+    def test_a_malformed_boundary_fact_is_skipped_not_fatal(self, repo):
+        """The store keeps every line it was given: a boundary fact whose trees are
+        not strings must not crash every later release check."""
+        base = _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        bad = {"base_tree": [base], "head_tree": {"x": 1}, "files_changed": [], "files_reviewed": [],
+               "findings": [], "mode": CUMULATIVE}
+        assert evidence.append_fact(repo, "review", "rev-bc-bad", bad)["status"] == "appended"
+        _review(repo, base, _tree(repo), CUMULATIVE)
+        _merge(repo, "f")
+        assert bc.classify_pending(repo).entries[0].classification == bc.PR_COVERED
+
+    def test_the_report_marks_each_scope_not_covered(self, repo):
+        _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        _merge(repo, "f")
+        _branch(repo, "d")
+        _commit(repo, {"README.md": "x\n", **_fragment("d")}, "docs")
+        _merge(repo, "d")
+        lines = {line.split()[1]: line for line in bc.render(bc.classify_pending(repo)).splitlines()[:-1]}
+        assert lines["f"].endswith("[not covered]") and not lines["d"].endswith("[not covered]"), lines
+
+
+def test_the_pr_skill_names_only_ops_the_hook_dispatches():
+    """The release guard tells the agent to run an op; a renamed op would leave
+    the skill naming nothing while every other test stays green."""
+    import re as _re
+
+    hook = HOOK.read_text(encoding="utf-8")
+    dispatched = set(_re.findall(r'command == "([a-z][a-z0-9-]*)"', hook))
+    skill = (ROOT / "plugin" / "skills" / "pr" / "SKILL.md").read_text(encoding="utf-8")
+    named = set(_re.findall(r"`prawduct-hook ([a-z][a-z0-9-]*)", skill))
+    assert "check-boundary-coverage" in named, "the release guard must name the op"
+    assert named <= dispatched, sorted(named - dispatched)

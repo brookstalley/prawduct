@@ -47,6 +47,7 @@ partition: serial — 02 reads 01's classification and its --json, and both chun
 
 **Tradeoffs accepted:**
 - A squash-merged PR has no second parent to read a branch tip from, and git cannot tell it from work committed on the base, so it reads `direct` with a reason naming both. This repo merges with merge commits; revisit if a consumer squashes.
+- Only commits that ADD a pending fragment are classified. A judgeable commit on the base that adds none (a direct fix, or a PR merged outside `/prawduct:pr` with no change record) is invisible, so the count can read "N of N covered" over unreviewed work. Finding every first-parent commit since the last release needs a release anchor on `develop`, which pruned single-parent promotions don't give. Wave 2 must build that anchor before this answer gates anything (recorded on #1232). Advice can carry the limit; a gate cannot.
 - The PR skill's release guard gets prose naming the op, not a new gate. It is advice and the skill already stops there; wave 2 decides whether that stop becomes a check.
 
 **Inferred (owner did not rule these; the boundary review should check them):**
@@ -62,6 +63,17 @@ partition: serial — 02 reads 01's classification and its --json, and both chun
 - Chunk 01: a squash merge reads `direct`, not `unknown`. A squash commit has one parent, like work committed on the base, and the classification can't tell them apart; both are "no PR boundary on record". Settled by the Goals' strictness rule: the reading says not-covered either way.
 - Chunk 01: `pr-covered` also requires the composition over ALL facts to be covered, not only the restricted halves. An inner review's open blocker at the tip blocks the PR gate, so it must block this reading too. The surviving mutant of the sweep found this, and it is pinned.
 - Chunk 01 review round 1: the pending fragment joins to its NEWEST adding commit (a release deletes shipped fragments, so a reused scope is pending through its latest add). Refused fragments are named in the report, not dropped. Facts a newer plugin wrote make the report unevaluable, since one could be a review with an open blocker. The #1231 real-store test is `requires_local_cache`, because the evidence store is per clone and never committed.
+- Boundary review (rev-20261124T044504Z-ac4ab539) fixes, each red-verified:
+  - the advice has a fault boundary in check-releasability, and malformed boundary facts are skipped;
+  - a batch review must span the merge on its own;
+  - a merge commit's own judgeable edits block `pr-covered`;
+  - a dirty-tree cumulative can split the span;
+  - short commit names are resolved, and octopus merges read `unknown`;
+  - `-m` on the fragment lookup is for git before 2.31 (a survivor on modern git, by design);
+  - not-covered lines are marked by the code's covered set, which the docs point at;
+  - `uncovered` names `evidence sync`.
+
+  The native review's rename claim did not hold: a path-limited log never pairs the moved fragment with its source, so `--no-renames` changed nothing, and a test pins the moved-fragment case instead.
 - Chunk 02: check-releasability prints no refused-fragment line. It runs below that gate's own refusal return, so a refused fragment never reaches the advice, and a line for it would be unreachable.
 - Chunk 02: the count line has one owner, `boundary_coverage.count_line`, read by the op's report and by check-releasability, rather than being sliced out of the rendered report by position.
 - Chunk 01: exit 0 whenever the op answered and 3 when it could not evaluate (no base, an unreadable change record or store), per the api-contract exit scheme. The op is in `_EPHEMERAL_SAFE_COMMANDS` because it writes no repo state; the shared tree-key cache it updates is the same write `check-cumulative-critic` makes.

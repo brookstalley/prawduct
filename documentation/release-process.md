@@ -169,9 +169,9 @@ same set in executable running order, and is the document to work from when actu
    anything on this path reading a test result. The gate fails
    closed; its withheld count also selects the promotion shape at step 1. It also prints which
    pending merges a boundary review covered: a `boundary coverage: N of M …` line, and a
-   `NOTE: boundary-coverage:` line per scope not covered (`prawduct-hook check-boundary-coverage`
-   lists every scope with its reason). Those lines are advice and never change its exit. Read a
-   `direct` or `uncovered` scope as work no boundary review read before it ships. Full branch-by-branch
+   `NOTE: boundary-coverage: … not covered` line for each scope the op does not count as covered
+   (`prawduct-hook check-boundary-coverage` lists every scope with its reason). Those lines are
+   advice and never change its exit. Read each NOTE as work no boundary review read, before it ships. Full branch-by-branch
    handling is Phase 0 of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.
 1. **Merge `develop` → `main`.**
 2. **Bump the version** in `plugin/.claude-plugin/plugin.json` `version` **and** `plugin/VERSION` **and** `pyproject.toml`

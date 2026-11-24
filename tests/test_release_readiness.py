@@ -2222,3 +2222,19 @@ class TestTheBoundaryAdviceNeverMovesTheVerdict:
         out = capsys.readouterr()
         assert "NOTE: boundary-coverage: could not evaluate" in out.err
         assert "releasable: v3.2.0" in out.out
+
+    def test_a_fault_inside_the_advice_is_a_note_and_never_the_exit(self, tmp_path, capsys, monkeypatch):
+        """Advice fails soft: whatever the classifier raises, the gate reports it as
+        a NOTE and returns the verdict the rest of the gate computed."""
+        from lib import boundary_coverage  # noqa: PLC0415
+
+        project = _merged_release(tmp_path, reviewed=True)
+
+        def boom(_project_dir):
+            raise RuntimeError("a store line no reader expected")
+
+        monkeypatch.setattr(boundary_coverage, "classify_pending", boom)
+        assert release_readiness.check_releasability(project, release="v3.2.0") == 0
+        out = capsys.readouterr()
+        assert "NOTE: boundary-coverage: could not evaluate — RuntimeError: a store line" in out.err
+        assert "releasable: v3.2.0" in out.out
