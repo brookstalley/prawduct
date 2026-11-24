@@ -59,6 +59,7 @@ re-derive or recount one. `chunk_graded`/`plan_graded` name the subject; `null` 
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change record.
 - Changed/added behavior has test coverage → **BLOCKING** if untested.
 - Tests are well-structured (behavior not implementation, edge cases, meaningful assertions) → **WARNING** if quality poor.
+- **Determinism and dependency scope** (`docs/test-determinism.md`): in changed tests, conftests, fixtures and fakes, a clock or randomness read made calls deep, build output or tool state in the tree, a collection-time whole-tree scan, or a write into the checkout → **WARNING**; process- or conftest-wide outranks one test.
 - **No-behavior-change refactor**: output assertions are exact-match, not substring/contains (substring misses drift — double-prefix, error wrappers) → **WARNING**.
 - For math, data transforms, serialization, complex validation: if test-specs call for property-based tests and they're absent → observation.
 - **Security in changed code:** input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable; no injection vectors — SQL, command, XSS, path traversal → **BLOCKING**; no hardcoded secrets or credentials → **BLOCKING**; auth/authz on new endpoints or state-changing operations → **WARNING** if missing; dependencies with known critical vulnerabilities → **WARNING**.
