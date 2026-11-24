@@ -2552,7 +2552,8 @@ def _derive_roster(
             if not coverage_algebra.is_static_content(p, declared.static, declared.coupled)
         )
         discounted = len(judgeable) - nj
-        why_not = f"; {declared.note}" if declared.note else ""
+        why_not = declared.note_for(judgeable)
+        why_not = f"; {why_not}" if why_not else ""
     counted = f"{nj} judgeable file(s)" + (
         f" ({discounted} declared static, not counted)" if discounted else ""
     ) + why_not

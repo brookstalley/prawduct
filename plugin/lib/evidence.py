@@ -1580,7 +1580,7 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
     reason, which withholds the stamp: the safe direction costs a later re-run,
     never a false green.
     """
-    from . import core, coverage_algebra  # noqa: PLC0415 — lazy: leaf modules, ingest-only
+    from . import coverage_algebra  # noqa: PLC0415 — lazy: leaf modules, ingest-only
 
     if not reports:
         return None

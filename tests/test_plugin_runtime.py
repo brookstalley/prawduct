@@ -3647,6 +3647,95 @@ class TestStaticContentPrefixesDeclaration:
         assert "declared-static" not in reason, reason
 
 
+class TestTheDeclarationsInForce:
+    """`coverage.suite_declarations`, the one owner: which declarations a check
+    judges a tree under."""
+
+    def _repo(self, tmp_path: Path, *, branch: str = "master") -> Path:
+        repo = tmp_path / "repo"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / "design" / "static").mkdir(parents=True)
+        (repo / "documentation").mkdir()
+        _git(repo, "init", "-b", branch)
+        return repo
+
+    def _commit(self, repo: Path, state: str, msg: str) -> str:
+        (repo / ".prawduct" / "project-state.yaml").write_text(state)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", msg, "--allow-empty")
+        return _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    def _coverage(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import coverage  # noqa: PLC0415
+        return coverage
+
+    def test_the_head_tilde_one_fallback_authorises_nothing(self, tmp_path):
+        """A `master` trunk with no `main` resolves only the moving fallback, whose
+        merge-base is the branch's own previous commit."""
+        coverage = self._coverage()
+        repo = self._repo(tmp_path)
+        self._commit(repo, "static_content_prefixes:\n  - design/\n", "declare")
+        self._commit(repo, "static_content_prefixes:\n  - design/\n", "work")
+        assert coverage._resolve_base_branch(repo)[0] == coverage.MOVING_FALLBACK_BASE, "fixture"
+        declared = coverage.suite_declarations(repo, "HEAD")
+        assert declared.static == ()
+        assert "no integration branch resolves" in declared.note
+
+    def test_a_branch_may_narrow_an_inherited_prefix(self, tmp_path):
+        coverage = self._coverage()
+        repo = self._repo(tmp_path, branch="main")
+        self._commit(repo, "static_content_prefixes:\n  - design/\n", "base")
+        _git(repo, "checkout", "-b", "feat")
+        self._commit(repo, "static_content_prefixes:\n  - design/static/\n", "narrow")
+        declared = coverage.suite_declarations(repo, "HEAD")
+        assert declared.static == ("design/static/",)
+        assert declared.note == ""
+
+    def test_a_branch_cannot_widen_one(self, tmp_path):
+        coverage = self._coverage()
+        repo = self._repo(tmp_path, branch="main")
+        self._commit(repo, "static_content_prefixes:\n  - design/static/\n", "base")
+        _git(repo, "checkout", "-b", "feat")
+        self._commit(repo, "static_content_prefixes:\n  - design/\n", "widen")
+        declared = coverage.suite_declarations(repo, "HEAD")
+        assert declared.static == ()
+        assert declared.pending == ("design/",)
+
+    def test_the_not_in_force_note_bears_only_on_paths_under_a_pending_prefix(self, tmp_path):
+        coverage = self._coverage()
+        repo = self._repo(tmp_path, branch="main")
+        self._commit(repo, "static_content_prefixes:\n  - design/\n", "base")
+        _git(repo, "checkout", "-b", "feat")
+        self._commit(repo, "static_content_prefixes:\n  - design/\n  - site/\n", "add site")
+        declared = coverage.suite_declarations(repo, "HEAD")
+        assert declared.static == ("design/",)
+        assert declared.note_for(["src/app.py"]) == ""
+        assert "site/" in declared.note_for(["site/index.html"])
+
+    def test_an_uncommitted_coupling_removal_keeps_a_prose_change_stale(self, tmp_path):
+        """Both trees and the base couple `documentation/`, which holds prose the
+        suite reads; only the working tree has dropped it. The changed file is
+        not judgeable, so nothing but the coupling union can stale the run."""
+        coverage = self._coverage()
+        from lib import gates  # noqa: PLC0415
+
+        repo = self._repo(tmp_path, branch="main")
+        coupled = "suite_coupled_prefixes:\n  - documentation/\n"
+        (repo / "documentation" / "guide.md").write_text("# a\n")
+        self._commit(repo, coupled, "base")
+        _git(repo, "checkout", "-b", "feat")
+        t0 = self._commit(repo, coupled, "run here")
+        (repo / "documentation" / "guide.md").write_text("# b\n")
+        t1 = self._commit(repo, coupled, "prose change")
+        (repo / ".prawduct" / "project-state.yaml").write_text("other_key: 1\n")
+        assert coverage.suite_declarations(repo, "HEAD").coupled[:1] == ("documentation/",)
+        met, reason = gates._tree_met(repo, t0, t1)
+        assert met is False, reason
+        assert "documentation/guide.md" in reason
+
+
 class TestStaticContentDoesNotWithholdAnIngestedRun:
     """The `--from-junit` ingest asks the same freshness question at another
     site: a file the suite reads, newer than the run's start, withholds the tree

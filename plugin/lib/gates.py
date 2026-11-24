@@ -55,11 +55,7 @@ from . import (
     verdict_cache,
     work_unit,
 )
-from .core import (
-    FLAG_UNREADABLE,
-    read_bool_flag,
-    suite_coupled_prefixes,
-)
+from .core import FLAG_UNREADABLE, read_bool_flag
 
 
 _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
@@ -723,40 +719,41 @@ def _tree_met(
     same: str = "the run met this exact tree",
     differ: str = "differ between the run and the target",
     clean: str = "only paths that cannot change the suite's outcome differ between the run and the target",
+    *,
+    base: "coverage.IntegrationBase | None" = None,
 ) -> "tuple[bool | None, str]":
     """Did a run on ``recorded_tree`` meet ``target_tree``? ``True`` / ``False``,
     or ``None`` when the comparison itself could not run (a missing object, a
     git failure) — the third answer :func:`_test_evidence_tree_valid` folds into
     ``False`` for its callers, and :func:`_store_run_vouching` must keep apart:
-    "cannot tell" has to deny a red run's claim to this tree, never waive it."""
+    "cannot tell" has to deny a red run's claim to this tree, never waive it.
+    ``base`` is the integration base when the caller already resolved it."""
     if target_tree == recorded_tree:
         return True, same
     changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
     if changed is None:
         return None, "tree diff unavailable (missing object or git failure)"
     # The repo's own declarations are passed HERE and NOT at the doc-only PR
-    # gate: this is the freshness question. See `affects_test_outcome`. They are
-    # read only when something judgeable is left to classify, because a repo
-    # that declares nothing must not pay git reads for an answer it cannot use.
-    coupled = coverage_algebra.suite_coupled_files(
-        changed, suite_coupled_prefixes(project_dir / ".prawduct")
-    )
-    if not coupled:
-        return True, f"{clean} ({len(changed)} metadata/doc file(s))"
-    declared = coverage.suite_declarations(project_dir, recorded_tree)
+    # gate: this is the freshness question. See `affects_test_outcome`. Read
+    # whenever anything changed: the coupling in force is a union reaching past
+    # the working tree, so no working-tree-only answer can be trusted first.
+    declared = coverage.suite_declarations(project_dir, recorded_tree, base=base)
     coupled = coverage_algebra.suite_coupled_files(changed, declared.coupled, declared.static)
     if coupled:
         preview = ", ".join(coupled[:3]) + ("…" if len(coupled) > 3 else "")
-        why_not = f"; {declared.note}" if declared.note else ""
+        why_not = declared.note_for(coupled)
+        why_not = f"; {why_not}" if why_not else ""
         return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview}){why_not}"
     n_static = sum(
         1 for p in changed
         if coverage_algebra.is_static_content(p, declared.static, declared.coupled)
     )
-    return True, (
-        f"{clean} ({len(changed) - n_static} metadata/doc and "
-        f"{n_static} declared-static file(s))"
-    )
+    if n_static:
+        return True, (
+            f"{clean} ({len(changed) - n_static} metadata/doc and "
+            f"{n_static} declared-static file(s))"
+        )
+    return True, f"{clean} ({len(changed)} metadata/doc file(s))"
 
 
 def _store_run_vouching(
@@ -876,6 +873,7 @@ def _store_run_vouching(
     candidates.sort(key=lambda c: c["ts"], reverse=True)
 
     seen: set = set()
+    base: "coverage.IntegrationBase | None" = None  # resolved once, on first use
     for candidate in candidates:
         tree = candidate["tree"]
         key = tree if tree is not None else ("no-tree", candidate["ts"])
@@ -883,7 +881,9 @@ def _store_run_vouching(
             continue
         seen.add(key)
         refused = bool(run_refusal(candidate["run"]))
-        met, why = (None, "") if tree is None else _tree_met(project_dir, tree, target_tree)
+        if tree is not None and base is None:
+            base = coverage.integration_base(project_dir)
+        met, why = (None, "") if tree is None else _tree_met(project_dir, tree, target_tree, base=base)
         if met is None:
             met = refused  # cannot tell: a refused run denies, a green one proves nothing
         if not met:
@@ -4342,7 +4342,9 @@ def verify_coverage(project_dir: Path) -> int:
     # declarations in force are HEAD's, as the diff judged here is, and a
     # static one only once the integration branch carries it
     # (`coverage.suite_declarations`).
-    declared = coverage.suite_declarations(project_dir, "HEAD")
+    declared = coverage.suite_declarations(
+        project_dir, "HEAD", base=coverage.integration_base(project_dir, base)
+    )
     static, coupled_prefixes = declared.static, declared.coupled
     nonexecutable = [
         f for f in changed

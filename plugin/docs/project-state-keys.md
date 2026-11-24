@@ -352,8 +352,10 @@ path still refuses it, and it still needs a change record. What the declaration 
 A declaration lightens work only once it is on the integration branch. Each check reads the
 declarations from the tree it judges (the tree the suite ran against, `HEAD`, or the tree under
 review), and a static prefix counts only when the merge-base with the integration branch declares
-it too. So the branch that adds or widens a declaration pays the full path for its own suite runs,
-coverage floor and boundary review, and an uncommitted edit lightens nothing. A declaration the
+it or a prefix containing it. So the branch that adds or widens a declaration pays the full path for
+its own suite runs, coverage floor and boundary review, a branch may narrow one, and an uncommitted
+edit lightens nothing. A repo whose integration branch does not resolve (no `main`, `origin/main` or
+`base_branch:`) gets nothing lighter from a declaration. A declaration the
 reader refuses, or one not yet on the integration branch, is named in the `test-status` reason and
 the roster rationale when it is why nothing was lightened.
 

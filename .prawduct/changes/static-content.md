@@ -23,7 +23,8 @@ explanation of an uncovered span. The coverage floor asks no test to reference a
 A declaration the reader cannot read whole declares nothing static, so a typo costs the full
 path, never a lighter one, and the `test-status` reason says the declaration was refused. Every
 check reads the declarations from the tree it judges, and a static prefix counts only once the
-integration branch carries it too, so no branch lightens its own checks by declaring.
+integration branch declares it (or a prefix containing it), so no branch lightens its own checks by
+declaring.
 
 ### Chunk 02: the boundary review's roster
 Declared static content does not count toward the boundary review's volume escalator (12
