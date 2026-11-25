@@ -322,8 +322,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
   **`check-boundary-coverage [--json]`** (read-only, advisory; owner `lib/boundary_coverage.py`)
   classifies each release-pending scope by the first-parent commit on the integration base that added
-  its fragment: `no-judgeable`, `pr-covered`, `batch-covered`, `inner-only`, `uncovered`, `direct` or
-  `unknown`, each with its reason; the human form marks each scope not counted as covered
+  its fragment: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `inner-only`,
+  `uncovered`, `direct` or `unknown`, each with its reason. `pr-transferred` is a branch that synced
+  its base after its PR's boundary review and that the PR gate passed by its base-advance transfer
+  (`gates.base_advance_transfer`, the one decision both read); it counts as covered and is named in
+  the count line. The human form marks each scope not counted as covered
   `[not covered]` and ends with a count line naming its denominator. Exit 0
   whenever it answered, whatever it found; 2 on an unknown argument; 3 when it could not evaluate.
   `--json` keys: `status` (`ok` | `unevaluable`), `base`, `reason` (`null` when `ok`), `counts` (one
