@@ -19,7 +19,7 @@ governed_by:
       - "never specific to Python → conforms: the hook's python3 dependency is unchanged and still degrades to the could-not-verify line"
       - "prawduct guides and reviews; it never implements → inapplicable because this is framework code"
       - "goals and verification bind; prescribed method is advice → conforms: the report's repro and the agreement test bind; the chunk route is a forecast"
-      - "every fact has one home → conforms: the enabledPlugins rule lives in `plugin_activation.disabled_by` and the managed directories in `MANAGED_SETTINGS_DIRS`; the tripwire's inline copy is the documented exception (it runs when the plugin does not) and a test holds it to the home"
+      - "every fact has one home → conforms: the enabledPlugins rule lives in `plugin_activation.disabled_by` and the managed directories in `MANAGED_SETTINGS_DIR_BY_PLATFORM` (one directory per OS); the tripwire's inline copy is the documented exception (it runs when the plugin does not) and a test holds it to the home"
   - artifact: api-contract
     dispositions:
       - "whole-surface semantic versioning; CLI subcommands carry no per-subcommand version → conforms: a new status value on an existing subcommand, and a changed tripwire hook text that `install-tripwire --apply` replaces; patch-level within the release's own tier"
@@ -73,7 +73,7 @@ the tripwire's inline verdict carries the same rule.
   for the repo, naming the settings file.
 - **Depends on:** none
 - **Deliverables:** `plugin/lib/plugin_activation.py` (`settings_sources`, `disabled_by`,
-  `DISABLED`, `MANAGED_SETTINGS_DIRS`, the report wording); `plugin/lib/unloaded_tripwire.py` (the
+  `DISABLED`, `MANAGED_SETTINGS_DIR_BY_PLATFORM` (one directory per OS), the report wording); `plugin/lib/unloaded_tripwire.py` (the
   inline rule, `DISABLED_MESSAGE`); `plugin/bin/prawduct-hook` (exit 1); the onboard, doctor and
   migrate skills; `.prawduct/artifacts/api-contract.md`; `tests/test_plugin_activation.py`,
   `tests/test_unloaded_tripwire.py`
