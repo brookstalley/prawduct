@@ -6868,8 +6868,8 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
 
     **A preview, not a gate — so exit 0 on findings.** This form reports to the
     builder before dispatch. A result gains force only as a finding of the review
-    that carries it, which consolidation rates at record-lint's severities, so a
-    blocking result here is a blocker the next review will raise. Exit 1 is
+    that carries it, which consolidation rates at record-lint's severities for that
+    review's stage, so a blocking result here blocks the boundary (merge) review. Exit 1 is
     reserved for "the check could not run" (unresolvable interval, unreadable
     state), which is the one outcome that must not read as clean.
     """

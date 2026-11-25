@@ -79,14 +79,18 @@ def _change(tmp_path: Path, base: "dict[str, str]", head: "dict[str, str | None]
     base_tree = _commit(repo, "base")
     _write(repo, head)
     head_tree = _commit(repo, "head")
-    changed = _git(repo, "diff", "--name-only", base_tree, head_tree).splitlines()
+    # NUL-separated, as the review's own changed-file list is, so a quoted path is raw.
+    changed = [p for p in _git(repo, "diff", "-z", "--name-only", base_tree, head_tree).split("\0") if p]
     return repo, changed, base_tree, head_tree
 
 
 def _run(tmp_path, base, head):
     repo, changed, base_tree, head_tree = _change(tmp_path, base, head)
     findings, unchecked, no_answer = determinism_lint.check(repo, changed, base_tree, head_tree)
-    assert no_answer == set(), "every input was readable, so every check answered"
+    # A run that left a file unread is partial, and a partial run answers nothing as a
+    # count (record-lint's `_count`): every check is None rather than 0.
+    expected = set(determinism_lint.CHECKS) if unchecked else set()
+    assert no_answer == expected, "counts must say whether every candidate was read"
     return findings, unchecked
 
 
@@ -268,18 +272,23 @@ class TestTheWaiverNeedsAReason:
 
 
 class TestAutouseAndInit:
-    def test_an_importing_autouse_fixture_is_reported_and_an_opt_in_one_is_not(self, tmp_path):
+    def test_an_importing_autouse_fixture_in_a_conftest_is_reported_and_others_are_not(self, tmp_path):
+        """Renegotiated with the owner (2026-11-24): the rule is a conftest's, because a
+        conftest's autouse fixture reaches every test beneath it. The same fixture in a
+        test module reaches only that module, and an opt-in fixture reaches only the
+        tests that ask for it."""
+        autouse = (
+            "import pytest\n\n"
+            "@pytest.fixture(autouse=True)\ndef registry():\n"
+            "    from myapp import core\n    yield core\n\n"
+            "@pytest.fixture\ndef opt_in():\n    import myapp.db\n    return 1\n"
+        )
         findings, _ = _run(
             tmp_path,
-            {"tests/test_a.py": "import pytest\n"},
-            {"tests/test_a.py": (
-                "import pytest\n\n"
-                "@pytest.fixture(autouse=True)\ndef registry():\n"
-                "    from myapp import core\n    yield core\n\n"
-                "@pytest.fixture\ndef opt_in():\n    import myapp.db\n    return 1\n"
-            )},
+            {"tests/sub/conftest.py": "import pytest\n", "tests/test_a.py": "import pytest\n"},
+            {"tests/sub/conftest.py": autouse, "tests/test_a.py": autouse},
         )
-        assert _sites(findings) == [(determinism_lint.AUTOUSE_CHECK, "tests/test_a.py", 5)]
+        assert _sites(findings) == [(determinism_lint.AUTOUSE_CHECK, "tests/sub/conftest.py", 5)]
         assert "`registry`" in findings[0]["detail"]
 
     def test_an_init_importing_every_submodule_is_reported(self, tmp_path):
@@ -676,4 +685,185 @@ class TestHypothesisDatabase:
 
     def test_a_suite_without_hypothesis_has_nothing_to_report(self, tmp_path):
         repo, _c, _b, _h = _change(tmp_path, {"tests/test_p.py": "import pytest\n"}, {})
+        assert determinism_lint.scan_tree(repo)["tool_state"] == []
+
+
+# ---------------------------------------------------------------------------
+# The boundary review's findings, each pinned at the shape that broke
+# ---------------------------------------------------------------------------
+
+
+class TestBoundaryReviewEdges:
+    def test_a_new_read_above_an_old_one_is_reported_at_its_own_line(self, tmp_path):
+        findings, _ = _run(
+            tmp_path,
+            {"tests/helpers.py": "import time\n\ndef h():\n    a = time.time()\n    return a\n"},
+            {"tests/helpers.py": (
+                "import time\n\ndef h():\n    b = time.time()\n    a = time.time()\n    return a, b\n"
+            )},
+        )
+        assert _sites(findings) == [(determinism_lint.CLOCK_FAKE_CHECK, "tests/helpers.py", 4)]
+
+    def test_a_trailing_waiver_does_not_cover_the_next_statement(self, tmp_path):
+        findings, _ = _run(
+            tmp_path,
+            {"tests/conftest.py": "\n"},
+            {"tests/conftest.py": (
+                "import myapp  # prawduct:allow prawduct/test-scope -- plugin registration\n"
+                "import myapp.db\n"
+            )},
+        )
+        assert _sites(findings) == [(determinism_lint.CONFTEST_CHECK, "tests/conftest.py", 2)]
+
+    def test_a_sample_project_under_tests_is_not_the_product(self, tmp_path):
+        findings, _ = _run(
+            tmp_path,
+            {
+                "tests/fixtures/sample/pyproject.toml": "[project]\nname='sample'\n",
+                "tests/fixtures/sample/sample/__init__.py": "",
+                "tests/conftest.py": "\n",
+            },
+            {"tests/conftest.py": "import sample\n"},
+        )
+        assert findings == []
+
+    def test_a_python_product_module_named_like_a_spec_is_not_a_test_helper(self, tmp_path):
+        findings, _ = _run(
+            tmp_path,
+            {},
+            {
+                "myapp/job_spec.py": "import time\n\ndef stamp():\n    return time.time()\n",
+                "spec/stamp.py": "import time\n\ndef stamp():\n    return time.time()\n",
+            },
+        )
+        assert findings == []
+        assert not determinism_lint.is_test_path("myapp/job_spec.py")
+        assert determinism_lint.is_test_path("web/cart.spec.ts")
+
+    def test_handing_a_clock_on_in_a_fake_is_a_read(self, tmp_path):
+        """`default_factory=datetime.now` and `lambda: time.time()` read the clock
+        later, per instance: a static read can see them, so the detector owns them."""
+        findings, _ = _run(
+            tmp_path,
+            {},
+            {"tests/fakes.py": (
+                "import time\nfrom dataclasses import dataclass, field\nfrom datetime import datetime\n\n"
+                "@dataclass\nclass Entry:\n    created: datetime = field(default_factory=datetime.now)\n\n"
+                "STAMP = lambda: time.time()\n"
+            )},
+        )
+        assert sorted((f["check"], f["line"]) for f in findings) == [
+            (determinism_lint.CLOCK_FAKE_CHECK, 7),
+            (determinism_lint.CLOCK_FAKE_CHECK, 9),
+        ]
+
+    def test_helpers_and_fixtures_inside_module_level_blocks_are_read(self, tmp_path):
+        findings, _ = _run(
+            tmp_path,
+            {"tests/conftest.py": "\n"},
+            {"tests/conftest.py": (
+                "import pytest, time\n"
+                "if True:\n"
+                "    @pytest.fixture(autouse=True)\n"
+                "    def reg():\n"
+                "        import myapp.core\n"
+                "try:\n"
+                "    def stamp():\n"
+                "        return time.time()\n"
+                "except ImportError:\n"
+                "    pass\n"
+            )},
+        )
+        assert sorted((f["check"], f["line"]) for f in findings) == [
+            (determinism_lint.CLOCK_FAKE_CHECK, 8),
+            (determinism_lint.AUTOUSE_CHECK, 5),
+        ]
+
+    def test_paths_with_spaces_and_quotes_are_read_not_dropped(self, tmp_path):
+        findings, unchecked = _run(
+            tmp_path,
+            {},
+            {
+                "tests/my helper.py": "import time\nT = time.time()\n",
+                'tests/test_q"x.py': "import time\nT = time.time()\n",
+            },
+        )
+        assert unchecked == []
+        assert sorted(f["path"] for f in findings) == ["tests/my helper.py", 'tests/test_q"x.py']
+
+    def test_a_file_too_deep_to_parse_is_unchecked_not_a_crash(self, tmp_path):
+        # A generated expression long enough that the parser recurses past its limit:
+        # RecursionError, not SyntaxError, which is the case the catch exists for.
+        deep = "x = " + "+".join(["1"] * 100000) + "\n"
+        findings, unchecked = _run(tmp_path, {}, {"tests/test_deep.py": deep})
+        assert findings == []
+        assert unchecked and unchecked[0].startswith(f"{determinism_lint.CONFTEST_CHECK} unchecked")
+
+    def test_deleting_the_conftest_above_makes_an_untouched_one_the_root(self, tmp_path):
+        findings, _ = _run(
+            tmp_path,
+            {"conftest.py": "\n", "tests/conftest.py": "import myapp\n"},
+            {"conftest.py": None},
+        )
+        assert _sites(findings) == [(determinism_lint.CONFTEST_CHECK, "tests/conftest.py", 1)]
+
+    def test_deleting_the_last_unimported_submodule_makes_an_untouched_init_a_site(self, tmp_path):
+        findings, _ = _run(
+            tmp_path,
+            {"myapp/extra.py": "", "myapp/__init__.py": "from . import core, db, web\n"},
+            {"myapp/extra.py": None},
+        )
+        assert _sites(findings) == [(determinism_lint.INIT_CHECK, "myapp/__init__.py", 1)]
+
+    def test_any_code_file_under_a_test_tree_is_unchecked_and_data_is_not(self, tmp_path):
+        findings, unchecked = _run(
+            tmp_path,
+            {},
+            {
+                "tests/run.bats": "@test 'x' { true; }\n",
+                "tests/web/a.test.mts": "test('x', () => {})\n",
+                "tests/fixtures/data.json": "{}\n",
+                "tests/snapshots/a.snap": "x\n",
+            },
+        )
+        assert findings == []
+        [reason] = unchecked
+        named = reason.split(" unchecked on ", 1)[1].split(" — ", 1)[0].split(", ")
+        assert sorted(named) == ["tests/run.bats", "tests/web/a.test.mts"]
+
+
+class TestHypothesisHeuristic:
+    def test_an_unrelated_database_setting_does_not_hide_the_database(self, tmp_path):
+        repo, _c, _b, _h = _change(
+            tmp_path,
+            {
+                "tests/test_p.py": "from hypothesis import given\n",
+                "tox.ini": "[testenv]\nsetenv = database=postgres\n",
+            },
+            {},
+        )
+        assert len(determinism_lint.scan_tree(repo)["tool_state"]) == 1
+
+    def test_a_fixture_projects_settings_under_tests_are_not_the_products(self, tmp_path):
+        repo, _c, _b, _h = _change(
+            tmp_path,
+            {
+                "tests/test_p.py": "from hypothesis import given\n",
+                "tests/fixtures/sample/pyproject.toml": "[project]\nname='sample'\n",
+                "tests/fixtures/sample/tox.ini": "[testenv]\nsetenv = HYPOTHESIS_STORAGE_DIRECTORY=/tmp/h\n",
+            },
+            {},
+        )
+        assert len(determinism_lint.scan_tree(repo)["tool_state"]) == 1
+
+    def test_a_subprojects_own_settings_are_read(self, tmp_path):
+        repo, _c, _b, _h = _change(
+            tmp_path,
+            {
+                "svc/pyproject.toml": "[project]\nname='svc'\n",
+                "svc/tests/test_p.py": "from hypothesis import given\n",
+                "svc/tox.ini": "[testenv]\nsetenv = HYPOTHESIS_STORAGE_DIRECTORY=/tmp/h\n",
+            },
+            {},
+        )
         assert determinism_lint.scan_tree(repo)["tool_state"] == []

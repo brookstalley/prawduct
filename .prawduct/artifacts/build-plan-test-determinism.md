@@ -86,15 +86,16 @@ the same check ids rather than adding a parallel vocabulary.
   - *First-party* means a top-level package or module found at the repo root or under `src/`, outside
     any directory named `tests`/`test`.
   - An import under `if TYPE_CHECKING:` is exempt. One inside a module-level `try:` counts.
-- **P2a** (`test-scope-autouse`). A fixture declared `autouse=True` imports a first-party module in its
-  body, and either the fixture or that import is new.
+- **P2a** (`test-scope-autouse`). A fixture declared `autouse=True` in a `conftest.py` imports a
+  first-party module in its body, and either the fixture or that import is new. Owner-confirmed on
+  2026-11-24: any first-party import counts, and only in a conftest.
 - **P2b** (`test-scope-init`). A first-party package `__init__.py` imports, at module level, every one
   of its sibling submodules (and there are at least three), and before the change it did not.
   "Imports everything" is read as all of them, so an ordinary public-API re-export of a few names
   doesn't trip it.
 - **P3** (`test-clock-fake`). In a conftest, or a non-`test_*` module under a test tree (fakes,
-  helpers), new code calls a real clock or randomness API (the list lives in the detector). Rated
-  WARNING at the boundary.
+  helpers), new code calls or hands on a real clock or randomness API (the list lives in the
+  detector). Interval clocks are excluded. Rated WARNING at the boundary.
 - **P4** (`test-clock-import`). In any test-tree file, a new real clock or randomness call runs at
   import time: at module level, in a decorator argument such as `parametrize`, or as a default
   argument. Rated WARNING at the boundary.
@@ -142,6 +143,34 @@ the same check ids rather than adding a parallel vocabulary.
   `setup.py` or `setup.cfg`), not only the repo root. A read-only scan of local products found arrt's
   root-conftest imports (arrt#450) only after this, because arrt keeps its package at `arrt/src/arrt`.
 - The cross-cutting concerns registry's Testing row carries this plan's coverage.
+- Chunk 02 raised token ceilings it had planned to leave alone: `goals-1-3.md` and `review-protocol.md`
+  rose +61 each, and every reviewer-payload route rose +61. They are declared and priced in
+  `tests/test_v5_methodology.py` and `tests/test_reviewer_payload_budget.py`. The bullet names only what
+  a reviewer judges. The detector's results reach the review through record-lint, whose
+  never-restate rule both files already carry, so no clause another file owns was left to cut.
+  `building.md` was paid in place and ends 2 tokens smaller.
+- Chunk 02's fresh-agent trial ran at the boundary (2026-11-24, an Opus agent, read-only). Before
+  reading the guidance it wrote a fake whose `put` called `datetime.now()` and `uuid4()`. After reading
+  § Test Discipline and the doc it points to, it injected both, defaulting to a fixed stepping clock and
+  a counter, and cited the P3 row. Its conftest didn't change, because its first version already
+  avoided the module-level import. A first attempt on Sonnet was stopped by an API safeguard after its
+  before-half, which had shown both P1 and P3.
+- Boundary review (rev-20261124T234435Z-e6b3faf9, plus the paired native review) drove these detector
+  changes:
+  - clock sites are keyed by the line's text, not by position, so a finding lands on the new read;
+  - a waiver covers its own line or a comment line above, never the next statement;
+  - Python is classified by pytest's conventions alone;
+  - a project inside a test tree is not first-party;
+  - every non-data, non-Python file under a test tree is unchecked;
+  - a clock handed on (`default_factory`, a lambda) is a read;
+  - functions inside module-level blocks are walked;
+  - git output is NUL-separated, so a path is never C-quoted;
+  - parser recursion and memory errors are unparsed, not crashes;
+  - a partial run's counts are `None`;
+  - every conftest, and the `__init__` beside a changed module, is a candidate;
+  - hypothesis redirects are matched by hypothesis's own forms at every project root.
+- `docs/test-determinism.md` no longer describes the measured channel. It doesn't exist until #1244,
+  and the plan's Architecture goal keeps it possible.
 
 **Level:** Medium. The goals and severities are owner-ruled. The detection rules above are my
 inference, and the route into review isn't verified yet: record-lint delivers deterministic checks

@@ -27,6 +27,14 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-24.** "Any first-party import (Recommended)" — answering the boundary review's question on
+#1243 (rev-20261124T234435Z-e6b3faf9, R-11). The ruling's "an autouse fixture … that imports
+everything" reads as: an autouse fixture in a `conftest.py` that imports any first-party module
+blocks at the merge boundary. That is the same cost as a root conftest's single module-level import,
+and "everything" cannot be checked statically for a fixture. The rule is restricted to `conftest.py`,
+because an autouse fixture in a test module reaches only that module. Landed in
+`plugin/lib/determinism_lint.py` and `plugin/docs/test-determinism.md`.
+
 **2026-11-24.** "Janitor only (Recommended)" — answering where the scan of a product's existing
 test-determinism sites lives. `/prawduct:janitor`'s Test Fitness theme runs
 `prawduct-hook determinism-scan`, and doctor and onboard do not, per `docs/doctor-vs-janitor.md`'s

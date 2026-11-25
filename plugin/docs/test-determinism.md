@@ -27,8 +27,8 @@ runner (testament is one such tool); this page defines the patterns and does not
 
 ## What the review detects, and what a reviewer judges
 
-A mechanical detector reads each changed test-tree file and package `__init__` for the shapes a
-static read can see. Its results arrive in the review the way the record-lint results do: a
+A mechanical detector reads each changed test-tree file and package `__init__`, and every conftest
+(deleting one can make another the root), for the shapes a static read can see. Its results arrive in the review the way the record-lint results do: a
 reviewer never raises, restates or re-derives them.
 
 | Pattern | Check id | At the merge boundary | At the inner stage |
@@ -45,22 +45,19 @@ reviewer never raises, restates or re-derives them.
   directory above it. *First-party* code is a package or module at a project root (the repo root, or any
   directory holding a `pyproject.toml`, `setup.py` or `setup.cfg`) or under its `src/`, outside a
   test directory; a tree put on the import path some other way is not seen. An import
-  under `if TYPE_CHECKING:` is exempt. A package `__init__` counts under P2 when it imports every one
-  of its submodules and has at least three. P3 counts in conftests, fakes and helpers, not in a test
-  module's own tests.
-- A changed test file in a language with no rules is reported unchecked, never silently passed.
-- The reviewer judges what a static read cannot: a P3 read made several calls deep, and P5 through
-  P8. Each is a warning at the boundary and an observation inside; process- or conftest-wide
+  under `if TYPE_CHECKING:` is exempt. Under P2 an autouse fixture counts when it is in a `conftest.py`
+  and imports any first-party module, and a package `__init__` counts when it imports every one of
+  its submodules and has at least three. P3 counts in conftests, fakes and helpers, whether the
+  clock is called or handed on (`default_factory=datetime.now`), but not in a test module's own
+  tests. Interval clocks (`time.monotonic`, `time.perf_counter`) are not ambient reads.
+- Any changed code file under a test tree that is not Python is reported unchecked, never silently
+  passed.
+- The reviewer judges what the detector did not report: a P3 or P4 read it missed (one made calls
+  deep, or in a language without rules), and P5 through P8. Each is a warning at the boundary and an observation inside; process- or conftest-wide
   outranks a single test.
 
 ## Waiving a site
 
-A site that stays on purpose carries `prawduct:allow prawduct/test-scope -- reason` on its line or
-the line above it. The reason says why the site stays; the reviewer still reads it, and a waiver
+A site that stays on purpose carries `prawduct:allow prawduct/test-scope -- reason` on its line, or
+on a comment line directly above it. A waiver trailing the previous statement does not reach it. The reason says why the site stays; the reviewer still reads it, and a waiver
 with no reason waives nothing.
-
-## Measured evidence
-
-When a runner reports each test's determinism causes, a later change lets the review compare that
-list with the base's, so a cause site the diff introduced, including one a read missed, is a
-finding under the same check ids above.
