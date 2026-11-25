@@ -17,11 +17,19 @@ classifies that commit:
 
   The tail is fix verification only. A tail of new chunk reviews does not pass,
   because no boundary review read that work.
+- ``pr-transferred``: the branch synced its base after that review, so nothing
+  composes over the span it merged with, and the PR gate's own base-advance
+  transfer (``gates.base_advance_transfer``) carries it: the branch's judgeable
+  diff is byte-identical across the advance, a suite run met the branch tip,
+  and the span the transfer comes from is ``pr-covered`` by the rule above. It
+  counts as covered and is named, so a release reader sees which coverage was
+  carried rather than composed (#1250).
 - ``batch-covered``: a boundary review with no open blocker brackets the merge on
   the base's first-parent line. Its base tree is at or before the merge's first
   parent, and its head tree is at or after the merge.
 - ``inner-only``: coverage composes, but only through inner-stage reviews.
-- ``uncovered``: nothing composes, or an open blocker stands on the path.
+- ``uncovered``: nothing composes, or an open blocker stands on the path. When
+  only the transfer's suite condition failed, the reason says so.
 - ``direct``: a commit with one parent changed a judgeable file. That is work
   committed on the base itself, or a squash merge; git cannot tell the two apart.
 - ``unknown``: no commit on the base added the fragment (not merged yet, or the
@@ -33,7 +41,8 @@ classification that says "not covered" (``unknown``/``uncovered``), never on
 its boundary review to the release.
 
 Composition is :func:`coverage_algebra.coverage_verdict`'s, stage is
-:func:`critic_consolidate.stage_of_manifest`'s, and the pending set is
+:func:`critic_consolidate.stage_of_manifest`'s, the base-advance transfer is
+:func:`gates.base_advance_transfer`'s, and the pending set is
 ``release_readiness``'s. This module owns only the classification.
 """
 
@@ -46,6 +55,7 @@ from . import change_fragments, coverage, coverage_algebra, evidence
 
 NO_JUDGEABLE = "no-judgeable"
 PR_COVERED = "pr-covered"
+PR_TRANSFERRED = "pr-transferred"
 BATCH_COVERED = "batch-covered"
 INNER_ONLY = "inner-only"
 UNCOVERED = "uncovered"
@@ -54,8 +64,9 @@ UNKNOWN = "unknown"
 
 #: Every classification, in the order a report lists its counts. The covered ones
 #: come first; the rest are what a release operator reads.
-CLASSES = (NO_JUDGEABLE, PR_COVERED, BATCH_COVERED, INNER_ONLY, UNCOVERED, DIRECT, UNKNOWN)
-COVERED = frozenset({NO_JUDGEABLE, PR_COVERED, BATCH_COVERED})
+CLASSES = (NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED, INNER_ONLY, UNCOVERED, DIRECT,
+           UNKNOWN)
+COVERED = frozenset({NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED})
 
 _VERIFY = "verify-resolutions"
 
@@ -146,6 +157,7 @@ class _Classifier:
         self.others = others
         self.boundary_facts = others + self.boundary
         self.tail_facts = others + [f for f in reviews if _is_verify(f)]
+        self._gates = gates
         self._diff_fn = gates._cached_diff_fn(project_dir)
         self._key_fn = gates._tree_key_fn(project_dir)
         self._first_parent: "list[tuple[str, str]] | None" = None
@@ -154,10 +166,13 @@ class _Classifier:
         rc, out, _err = evidence.run_git(self.project_dir, *args)
         return out.strip() if rc == 0 else None
 
-    def _verdict(self, facts: list[dict], base_tree: str, head_tree: str) -> str:
+    def _full_verdict(self, facts: list[dict], base_tree: str, head_tree: str) -> dict:
         return coverage_algebra.coverage_verdict(
             facts, base_tree, head_tree, self._diff_fn, self._key_fn
-        )["status"]
+        )
+
+    def _verdict(self, facts: list[dict], base_tree: str, head_tree: str) -> str:
+        return self._full_verdict(facts, base_tree, head_tree)["status"]
 
     def _judgeable(self, older: str, newer: str) -> "list[str] | None":
         out = self._git("diff", "--name-only", "--no-renames", older, newer, "--")
@@ -255,9 +270,45 @@ class _Classifier:
         if overall == "blocked":
             return Entry("", UNCOVERED, "an unresolved blocking finding stands on the branch's coverage",
                          commit, subject)
+        transferred = self._transferred(merge_base, tip, span_base, span_head)
+        if transferred is not None:
+            classification, reason = transferred
+            return Entry("", classification, reason, commit, subject)
         return Entry("", UNCOVERED, "no review evidence composes over the branch (if it was reviewed "
                                     "in another clone, `prawduct-hook evidence sync` brings the "
                                     "reviews here)", commit, subject)
+
+    def _transferred(self, merge_base: str, tip: str, span_base: str,
+                     span_head: str) -> "tuple[str, str] | None":
+        """The PR gate's base-advance transfer, asked of the merged span: a branch
+        that synced its base after review composes from no fact, and the gate
+        passed it by transfer. The decision is the gate's own
+        (``gates.base_advance_transfer``), never a copy, with the suite asked
+        about the branch tip, the tree the PR gate vouched for. Asked only of an
+        ``uncovered`` span, as the gate asks it.
+
+        A grant moves the boundary question to the span the coverage came from,
+        and that span must pass the same split ``pr-covered`` requires there.
+        Returns ``(classification, reason)``, or None when the transfer did not
+        match, leaving the plain ``uncovered`` reading."""
+        decided = self._gates.base_advance_transfer(
+            self.project_dir, self.facts, span_base, span_head, self._diff_fn,
+            self._full_verdict, suite_tree=span_head,
+        )
+        transfer = decided["transfer"]
+        if decided["decision"] == self._gates.TRANSFER_SUITE_STALE:
+            return UNCOVERED, ("the PR gate's base-advance transfer matched (branch diff byte-identical "
+                               "across the advance), but no saved suite run met the branch tip: "
+                               f"{decided['tests_reason']}")
+        if decided["decision"] != self._gates.TRANSFER_GRANTED:
+            return None
+        prior_base, prior_head = transfer["prior_base"], transfer["prior_head"]
+        carried = (f"transferred across base advance {prior_base[:12]}→{span_base[:12]}; branch "
+                   f"diff byte-identical; {decided['tests_reason']}")
+        if self._boundary_split(merge_base, tip, prior_base, prior_head):
+            return PR_TRANSFERRED, (f"a boundary review covered the branch at its PR before it synced "
+                                    f"its base, and only fix verification followed it ({carried})")
+        return INNER_ONLY, f"the branch's coverage composes only through inner-stage reviews ({carried})"
 
     def _merge_only_judgeable(self, commit: str) -> list:
         """Judgeable files the merge's tree holds in a state neither parent had: the
@@ -393,7 +444,7 @@ def render(report: Report) -> str:
     if report.status != "ok":
         return f"check-boundary-coverage: could not evaluate — {report.reason}"
     lines = [
-        f"{e.classification:13} {e.scope}  {(e.commit or '')[:8]}  {e.reason}"
+        f"{e.classification:14} {e.scope}  {(e.commit or '')[:8]}  {e.reason}"
         + ("" if e.classification in COVERED else "  [not covered]")
         for e in report.entries
     ]

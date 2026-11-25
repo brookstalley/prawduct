@@ -964,6 +964,62 @@ def suite_vouches_for_tree(
     return False, why_not + (f"; {stored_reason}" if stored_reason else "")
 
 
+#: :func:`base_advance_transfer`'s decisions. Only ``granted`` grants.
+TRANSFER_GRANTED = "granted"
+#: The diagnosis matched (conditions 1 and 2) and no suite run met the tree.
+TRANSFER_SUITE_STALE = "suite-stale"
+#: The diagnosis did not match; ``kind`` says how (``absent``, ``unavailable``,
+#: ``unknown``).
+TRANSFER_DENIED = "denied"
+
+
+def base_advance_transfer(
+    project_dir: Path,
+    facts: "list[dict]",
+    base_tree: str,
+    head_tree: str,
+    diff_fn,
+    verdict_fn,
+    *,
+    suite_tree: "str | None",
+) -> dict:
+    """Does the span ``base_tree`` → ``head_tree``, uncovered by composition,
+    transfer across a base advance? The ONE decision every reader of the
+    transfer asks: the PR gate (:func:`_branch_coverage`), the Stop gate
+    (:func:`_merge_base_verdict`) and the release's boundary-coverage op
+    (``boundary_coverage``), so a branch the PR gate passed by transfer cannot
+    read as unreviewed at the release (#1250).
+
+    Conditions 1 and 2 are :func:`coverage.diagnose_base_advance_transfer`'s,
+    read through :func:`coverage.classify_transfer`; condition 3 is
+    :func:`suite_vouches_for_tree` asked about ``suite_tree``, the tree the
+    caller vouches for (``None`` is the working tree, the Stop gate's target).
+    It is keyword-only with no default for the reason that function states: the
+    callers do not agree on the tree, and a default would silently pick one.
+
+    Records nothing: a caller that is an authority records the grant
+    (:func:`record_transfer_grant`), and advice does not. Returns ``decision``
+    (``TRANSFER_*``), ``kind`` (the classification), ``transfer`` (the
+    diagnosis, ``None`` when no prior span exists) and ``tests_reason`` (the
+    suite's answer, ``None`` when the diagnosis did not match).
+    """
+    transfer = coverage.diagnose_base_advance_transfer(
+        project_dir, facts, base_tree, head_tree, diff_fn, verdict_fn
+    )
+    # Every transfer decision reads `coverage.classify_transfer`, so no reader
+    # can read one status two ways; anything but `match` lands on the deny side.
+    kind = coverage.classify_transfer(transfer)
+    if kind != "match":
+        return {"decision": TRANSFER_DENIED, "kind": kind, "transfer": transfer, "tests_reason": None}
+    tests_ok, tests_reason = suite_vouches_for_tree(project_dir, suite_tree)
+    return {
+        "decision": TRANSFER_GRANTED if tests_ok else TRANSFER_SUITE_STALE,
+        "kind": kind,
+        "transfer": transfer,
+        "tests_reason": tests_reason,
+    }
+
+
 def _read_session_start(prawduct_dir: Path) -> str:
     """Content of the ``.session-start`` marker, or ``""`` when the marker is
     missing or unreadable. Used by the test-evidence freshness check
@@ -2888,19 +2944,20 @@ def _merge_base_verdict(
     def verdict_fn(f: list[dict], base: str, tgt: str) -> dict:
         return coverage_algebra.coverage_verdict(f, base, tgt, diff_fn, key_fn)
 
-    transfer = coverage.diagnose_base_advance_transfer(
-        project_dir, facts, mb_tree, target, diff_fn, verdict_fn
+    # The one transfer decision (:func:`base_advance_transfer`), shared with the
+    # PR gate and the release op so none of them reads one span two ways;
+    # anything but `granted` reaches the deny path, the side a fail-closed
+    # control has to fall on. The suite is asked about the working tree, this
+    # gate's target.
+    decided = base_advance_transfer(
+        project_dir, facts, mb_tree, target, diff_fn, verdict_fn, suite_tree=None
     )
-    # Every transfer decision reads `coverage.classify_transfer`, so this gate
-    # and the PR gate cannot read one status two ways; anything but `match`
-    # reaches the deny path, the side a fail-closed control has to fall on.
-    kind = coverage.classify_transfer(transfer)
-    if kind != "match":
-        if kind == "unavailable":
+    transfer, tests_reason = decided["transfer"], decided["tests_reason"]
+    if decided["decision"] == TRANSFER_DENIED:
+        if decided["kind"] == "unavailable":
             verdict["transfer_note"] = transfer_remedy(transfer, None)
         return verdict
-    tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
-    if not tests_ok:
+    if decided["decision"] != TRANSFER_GRANTED:
         verdict["transfer_note"] = transfer_remedy(
             transfer, tests_reason, suite_step=suite_remedy(project_dir)
         )
@@ -3752,8 +3809,9 @@ def check_cumulative_critic(project_dir: Path) -> int:
       reviews that delta and closes the gap.
 
     One computed exception precedes that verdict: when the span went uncovered
-    only because the BASE ADVANCED, coverage **transfers** — conditions and
-    their rationale in :func:`coverage.diagnose_base_advance_transfer` and
+    only because the BASE ADVANCED, coverage **transfers** — decided by
+    :func:`base_advance_transfer`, with the conditions and their rationale in
+    :func:`coverage.diagnose_base_advance_transfer` and
     :func:`suite_vouches_for_tree`, which own them. All hold → exit 0
     with the transfer named, and the firing recorded
     (:func:`record_transfer_grant` — the transfer's yield has to be countable).
@@ -3903,50 +3961,45 @@ def _branch_coverage(
     # not move a byte reads as uncovered and buys a full re-review. Attempt the
     # transfer BEFORE anything is rendered: when it holds this is a pass, and
     # the remedy block the printer would otherwise write describes a problem the
-    # operator does not have. Condition 3 lives here rather than in the
-    # diagnosis because the test evidence is this module's — and because the
+    # operator does not have. Condition 3 lives in this module rather than in
+    # the diagnosis because the test evidence is this module's — and because the
     # near miss (byte identity holds, the suite has not met the merged tree) has
     # a remedy worth naming: a suite run, which is minutes against a
-    # cumulative's tens of them.
-    transfer = coverage.diagnose_base_advance_transfer(
+    # cumulative's tens of them. The decision is :func:`base_advance_transfer`'s,
+    # shared with the Stop gate and the release op.
+    decided = base_advance_transfer(
         project_dir,
         read.get("facts", []),
         base_tree,
         head_tree,
         diff_fn,
         verdict_fn,
+        suite_tree=head_tree,
     )
-    if coverage.classify_transfer(transfer) == "match":
-        tests_ok, tests_reason = suite_vouches_for_tree(project_dir, head_tree)
-        if tests_ok:
-            if record_grants:
-                record_transfer_grant(
-                    project_dir,
-                    read.get("facts", []),
-                    transfer,
-                    base_tree,
-                    head_tree,
-                    "check-cumulative-critic",
-                )
-            return {
-                "status": "transferred",
-                "verdict": verdict,
-                "transfer": transfer,
-                "tests_reason": tests_reason,
-                **common,
-            }
+    transfer, tests_reason = decided["transfer"], decided["tests_reason"]
+    if decided["decision"] == TRANSFER_GRANTED:
+        if record_grants:
+            record_transfer_grant(
+                project_dir,
+                read.get("facts", []),
+                transfer,
+                base_tree,
+                head_tree,
+                "check-cumulative-critic",
+            )
         return {
-            "status": "uncovered",
+            "status": "transferred",
             "verdict": verdict,
             "transfer": transfer,
-            "transfer_stale": tests_reason,
+            "tests_reason": tests_reason,
             **common,
         }
     return {
         "status": "uncovered",
         "verdict": verdict,
         "transfer": transfer,
-        "transfer_stale": None,
+        # The near miss: byte identity held and the suite had not met the tree.
+        "transfer_stale": tests_reason if decided["decision"] == TRANSFER_SUITE_STALE else None,
         **common,
     }
 

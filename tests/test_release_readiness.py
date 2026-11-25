@@ -2165,9 +2165,12 @@ def _git_run(repo: Path, *args: str) -> str:
     return proc.stdout.strip()
 
 
-def _merged_release(tmp_path: Path, *, reviewed: bool) -> Path:
+def _merged_release(tmp_path: Path, *, reviewed: bool, synced: bool = False) -> Path:
     """A passing release (one scope, `ships`) whose scope arrived by a real merge
-    on `main`; `reviewed` records a boundary review over the branch."""
+    on `main`; `reviewed` records a boundary review over the branch. `synced`
+    then advances `main`, merges it into the branch, commits only `.prawduct/`
+    records and records a green suite run on the branch tip: #1250's shape, which
+    the PR gate passes by its base-advance transfer."""
     from lib import evidence  # noqa: PLC0415
 
     project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification="| alpha | ships | |\n")
@@ -2189,6 +2192,19 @@ def _merged_release(tmp_path: Path, *, reviewed: bool) -> Path:
         body = {"base_tree": base_tree, "head_tree": head_tree, "files_changed": files,
                 "files_reviewed": files, "findings": [], "mode": "cumulative (bundle review)"}
         assert evidence.append_fact(project, "review", "rev-rr-0001", body)["status"] == "appended"
+    if synced:
+        _git_run(project, "checkout", "-q", "main")
+        _write(project / "src" / "upstream.py", "u = 1\n")
+        _git_run(project, "add", "-A")
+        _git_run(project, "commit", "-q", "-m", "base moves")
+        _git_run(project, "checkout", "-q", "alpha")
+        _git_run(project, "merge", "-q", "--no-ff", "-m", "sync main", "main")
+        _write(project / ".prawduct" / "artifacts" / "build-plan-alpha.md", "records\n")
+        _git_run(project, "add", "-A")
+        _git_run(project, "commit", "-q", "-m", "records")
+        run = {"tree": _git_run(project, "rev-parse", "HEAD^{tree}"), "passed": 3, "failed": 0,
+               "skipped": 0, "duration_seconds": 1, "source": "run"}
+        assert evidence.append_fact(project, "test-run", "test-run-rr-0001", run)["status"] == "appended"
     _git_run(project, "checkout", "-q", "main")
     _git_run(project, "merge", "-q", "--no-ff", "-m", "merge alpha", "alpha")
     return project
@@ -2213,6 +2229,18 @@ class TestTheBoundaryAdviceNeverMovesTheVerdict:
         notes = [line for line in noisy.err.splitlines() if line.startswith("NOTE: boundary-coverage:")]
         assert len(notes) == 1 and "alpha is uncovered" in notes[0], noisy.err
         assert "releasable: v3.2.0" in noisy.out
+
+    def test_a_merge_the_pr_gate_passed_by_transfer_counts_covered_and_is_named(
+        self, tmp_path, capsys
+    ):
+        """#1250: a reviewed branch that synced its base and took a records-only
+        commit reads covered, named as carried by the transfer, with no NOTE."""
+        project = _merged_release(tmp_path, reviewed=True, synced=True)
+        assert release_readiness.check_releasability(project, release="v3.2.0") == 0
+        out = capsys.readouterr()
+        line = next(x for x in out.out.splitlines() if "boundary coverage:" in x)
+        assert "1 of 1 release-pending scope(s) covered" in line and "(1 pr-transferred)" in line, line
+        assert "NOTE: boundary-coverage:" not in out.err, out.err
 
     def test_a_repository_it_cannot_read_is_noted_and_the_verdict_holds(self, tmp_path, capsys):
         """Not a git repository: the op cannot evaluate, says so as a NOTE, and the

@@ -213,6 +213,95 @@ class TestABatchReviewOnTheBase:
         assert _classify(repo, merge).classification == bc.UNCOVERED
 
 
+def _suite_ran(repo: Path, rev: str) -> None:
+    """A green suite run recorded on the store against ``rev``'s tree: the
+    transfer's third condition, in the body `evidence.append_test_run` writes,
+    under a fixed id so the test draws no randomness."""
+    body = {"tree": _tree(repo, rev), "passed": 3, "failed": 0, "skipped": 0,
+            "duration_seconds": 1, "source": "run"}
+    fact_id = f"test-run-bc-{next(_ids):04d}"
+    assert evidence.append_fact(repo, "test-run", fact_id, body)["status"] == "appended"
+
+
+class TestABranchThatSyncedItsBaseAfterReview:
+    """#1250: the PR gate passes a branch that synced its base after review by its
+    base-advance transfer, so the release op must give the same answer, named, and
+    never a wider one. The repro: review a branch, merge its base into it, commit
+    only `.prawduct/` records, merge, classify."""
+
+    def _synced(self, repo: Path, mode: str = CUMULATIVE, *, suite: bool = True,
+                after_sync: "dict | None" = None) -> str:
+        base = _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        reviewed = _tree(repo)
+        _review(repo, base, reviewed, mode)
+        _commit(repo, {"src/a.py": "a = 2\n"}, "fix")
+        _review(repo, reviewed, _tree(repo), VERIFY)
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
+        _git(repo, "checkout", "-q", "f")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "sync main", "main")
+        _commit(repo, after_sync or {".prawduct/artifacts/build-plan-f.md": "records\n"}, "records")
+        if suite:
+            _suite_ran(repo, "f")
+        merge = _merge(repo, "f")
+        # The release reads the merge later, from a base that has moved on: the
+        # suite question is about the branch tip, never the tree checked out now.
+        _commit(repo, {"src/later.py": "later = 1\n"}, "later work on the base")
+        return merge
+
+    def test_a_reviewed_branch_that_synced_its_base_is_pr_transferred(self, repo):
+        merge = self._synced(repo)
+        entry = _classify(repo, merge)
+        assert entry.classification == bc.PR_TRANSFERRED, entry
+        assert "transferred across base advance" in entry.reason, entry
+        assert bc.PR_TRANSFERRED in bc.COVERED
+
+    def test_the_pr_gate_and_the_op_give_one_answer(self, repo):
+        """The same span, asked of both instruments at the branch tip before merge
+        and of the op after it."""
+        from lib import gates  # noqa: PLC0415
+
+        base = _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        _review(repo, base, _tree(repo), CUMULATIVE)
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
+        _git(repo, "checkout", "-q", "f")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "sync main", "main")
+        _commit(repo, {".prawduct/artifacts/build-plan-f.md": "records\n"}, "records")
+        _suite_ran(repo, "f")
+        assert gates.branch_coverage_verdict(repo)["status"] == "transferred"
+        assert _classify(repo, _merge(repo, "f")).classification == bc.PR_TRANSFERRED
+
+    def test_with_no_suite_run_on_the_tip_it_is_uncovered_and_says_why(self, repo):
+        entry = _classify(repo, self._synced(repo, suite=False))
+        assert entry.classification == bc.UNCOVERED, entry
+        assert "no saved suite run met the branch tip" in entry.reason, entry
+
+    def test_a_transfer_of_chunk_coverage_is_inner_only(self, repo):
+        """The transfer carries coverage; the boundary question still applies to the
+        span it came from, so chunk-only work is not widened into pr-covered."""
+        entry = _classify(repo, self._synced(repo, CHUNK))
+        assert entry.classification == bc.INNER_ONLY, entry
+        assert "transferred across base advance" in entry.reason, entry
+
+    def test_judgeable_work_after_the_sync_is_uncovered(self, repo):
+        """The records commit is a free edge; a code commit in its place is work no
+        review read, and the branch diff is no longer the reviewed one."""
+        entry = _classify(repo, self._synced(repo, after_sync={"src/a.py": "a = 3\n"}))
+        assert entry.classification == bc.UNCOVERED, entry
+        assert "no review evidence composes" in entry.reason, entry
+
+    def test_the_count_line_counts_it_covered_and_names_it(self, repo):
+        self._synced(repo)
+        report = bc.classify_pending(repo)
+        assert [e.classification for e in report.entries] == [bc.PR_TRANSFERRED]
+        line = bc.count_line(report)
+        assert "1 of 1 release-pending scope(s) covered" in line and "(1 pr-transferred)" in line, line
+        assert not bc.render(report).splitlines()[0].endswith("[not covered]")
+
+
 class TestTheCommitsShape:
     def test_a_branch_changing_no_judgeable_file(self, repo):
         _branch(repo, "f")
@@ -386,6 +475,11 @@ class TestTheReport:
 #: #1231's two reviews: a cumulative, then one verify-resolutions pass over its fixes.
 _PR_1231_MERGE = "09a262e0ed69fc486c15573632f694793d97b296"
 _PR_1231_REVIEWS = ("rev-20261124T031246Z-e5f07ea3", "rev-20261124T032413Z-a3ec33e4")
+#: #1249: a boundary review and a verify pass, then a develop sync and a records
+#: commit; the suite run that met its tip.
+_PR_1249_MERGE = "199ccf1071f3adc2187b22a2d1f33387c08bfa9c"
+_PR_1249_REVIEWS = ("rev-20261125T230216Z-7af05777", "rev-20261125T231645Z-d07f7323")
+_PR_1249_RUN = "test-run-20261125T232222Z-80d8b97e"
 
 
 @pytest.mark.requires_history
@@ -417,6 +511,19 @@ class TestThisRepositorysHistory:
             pytest.skip(f"this clone's evidence store lacks #1231's reviews {missing}")
         entry = bc.classify_merge(ROOT, _PR_1231_MERGE)
         assert entry.classification == bc.PR_COVERED, entry
+
+    @pytest.mark.requires_local_cache
+    def test_the_v3_10_0_branch_that_synced_develop_after_review_is_pr_transferred(self):
+        """#1250's own repro: #1249 was reviewed, synced develop (#1248), took a
+        records-only commit, and the PR gate passed it by transfer. Present-ness is
+        read from the store file, as above."""
+        path = evidence.store_path(ROOT)
+        text = path.read_text(encoding="utf-8") if path is not None and path.is_file() else ""
+        missing = [rid for rid in (*_PR_1249_REVIEWS, _PR_1249_RUN) if rid not in text]
+        if missing:
+            pytest.skip(f"this clone's evidence store lacks #1249's evidence {missing}")
+        entry = bc.classify_merge(ROOT, _PR_1249_MERGE)
+        assert entry.classification == bc.PR_TRANSFERRED, entry
 
 
 class TestTheBoundaryReviewsFixes:
