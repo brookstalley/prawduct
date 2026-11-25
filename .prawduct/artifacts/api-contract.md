@@ -308,6 +308,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `stale_count`, `stale_bytes`, and `profiles[]`, each with `config_roots[]`, `cache`,
   `cache_readable`, `manifest` (`ok` | `missing` | `unreadable`), `ungraded_reason` (`null` when
   graded), `in_use[]`, `stale[]{path, bytes}`, `stale_bytes` and `ungraded[]`.
+- **Determinism scan** — `determinism-scan [--json]` (read-only): the test-determinism and
+  dependency-scope sites that already exist at HEAD, largest blast radius first, and the tool state
+  left in the checkout that changes test outcomes (`lib/determinism_lint.py` owns what counts).
+  `/prawduct:janitor`'s Test Fitness theme reads it. Exit 0 whenever the scan ran, whatever it
+  found; 2 on an unknown argument; 3 when HEAD could not be read. `--json` keys: `status`
+  (`scanned` | `unchecked`); on `unchecked`, `reason`; on `scanned`, `sites[]{check, path, line,
+  detail}`, `tool_state[]{path, detail}`, `scanned` (Python files read, so an empty `sites[]` is a
+  scan of something), `unparsed[]` and `unruled[]` (test files in a language with no rules yet).
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
   `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
@@ -766,6 +774,9 @@ files to touch previews first. That framing is descriptive — the binding rule 
     runs the command and relays its human form. The key set is listed once, in the § Operations
     "Stale plugin caches" entry. A profile with a non-null `ungraded_reason` has nothing in it
     graded, so its empty `stale[]` means *not looked at*, not *nothing unused*.
+  - `determinism-scan --json` → **no JSON consumer today.** `/prawduct:janitor`'s Test Fitness
+    theme runs the command and reads its human form. The key set is listed once, in the
+    § Operations "Determinism scan" entry.
   - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /
     `misplaced` / `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`,
     `first_rule_line`, `detail`, `repairable`, `applied`, `insert_before_line`, `insert_text`).

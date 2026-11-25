@@ -163,16 +163,22 @@ The flagship multi-process flow, and the clearest expression of invariant 1.
   interval and reviewer roster from git + mode in code, and writes the dispatch manifest and the
   active-review marker. The manifest is the contract: it names the exact tree interval and roster a
   review will attest. It also carries `record_lint` — the deterministic record checks (`lib/record_lint.py`)
-  answered here so no reviewer re-derives them. Those checks are **advice**: they never gate, they
-  never reach a review's severity counts, and their per-check counts ride into the review fact so the
-  control's own yield is a query rather than an argument. Cost is proportional to the diff, not the
+  answered here so no reviewer re-derives them. They never refuse a dispatch; consolidation rates each
+  result into the review at the severity `record_lint.SEVERITY` assigns for the review's stage
+  (`record_lint_partial`), so a blocking one gates as a finding of the review that carried it, and
+  their per-check counts ride into the review fact so the control's own yield is a query rather than
+  an argument. Not every check's subject is a record: the test-scope and test-clock checks
+  (`lib/determinism_lint.py`) read the changed test files and package `__init__.py` files, and ride here for
+  the one severity table and the one delivery. Cost is proportional to the diff, not the
   repo: line-scoped checks read one `git diff --unified=0` over the changed records and see only
   added lines. The repo-wide checks: `retired-claim-survives`, because a retired claim's
   survivors are by definition text the diff did not touch; it pays one `git grep -l` plus a read of
   the files that grep names, and nothing in a repo that declares no `Retires:` phrase.
   `late-requirement-record` pays the same shape (one `git grep -l` for `## Late requirements`, a
   read of the files it names) to check an added record's id product-wide, and nothing when the diff
-  added no record. It also **hands the reviewer the rules its payload cannot carry** — the dispatch
+  added no record. The test-scope arm lists both trees' file names (never their contents) and reads
+  only the changed test files and package `__init__.py` files at both trees, and pays nothing when the
+  change touches neither. It also **hands the reviewer the rules its payload cannot carry** — the dispatch
   directives (`critic_consolidate`'s `FINDING_SCOPE_DIRECTIVE`, `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`,
   `RESOLUTION_IS_A_CLAIM_DIRECTIVE`), printed per mode. They are instruction text, never data: no
   gate reads them, and a mode's total load — payload file plus whatever its dispatch prints — is

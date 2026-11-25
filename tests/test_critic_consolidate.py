@@ -7691,6 +7691,59 @@ def _lint_finding(check: str, path: str = ".prawduct/artifacts/p.md", line=None,
     return {"check": check, "path": path, "line": line, "detail": detail}
 
 
+class TestTestScopeReachesTheReview:
+    """The test-scope detector's ruling, at the layer it was made about: a change
+    that newly imports the product in a root conftest is BLOCKING at the merge
+    boundary and an observation inside it (owner ruling 2026-11-24). Dispatch
+    computes the result for real; consolidation rates it from the manifest."""
+
+    def _dispatch(self, tmp_path, conftest: str):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "myapp/__init__.py", "", "app")
+        _commit_file(repo, "tests/conftest.py", "import pytest\n", "tests")
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        (repo / "tests/conftest.py").write_text(conftest)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        return repo, json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+
+    def test_an_introduced_root_conftest_import_blocks_at_the_boundary_only(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path, "import pytest\nimport myapp\n")
+        [found] = [f for f in manifest["record_lint"]["findings"]
+                   if f["check"] == "test-scope-conftest"]
+        assert (found["path"], found["line"]) == ("tests/conftest.py", 2)
+
+        inner = cc.build_fact_body(manifest, [])
+        assert inner["counts"]["blocking"] == 0
+        assert any("test-scope-conftest" in o["title"] for o in inner["observations"])
+
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        _set_marker(repo)
+        _write_manifest(repo, head, mode=CUMULATIVE_MODE, stage="boundary",
+                        roster=["reviewer"], record_lint=manifest["record_lint"])
+        _write_partial(repo, "reviewer", head, findings=[])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[-1]
+        [finding] = [f for f in fact["body"]["findings"] if "test-scope-conftest" in f["title"]]
+        assert finding["severity"] == "blocking"
+        assert "prawduct:allow prawduct/test-scope" in finding["recommendation"]
+        assert finding in ca_mod.unresolved_blocking(fact, set())
+
+    def test_a_waived_import_reaches_the_review_as_nothing(self, tmp_path):
+        """The control: the same change, waived with a reason, carries no result."""
+        _repo, manifest = self._dispatch(
+            tmp_path,
+            "import pytest\nimport myapp  # prawduct:allow prawduct/test-scope -- plugin registration\n",
+        )
+        assert [f for f in manifest["record_lint"]["findings"]
+                if f["check"].startswith("test-")] == []
+        assert manifest["record_lint"]["counts"]["test-scope-conftest"] == 0
+
+
 class TestRecordLintReachesTheReview:
     """Record-lint results reach the review from the code that computed them.
 

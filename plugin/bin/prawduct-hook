@@ -6866,11 +6866,12 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     told, and one that grades a different plan than the dispatch will is
     answering a different question, confidently.
 
-    **Advice, not authority — so exit 0 on findings.** Record-lint reports to
-    the builder; the review gates keep composing over facts, and a lint finding
-    has never been able to block. Exit 1 is reserved for "the check could not
-    run" (unresolvable interval, unreadable state), which is the one outcome
-    that must not read as clean.
+    **A preview, not a gate — so exit 0 on findings.** This form reports to the
+    builder before dispatch. A result gains force only as a finding of the review
+    that carries it, which consolidation rates at record-lint's severities for that
+    review's stage, so a blocking result here blocks the boundary (merge) review. Exit 1 is
+    reserved for "the check could not run" (unresolvable interval, unreadable
+    state), which is the one outcome that must not read as clean.
     """
     opts: dict[str, str] = {}
     as_json = False
@@ -7794,6 +7795,29 @@ def cmd_stale_plugin_caches(argv: list[str]) -> int:
     return plugin_caches.stale_plugin_caches_cmd(
         argv, running_root=Path(__file__).resolve().parent.parent
     )
+
+
+def cmd_determinism_scan(project_dir: Path, argv: list[str]) -> int:
+    """List the test-determinism and dependency-scope sites that already exist at
+    HEAD. Read-only advice. Thin wrapper: the body lives in
+    ``lib.determinism_lint.scan_cmd``; ``/prawduct:janitor``'s Test Fitness theme
+    relays it."""
+    refused = _reject_unknown_args("determinism-scan", argv, {"--json"})
+    if refused is not None:
+        return refused
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import determinism_lint  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "determinism-scan unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return determinism_lint.scan_cmd(project_dir, argv)
 
 
 def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
@@ -11352,7 +11376,7 @@ _USAGE = (
     "classify-diff-risk [<base>]|"
     "worktrees [--json] [--prs]|"
     "git-tidy [--offline] [--json] [--apply <fingerprint>] [--after-merge <branch> [--pr <n>]] [--reap <worktree>]|"
-    "stale-plugin-caches [--json]|"
+    "stale-plugin-caches [--json]|determinism-scan [--json]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
@@ -11868,6 +11892,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "git-tidy",
     # Read-only: lists and sizes plugin cache directories under the home dir.
     "stale-plugin-caches",
+    # Read-only: reads HEAD's tree through git and prints a report.
+    "determinism-scan",
 })
 
 # Read-only reports that mutate only under `--apply` — a third shape, neither
@@ -12561,6 +12587,8 @@ def _dispatch() -> int:
         return cmd_git_tidy(project_dir, sys.argv[2:])
     elif command == "stale-plugin-caches":
         return cmd_stale_plugin_caches(sys.argv[2:])
+    elif command == "determinism-scan":
+        return cmd_determinism_scan(project_dir, sys.argv[2:])
     elif command == "classify-diff-risk":
         return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "cost-of-commit":

@@ -1266,6 +1266,13 @@ class TestUncheckedReporting:
                 "retired-claim-survives": 0,
                 # No record changed, so no late requirement was added to grade.
                 "late-requirement-record": 0,
+                # Not record-scoped: the change touched no test file and no
+                # package `__init__.py`, so the test-scope arm read nothing.
+                "test-scope-conftest": 0,
+                "test-scope-autouse": 0,
+                "test-scope-init": 0,
+                "test-clock-fake": 0,
+                "test-clock-import": 0,
             },
         }
 

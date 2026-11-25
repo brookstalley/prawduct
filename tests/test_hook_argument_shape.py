@@ -585,6 +585,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "worktrees",
         "git-tidy",
         "stale-plugin-caches",
+        "determinism-scan",
         "plan",
         "native-review",
     }

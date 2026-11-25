@@ -19,14 +19,18 @@ only as a finding of the review that carried it. What a result must never do is
 requires of the compliance canary), because an unrun check and a clean one are
 otherwise indistinguishable at the output.
 
-**Cost is proportional to the diff, never the repo** — with two named
+**Cost is proportional to the diff, never the repo** — with three named
 exceptions. ``retired-claim-survives``'s subject is text the diff did not
 touch (``retired_claims`` states its cost); it is also the one check that reads
 beyond the record set, into every tracked file: the phrase it looks for is a
 record's own retired wording, so a hit grades the record's sweep, not the
 product's content. ``late-requirement-record`` checks an added record's id
 against every record in the product, so it searches the product's markdown for
-the section — one ``git grep``, paid only when the diff added a record.
+the section — one ``git grep``, paid only when the diff added a record. The
+test-scope arm (``determinism_lint``) lists both trees' file names, never their
+contents, to know which conftest is the root and which packages are the
+product's own — paid only when the change touches a test file or a package
+``__init__.py``.
 Consumers are ~20x this
 repo's size, so every line-scoped check reads only the lines a change *added*
 (``git diff --unified=0``) rather than re-scanning whole files. That is also why
@@ -74,6 +78,7 @@ from pathlib import Path
 
 from . import (
     buildplan_refs,
+    determinism_lint,
     evidence,
     late_requirements,
     learnings_files,
@@ -96,6 +101,7 @@ CHECKS = (
     "change-fragment",
     "retired-claim-survives",
     "late-requirement-record",
+    *determinism_lint.CHECKS,
 )
 
 #: Each check's severity at the boundary stage, ``None`` meaning an observation.
@@ -115,6 +121,16 @@ SEVERITY = {
     "change-fragment": "warning",
     "retired-claim-survives": "warning",
     "late-requirement-record": "warning",
+    # A change that widens every test's dependency closure (a root conftest's
+    # first-party import, an importing autouse fixture, an import-everything
+    # package `__init__`) blocks at the boundary, because that cost lands on every
+    # test at once. The clock and randomness reads cost determinism one helper or
+    # module at a time.
+    determinism_lint.CONFTEST_CHECK: "blocking",
+    determinism_lint.AUTOUSE_CHECK: "blocking",
+    determinism_lint.INIT_CHECK: "blocking",
+    determinism_lint.CLOCK_FAKE_CHECK: "warning",
+    determinism_lint.CLOCK_IMPORT_CHECK: "warning",
 }
 
 #: The checks whose blocking result stays a finding at the INNER stage too: a
@@ -1876,6 +1892,16 @@ def lint_records(
     findings.extend(fragment_findings)
     unchecked.extend(fragment_gaps)
     no_answer.update(fragment_no_answer)
+
+    # Not a record check: its subject is the test code and package `__init__`
+    # files among ALL changed paths, read at both trees. It rides here for the one
+    # severity table and the one delivery into the review.
+    scope_findings, scope_gaps, scope_no_answer = determinism_lint.check(
+        project_dir, paths, base_tree, head_tree
+    )
+    findings.extend(scope_findings)
+    unchecked.extend(scope_gaps)
+    no_answer.update(scope_no_answer)
 
     # Not record-scoped: the rules corpus grows on a commit that changed nothing
     # else, and these read file sizes and glob reachability rather than added

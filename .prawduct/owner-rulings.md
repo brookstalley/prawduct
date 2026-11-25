@@ -27,6 +27,52 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-24.** "Yes, and get to prawduct-live as well" — answering whether to open a PR for
+`feature/test-determinism` (#1243). The PR into `develop` is opened through `/prawduct:pr` and merged,
+and `../prawduct-live` is advanced to the new `origin/develop` (the dogfood track, as on 2026-11-22).
+
+**2026-11-24.** "Any first-party import (Recommended)" — answering the boundary review's question on
+#1243 (rev-20261124T234435Z-e6b3faf9, R-11). The ruling's "an autouse fixture … that imports
+everything" reads as: an autouse fixture in a `conftest.py` that imports any first-party module
+blocks at the merge boundary. That is the same cost as a root conftest's single module-level import,
+and "everything" cannot be checked statically for a fixture. The rule is restricted to `conftest.py`,
+because an autouse fixture in a test module reaches only that module. Landed in
+`plugin/lib/determinism_lint.py` and `plugin/docs/test-determinism.md`.
+
+**2026-11-24.** "Janitor only (Recommended)" — answering where the scan of a product's existing
+test-determinism sites lives. `/prawduct:janitor`'s Test Fitness theme runs
+`prawduct-hook determinism-scan`, and doctor and onboard do not, per `docs/doctor-vs-janitor.md`'s
+placement rule (the product's own test craft is the janitor's). This replaces the "onboard/doctor"
+part of the earlier 2026-11-24 #1243 entry below, item 3. Landed in
+`.prawduct/artifacts/build-plan-test-determinism.md` (Decisions made mid-build).
+
+**2026-11-24.** "Remember that prawduct does not require testament, but I think these are all
+best practices anyway right?" — a constraint on #1243 and its follow-up #1244. No part of the test
+determinism work may depend on testament. The patterns are defined tool-agnostically
+(`plugin/docs/test-determinism.md`), the detector reads only source and git
+(`plugin/lib/determinism_lint.py`), and #1244's measured check runs only when the project's runner
+reports per-test causes, doing nothing otherwise. Agreed in reply: each pattern is general
+practice. The clock, randomness, in-tree-state and write patterns cost correctness on any runner.
+The import-scope patterns cost collection time and isolation on any runner, and reuse on any
+incremental runner (pytest-testmon, Bazel/Pants, Jest's changed-files mode, testament).
+
+**2026-11-24.** "Agreed on all counts" (said in the testament session and relayed here by it), then
+"Agreed to all recommendations" here — the design of #1243 (test determinism and dependency-scope
+patterns P1–P8):
+1. The measured check (test-evidence keeps the runner's per-test determinism causes so the Critic
+   can flag a cause site a diff introduced) is a follow-up, gated on #1096's ledger.
+2. A newly introduced P1 (a root conftest's module-level import of the app or its core modules) or
+   P2 (an autouse fixture or package `__init__` that imports everything) is BLOCKING at the
+   merge-boundary review.
+3. That verdict comes from a mechanical base-vs-head detector, not the reviewer's reading, and is
+   waivable with `prawduct:allow prawduct/test-scope -- reason`; the detector also feeds
+   onboard/doctor and the janitor sweep.
+4. P1–P8 and their remedies live in one doc, `plugin/docs/test-determinism.md`, which
+   `building.md` points to in one sentence and the discipline table registers as a row.
+5. The issue's "measured improvement on two products" acceptance item moves to the follow-up as
+   its success measure, since a merge cannot verify it.
+These land in #1243's build plan and the follow-up backlog item.
+
 **2026-11-22.** "1. yes keep running 2. yes agred 3. yes please do fix" — answering three asks
 from the post-v3.9.0 orientation:
 1. The #1130 paired experiment runs to its stop condition (four weeks, about 2026-12-10), even
