@@ -4,6 +4,7 @@ type: feature
 scope: test-determinism
 date: 2026-11-24
 title: Test determinism and dependency scope (#1243)
+closes: [brookstalley/prawduct#1243]
 ---
 
 The test regime learns eight patterns that make a test's result unrepeatable, or unusable by an
