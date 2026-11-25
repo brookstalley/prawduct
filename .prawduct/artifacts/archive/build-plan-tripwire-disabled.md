@@ -26,7 +26,13 @@ governed_by:
       - "exit codes are the contract → conforms: `disabled` exits 1, beside `inactive`, an existing code meaning 'will not load'; no code changes meaning"
       - "additive-first evolution → conforms: a new `status` value and a new `disabled_by` key in `--json`; existing values and keys are unchanged"
 partition: serial — one chunk
+lifecycle: completed
+archived: 2026-11-25
+released_in: v3.10.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 

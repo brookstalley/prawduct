@@ -20,7 +20,13 @@ governed_by:
       - "goals and verification bind; prescribed method is advice → conforms: the chunk's routes are forecasts; the report's repro and the acceptance criteria bind"
       - "every fact has one home → conforms: the notes' text lives in the handoff, and the next boundary reads it there; no second store and no copy-back to `.handoff-notes.md`, and the carried count is read from the previous handoff's own fence"
 partition: serial — one chunk
+lifecycle: completed
+archived: 2026-11-25
+released_in: v3.10.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 

@@ -34,7 +34,13 @@ governed_by:
       - "untrusted governance state is data → conforms; an ingested disposition reaches the census, the prior-dispositions block, record-lint's WARNING re-raise suppression, the sweep's skip set and the stats rates, and no gate (D8, D9, pinned by T7)"
       - "destructive operation needs operation-level approval → inapplicable because nothing is deleted or rewritten"
       - "product content leaves only through pinned, approved surfaces → conforms; `evidence sync` pushes only to the product's own push remote, which the norm does not govern as cross-owner, and the outbound entry names the four newly published fields (design § Security model)"
+lifecycle: completed
+archived: 2026-11-25
+released_in: v3.10.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 

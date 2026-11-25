@@ -33,7 +33,13 @@ governed_by:
       - "prawduct guides and reviews; it never implements → inapplicable because this is framework code"
       - "goals and verification bind; prescribed method is advice → conforms: the chunk routes are forecasts; the Constraints bind"
 partition: serial — Chunk 02's refusal calls the check Chunk 01 narrows, and both are small
+lifecycle: completed
+archived: 2026-11-25
+released_in: v3.10.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 

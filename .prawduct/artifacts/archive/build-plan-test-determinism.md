@@ -44,7 +44,13 @@ governed_by:
       - "stable severity-prefix vocabulary → inapplicable because `determinism-scan` prints a report the janitor reads, not a terminal signal"
       - "the ledger has a single writer → conforms; results reach it only through consolidation"
       - "text emitted into a governed product names no prawduct-internal identifier → conforms; a finding and a `determinism-scan` line state the shape and its remedy in plain words and cite the shipped doc and the waiver, never the P-numbers, this plan, #1243 or a chunk"
+lifecycle: completed
+archived: 2026-11-25
+released_in: v3.10.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 

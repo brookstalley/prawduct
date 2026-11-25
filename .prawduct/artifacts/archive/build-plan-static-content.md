@@ -27,7 +27,13 @@ governed_by:
       - "local-first → conforms: no network, no new dependency"
       - "prawduct guides and reviews; it never implements → inapplicable because this is framework code"
 partition: serial — both chunks edit `coverage_algebra.py`, and Chunk 02's roster discount calls Chunk 01's predicate
+lifecycle: completed
+archived: 2026-11-25
+released_in: v3.10.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 

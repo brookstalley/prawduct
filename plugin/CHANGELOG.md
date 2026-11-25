@@ -10,6 +10,113 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.10.0
+
+**The boundary review now blocks a change that widens every test's import closure (a first-party import added to a root `conftest.py`, an autouse fixture that imports first-party code, or a package `__init__.py` that imports every submodule); waive a deliberate one with `prawduct:allow prawduct/test-scope -- reason`, and `prawduct-hook determinism-scan` lists the sites you already have — and run `prawduct-hook install-tripwire --apply` once, because the unloaded-plugin tripwire now also speaks when `enabledPlugins` switches prawduct off.** Also in this release: forward notes in `.prawduct/.handoff-notes.md` survive a session that ends without writing any; a repo can declare static-document paths that skip the suite re-run and the three-reviewer escalation; placeholder DSNs no longer need a credential waiver, and a cumulative review meets the credential check before it runs; `backlog pick` flags an item whose number the base branch's history already names; dispositions travel between clones; and fixes across chunk certification, review-chain bounds, the round budget and verify-resolutions.
+
+**`handoff-notes-persist`**: Notes in `.prawduct/.handoff-notes.md` now stay in the handoff, marked inherited, until a session writes its own, so a session that ends without writing them no longer loses them. To end notes deliberately, write "nothing beyond the plan".
+
+**`tripwire-disabled`**: The tripwire hook's text changed, so `/prawduct:doctor` reports it `stale` until you run `prawduct-hook install-tripwire --apply`, which replaces only that hook. After that, a session in a repo where `enabledPlugins` sets prawduct to `false` says so at session start, naming the file, instead of running ungoverned in silence.
+
+**`credential-placeholders`**: Placeholder DSNs in docs and tests no longer need a `prawduct/credential-shape` waiver. If a branch adds
+a line the PR's credential check would refuse, `/prawduct:critic cumulative` now stops before the review
+with exit 9 and the lines to answer: waive a fixture or documented example, or rotate and remove a real
+credential, commit, and run the review again.
+
+**`live-review-writes`**: While a Critic review is running, write only `.prawduct/.session-reflected` and
+`.prawduct/.handoff-notes.md`. Anything else, `.prawduct/` included, means passing
+`--tree-changed-by-builder` when the review is consolidated. The flag is also what consolidation
+asks for when it cannot verify the tree at all, whatever was written.
+
+**`static-content`**: To stop a static-document branch paying for a suite run and a three-reviewer boundary review, list the directories that hold such files
+under `static_content_prefixes:` in `.prawduct/project-state.yaml` (a block sequence of path
+prefixes; see `/prawduct:methodology project-state`). Do not list a path your tests read as data.
+Put that one under `suite_coupled_prefixes:`, which wins any overlap. The declaration takes effect
+once it is on the integration branch: the branch that adds it pays the full path itself. Nothing
+changes for a repo that declares nothing.
+
+**`test-determinism`**: A boundary review now blocks a change that adds a first-party module-level import to a root
+`conftest.py`, an autouse fixture that imports first-party code, or a package `__init__.py` that
+imports every submodule. A deliberate case is waived on its line with
+`prawduct:allow prawduct/test-scope -- reason`. Existing sites don't block;
+`prawduct-hook determinism-scan` lists them.
+
+**`yaml-inline-comment`**: A product whose `product_identity.name` line carries a trailing comment gets its proper label from
+now on. Ledger events already written keep the label they were written with.
+These readers now follow YAML's comment rule, like the rest of prawduct's readers: an unquoted ` #` starts
+a comment. A `work_in_progress` description such as `description: fix #745 parsing` now reads as `fix`;
+quote a value that contains ` #` (`description: "fix #745 parsing"`).
+
+**`boundary-coverage-check`**: Nothing changes in how you review or release. `check-releasability` prints a `boundary coverage:` line
+and a `NOTE:` for each pending merge no boundary review covered, and its exit code does not move. When
+`/prawduct:pr` stops at a release branch, it now runs `prawduct-hook check-boundary-coverage` and relays
+what it found before handing back to your release process.
+
+**`dispositions-travel`**: After `evidence sync`, another clone's census, briefing and reviewer prior-dispositions block show
+answers recorded elsewhere. No gate reads a disposition, so nothing that travels lifts a gate.
+
+**`free-interval-warnings`**: After a review whose only open findings are warnings, or whose blockers the gate no longer counts, a fix
+confined to `.prawduct/` or non-governance prose now gets exit 3 (no review needed) from
+`/prawduct:critic verify-resolutions` instead of a review round. The exit-3 output lists the open
+warnings; record each fix with `prawduct-hook disposition <review-id> <fid> --fixed <path>[,<path>...]`,
+or accept it with `--accept "<reason>"`.
+
+**`pick-log-names-item`**: `/prawduct:backlog pick` may now show a `history:` line under a candidate. Read it before
+building: some of the item may already be on your base branch. If your backlog lives in a repo
+other than the code's `origin`, you will not see it.
+
+**`recorder-temp-session-file`**: The managed `.gitignore` section gains `.prawduct/**/*.prawduct.tmp`. A product that lists session files
+one by one sees the gitignore-contract-drift advisory count one more missing entry until the owner says
+go to reconcile it. A product with a wholesale `.prawduct/` rule sees nothing. A leftover temp file from
+an older version keeps its old `.tmp` name, which stays visible to git; it is safe to delete.
+
+**`review-chain-merge-base`**: A branch cut right after another branch merged no longer inherits that branch's `cumulative`.
+Its own boundary review is now asked for, and a verify pass no longer names the merged branch's
+chunks. A branch's own boundary review still counts after its work lands, by a push on trunk or
+a merge commit, so the Stop gate does not ask for a second one.
+
+**`round-budget-cadence`**: A build plan's planned reviews no longer spend the review round budget. That means each chunk's
+first review, in any mode, and the plan's first `cumulative`. A plan with more chunks than
+`review_round_budget` now reaches its boundary review without `--force`, and a planned review still
+runs after loops have used up the budget. Repeated reviews of the same work, including a second
+`cumulative`, are counted as before.
+
+**`scan-and-staging-classes`**: No action needed. A crash while the findings cache was being rewritten no longer leaves an untracked
+`.prawduct/.critic-findings.json.derived`; the staging file is ignored now. If an old one is already in
+your tree, delete it.
+
+**`stop-final-nudge`**: Closing a `cumulative` or `final` that raised findings with a clean `/prawduct:critic
+verify-resolutions` no longer prints a NOTE asking for `/prawduct:critic final`. If you got that
+NOTE after such a close, you did not owe the review. The NOTE still appears when the last review
+before your verify pass was a `chunk`.
+
+**`testament-cache-blockers`**: The scratch repository the `.gitignore` check creates used to run its git with every `GIT_*`
+variable dropped. It now drops only the ones that name a repository (`GIT_DIR`, `GIT_WORK_TREE`,
+`GIT_INDEX_FILE` and the like), so your identity and any git config you give in the environment
+(`GIT_CONFIG_*`) apply to it, as they do to your own git.
+
+**`verify-links-review-id`**: Your verify-resolutions passes now record which review they verify. If another worktree of your
+clone reviewed the same tree, the Stop hook's "run /prawduct:critic final" NOTE now judges the
+review your pass actually verified. If that review is not in your clone's store, the NOTE names
+it and gives both repairs: `prawduct-hook evidence sync` if another clone recorded it, else
+`/prawduct:critic final`. A fix is no longer told it can ride the next review while the PR
+gate still counts an open blocker. Facts recorded before this release behave as before.
+
+**`chunk-plan-order`**: A review no longer certifies a later chunk just because its diff touched that chunk's files while
+an earlier chunk is still open. Earlier certifications are not rewritten: `plan status` flags any
+done chunk with an open chunk before it, and `plan retract <chunk> --all` reopens one that was
+never built. `critic-begin` prints a note when it holds a chunk back. To credit
+a chunk you built ahead of an earlier one, give its commits a scoped subject
+(`<type>(<scope>): … (Chunk N)`) or pass `--chunks N`. A `chunk` review whose diff proposes two
+chunks now stops with exit 8 and asks you to name the one you built with `--chunks`.
+`plan status` now says how each done chunk became done, and flags one with an open chunk before it.
+`plan retract <chunk> --all --reason …` withdraws every certification of a chunk at once.
+
+**`delegate-ceiling-whole-tree-guards`**: When you delegate, a subagent's verification ceiling is its narrow run (your `Delegate
+verification` row, or the narrowest run covering its change) plus your repo's tests that read
+files outside any one change, such as link checks, size budgets, goldens and schema validators,
+named as a class. A narrow test run never reads the files those tests check.
+
 ## v3.9.0
 
 **Prawduct now reads change fragments only: a PR or a release refuses a `.prawduct/change-log.md` that still holds an unreleased entry, so move it onto fragments before your next PR (`/prawduct:doctor` offers the move) — and `critic-begin --chunk` is gone; use `--chunks`.** Also in this release: `/prawduct:pr` runs no separate PR reviewer, because the Critic is the PR boundary's one review; a repeat cumulative review covers only what changed since the branch's last boundary review; reviewers never run above Opus-class by accident; a turn that needs you ends with its asks under **Needs you**; the principles are grouped by how they fire; and fixes across the Stop gate, test evidence, verify-resolutions and the backlog cache.

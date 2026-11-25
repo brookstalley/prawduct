@@ -44,7 +44,13 @@ depends_on:
   - documentation/issues/1141-requirements.md
   - documentation/issues/1198-requirements.md
 last_validated: 2026-11-22
+lifecycle: completed
+archived: 2026-11-25
+released_in: v3.10.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan: no chunk certified while an earlier one is open (#1141, #1198)
 

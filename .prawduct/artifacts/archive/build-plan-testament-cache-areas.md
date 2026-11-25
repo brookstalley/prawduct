@@ -18,7 +18,13 @@ governed_by:
       - "guides and reviews, never implements → inapplicable because no shipped code changes"
       - "goals and verification bind, method is advice → conforms; the delegate chose an import-time environment over an autouse fixture so that session-scoped fixtures are covered too, and recorded why"
       - "every fact has one home → conforms; the isolating git environment is one dict, `GIT_TEST_ENV` in tests/conftest.py, which helpers that build their own env start from"
+lifecycle: completed
+archived: 2026-11-25
+released_in: v3.10.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 

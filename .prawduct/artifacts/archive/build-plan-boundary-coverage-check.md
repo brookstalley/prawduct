@@ -33,7 +33,13 @@ governed_by:
       - "exit codes are the contract; stable severity prefixes; errors attributed → conforms: exit 0 answered (any classification), 3 could not evaluate; NOTE:/WARNING: prefixes only"
       - "additive-first evolution → conforms: a new op and a new check-releasability line; no existing flag, exit or --json key changes"
 partition: serial — 02 reads 01's classification and its --json, and both chunks edit plugin/bin/prawduct-hook's dispatcher
+lifecycle: completed
+archived: 2026-11-25
+released_in: v3.10.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 
