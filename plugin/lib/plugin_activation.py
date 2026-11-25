@@ -9,6 +9,8 @@ governance whatsoever**: no
 session banner, no ``/prawduct:*`` skills, no hooks. Project-scope *enablement*
 is not *installation*. The harness additionally requires a record in
 ``~/.claude/plugins/installed_plugins.json`` whose ``projectPath`` is that repo.
+And installation is not loading: a settings file whose ``enabledPlugins`` sets
+the plugin to ``false`` for the repo switches it off there (:func:`disabled_by`).
 
 **Why this cannot be a session probe.** Every other "is this repo healthy"
 check prawduct owns runs *inside* the repo's own session — an advisory probe, or
@@ -50,6 +52,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import sys
 from pathlib import Path
 
 from . import host
@@ -69,6 +72,27 @@ _GLOBAL_SCOPES = frozenset({"user", "global"})
 ACTIVE = "active"
 INACTIVE = "inactive"
 UNKNOWN = "unknown"
+#: Installed for this repo, but a settings file's ``enabledPlugins`` switches
+#: it off here. Installation is not loading: a ``false`` loads nothing, the same
+#: outcome as ``inactive`` with a different fix.
+DISABLED = "disabled"
+
+#: Where Claude Code reads file-based managed (organisation) settings: one
+#: directory per OS, keyed by ``sys.platform``, with Linux and WSL the default.
+#: A ``false`` there blocks the plugin, and no other source overrides it.
+#: (code.claude.com managed-settings, read 2026-11-25.)
+MANAGED_SETTINGS_DIR_BY_PLATFORM = {
+    "darwin": "/Library/Application Support/ClaudeCode",
+    "win32": "C:\\Program Files\\ClaudeCode",
+}
+MANAGED_SETTINGS_DIR_DEFAULT = "/etc/claude-code"
+
+
+def managed_settings_dirs(platform: str | None = None) -> tuple[str, ...]:
+    """The managed-settings directory Claude Code reads on this OS, as a
+    one-element tuple: it reads that OS's directory and no other."""
+    key = sys.platform if platform is None else platform
+    return (MANAGED_SETTINGS_DIR_BY_PLATFORM.get(key, MANAGED_SETTINGS_DIR_DEFAULT),)
 
 #: How a read of the manifest went. ``missing`` is kept apart from
 #: ``unreadable`` because a profile that never installed a plugin is ordinary,
@@ -179,21 +203,91 @@ def _same_path(a: str, b: Path) -> bool:
         return False
 
 
+def settings_sources(
+    project_dir: Path, config_home: Path, managed_dirs=None
+) -> list[Path]:
+    """The settings files that can carry ``enabledPlugins``, highest precedence
+    first: managed, then the project's local and shared files, then the user's.
+
+    Within managed, Claude Code merges ``managed-settings.json`` first and then
+    each ``managed-settings.d/*.json`` in alphabetical order, later files
+    winning, and ignores hidden files. Highest first, that is the drop-ins in
+    reverse name order, then the base file.
+
+    Not listed, because a file read cannot see them: a ``--settings`` file
+    given on the command line (between managed and local), and managed policy
+    delivered by MDM or a remote source rather than a file.
+    """
+    sources: list[Path] = []
+    for managed in managed_settings_dirs() if managed_dirs is None else managed_dirs:
+        managed = Path(managed)
+        try:
+            drop_ins = sorted(
+                name for name in (p.name for p in (managed / "managed-settings.d").iterdir())
+                if name.endswith(".json") and not name.startswith(".")
+            )
+        except OSError:
+            drop_ins = []
+        sources.extend(managed / "managed-settings.d" / name for name in reversed(drop_ins))
+        sources.append(managed / "managed-settings.json")
+    claude = Path(project_dir) / ".claude"
+    sources += [claude / "settings.local.json", claude / "settings.json", Path(config_home) / "settings.json"]
+    return sources
+
+
+def disabled_by(
+    project_dir: Path,
+    config_home: Path,
+    *,
+    plugin_id: str = PLUGIN_ID,
+    managed_dirs=None,
+) -> Path | None:
+    """The settings file whose ``enabledPlugins`` switches ``plugin_id`` off for
+    this project, or ``None``.
+
+    Claude Code resolves ``enabledPlugins`` key by key: for each plugin id, the
+    value that applies is the one from the highest-precedence source that
+    mentions the id. So the first source naming the plugin decides, and only a
+    literal ``false`` there disables it. A file that cannot be read or parsed is
+    passed over, and a value that is not a boolean reads as not disabling,
+    because this check never claims governance is off on a guess.
+    ``unloaded_tripwire`` carries an inline copy of this rule, held to it by
+    ``tests/test_unloaded_tripwire.py``.
+    """
+    for source in settings_sources(project_dir, config_home, managed_dirs):
+        try:
+            data = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            continue
+        enabled = data.get("enabledPlugins") if isinstance(data, dict) else None
+        if not isinstance(enabled, dict) or plugin_id not in enabled:
+            continue
+        return source if enabled[plugin_id] is False else None
+    return None
+
+
 def plugin_activation_status(
     project_dir: str | Path,
     *,
     plugin_id: str = PLUGIN_ID,
     plugins_file: str | Path | None = None,
+    managed_dirs=None,
 ) -> dict:
-    """Whether ``plugin_id`` is installed for ``project_dir``.
+    """Whether ``plugin_id`` will load for ``project_dir``: installed for it,
+    and not switched off by ``enabledPlugins``.
 
     Returns a dict carrying:
 
     ``status``
         ``"active"`` — a record covers this repo (path match, or a global-scope
-        install). ``"inactive"`` — the manifest read cleanly and holds no such
-        record; the repo is genuinely ungoverned. ``"unknown"`` — the question
-        could not be answered. **Never** conflate the last two.
+        install) and no setting disables it. ``"inactive"`` — the manifest read
+        cleanly and holds no such record; the repo is genuinely ungoverned.
+        ``"disabled"`` — installed, but :func:`disabled_by` names a settings
+        file whose ``enabledPlugins`` is ``false`` for it, so it loads nothing
+        here either. ``"unknown"`` — the question could not be answered.
+        **Never** conflate the last with the others.
+    ``disabled_by``
+        The settings file that switches it off, or ``None``.
     ``reason``
         One sentence naming what was found, suitable for an operator.
     ``plugin_id``, ``project_path``, ``plugins_file``
@@ -210,6 +304,31 @@ def plugin_activation_status(
         seeing them is what identified the failure.
     """
     path = Path(plugins_file) if plugins_file is not None else default_plugins_file()
+    result = _install_status(project_dir, plugin_id, path)
+    result["disabled_by"] = None
+    if result["status"] != ACTIVE:
+        return result
+    # The user settings sit beside the manifest's `plugins/` directory, under the
+    # same config home, so a caller naming the manifest names both.
+    source = disabled_by(
+        Path(result["project_path"]), path.parent.parent,
+        plugin_id=plugin_id, managed_dirs=managed_dirs,
+    )
+    if source is not None:
+        result.update(
+            status=DISABLED,
+            reason=(
+                f"`{plugin_id}` is installed for this project, but `enabledPlugins` "
+                f"sets it to false in {source}"
+            ),
+            disabled_by=str(source),
+        )
+    return result
+
+
+def _install_status(project_dir: str | Path, plugin_id: str, path: Path) -> dict:
+    """Whether a manifest record covers ``project_dir``: the install half of
+    :func:`plugin_activation_status`, with the same keys but ``disabled_by``."""
     try:
         target = Path(project_dir).expanduser().resolve()
     except (OSError, ValueError, RuntimeError) as exc:
@@ -394,6 +513,29 @@ def report_lines(result: dict, *, context: str = ONBOARD) -> list[str]:
     status = result.get("status")
     if status == ACTIVE:
         return [f"active: {result['reason']}."]
+
+    if status == DISABLED:
+        lines = [
+            f"disabled: {result['reason']}.",
+            "",
+            "Installing is not loading: with this setting a session in this repo loads "
+            "nothing — no session briefing, no `/prawduct:*` skills, no Stop-hook gates — "
+            "while its governance anchor describes gates that are not there. If someone "
+            "switched it off here on purpose (`/prawduct:repo-disable` writes exactly this), "
+            "that is their call; otherwise set the entry to `true`, or delete it, and "
+            "restart the session.",
+        ]
+        if context in (DOCTOR, MIGRATE):
+            # This skill runs inside a session the plugin loaded, so the setting
+            # either changed after the session started or the plugin came in by
+            # `--plugin-dir`; the next ordinary session here loads nothing.
+            lines.extend([
+                "",
+                "This session has the plugin, so it was loaded another way (`--plugin-dir`) "
+                "or the setting changed after the session started. The next session here "
+                "will not load it.",
+            ])
+        return lines
 
     if status == INACTIVE and context == DOCTOR:
         lines = [

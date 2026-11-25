@@ -564,3 +564,14 @@ readiness report: #1246 (the install tripwire misses a disabled plugin) and #123
 only one session boundary) are fixed before the next release is cut, not deferred to a later one. The
 designs for each land in their build plans (`build-plan-tripwire-disabled.md`,
 `build-plan-handoff-notes-persist.md`).
+
+**2026-11-25.** "yes to all of your recommendations" — answering the three asks after #1238's PR and
+#1246's review:
+1. PR #1248 (#1238, handoff notes persist) is merged. The release-plan go-ahead given in the same
+   message covers merging #1246's PR once its gates pass, since the release needs it.
+2. The two #1238 decisions made on the owner's behalf are confirmed
+   (`build-plan-handoff-notes-persist.md` Goals): an empty notes file does not end inherited notes,
+   and inherited notes have no expiry, showing the count of boundaries carried instead.
+3. The next release is **v3.10.0**, a minor, because test-determinism adds a boundary-blocking
+   class a consumer's PR can meet. All release-pending scopes ship; the cut follows
+   `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.

@@ -7909,7 +7909,7 @@ def cmd_check_plugin_active(project_dir: Path, argv: list[str]) -> int:
     repo unable to run any prawduct command at all, so the only session that can
     ask the question is one running somewhere else — the onboarding session.
 
-    **Exit codes: 0 active, 1 inactive, 3 unknown** — the same three-outcome
+    **Exit codes: 0 active, 1 inactive or disabled, 3 unknown** — the same three-outcome
     shape, and for the same stated reason, as ``check-released``'s *unverified*
     3. Both foldings of "could not run" are wrong here. Folded into 1 it reports
     a broken install because a harness file was unreadable, sending an operator
@@ -7988,7 +7988,9 @@ def cmd_check_plugin_active(project_dir: Path, argv: list[str]) -> int:
         )
         stream = sys.stdout if result["status"] == plugin_activation.ACTIVE else sys.stderr
         print(text, file=stream)
-    if result["status"] == plugin_activation.INACTIVE:
+    # Disabled loads nothing, exactly as inactive does; only the fix differs,
+    # and the text says which.
+    if result["status"] in (plugin_activation.INACTIVE, plugin_activation.DISABLED):
         return 1
     if result["status"] == plugin_activation.UNKNOWN:
         return 3
