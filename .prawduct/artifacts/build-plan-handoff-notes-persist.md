@@ -11,9 +11,14 @@ depends_on:
 governed_by:
   - artifact: architecture
     dispositions:
-      - "advice fails soft, but never silently → conforms: carrying notes forward cannot block a boundary; an unreadable or unfenced handoff carries nothing, and the handoff says when notes are inherited and how far"
-      - "every fact has one home → conforms: the notes' text lives in the handoff, and the next boundary reads it from there; no second store or copy-back to `.handoff-notes.md`"
-      - "observable beats stored → conforms: the carried count is read from the previous handoff's own fence, not from a separate record"
+      - "an independent reviewer never mutates the session it reviews → inapplicable because this changes the boundary's handoff generator, which no reviewer runs"
+      - "authority fails closed; advice fails soft → conforms: the handoff is advice; carrying notes cannot block a boundary, and notes it cannot delimit are named in the next handoff rather than dropped silently"
+      - "local-first: process-spawn, atomic files, the git object database → conforms: reads and writes only `.prawduct/` files, through the existing atomic handoff write"
+      - "the plugin writes nothing into a governed repo but its own state → conforms: the only file written is `.prawduct/.session-handoff.md`, already the generator's"
+      - "never specific to Python → inapplicable because the handoff is markdown about a session, with no reading of the product's code"
+      - "prawduct guides and reviews; it never implements → inapplicable because this is framework code"
+      - "goals and verification bind; prescribed method is advice → conforms: the chunk's routes are forecasts; the report's repro and the acceptance criteria bind"
+      - "every fact has one home → conforms: the notes' text lives in the handoff, and the next boundary reads it there; no second store and no copy-back to `.handoff-notes.md`, and the carried count is read from the previous handoff's own fence"
 partition: serial — one chunk
 ---
 
@@ -37,12 +42,24 @@ the triage comment left open, answered as it leaned.
   not a statement.
 - *Freshness surfaces:* inherited notes are never written back to the notes file, so the Stop hook's
   missing-note advisory and the clear-verdict check (`notes_present`) still see only what this session
-  wrote. Inherited notes do suppress the handoff's "no forward note" section, whose heading would
-  otherwise make the briefing call the handoff a bare machine record.
+  wrote. The handoff's "no forward note" section still fires beside inherited notes (reversed at the
+  boundary review: suppressing it hid the signal for good once any notes existed), and the briefing's
+  pointer names both instead of calling the handoff a bare machine record.
 - Unbounded lifetime, with the count shown so the reader can judge drift, rather than an expiry
   that would recreate the loss on a schedule.
 - A pre-fence handoff carries nothing: guessing where agent-written markdown ends could hand the next
-  session text the notes never held. Costs one boundary at upgrade.
+  session text the notes never held. Costs one boundary at upgrade, and the next handoff says so.
+
+**Decisions made mid-build:**
+- Boundary review (rev-20261125T223801Z-2275f4a8): the reader trusted that it owned the only fence
+  lines and gave one empty answer for every "nothing carried" cause, so notes that quoted a fence
+  (the natural case: copying the inherited block to keep it), text quoted later in the handoff, an
+  undecodable handoff or an unreadable notes file each lost notes silently. Now the renderer defangs
+  fence lines in the notes it embeds, the reader reads only the opening notes section and decodes
+  lossily, an unreadable notes file inherits too, a drop it cannot avoid is named, the first sentence
+  follows what the ending session left, and the "no forward note" section is no longer suppressed by
+  inherited notes (the pointer names both instead). The digest and `session-hygiene.md` say that a
+  write replaces inherited notes, so the writer carries forward what still applies.
 
 ## Build Chunks
 

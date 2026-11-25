@@ -49,8 +49,8 @@ coding without it is the most common governance failure.
   `.session-reflected`) at each chunk close, and never ask whether to prepare one — prepare it,
   then signal; asking replays into a cold cache. Write "nothing beyond the plan"
   rather than no file. Read it before rewriting it — never blind-append: only `/clear` consumes it,
-  so a later batch finds earlier notes live. Drop what the work discharged, correct what moved,
-  keep what still bites. `.prawduct/.session-handoff.md` is regenerated at every `/clear`; don't
+  and a write replaces the handoff's inherited notes. Drop what the work discharged, correct what
+  moved, keep what still bites. `.prawduct/.session-handoff.md` is regenerated at every `/clear`; don't
   write there.
 - **The harness's auto-memory holds no project state and no product rules** — `.prawduct/` and
   `.claude/rules/learnings/` are authoritative, and an owner's ruling goes, dated, into

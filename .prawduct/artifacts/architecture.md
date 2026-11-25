@@ -384,12 +384,16 @@ note is cleared only once its text is in the handoff, so one that was unreadable
 failed write — survives for the next `/clear`. (Gating on "a handoff was written" is the near-miss:
 it is true whenever any *other* section had content, so an unreadable note would be deleted
 undelivered.) Notes get no archive of their own — their text is carried verbatim into the handoff,
-which is where it is read. The handoff fences that text, and when the session now ending wrote no
-notes, the generator carries the previous handoff's fenced notes forward under an *inherited*
-heading with the count of boundaries crossed: notes end when a session writes its own ("nothing
-beyond the plan" included), never because a session ended without writing. The inherited text is
-never restored to `.handoff-notes.md`, so every check asking whether *this* session left notes
-still sees none. A generated handoff carries a machine marker; a `.session-handoff.md`
+which is where it is read. The handoff fences that text (and defangs any fence-shaped line inside
+it, so the generator owns the only fences), and when the session now ending delivered no notes —
+none, an empty file, or an unreadable one — the generator carries the previous handoff's fenced
+notes forward under an *inherited* heading with the count of boundaries crossed: notes end when a
+session writes its own ("nothing beyond the plan" included), never because a session ended without
+writing. Only the notes section that opens a generated handoff is read, so text quoted later in it
+neither hides nor invents notes; notes it cannot delimit (a pre-fence handoff, a hand-edit) are
+named in the next handoff, not dropped silently. The inherited text is never restored to
+`.handoff-notes.md`, so every check asking whether *this* session left notes still sees none, and
+the "no forward note" section still fires beside inherited notes; the briefing's pointer names both. A generated handoff carries a machine marker; a `.session-handoff.md`
 lacking it was hand-authored, and is folded into the new handoff rather than overwritten. Advice
 fails soft applies throughout: none of this can block `/clear` — but every failure names its
 consequence, because silent degradation is the bug this pair exists to fix. Failures split by
