@@ -294,7 +294,7 @@ def test_every_result_carries_the_same_keys(tmp_path, payload, expected):
     assert result["status"] == expected
     assert set(result) == {
         "status", "reason", "plugin_id", "project_path", "plugins_file",
-        "matched_scope", "manifest_version", "other_paths",
+        "matched_scope", "manifest_version", "other_paths", "disabled_by",
     }
 
 
@@ -331,6 +331,90 @@ def test_inactive_report_carries_the_consequence_and_the_fix(tmp_path):
     assert "NO governance" in text
     assert "claude plugin install" in text
     assert str(other) in text
+
+
+# --------------------------------------------------------------------------
+# Disabled: installed, but enabledPlugins switches it off (#1246)
+# --------------------------------------------------------------------------
+
+def _disable(settings_file: Path, value=False) -> Path:
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(json.dumps({"enabledPlugins": {pa.PLUGIN_ID: value}}), encoding="utf-8")
+    return settings_file
+
+
+def test_an_installed_plugin_switched_off_by_the_project_is_disabled(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    manifest = _manifest(tmp_path, {"version": 2, "plugins": {pa.PLUGIN_ID: [_record(repo)]}})
+    source = _disable(repo / ".claude" / "settings.json")
+
+    result = pa.plugin_activation_status(repo, plugins_file=manifest, managed_dirs=())
+
+    assert result["status"] == pa.DISABLED
+    assert result["disabled_by"] == str(source.resolve())
+    # Control: true in the same file is active, with nothing named.
+    _disable(source, True)
+    result = pa.plugin_activation_status(repo, plugins_file=manifest, managed_dirs=())
+    assert (result["status"], result["disabled_by"]) == (pa.ACTIVE, None)
+
+
+def test_disabled_by_takes_the_highest_source_naming_the_plugin(tmp_path):
+    repo, home, managed = tmp_path / "repo", tmp_path / "home", tmp_path / "managed"
+    repo.mkdir()
+    local, project, user = (
+        repo / ".claude" / "settings.local.json", repo / ".claude" / "settings.json",
+        home / "settings.json",
+    )
+    _disable(user)
+    assert pa.disabled_by(repo, home, managed_dirs=(managed,)) == user
+    _disable(project, True)
+    assert pa.disabled_by(repo, home, managed_dirs=(managed,)) is None
+    _disable(local)
+    assert pa.disabled_by(repo, home, managed_dirs=(managed,)) == local
+    _disable(managed / "managed-settings.json")
+    assert pa.disabled_by(repo, home, managed_dirs=(managed,)) == managed / "managed-settings.json"
+    # A file that mentions only other plugins says nothing about this one.
+    other = {"enabledPlugins": {"other@market": False}}
+    (managed / "managed-settings.json").write_text(json.dumps(other), encoding="utf-8")
+    assert pa.disabled_by(repo, home, managed_dirs=(managed,)) == local
+
+
+def test_an_uninstalled_plugin_stays_inactive_whatever_the_settings_say(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    manifest = _manifest(tmp_path, {"version": 2, "plugins": {}})
+    _disable(repo / ".claude" / "settings.json")
+    result = pa.plugin_activation_status(repo, plugins_file=manifest, managed_dirs=())
+    assert result["status"] == pa.INACTIVE
+    assert result["disabled_by"] is None
+
+
+@pytest.mark.parametrize("context", [pa.ONBOARD, pa.DOCTOR, pa.MIGRATE])
+def test_disabled_report_names_the_file_and_the_deliberate_case(tmp_path, context):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    manifest = _manifest(tmp_path, {"version": 2, "plugins": {pa.PLUGIN_ID: [_record(repo)]}})
+    source = _disable(repo / ".claude" / "settings.local.json")
+    text = "\n".join(pa.report_lines(
+        pa.plugin_activation_status(repo, plugins_file=manifest, managed_dirs=()), context=context
+    ))
+    assert text.startswith("disabled: ")
+    assert str(source.resolve()) in text
+    assert "/prawduct:repo-disable" in text
+    assert ("This session has the plugin" in text) == (context != pa.ONBOARD)
+
+
+def test_cli_exits_1_when_disabled(tmp_path, config_dir):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    cfg = config_dir({"version": 2, "plugins": {pa.PLUGIN_ID: [_record(repo)]}})
+    _disable(repo / ".claude" / "settings.json")
+
+    proc = _run(["--path", str(repo), "--json"], config_dir=cfg)
+
+    assert proc.returncode == 1
+    assert json.loads(proc.stdout)["status"] == pa.DISABLED
 
 
 def test_unknown_report_refuses_to_read_as_a_clean_bill(tmp_path):

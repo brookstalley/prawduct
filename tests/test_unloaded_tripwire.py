@@ -275,6 +275,137 @@ def test_verdict_agrees_with_plugin_activation(world, content):
         assert got == expected, (project, out)
 
 
+# --- enabledPlugins: installed is not loaded (#1246) ---------------------------
+
+_DISABLED = "PRAWDUCT GOVERNANCE IS SWITCHED OFF"
+_USER_INSTALL = {"version": 2, "plugins": {pa.PLUGIN_ID: [{"scope": "user"}]}}
+
+
+def _settings(path: Path, value) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"enabledPlugins": {pa.PLUGIN_ID: value}}), encoding="utf-8")
+    return path
+
+
+def _local(world) -> Path:
+    return world["repo"] / ".claude" / "settings.local.json"
+
+
+def _project(world) -> Path:
+    return world["repo"] / ".claude" / "settings.json"
+
+
+def _user(world) -> Path:
+    return world["config"] / "settings.json"
+
+
+def _verdict(world, managed: Path) -> str:
+    """The inline verdict run directly, so a test can name the managed-settings
+    directory the shell half hard-codes to the machine's real one."""
+    proc = subprocess.run(
+        [sys.executable, "-c", tw._VERDICT_PY,
+         str(world["config"] / "plugins" / "installed_plugins.json"), str(world["repo"]), str(managed)],
+        capture_output=True, text=True, env=scrubbed_env(world["home"]),
+    )
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout.strip()
+
+
+def test_a_project_setting_of_false_is_the_disabled_line_naming_the_file(world):
+    """The report's repro: installed at user scope, switched off for the repo."""
+    _manifest(world, _USER_INSTALL)
+    path = _settings(_project(world), False)
+    out = _run_hook(world)
+    assert out.startswith(_DISABLED)
+    assert str(path.resolve()) in out
+    assert "/prawduct:repo-disable" in out, "a deliberate opt-out must be named, not accused"
+    assert not out.startswith(_LOUD)
+    # Control: the same file saying true is silent.
+    _settings(_project(world), True)
+    assert _run_hook(world) == ""
+
+
+@pytest.mark.parametrize("where,value,expect", [
+    # The highest-precedence file naming the plugin decides, key by key.
+    ({"local": True, "project": False}, None, ""),
+    ({"local": False, "project": True}, "local", _DISABLED),
+    ({"user": False}, "user", _DISABLED),
+    ({"project": True, "user": False}, None, ""),
+    ({"project": "yes"}, None, ""),  # not a boolean: never claim it is off
+])
+def test_precedence_local_then_project_then_user(world, where, value, expect):
+    _manifest(world, _USER_INSTALL)
+    files = {"local": _local(world), "project": _project(world), "user": _user(world)}
+    for name, setting in where.items():
+        _settings(files[name], setting)
+    out = _run_hook(world)
+    if expect:
+        assert out.startswith(expect)
+        assert str(files[value].resolve() if value != "user" else files[value]) in out
+    else:
+        assert out == ""
+
+
+def test_an_unreadable_settings_file_is_passed_over(world):
+    _manifest(world, _USER_INSTALL)
+    _local(world).parent.mkdir(parents=True)
+    _local(world).write_text("{broken", encoding="utf-8")
+    _settings(_project(world), False)
+    assert _run_hook(world).startswith(_DISABLED)
+
+
+def test_not_installed_is_still_the_loud_line_even_when_disabled(world):
+    """Installing is the first fix; the disabled line would send them to the wrong one."""
+    _manifest(world, {"version": 2, "plugins": {}})
+    _settings(_project(world), False)
+    assert _run_hook(world).startswith(_LOUD)
+
+
+def test_managed_settings_outrank_the_project(world, tmp_path):
+    managed = tmp_path / "managed"
+    _manifest(world, _USER_INSTALL)
+    _settings(_local(world), True)
+    assert _verdict(world, managed) == "active"
+    _settings(managed / "managed-settings.d" / "10-policy.json", False)
+    assert _verdict(world, managed) == "disabled:" + str(managed / "managed-settings.d" / "10-policy.json")
+    _settings(managed / "managed-settings.json", False)
+    assert _verdict(world, managed) == "disabled:" + str(managed / "managed-settings.json")
+
+
+def test_the_shell_passes_the_managed_settings_directories():
+    for d in pa.MANAGED_SETTINGS_DIRS:
+        assert f'"{d}"' in tw.TRIPWIRE_COMMAND
+
+
+@pytest.mark.parametrize("settings", [
+    {},
+    {"project": False},
+    {"local": True, "project": False},
+    {"local": False},
+    {"user": False},
+    {"project": True, "user": False},
+    {"managed": False, "local": True},
+    {"project": "yes"},
+])
+@pytest.mark.parametrize("installed", [True, False])
+def test_disabled_verdict_agrees_with_plugin_activation(world, tmp_path, settings, installed):
+    """The hook inlines ``plugin_activation.disabled_by``; the two must agree."""
+    managed = tmp_path / "managed"
+    path = _manifest(world, _USER_INSTALL if installed else {"version": 2, "plugins": {}})
+    files = {
+        "local": _local(world), "project": _project(world), "user": _user(world),
+        "managed": managed / "managed-settings.json",
+    }
+    for name, value in settings.items():
+        _settings(files[name], value)
+    result = pa.plugin_activation_status(world["repo"], plugins_file=path, managed_dirs=(managed,))
+    got = _verdict(world, managed)
+    word = got.split(":", 1)[0]
+    assert word == result["status"], (settings, got, result)
+    if word == pa.DISABLED:
+        assert got.split(":", 1)[1] == result["disabled_by"]
+
+
 def test_the_matcher_is_the_banner_hooks_own():
     """'No banner appeared' and 'the tripwire would have spoken' must cover the
     same session starts — read from the plugin's hooks.json, not restated."""

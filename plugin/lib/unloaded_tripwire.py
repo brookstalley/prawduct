@@ -7,22 +7,27 @@ product repo's own committed ``.claude/settings.json`` is the one thing that run
 either way: Claude Code merges project hooks with plugin hooks, and runs project
 hooks whether or not any plugin loaded. A SessionStart hook's plain stdout is
 added to the agent's context, so the hook's job is to print one line when the
-install record lacks this repo, and nothing when it has it.
+plugin will not load here (the install record lacks this repo, or a settings
+file's ``enabledPlugins`` switches it off), and nothing when it will.
 
 **Self-contained, because the case is that the plugin is absent.** The command
 cannot call ``prawduct-hook`` or import ``lib/``; product repos commit no
 framework files. So the check is inlined: POSIX ``sh`` around a short ``python3
 -c`` verdict that mirrors :func:`lib.plugin_activation.plugin_activation_status`
 — a ``user``/``global``-scope record, or one whose ``projectPath`` is this repo
-or, in a linked git worktree, its main checkout, is active; a clean read with no
-such record is inactive; anything else is unknown. The Python uses nothing newer
+or, in a linked git worktree, its main checkout, is active unless
+:func:`lib.plugin_activation.disabled_by` finds a settings file setting it to
+``false``, which is disabled; a clean read with no such record is inactive;
+anything else is unknown. The Python uses nothing newer
 than 3.0 (no f-strings), so the plugin's own Python floor is not this hook's
 floor. If ``python3`` is not on ``PATH``, or exits non-zero (the macOS shim that
 only offers to install the tools, or a manifest shape the verdict did not
 expect), the ``sh`` half still prints the could-not-verify line and says which:
 a missing interpreter is visible.
 
-**Never a false accusation.** Only ``inactive`` gets the loud line. A missing or
+**Never a false accusation.** Only ``inactive`` gets the loud line. ``disabled``
+gets its own line, which names the file and asks rather than accuses, because
+``/prawduct:repo-disable`` writes that setting on purpose. A missing or
 unparseable manifest, an unreadable record, or no interpreter gets a soft line
 that says it could not verify and tells the agent how to tell for itself (the
 banner). That is the stance ``plugin_activation`` takes, for the same reason:
@@ -49,6 +54,7 @@ from pathlib import Path
 #: plugin the settings file beside it enables. ``migrate_plugin`` imports this
 #: module lazily, inside ``transform_settings``, to keep the import one-way.
 from .migrate_plugin import PLUGIN_ID
+from .plugin_activation import MANAGED_SETTINGS_DIRS
 
 #: The first line of the command. ``:`` is the shell's no-op, so the line costs
 #: nothing at runtime and makes the hook findable by a writer. It carries no
@@ -61,13 +67,38 @@ TRIPWIRE_TAG = ": prawduct-unloaded-tripwire"
 TRIPWIRE_MATCHER = "startup|resume|clear|compact|fork"
 
 #: The verdict, read the way ``plugin_activation.plugin_activation_status``
-#: reads the manifest. Prints one word: active | inactive | missing | unreadable.
+#: reads the manifest and the settings. Prints one word — active | inactive |
+#: missing | unreadable — or ``disabled:<settings file>``. Arguments: the
+#: manifest, the project, then the managed-settings directories.
 #: Double quotes only — the ``sh`` wrapper single-quotes this text.
 _VERDICT_PY = "\n".join([
     "import json,os,sys",
     "f=os.path.expanduser(sys.argv[1]);p=os.path.realpath(sys.argv[2])",
     "def out(v):",
     " print(v);sys.exit(0)",
+    # `enabledPlugins` resolves key by key: the highest-precedence settings file
+    # naming the plugin decides, and only a literal false disables it
+    # (plugin_activation.disabled_by, the same rule). Managed first, then the
+    # project's local and shared files, then the user's beside the manifest.
+    "def en(s):",
+    " try:x=json.load(open(s))",
+    " except (IOError,OSError,ValueError):return None",
+    ' e=x.get("enabledPlugins") if isinstance(x,dict) else None',
+    f' if not isinstance(e,dict) or "{PLUGIN_ID}" not in e:return None',
+    f' return e["{PLUGIN_ID}"] is False',
+    "def act():",
+    " S=[]",
+    " for d in sys.argv[3:]:",
+    '  S.append(os.path.join(d,"managed-settings.json"))',
+    '  try:S.extend(sorted(os.path.join(d,"managed-settings.d",n) for n in os.listdir(os.path.join(d,"managed-settings.d")) if n.endswith(".json")))',
+    "  except (IOError,OSError):pass",
+    ' c=os.path.join(p,".claude")',
+    ' S+=[os.path.join(c,"settings.local.json"),os.path.join(c,"settings.json"),os.path.join(os.path.dirname(os.path.dirname(f)),"settings.json")]',
+    " for s in S:",
+    "  r=en(s)",
+    "  if r is None:continue",
+    '  out("disabled:"+s if r else "active")',
+    ' out("active")',
     "def rd(x):",
     " try:return open(x).read().strip()",
     ' except (IOError,OSError,ValueError):return ""',
@@ -100,12 +131,12 @@ _VERDICT_PY = "\n".join([
     " if not isinstance(x,dict):",
     "  b=1;continue",
     ' if x.get("scope") in ("user","global"):',
-    '  out("active")',
+    '  act()',
     ' q=x.get("projectPath")',
     " if not isinstance(q,str):",
     "  b=1;continue",
     " if os.path.realpath(os.path.expanduser(q)) in P:",
-    '  out("active")',
+    '  act()',
     'out("unreadable" if b else "inactive")',
 ])
 
@@ -121,6 +152,24 @@ INACTIVE_MESSAGE = (
     "session. (Loaded the plugin with --plugin-dir? Then ignore this line.)"
 )
 
+#: What the agent reads when the plugin is installed for this repo but a
+#: settings file's ``enabledPlugins`` switches it off. ``$s`` is that file. Not
+#: the loud line's accusation: ``/prawduct:repo-disable`` writes exactly this on
+#: purpose, so the agent is told to ask, not to report a fault.
+DISABLED_MESSAGE = (
+    "PRAWDUCT GOVERNANCE IS SWITCHED OFF IN THIS SESSION. This repo is governed by "
+    f"Prawduct and {PLUGIN_ID} is installed, but enabledPlugins sets it to false in "
+    "$s: no session banner, no /prawduct:* skills, no Stop gates. If the user "
+    "switched it off here on purpose (/prawduct:repo-disable), work without it; "
+    "otherwise tell them before any work, and do not imitate the gates by reading "
+    "the plugin's files. To switch it back on, set that entry to true or delete it, "
+    "then restart the session."
+)
+
+#: The directories Claude Code reads managed settings from, passed to the
+#: verdict as arguments; their one home is ``plugin_activation``.
+_MANAGED_ARGS = " ".join(f'"{d}"' for d in MANAGED_SETTINGS_DIRS)
+
 #: What the agent reads when the check could not answer. ``$v`` is the reason
 #: word. It claims nothing about the install, only what to look for.
 UNKNOWN_MESSAGE = (
@@ -134,12 +183,13 @@ TRIPWIRE_COMMAND = "\n".join([
     TRIPWIRE_TAG,
     'm="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"',
     "if command -v python3 >/dev/null 2>&1; then",
-    "v=$(python3 -c '" + _VERDICT_PY + "' \"$m\" \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null)"
+    "v=$(python3 -c '" + _VERDICT_PY + "' \"$m\" \"${CLAUDE_PROJECT_DIR:-.}\" " + _MANAGED_ARGS + " 2>/dev/null)"
     " || v=\"python3 exited $?, so the check did not finish\"",
     'else v="python3 not found"; fi',
     'case "$v" in',
     "active) ;;",
     f'inactive) echo "{INACTIVE_MESSAGE}" ;;',
+    f'disabled:*) s="${{v#disabled:}}"; echo "{DISABLED_MESSAGE}" ;;',
     f'*) echo "{UNKNOWN_MESSAGE}" ;;',
     "esac",
     "exit 0",

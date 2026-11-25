@@ -70,12 +70,13 @@ repo cannot detect about itself: the probes
 and `/prawduct:doctor` that would report it are delivered by the plugin that did not load. **This
 session is the only one that can ask**, which is why the check is here and not in `doctor`.
 
-Route on the status, not on the exit code alone — there are three answers, with exit codes 0, 1 and 3:
+Route on the status, not on the exit code alone — there are four answers, with exit codes 0, 1 and 3:
 
 | Status | What to do |
 |---|---|
 | `active` | Continue to Finish. |
 | `inactive` (exit 1) | **Do not report success.** Relay the command's own output — it names the consequence, the exact `claude plugin install` line, and which other paths the plugin *is* installed for. The operator runs it; onboarding is not finished until they do. |
+| `disabled` (exit 1) | **Do not report success.** The plugin is installed, but a settings file's `enabledPlugins` sets it to `false` for the target, so it loads nothing there. Relay the command's own output, which names the file; ask whether that was deliberate before anyone changes it. |
 | `unknown` (exit 3) | The check could not run — a harness-internal file was missing or unreadable. Say that it **was not established**, never that it passed. Tell them to confirm by opening the target and looking for the prawduct session briefing. |
 
 ## Finish: commit, then discovery
