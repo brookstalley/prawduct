@@ -22,6 +22,7 @@ import json
 import sys
 import subprocess
 from pathlib import Path
+from conftest import scrubbed_env  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -35,15 +36,7 @@ FINAL_MODE = "final (full review, ready for push)"
 def _git_env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-    }
+    return scrubbed_env(home, CLAUDE_PLUGIN_ROOT=str(ROOT))
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:

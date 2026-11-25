@@ -37,6 +37,7 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 
 sys.path.insert(0, str(ROOT))
 from lib import evidence  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +47,7 @@ from lib import evidence  # noqa: E402
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -605,7 +606,7 @@ class TestCaptureTree:
         (repo / "code.py").write_text("x = 3\n")
         _git(repo, "commit", "-q", "-am", "mine")
         merge = subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "other"],
+            ["git", "merge", "other"],
             cwd=str(repo), capture_output=True, text=True, timeout=15,
         )
         assert merge.returncode != 0, "fixture must actually conflict"
@@ -805,11 +806,7 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         timeout=25,
-        env={
-            "HOME": str(home),
-            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-            "CLAUDE_PROJECT_DIR": str(repo),
-        },
+        env=scrubbed_env(home, CLAUDE_PROJECT_DIR=str(repo)),
     )
 
 
@@ -826,12 +823,11 @@ class TestSeedReachesTheDurableRecord:
         result = subprocess.run(
             [sys.executable, str(HOOK), "critic-begin", "--mode", "chunk"],
             cwd=str(repo), capture_output=True, text=True, timeout=30,
-            env={
-                "HOME": str(tmp_path / "_home2"),
-                "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-                "CLAUDE_PROJECT_DIR": str(repo),
-                "CLAUDE_PLUGIN_ROOT": str(Path(HOOK).resolve().parent.parent),
-            },
+            env=scrubbed_env(
+                tmp_path / "_home2",
+                CLAUDE_PROJECT_DIR=str(repo),
+                CLAUDE_PLUGIN_ROOT=str(Path(HOOK).resolve().parent.parent),
+            ),
         )
         assert result.returncode == 0, result.stderr
         manifest = json.loads(
@@ -874,6 +870,23 @@ class TestEvidenceCli:
         assert "Usage" in proc.stderr
         assert _run_hook(repo, "evidence", "list", "-n", "1").returncode == 0
 
+    def test_list_by_id_as_json_prints_the_whole_fact(self, tmp_path):
+        """#1141-R10: the bug-report intake reads a certifying review's chunk
+        fields, which the one-row listing does not show."""
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(repo, "review", "r-1", {"head_tree": "a" * 40, "chunks": ["01"]})
+        evidence.append_fact(repo, "review", "r-2", {"head_tree": "b" * 40, "chunks": ["02"],
+                                                     "chunks_declared": False})
+        proc = _run_hook(repo, "evidence", "list", "--id", "r-2", "--json")
+        assert proc.returncode == 0, proc.stderr
+        (line,) = proc.stdout.splitlines()
+        fact = json.loads(line)
+        assert (fact["id"], fact["body"]["chunks"], fact["body"]["chunks_declared"]) == ("r-2", ["02"], False)
+        # Without --json, --id narrows the one-row listing.
+        rows = _run_hook(repo, "evidence", "list", "--id", "r-1").stdout
+        assert "r-1" in rows and "r-2" not in rows
+        assert _run_hook(repo, "evidence", "list", "--id", "nope", "--json").stdout == ""
+
     def test_list_tolerates_opaque_body_values(self, tmp_path):
         repo = _make_repo(tmp_path)
         # Valid envelope, body fields this lister doesn't understand — a
@@ -913,11 +926,7 @@ class TestEvidenceCli:
             capture_output=True,
             text=True,
             timeout=25,
-            env={
-                "HOME": str(home),
-                "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-                "CLAUDE_PROJECT_DIR": str(plain),
-            },
+            env=scrubbed_env(home, CLAUDE_PROJECT_DIR=str(plain)),
         )
         assert proc.returncode == 1
         assert "no git repository" in proc.stderr

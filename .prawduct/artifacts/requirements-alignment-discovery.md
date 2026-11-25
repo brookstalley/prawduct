@@ -276,7 +276,13 @@ The owner-side outcome is the favourable reading: interruptions roughly halved a
 corrections did not rise. Whether the asked-first collapse means the pass needs reworking is the
 owner's call. The criterion as written does not require a rework item.
 
-Measurement follow-up: the script counts `isCompactSummary` records as owner turns, and it tallies
-health over all transcripts rather than per window. Transcript retention also prunes any baseline
-older than 30 days, so the next re-run should snapshot its baseline counts, or the transcripts,
-when the baseline is first read.
+Measurement follow-up, as of this run's blob: the script counted `isCompactSummary` records as
+owner turns, and it tallied health over all transcripts rather than per window. Transcript
+retention also prunes any baseline older than 30 days. #1211 changed the script so that compaction
+summaries are not owner turns, health is tallied over the transcripts a window selects, and a
+window's counts can be saved once to `.prawduct/research/alignment-yield/baselines.json` with
+`--save-baseline` when it is first read. That file holds the recorded 2026-10-09 baseline above
+(substantive, asked_first, mid_build_asks and corrections, governed total), which a re-run of
+`--until 2026-10-09` reports against when transcripts have been pruned. Figures from runs before
+that change count compaction summaries in `requests`, `substantive` and `corrections`; the
+"compaction excluded" row above is the comparable one.

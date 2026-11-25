@@ -141,7 +141,7 @@ Main Claude session  (the monolith / coordinator of work)
   ▼
 Critic coordinator  (forked skill context)
   │  small change  → reviews itself, single-pass
-  │  risk surface / 12+ judgeable → dispatches worker subagents, then STOPS
+  │  risk surface / 12+ judgeable (static not counted) → dispatches worker subagents, then STOPS
   ▼
 critic-reviewer subagents (parallel workers, read-only + Write-partial only)
   │  each writes exactly one partial findings file
@@ -163,16 +163,22 @@ The flagship multi-process flow, and the clearest expression of invariant 1.
   interval and reviewer roster from git + mode in code, and writes the dispatch manifest and the
   active-review marker. The manifest is the contract: it names the exact tree interval and roster a
   review will attest. It also carries `record_lint` — the deterministic record checks (`lib/record_lint.py`)
-  answered here so no reviewer re-derives them. Those checks are **advice**: they never gate, they
-  never reach a review's severity counts, and their per-check counts ride into the review fact so the
-  control's own yield is a query rather than an argument. Cost is proportional to the diff, not the
+  answered here so no reviewer re-derives them. They never refuse a dispatch; consolidation rates each
+  result into the review at the severity `record_lint.SEVERITY` assigns for the review's stage
+  (`record_lint_partial`), so a blocking one gates as a finding of the review that carried it, and
+  their per-check counts ride into the review fact so the control's own yield is a query rather than
+  an argument. Not every check's subject is a record: the test-scope and test-clock checks
+  (`lib/determinism_lint.py`) read the changed test files and package `__init__.py` files, and ride here for
+  the one severity table and the one delivery. Cost is proportional to the diff, not the
   repo: line-scoped checks read one `git diff --unified=0` over the changed records and see only
   added lines. The repo-wide checks: `retired-claim-survives`, because a retired claim's
   survivors are by definition text the diff did not touch; it pays one `git grep -l` plus a read of
   the files that grep names, and nothing in a repo that declares no `Retires:` phrase.
   `late-requirement-record` pays the same shape (one `git grep -l` for `## Late requirements`, a
   read of the files it names) to check an added record's id product-wide, and nothing when the diff
-  added no record. It also **hands the reviewer the rules its payload cannot carry** — the dispatch
+  added no record. The test-scope arm lists both trees' file names (never their contents) and reads
+  only the changed test files and package `__init__.py` files at both trees, and pays nothing when the
+  change touches neither. It also **hands the reviewer the rules its payload cannot carry** — the dispatch
   directives (`critic_consolidate`'s `FINDING_SCOPE_DIRECTIVE`, `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`,
   `RESOLUTION_IS_A_CLAIM_DIRECTIVE`), printed per mode. They are instruction text, never data: no
   gate reads them, and a mode's total load — payload file plus whatever its dispatch prints — is
@@ -369,8 +375,8 @@ that matters more than either file's format:
 | | `.handoff-notes.md` | `.session-handoff.md` |
 |---|---|---|
 | Writer | the model, any time | the machine, at a session **boundary** only (`startup` / `clear` — never on a continuation) |
-| Reader | the handoff generator, and nothing else | the next session (via the briefing pointer) |
-| Lifetime | until *delivered*, then cleared (see below) | until the next boundary regenerates it |
+| Reader | the handoff generator, and nothing else | the next session (via the briefing pointer), and the next boundary's generator, which carries its fenced notes forward |
+| Lifetime | the file: until *delivered*, then cleared (see below); its text: in each handoff, marked inherited, until a session writes notes of its own | until the next boundary regenerates it |
 | Scope | per-worktree, like every session file | per-worktree |
 
 Consumption is transactional and keys on **delivery, not on the handoff having been written**: a
@@ -378,7 +384,16 @@ note is cleared only once its text is in the handoff, so one that was unreadable
 failed write — survives for the next `/clear`. (Gating on "a handoff was written" is the near-miss:
 it is true whenever any *other* section had content, so an unreadable note would be deleted
 undelivered.) Notes get no archive of their own — their text is carried verbatim into the handoff,
-which is where it is read. A generated handoff carries a machine marker; a `.session-handoff.md`
+which is where it is read. The handoff fences that text (and defangs any fence-shaped line inside
+it, so the generator owns the only fences), and when the session now ending delivered no notes —
+none, an empty file, or an unreadable one — the generator carries the previous handoff's fenced
+notes forward under an *inherited* heading with the count of boundaries crossed: notes end when a
+session writes its own ("nothing beyond the plan" included), never because a session ended without
+writing. Only the notes section that opens a generated handoff is read, so text quoted later in it
+neither hides nor invents notes; notes it cannot delimit (a pre-fence handoff, a hand-edit) are
+named in the next handoff, not dropped silently. The inherited text is never restored to
+`.handoff-notes.md`, so every check asking whether *this* session left notes still sees none, and
+the "no forward note" section still fires beside inherited notes; the briefing's pointer names both. A generated handoff carries a machine marker; a `.session-handoff.md`
 lacking it was hand-authored, and is folded into the new handoff rather than overwritten. Advice
 fails soft applies throughout: none of this can block `/clear` — but every failure names its
 consequence, because silent degradation is the bug this pair exists to fix. Failures split by

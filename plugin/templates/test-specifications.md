@@ -111,6 +111,15 @@ last_validated: null
      - Action: [the boundary action]
      - Expected: [correct behavior at the boundary] -->
 
+## Determinism and Dependency Scope
+
+<!-- State how this product keeps a test's result dependent only on what the test
+     exercises, the same on any machine and any run: where the clock and randomness
+     are injected, what the root test configuration and always-on fixtures import,
+     and where build output and tool state live (outside the checkout). The patterns
+     that break this and their remedies are in `docs/test-determinism.md`.
+     Low-risk products can reduce this to one line. -->
+
 ## Property-Based Tests
 
 <!-- Include this section when the domain involves mathematical operations,

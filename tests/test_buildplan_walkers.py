@@ -33,6 +33,7 @@ from lib.buildplan_refs import (
     _chunk_section_lines,
 )
 from lib.plan_index import iter_status_section_items, iter_status_section_lines
+from conftest import scrubbed_env  # noqa: E402
 
 LIB_DIR = Path(__file__).resolve().parent.parent / "plugin" / "lib"
 
@@ -45,13 +46,7 @@ LIB_DIR = Path(__file__).resolve().parent.parent / "plugin" / "lib"
 def _git_env(repo: Path) -> dict[str, str]:
     """Sterile env for git calls; HOME outside the repo (see the inference
     tests' helper for why — OS caches must not appear as untracked files)."""
-    return {
-        "HOME": str(repo.parent / "_home"),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-    }
+    return scrubbed_env(repo.parent / "_home")
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:

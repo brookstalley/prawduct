@@ -50,7 +50,7 @@ _hook_loader.exec_module(_hook)
 
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,

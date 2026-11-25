@@ -34,6 +34,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import clock
 from . import buildplan_refs
 from . import change_fragments
 from . import change_log as change_log_mod
@@ -397,11 +398,10 @@ def _issues_blocker_liveness(
     procedure that must not depend on a live provider, and the cache already
     owns id resolution — bare ``#N`` against its own scope, aliases, redirects.
     A bare ``#N`` means an issue in ``scope``, the repo the cache holds."""
-    from datetime import datetime, timezone  # noqa: PLC0415
 
     from .backlog import cachequery  # noqa: PLC0415 -- lazy: only the post-cutover arm
 
-    now = datetime.now(timezone.utc)
+    now = clock.now()
     default_owner = scope.split("/", 1)[0] if "/" in scope else None
     open_blockers: set[str] = set()
     unverifiable: dict[str, str] = {}
@@ -612,6 +612,35 @@ def _heading_first_warning(decl: consumer_digest.Declaration, read: consumer_dig
         f"heading, so consumers would be shown nothing. Make the first line "
         f"the headline itself."
     ]
+
+
+def _boundary_coverage_lines(project_dir: Path) -> "list[tuple[str, bool]]":
+    """``(line, to_stderr)`` for check-releasability's boundary-coverage advice.
+
+    Stdout gets the op's count line, because a control heard only when it fires
+    cannot be judged, so its passing reading is printed too. Stderr gets one
+    ``NOTE:`` per scope not covered, and one when the op could not evaluate. NOTE is
+    advice's prefix, and every line is advice: `check-boundary-coverage` is the
+    detail."""
+    from . import boundary_coverage  # noqa: PLC0415 — lazy: it imports the consolidator
+
+    try:
+        report = boundary_coverage.classify_pending(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice beside a release gate: any fault in it is reported as a NOTE and must never become the gate's exit
+        return [(f"NOTE: boundary-coverage: could not evaluate — {type(exc).__name__}: {exc}.", True)]
+    if report.status != "ok":
+        return [(f"NOTE: boundary-coverage: could not evaluate — {report.reason}.", True)]
+    # No refusal line: this runs below check-releasability's refusal return, so a
+    # pending set with a refused fragment never reaches it.
+    lines = [(f"  {boundary_coverage.count_line(report)}.", False)]
+    for entry in report.entries:
+        if entry.classification not in boundary_coverage.COVERED:
+            lines.append((
+                f"NOTE: boundary-coverage: {entry.scope} is {entry.classification}, not covered — "
+                f"{entry.reason} (`prawduct-hook check-boundary-coverage` lists every scope).",
+                True,
+            ))
+    return lines
 
 
 def _digest_advisories(
@@ -884,6 +913,13 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         print(f"NOTE: {digest_note}", file=sys.stderr)
     for emission in digest_emissions:
         print(f"  {emission}.")
+
+    # Which pending merges a boundary review covered (#1223 wave 1): advice beside
+    # the other advisories, never part of the verdict, so it cannot move the exit.
+    # It is here, under the pending return, because a release with nothing pending
+    # has no merges to ask about.
+    for line, to_stderr in _boundary_coverage_lines(project_dir):
+        print(line, file=sys.stderr if to_stderr else sys.stdout)
 
     # The suite verdict is REPORTED here and RETURNED at the bottom, and the
     # split is deliberate. Printing it here is what makes it reachable at all:

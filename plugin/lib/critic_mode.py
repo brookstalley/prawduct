@@ -1643,17 +1643,24 @@ _BOUNDARY_CUMULATIVE_FINAL_WHY = (
 )
 
 
-def chain_named_chunks(chain: list[dict]) -> list[str]:
-    """The chunk ids the NEWEST fact on ``chain`` that names any names, as it
-    spells them — so a chunk-less ``verify-resolutions`` pass inherits the
-    chunk review it verifies. ``[]`` when no fact on the chain names a chunk.
-    The one inheritance rule, read by :func:`chain_certified_chunks` and by
-    ``critic_consolidate``'s ``verify-resolutions`` proposal."""
+def chain_naming_fact(chain: list[dict]) -> "dict | None":
+    """The NEWEST fact on ``chain`` that names any chunk, else ``None`` — the
+    fact a chunk-less ``verify-resolutions`` pass inherits its chunks, and how
+    they were named, from."""
     for fact in chain:
-        ids = plan_status.fact_chunks(fact.get("body") or {})
-        if ids:
-            return ids
-    return []
+        if plan_status.fact_chunks(fact.get("body") or {}):
+            return fact
+    return None
+
+
+def chain_named_chunks(chain: list[dict]) -> list[str]:
+    """The chunk ids :func:`chain_naming_fact` names, as it spells them — so a
+    chunk-less ``verify-resolutions`` pass inherits the chunk review it
+    verifies. ``[]`` when no fact on the chain names a chunk. The one
+    inheritance rule, read by :func:`chain_certified_chunks` and by
+    ``critic_consolidate``'s ``verify-resolutions`` proposal."""
+    fact = chain_naming_fact(chain)
+    return plan_status.fact_chunks(fact.get("body") or {}) if fact else []
 
 
 def chain_certified_chunks(progress: PlanProgress, chain: list[dict]) -> "tuple | None":
@@ -1715,7 +1722,7 @@ def boundary_cumulative_still_owed(
     newest = _newest_branch_review(project_dir, read)
     chain: list[dict] = []
     if newest is not None:
-        chain = review_chain(read.get("facts") or [], newest)
+        chain = branch_review_chain(project_dir, read.get("facts") or [], newest)
     return not boundary_review_on_chain(chain)
 
 
@@ -1744,45 +1751,210 @@ def _newest_branch_review(project_dir: Path, facts: "dict | None" = None) -> "di
     return critic_consolidate.settled_branch_review(project_dir, read.get("facts") or [])
 
 
-def review_chain(facts: list[dict], newest: dict) -> list[dict]:
-    """Every review fact on the chain ``newest`` stands on, newest first.
+class ChainBound(NamedTuple):
+    """Where this branch's work starts, for :func:`review_chain` to stop at.
 
-    The chain is structural: each review's ``base_tree`` is the ``head_tree`` of
-    a review recorded before it — ``coverage_algebra.linked_reviews``, the one
+    ``tree`` is the merge-base tree; ``commits`` the branch range the newest
+    review was chosen from (``merge_base..HEAD`` and the merge base itself,
+    ``evidence_notes._branch_commits``)."""
+
+    tree: str
+    commits: frozenset
+
+
+def chain_bound(project_dir: Path) -> "ChainBound | None":
+    """The bound :func:`review_chain` walks this branch's chain within, or
+    ``None`` when no merge-base places one.
+
+    ``None`` when no merge base resolves (no git, no base branch, a failed
+    ``merge-base``), when the base is the moving ``HEAD~1`` fallback
+    (``coverage.resolve_merge_base_tree``'s ``moving``: its tree moves with
+    every commit, so it is not where this work started), and when the branch's
+    commits cannot be listed. That is a third state, not an empty bound, and
+    :func:`review_chain` reads it as "no bound to place" — see there for why
+    it walks unbounded rather than stopping at the newest review."""
+    from . import coverage, evidence_notes  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved.get("status") != "ok" or resolved.get("moving"):
+        return None
+    span = evidence_notes._branch_commits(project_dir)
+    if span.get("status") != "ok":
+        return None
+    return ChainBound(resolved["tree"], frozenset(span["commits"]))
+
+
+def _within_bound(fact: dict, bound: ChainBound, *, from_start: bool) -> bool:
+    """Whether ``fact`` is a review of this branch's work: anchored on the
+    branch range (``evidence.review_anchor``, the rule
+    ``critic_consolidate.select_branch_review`` chose the newest review by),
+    and not standing at the merge-base tree unless the walk starts there
+    (``from_start``: the newest review stands at that tree too).
+
+    The tree half is needed because the merge base is in the range: an
+    earlier branch merged with the base unmoved leaves its last review
+    anchored there, at the very tree this branch's first review starts from.
+    It is waived when the newest review stands at the merge-base tree itself,
+    which happens once this branch's work has landed in the base: on a trunk
+    branch after a push, or on a branch whose PR merged with a merge commit,
+    the merge base IS this branch's tip, so the reviews at its tree are the
+    reviews of this work, not of an earlier branch's. The newest review's
+    tree, not whether HEAD has moved past the merge base, is what tells the
+    two apart: a first review of uncommitted work on a branch just cut from a
+    fast-forwarded base anchors on the merge base with HEAD still there, and
+    it stands at a tree past it. Nor can the branch a review was recorded on
+    tell them apart: consecutive work on one trunk branch records every review
+    on the same name."""
+    from . import evidence  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    body = fact.get("body") or {}
+    if evidence.review_anchor(body) not in bound.commits:
+        return False
+    return from_start or body.get("head_tree") != bound.tree
+
+
+def review_chain(
+    facts: list[dict], newest: dict, *, bound: "ChainBound | None"
+) -> list[dict]:
+    """Every review fact on the chain ``newest`` stands on, newest first, back
+    to where this branch's work starts.
+
+    The chain is structural — ``coverage_algebra.linked_reviews``, the one
     link rule the verify roll-call's anchor and ``plan_status``'s extended
-    line follow too. EVERY review standing at a linked tree is included, not
-    only the newest there, because a second review of an unchanged tree must
-    not hide the first; the walk steps back through the newest of them. Walked
-    to the end, because a chain can be several passes long.
+    line follow too. A review that names no anchor links by tree, to every
+    review at its ``base_tree`` recorded before it: EVERY one of them is
+    included, not only the newest, because a second review of an unchanged
+    tree must not hide the first, and the walk steps back through the newest.
+    A verify pass that named its anchor links to that review alone, so the
+    walk steps to it and goes on from there; another review of the same tree,
+    possibly another worktree's, is on the chain only if the walk from the
+    anchor reaches it. Walked to the end, because a chain can be several passes
+    long. The steps and the walk's end are ``coverage_algebra.walk_links``'
+    (with ``siblings``): the walk ends where the review a fact links to is
+    already on the chain, the other reviews at a tree included, because an
+    anchor is found by id wherever it sits in the store, so store order does
+    not end a malformed cycle, and stepping on to some other review at that
+    tree would credit one nothing links to.
+
+    **Bounded at the branch's start** (``bound``, :func:`chain_bound`). The
+    tree link knows nothing of branches: when an earlier branch's last review
+    stands at the tree this branch starts from, the link reaches it, and past
+    it that branch's ``cumulative`` and chunk reviews. Credited here, they
+    would say this branch's boundary review had run
+    (:func:`boundary_review_on_chain`) and hand a verify pass that work's
+    chunks (:func:`chain_named_chunks`). So the walk runs over this branch's
+    reviews only (:func:`_within_bound`): a review standing at the merge-base
+    tree, or anchored off the branch range, is not on the chain, and a review
+    whose interval starts at or before the merge-base is not walked past. The
+    tree half is waived when ``newest`` itself stands at the merge-base tree:
+    the branch's work has then landed in its base (a trunk branch after a
+    push, a branch merged with a merge commit), the merge base is its tip,
+    and the reviews at that tree are this work's own. An
+    anchored pass whose anchor is outside the bound links to nothing, as it
+    does when the store lacks its anchor. ``newest`` itself is always on the
+    chain — the callers chose it (``_newest_branch_review``, a verify
+    dispatch's anchor, the review just consolidated); the bound says how far
+    back from it the walk may go, not whether it counts. Merging the base
+    into the branch moves the merge base past this branch's earlier reviews;
+    they stay on the chain, because their anchors are still on the range, and
+    the walk still stops at the earlier branch's, whose anchors are not.
+
+    **``bound`` is ``None`` (no merge base places one): the walk is
+    unbounded**, as it was before the bound existed. Deliberately not the
+    stricter reading (the newest review alone): every verify pass would then
+    lose the review it verifies — it would name no chunk, certify nothing, and
+    after a boundary ``cumulative`` and its verify pass the boundary would read
+    owed again, so the Stop gate would ask for a second ``cumulative`` after
+    every pass in a repo whose base resolves only to the moving ``HEAD~1``
+    fallback. The leak the bound closes needs an earlier branch merged into this one's
+    base, which is what a resolvable merge base would show; where none
+    resolves, the two callers that relax on the chain
+    (:func:`extension_deferral_owed`, :func:`boundary_cumulative_still_owed`)
+    already have no newest review to walk from unless a branch range resolved
+    (``critic_consolidate.settled_branch_review``). Required, so no caller
+    walks unbounded by forgetting it; production callers go through
+    :func:`branch_review_chain`, which pairs it with :func:`chain_bound`.
+
+    One line is walked, through the newest link at each step; the other
+    reviews at a tree are added but not walked themselves, so a sibling's own
+    links — another worktree's line through the same tree — are not followed.
+
+    **Accepted cost, in both directions:** a pass anchored to one review of a
+    tree does not reach another review of that tree recorded before it, even
+    one this worktree recorded, unless the walk from the anchor does. Anchored
+    to a ``chunk`` re-review, it misses an earlier ``cumulative``: the chain
+    credits no boundary review and a second cumulative is asked for. Anchored
+    to a boundary ``cumulative`` (which starts from the merge-base, not from
+    that tree), it misses an earlier ``chunk`` review: the chain names fewer
+    chunks and certifies none of that review's. Both err toward more review,
+    because telling this worktree's earlier review from a sibling's needs
+    lineage, and a fact travelling between clones loses the ``actor`` fields
+    that would say it (``evidence_notes.sent_envelope`` drops the session and
+    cuts the worktree to its name). The bound errs the same way on rewritten
+    history: a review anchored on a commit a rebase or amend left off the
+    branch range is not on the chain, though its tree may still link. The
+    waived tree half errs the other way in one case: on a branch cut from a
+    fast-forwarded base with no work of its own yet, a newest review at the
+    merge-base tree (a verify pass anchored on the earlier branch's last
+    review, the dispatch's fallback) keeps the earlier branch's reviews at
+    that tree. That chain is the one the verified review stands on, which is
+    what the pass is a verification of.
     """
     # Append order is recording order (the store is append-only); `ts` has
     # one-second resolution, so it cannot order two reviews in the same second.
     reviews = [f for f in facts if f.get("kind") == "review"]
-    chain: list[dict] = []
-    seen: set[str] = set()
-    current: "dict | None" = newest
-    while current is not None and current.get("id") not in seen:
-        seen.add(current.get("id"))
-        chain.append(current)
-        earlier = [
-            f for f in coverage_algebra.linked_reviews(reviews, current)
-            if f.get("id") not in seen
+    if bound is not None:
+        # Filtering the walk's input, not its output: the link is then chosen
+        # among this branch's reviews, so the walk cannot step through an
+        # excluded review to reach anything behind it. `newest` stays in the
+        # list, where the link rule finds its own store position.
+        start = coverage_algebra._walk_identity(newest)
+        from_start = (newest.get("body") or {}).get("head_tree") == bound.tree
+        reviews = [
+            f for f in reviews
+            if coverage_algebra._walk_identity(f) == start
+            or _within_bound(f, bound, from_start=from_start)
         ]
-        for other in earlier[:-1]:
-            seen.add(other.get("id"))
-            chain.append(other)
-        current = earlier[-1] if earlier else None
-    return chain
+    return list(coverage_algebra.walk_links(reviews, newest, siblings=True))
 
 
-def _open_blocker_on_chain(facts: list[dict], chain: list[dict]) -> bool:
-    """Whether any review on ``chain`` still holds an unresolved blocker.
+def branch_review_chain(project_dir: Path, facts: list[dict], newest: dict) -> list[dict]:
+    """The review chain ``newest`` stands on, bounded at the checked-out
+    branch's start: :func:`review_chain` within :func:`chain_bound`. The one
+    call production code makes for a chain, so no caller pairs a walk with
+    some other bound or none; ``review_chain`` takes ``bound`` directly for
+    tests and for the walk itself."""
+    return review_chain(facts, newest, bound=chain_bound(project_dir))
 
-    A ``verify-resolutions`` pass records resolutions for the findings it names
-    and does not copy forward the ones it leaves open, so the newest review can
-    be clean while one it stands on is not. An open blocker anywhere on the
-    chain also blocks the gates, whose composed path stands on the same trees.
-    """
+
+def _gate_counts_an_open_blocker(
+    project_dir: Path, read: dict, newest: dict, chain: list[dict]
+) -> bool:
+    """Whether a blocker still stands up to the newest review's tree — the
+    deferral's condition 2.
+
+    Asked of the gate first (``critic_consolidate.gate_counted_blockers``: the
+    coverage verdict composed from the merge-base tree to that tree, read
+    through ``coverage_algebra.blockers_counted``), because the deferral tells
+    the builder to carry on and the gate judges that step. The chain alone
+    would miss a blocker another review left at an anchored pass's tree: an
+    anchored pass links to its anchor alone, while the verdict counts every
+    review standing at a tree its path stands on.
+
+    When the gate cannot compose (``None``: an uncovered edge, a rebase, a
+    dirty-tree head), that is no answer about blockers, so the chain's own
+    unresolved blockers decide, as before the gate could be asked. Reading
+    ``None`` as a blocker would cancel every deferral on an uncovered path,
+    including the boundary review's, which spans from the merge-base and needs
+    no covered path at all."""
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
+
+    facts = read.get("facts") or []
+    counted = critic_consolidate.gate_counted_blockers(
+        project_dir, facts, (newest.get("body") or {}).get("head_tree"), read=read,
+    )
+    if counted is not None:
+        return bool(counted)
     resolved = coverage_algebra.resolution_index(facts)
     return any(coverage_algebra.unresolved_blocking(f, resolved) for f in chain)
 
@@ -1790,10 +1962,10 @@ def _open_blocker_on_chain(facts: list[dict], chain: list[dict]) -> bool:
 def boundary_review_on_chain(chain: list[dict]) -> bool:
     """Whether a ``cumulative`` sits on ``chain`` — the builder is at the boundary.
 
-    A ``cumulative`` spans every chunk built so far and names every chunk built
-    and open at its dispatch (``plan_status.propose_chunks``), so after one an
-    open chunk cannot say whether it is still to be built or was left out of
-    that set; on
+    A ``cumulative`` spans every chunk built so far and names the open chunks
+    built at its dispatch, a path's only while every earlier open chunk is named
+    too (``plan_status.chunk_proposal``), so after one an open chunk cannot say
+    whether it is still to be built or was left out of that set; on
     a plan with ``## Status`` boxes, a box awaiting its tick reads the same as
     one still to build. The review's mode can: a ``cumulative`` is the
     end-of-plan or pre-PR review, so no later chunk review is coming to carry
@@ -1848,8 +2020,9 @@ def extension_deferral_owed(
        - **(1a) the chain certified them** (:func:`chain_certified_chunks`):
          every reviewed chunk is ``done`` by a fact on the chain, AND the work
          since the newest review's tree touches no OPEN chunk's Deliverables
-         (:func:`plan_status.propose_chunks` in ``chunk`` mode over those
-         paths is empty). A review closes its chunks the moment it records,
+         (``touched`` of :func:`plan_status.chunk_proposal` in ``chunk`` mode
+         over those paths is empty — every open chunk a path covers, before
+         the one-owner and plan-order rules narrow what a review may name). A review closes its chunks the moment it records,
          so no tick marks "the builder moved on"; the observable stands in for
          the stored one (``hook-surface.md``: observable beats stored).
          **Fail-open, accepted (coordinator, 2026-10-25):** a chunk whose
@@ -1865,13 +2038,15 @@ def extension_deferral_owed(
          nothing and only boxes and imports do): the reviewed chunk is the
          CURRENT one, still open — the reading this predicate had before
          facts certified chunks.
-    2. **No open blocker on the chain it stands on**
-       (:func:`_open_blocker_on_chain`). Checked on the facts, not on the
-       committed history: a review of uncommitted work leaves its tree nowhere
-       a history walk can find, so a blocker it raised is invisible to
-       :func:`gates.covered_frontier`. And not on the newest fact alone: a
-       verify pass does not copy forward a blocker it left open. Blockers clear
-       only through ``verify-resolutions``. Nor a ``cumulative`` on that chain
+    2. **No blocker the gate still counts up to the newest review's tree**
+       (:func:`_gate_counts_an_open_blocker`). Asked of the gate's composition,
+       because the gate judges the step the deferral names. Composed to that
+       review's tree, not to the committed history: a review of uncommitted
+       work leaves its tree nowhere a history walk can find, so a blocker it
+       raised is invisible to :func:`gates.covered_frontier`. And not of the
+       newest fact alone: a verify pass does not copy forward a blocker it left
+       open. Blockers clear only through ``verify-resolutions``. Nor a
+       ``cumulative`` on the chain it stands on
        (:func:`boundary_review_on_chain`): after the boundary review, no later
        chunk review is coming.
     3. **A later review is owed** (:func:`review_owed_after`). Under (1a) one
@@ -1897,13 +2072,17 @@ def extension_deferral_owed(
     from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
     fact_list = read.get("facts") or []
-    chain = review_chain(fact_list, newest)
+    chain = branch_review_chain(project_dir, fact_list, newest)
     reviewed = chain_certified_chunks(progress, chain)
+    pending: "set[str] | None" = None
     if reviewed is not None:
         pending = _paths_since_tree((newest.get("body") or {}).get("head_tree"), project_dir)
-        if pending is None or plan_status.propose_chunks(
+        # `touched`, not the proposal: the certifying rules (one owner, plan
+        # order) leave out chunks this work does touch, and reading their
+        # absence as "no open chunk touched" would defer a chunk nobody reviewed.
+        if pending is None or plan_status.chunk_proposal(
             Path(plan.plan_path), read, pending, "chunk", repo_dir=Path(project_dir)
-        ):
+        ).touched:
             return None
         label = ", ".join(reviewed)
     else:
@@ -1917,18 +2096,19 @@ def extension_deferral_owed(
         if current not in {buildplan_refs._normalize_chunk_id(c) for c in named}:
             return None
         label = progress.current_id
-    if _open_blocker_on_chain(fact_list, chain):
+    if _gate_counts_an_open_blocker(project_dir, read, newest, chain):
         return None
     owed = review_owed_after(project_dir, prawduct_dir, plan, progress, chain)
     if owed is None:
         return None
     kind, why = owed
+    touched = _done_chunks_touched_clause(plan, progress, pending, reviewed, project_dir)
     if kind == OWED_BOUNDARY:
         return kind, (
             f"chunk {label} was reviewed with no open blocker and {why}. "
             "That review spans the branch from the merge-base, so it covers this work "
             "too. Commit, then run `/prawduct:critic` when the chunk is done — it infers "
-            "the cumulative"
+            f"the cumulative{touched}"
         )
     frontier = gates.covered_frontier(project_dir, read=read)
     if frontier is None:
@@ -1937,7 +2117,46 @@ def extension_deferral_owed(
         f"chunk {label} was reviewed with no open blocker and {why}, and it "
         f"starts from the newest committed state a review covers ({frontier['commit'][:12]})"
         " — it covers this "
-        "work too. Commit and carry on"
+        f"work too. Commit and carry on{touched}"
+    )
+
+
+def _done_chunks_touched_clause(
+    plan, progress: PlanProgress, pending: "set[str] | None", reviewed: "tuple | None",
+    project_dir: Path,
+) -> str:
+    """The deferral's closing advice when the pending work touches a chunk a
+    review already certified, other than the one just reviewed (#1141-R8):
+    a later chunk editing a done chunk's file is ordinary, so the inference
+    stands, but a wrong certification is met here first. ``""`` otherwise.
+    Reads the states the inference already holds; the path rule is
+    :func:`plan_status.done_chunks_touched`'s."""
+    if not pending or not progress.states:
+        return ""
+    # Only the code's own naming is questioned: a chunk certified by the
+    # builder's words (`ChunkState.named_by_builder`) is theirs, and a later
+    # chunk editing its file is ordinary. The newest review's chunks are not
+    # all exempt: when it named several by a path proposal, the one a path
+    # merely touched is exactly the wrong certification this clause exists
+    # for (#1141's sequence, design control (i)). A fix to the one chunk a review
+    # just named is the deferral's ordinary case too. What remains is a chunk a
+    # proposal named, or one whose route predates the record: that is how a
+    # later chunk was certified by a path it merely touched (#1141).
+    named = list(reviewed or ())
+    own = {buildplan_refs._normalize_chunk_id(c) for c in named} if len(named) == 1 else set()
+    hits = [
+        (c, fid) for c, fid in plan_status.done_chunks_touched(
+            Path(plan.plan_path), progress.states, pending, repo_dir=Path(project_dir),
+        )
+        if buildplan_refs._normalize_chunk_id(c) not in own
+        and not (progress.states.get(c) is not None and progress.states[c].named_by_builder)
+    ]
+    if not hits:
+        return ""
+    chunk, fact_id = hits[0]
+    return (
+        f". This work touches chunk {chunk}'s Deliverables, which `{fact_id}` certified; if "
+        f"that was wrong, `prawduct-hook plan retract {chunk} --all --reason …`"
     )
 
 
@@ -2030,7 +2249,9 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     ways. The rule: an earlier chunk's review is the boundary ``cumulative``,
     so the chunk is COMMITTED and left for it — nothing is ticked, because the
     boundary review names every open chunk that is built (``plan_status``:
-    ``chunk_proposal`` in ``cumulative`` mode) and its fact closes them all.
+    ``chunk_proposal`` in ``cumulative`` mode, where a scoped subject names a
+    chunk whatever its order and a path only while every earlier open chunk is
+    named) and its fact closes them all.
     That proposal counts a subject's chunk only when the subject carries the
     plan's scope, hence the scoped form the text gives. Inference sees a
     committed chunk as ``built`` (:func:`short_plan_deferral`, ``read_built``)
@@ -2052,7 +2273,8 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
         "Then build the last chunk before asking for review: `/prawduct:critic` "
         "infers the boundary `cumulative` once one chunk is left uncommitted and "
         "the tree is clean, and that review names every chunk built and still "
-        "open, and closes them together"
+        "open (a chunk built ahead of an open one is named by its scoped subject), and closes "
+        "them together"
     )
 
 

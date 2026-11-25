@@ -37,7 +37,7 @@ backlog_service_repo: brookstalley/prawduct
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-10-26
+backlog_last_groomed_at: 2026-11-23
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -59,7 +59,8 @@ base_branch: develop
 # The pytest suite runs on the Testament pool (`.testament.toml`), which writes
 # the merged report as JUnit; with no coordinator it runs the same tests here.
 # The pool deselects `requires_history` and `requires_local_cache` tests
-# (runners have no git history and no backlog cache), so the third entry runs
+# (runners have no git history and no local prawduct state: backlog cache, evidence
+# store), so the third entry runs
 # exactly those here — together the three entries are the whole suite, and
 # evidence never silently covers a subset. The second entry is
 # the collector's suite (`collector/`, the stats collector for #950): node's

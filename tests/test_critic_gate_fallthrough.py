@@ -25,12 +25,12 @@ from __future__ import annotations
 import json
 import sys
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
-from conftest import SHAPED_REFLECTION
+from conftest import SHAPED_REFLECTION, scrubbed_env, suite_now
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -95,13 +95,12 @@ def _run_stop(
     _write_mock_git(mock_bin, status=status, symbolic_ref=symbolic_ref)
     home = project_dir.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), "stop"],
         capture_output=True, text=True, env=env, timeout=20,
@@ -126,7 +125,7 @@ def _active_plan_repo(tmp_path: Path, *, chunk_type: str) -> Path:
     )
     (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (prawduct / ".session-git-baseline").write_text("")
-    ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+    ts = suite_now() - timedelta(seconds=60)
     (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
     return prawduct
 
@@ -289,7 +288,10 @@ class TestSynthesisAdvisoryAcceptsCumulative:
     def test_goals_1_3_modes_still_trip_the_advisory(self, tmp_path, mode):
         # Contrast partner — the advisory's whole job. Goals-1-3-only closers
         # must keep tripping it, or cumulative-as-final would quietly widen
-        # into accepting ANY closing mode (a no-review rule).
+        # into accepting ANY closing mode (a no-review rule). The verify fact
+        # here records no `base_tree`, so it links to no review and inherits
+        # no synthesis; a pass that DOES link is judged by what it verifies
+        # (`TestSynthesisAdvisoryWalksBackOverVerifyPasses`).
         from lib.gates import _critic_session_satisfies_gate
 
         repo = _all_complete_plan_repo(tmp_path, mode=mode)
@@ -318,7 +320,7 @@ def _fact_finished_plan_repo(tmp_path: Path) -> "tuple[Path, str]":
         "## Status\n- [ ] Chunk 01: A\n- [ ] Chunk 02: B\n\n"
         "## Build Chunks\n\n### Chunk 01: A\n\n### Chunk 02: B\n"
     )
-    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+    env = dict(os.environ)
     for args in (
         ("init", "-q", "-b", "main"),
         ("config", "user.email", "t@example.com"),
@@ -443,6 +445,210 @@ class TestSynthesisAdvisoryReadsThisSessionsReview:
         assert not ok
 
 
+# ---------------------------------------------------------------------------
+# A verify-resolutions pass stands for the review it verifies
+# ---------------------------------------------------------------------------
+
+# Tree ids for the link rule (`coverage_algebra.linked_reviews`): a review that
+# names no anchor starts from the review whose `head_tree` is its `base_tree`. The rule compares
+# strings, so any distinct non-empty ids do; full-length ones keep the facts
+# shaped as production writes them.
+_T0, _T1, _T2, _T3, _T4, _T5 = (c * 40 for c in "012345")
+
+
+def _finished_three_chunk_repo(tmp_path: Path) -> Path:
+    """The plan shape the defect was seen on: three chunks, every box ticked,
+    no review recorded yet."""
+    repo = _all_complete_plan_repo(tmp_path, mode=None)
+    (repo / ".prawduct" / "artifacts" / "build-plan.md").write_text(
+        "# Build Plan\n\n## Status\n"
+        "- [x] Chunk 01: A\n- [x] Chunk 02: B\n- [x] Chunk 03: C\n"
+    )
+    return repo
+
+
+def _append_review_at(
+    repo: Path, fid: str, mode: str, base: str, head: str, *, worktree: str | None = None
+) -> None:
+    """A review fact over ``base`` → ``head``, from this worktree (through
+    ``evidence.append_fact``, which stamps the actor as production does) or,
+    given ``worktree``, from another one of the same clone."""
+    import sys
+
+    sys.path.insert(0, str(ROOT))
+    from lib import evidence
+
+    body = {
+        "mode": mode, "findings": [], "files_reviewed": ["a.py"],
+        "base_tree": base, "head_tree": head,
+    }
+    if worktree is None:
+        appended = evidence.append_fact(repo, "review", fid, body)
+        assert appended["status"] == "appended", appended
+        return
+    store = evidence.store_path(repo)
+    store.parent.mkdir(parents=True, exist_ok=True)  # the first fact may be this one
+    with open(store, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({
+            "schema": evidence.SCHEMA_VERSION, "kind": "review", "id": fid,
+            "ts": "2026-11-23T00:00:00Z",
+            "actor": {"session": "s", "worktree": worktree, "plugin": "x", "branch": "main"},
+            "body": body,
+        }) + "\n")
+
+
+class TestSynthesisAdvisoryWalksBackOverVerifyPasses:
+    """A `verify-resolutions` pass resolves an earlier review's findings and
+    does not undo that review's synthesis, so the advisory asks its question of
+    the review the pass verifies — followed by the recorded link, never by
+    store position. These facts name no anchor (`verifies`), as a fact from
+    before that field does, so they link by tree: the pass's `base_tree` is
+    that review's `head_tree`. A named anchor is pinned in
+    `test_verify_links_review_id.py`.
+
+    Read off the pass itself, a `Type: cumulative-final` plan whose boundary
+    `cumulative` raised findings, fixed and closed by one clean verify pass,
+    drew a NOTE to run a `final` nobody owed (seen four times on 2026-11-23)."""
+
+    def test_cumulative_then_verify_satisfies_it(self, tmp_path):
+        """The regression: the exact shape the false nudge fired on."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _finished_three_chunk_repo(tmp_path)
+        _append_review_at(repo, "rev-cumulative", _MODE_CUMULATIVE, _T0, _T1)
+        _append_review_at(repo, "rev-verify", _MODE_VERIFY, _T1, _T2)
+        assert _critic_session_satisfies_gate(repo) == (True, "")
+
+    @pytest.mark.parametrize("mode", [["cumulative"], {"name": "final"}])
+    def test_a_review_whose_mode_is_not_a_string_counts_as_no_synthesis(
+        self, tmp_path, mode
+    ):
+        """The store's reader keeps a review whose body is a dict, whatever its
+        fields hold, and this runs inside the Stop hook. So a mode a person or a
+        newer schema wrote as a list or a dict reads as no synthesis instead of
+        raising on the set lookup. The fact is the store's own last line, from
+        this worktree, so it is the review the advisory reads."""
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from lib import evidence
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _finished_three_chunk_repo(tmp_path)
+        _append_review_at(repo, "rev-good", _MODE_CUMULATIVE, _T4, _T5)
+        appended = evidence.append_fact(
+            repo, "review", "rev-probe",
+            {"mode": _MODE_CHUNK, "base_tree": _T0, "head_tree": _T1},
+        )
+        assert appended["status"] == "appended", appended
+        store = evidence.store_path(repo)
+        lines = store.read_text(encoding="utf-8").splitlines()
+        probe = json.loads(lines[-1])
+        assert probe["id"] == "rev-probe"
+        probe["body"]["mode"] = mode
+        lines[-1] = json.dumps(probe)
+        store.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        latest = evidence.facts_of_kind(evidence.read_facts(repo), "review")[-1]
+        assert latest["id"] == "rev-probe" and latest["body"]["mode"] == mode
+
+        satisfied, reason = _critic_session_satisfies_gate(repo)
+        assert satisfied is False, reason
+        assert "end-of-cycle" in reason
+
+    def test_a_chain_of_verify_passes_walks_to_the_cumulative(self, tmp_path):
+        """A second round of fixes means a second pass, verifying the first."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _finished_three_chunk_repo(tmp_path)
+        _append_review_at(repo, "rev-cumulative", _MODE_CUMULATIVE, _T0, _T1)
+        _append_review_at(repo, "rev-verify-1", _MODE_VERIFY, _T1, _T2)
+        _append_review_at(repo, "rev-verify-2", _MODE_VERIFY, _T2, _T3)
+        assert _critic_session_satisfies_gate(repo) == (True, "")
+
+    def test_the_walk_follows_the_link_not_store_position(self, tmp_path):
+        """A `chunk` recorded between the cumulative and its verification, over
+        trees the pass does not start from, is not what the pass verifies."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _finished_three_chunk_repo(tmp_path)
+        _append_review_at(repo, "rev-cumulative", _MODE_CUMULATIVE, _T0, _T1)
+        _append_review_at(repo, "rev-chunk-elsewhere", _MODE_CHUNK, _T4, _T5)
+        _append_review_at(repo, "rev-verify", _MODE_VERIFY, _T1, _T2)
+        assert _critic_session_satisfies_gate(repo) == (True, "")
+
+    def test_a_chunk_under_a_verify_pass_still_trips_it(self, tmp_path):
+        """Case (a) with a trailing pass: the pass inherits the `chunk`'s goals,
+        and the message names the review that decided, not the pass."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _finished_three_chunk_repo(tmp_path)
+        _append_review_at(repo, "rev-chunk", _MODE_CHUNK, _T0, _T1)
+        _append_review_at(repo, "rev-verify", _MODE_VERIFY, _T1, _T2)
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert not ok
+        assert (
+            "last Critic review was a verify-resolutions pass over a "
+            f"'{_MODE_CHUNK}' review." in reason
+        ), reason
+        assert "/prawduct:critic final" in reason
+
+    def test_a_chunk_alone_still_trips_it_naming_itself(self, tmp_path):
+        """Case (a) without a pass — the control for the message's other state."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _finished_three_chunk_repo(tmp_path)
+        _append_review_at(repo, "rev-chunk", _MODE_CHUNK, _T0, _T1)
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert not ok
+        assert f"last Critic review was '{_MODE_CHUNK}'." in reason, reason
+
+    def test_a_chunk_after_the_cumulative_is_what_the_pass_verifies(self, tmp_path):
+        """Case (b): the walk stops at the first review that is not a pass. A
+        `chunk` recorded after the boundary review is new work the cumulative
+        never synthesised, so the nudge is owed."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _finished_three_chunk_repo(tmp_path)
+        _append_review_at(repo, "rev-cumulative", _MODE_CUMULATIVE, _T0, _T1)
+        _append_review_at(repo, "rev-chunk", _MODE_CHUNK, _T1, _T2)
+        _append_review_at(repo, "rev-verify", _MODE_VERIFY, _T2, _T3)
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert not ok
+        assert f"over a '{_MODE_CHUNK}' review" in reason, reason
+
+    def test_a_verify_pass_verifying_nothing_on_record_trips_it(self, tmp_path):
+        """Case (c): only a verify pass, and no review stands at the tree it
+        starts from. A pass runs Goals 1-3 over a delta and inherits synthesis
+        only through its link; with nothing at the end of it, no record shows
+        synthesis ran — unlike "no review at all", this session did review."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _finished_three_chunk_repo(tmp_path)
+        _append_review_at(repo, "rev-verify", _MODE_VERIFY, _T1, _T2)
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert not ok
+        assert "no review it verifies is on record" in reason, reason
+        assert "/prawduct:critic final" in reason
+
+    def test_a_verify_pass_here_over_another_worktrees_cumulative_satisfies_it(
+        self, tmp_path
+    ):
+        """Case (c)'s other half: no earlier review on this worktree, but the
+        pass verifies a cumulative recorded on another (a fresh worktree of a
+        reviewed branch). The link names it, so its synthesis is this pass's —
+        that is not a sibling's newer review steering the advisory, which
+        `TestSynthesisAdvisoryReadsThisSessionsReview` still pins."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _finished_three_chunk_repo(tmp_path)
+        _append_review_at(
+            repo, "rev-cumulative-elsewhere", _MODE_CUMULATIVE, _T0, _T1,
+            worktree="/elsewhere",
+        )
+        _append_review_at(repo, "rev-verify", _MODE_VERIFY, _T1, _T2)
+        assert _critic_session_satisfies_gate(repo) == (True, "")
+
+
 class TestGateReadsTheBranchsPlanNotThePointer:
     """The chunk-level fields the gate acts on come from ONE plan.
 
@@ -476,7 +682,7 @@ class TestGateReadsTheBranchsPlanNotThePointer:
         )
         (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
-        ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+        ts = suite_now() - timedelta(seconds=60)
         (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
         return prawduct
 
@@ -617,7 +823,7 @@ class TestGateReadsTheBranchsPlanNotThePointer:
         )
         (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
-        ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+        ts = suite_now() - timedelta(seconds=60)
         (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
 
         result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="fix/mine")
@@ -656,7 +862,7 @@ def _bound_plan_repo(tmp_path: Path, *, ticked: tuple[bool, ...], claims: str = 
     )
     (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (prawduct / ".session-git-baseline").write_text("")
-    ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+    ts = suite_now() - timedelta(seconds=60)
     (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
     return prawduct
 
@@ -753,7 +959,7 @@ class TestTheCarveoutReadsTheFirstOpenChunk:
         )
         (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
-        ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+        ts = suite_now() - timedelta(seconds=60)
         (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
         if reviewed:
             result = evidence.append_fact(tmp_path, "review", "rev-chunk-01", {

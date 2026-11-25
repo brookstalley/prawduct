@@ -482,7 +482,7 @@ class TestRunAcceptPending:
 
 # =============================================================================
 # prawduct-hook check-operator-verification / accept-operator-verification
-# (subprocess so we exercise the plugin-runtime dispatch wiring)
+# (through the hook's `main`, so the plugin-runtime dispatch wiring is exercised)
 # =============================================================================
 
 
@@ -491,26 +491,25 @@ def _run_hook(project_dir: Path, *args: str) -> subprocess.CompletedProcess:
 
     Module-level rather than a method so a second dispatch class can reach it
     without subclassing the first — inheriting a pytest class re-collects its
-    tests, so the tidy-looking reuse silently runs three subprocess tests twice.
+    tests, so the tidy-looking reuse silently runs three dispatch tests twice. In-process
+    (`tests/_hook_inproc.py`): the dispatch is what these test, not the process boundary.
     """
-    cmd = [sys.executable, str(REPO_ROOT / "bin" / "prawduct-hook"), *args]
-    return subprocess.run(
-        cmd,
+    from _hook_inproc import run_hook  # noqa: PLC0415
+
+    home = Path(project_dir).parent / "_home"
+    home.mkdir(exist_ok=True)
+    return run_hook(
+        *args,
         cwd=project_dir,
-        capture_output=True,
-        text=True,
-        env={
-            "CLAUDE_PROJECT_DIR": str(project_dir),
-            "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT),
-            "PATH": "/usr/bin:/bin",
-        },
+        env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(project_dir),
+             "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT)},
     )
 
 
 class TestPrawductHookOperatorVerification:
-    """Subprocess-level coverage of the plugin runtime's dispatch wiring.
+    """Entry-point coverage of the plugin runtime's dispatch wiring.
 
-    Kept intentionally minimal — three subprocess tests verify the
+    Kept intentionally minimal — three dispatch tests verify the
     commands are reachable and exit-code semantics are correct. Branch
     coverage of the underlying logic lives in the in-process
     Test* classes above.
@@ -695,22 +694,19 @@ _HOOK_PATH = _Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawd
 
 
 def _run_check(repo):
-    """Invoke the gate against `repo` with a PINNED environment.
+    """Invoke the gate against `repo` with the project PINNED to it.
 
-    Inheriting `os.environ` does not work here even with `cwd` set:
-    `gitstate.resolve_project_dir` returns the `CLAUDE_PROJECT_DIR` pin whenever
-    cwd is not a git work tree, and a pytest `tmp_path` never is — so the hook
-    would grade the real repo instead of the fixture. These two calls are
-    read-only, so the failure is a spurious result rather than a mutation. The
-    destructive form of the same mistake is a `--apply`-capable command graded
-    against the real repo: `tests/test_norm_index_scaffold.py::_run` pins the
-    same pinned-environment idiom for one that writes.
+    `cwd` alone does not aim it: `gitstate.resolve_project_dir` returns the
+    `CLAUDE_PROJECT_DIR` pin whenever cwd is not a git work tree, and a pytest
+    `tmp_path` never is, so an ambient pin (a developer's session sets one)
+    would grade the real repo instead of the fixture. `run_hook` sheds the
+    ambient one and this call sets its own. These calls are read-only, so the
+    failure would be a spurious result rather than a mutation. The destructive
+    form of the same mistake is a `--apply`-capable command graded against the
+    real repo: `tests/test_norm_index_scaffold.py::_run` pins the project for
+    one that writes.
     """
-    return _subprocess.run(
-        [_sys.executable, str(_HOOK_PATH), "check-operator-verification"],
-        capture_output=True, text=True,
-        env={"CLAUDE_PROJECT_DIR": str(repo), "PATH": "/usr/bin:/bin"},
-    )
+    return _run_hook_env(repo, "check-operator-verification")
 
 
 def test_unparsed_queue_blocks_instead_of_reporting_empty(tmp_path):
@@ -1503,10 +1499,13 @@ _UNKNOWN_STYLE = """# Operator Verification Queue
 
 
 def _run_hook_env(repo, *args):
-    return _subprocess.run(  # noqa: S603
-        [_sys.executable, str(_HOOK_PATH), *args],
-        capture_output=True, text=True,
-        env={"CLAUDE_PROJECT_DIR": str(repo), "PATH": "/usr/bin:/bin"},
+    from _hook_inproc import run_hook  # noqa: PLC0415
+
+    home = _Path(repo).parent / "_home"
+    home.mkdir(exist_ok=True)
+    return run_hook(
+        *args, cwd=_Path(repo).parent,
+        env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo)},
     )
 
 
@@ -1655,6 +1654,8 @@ def test_a_gate_that_cannot_load_its_lib_fails_open_by_contract(tmp_path):
     "gate skipped" one-liner that read as a verdict is gone."""
     import shutil  # noqa: PLC0415
 
+    from conftest import scrubbed_env  # noqa: PLC0415
+
     plugin = tmp_path / "plugin"
     src = _HOOK_PATH.parent.parent
     for sub in ("bin", "lib"):
@@ -1662,11 +1663,13 @@ def test_a_gate_that_cannot_load_its_lib_fails_open_by_contract(tmp_path):
                         ignore=shutil.ignore_patterns("__pycache__"))
     (plugin / "lib" / "operator_verification.py").unlink()
     repo = _repo(tmp_path / "repo", None)
+    # A real child: its subject is a copied plugin tree missing a module, which the
+    # in-process runner (this checkout's hook and lib, already imported) cannot stand for.
     proc = _subprocess.run(  # noqa: S603
         [_sys.executable, str(plugin / "bin" / "prawduct-hook"), "check-operator-verification"],
         capture_output=True, text=True,
-        env={"CLAUDE_PROJECT_DIR": str(repo), "CLAUDE_PLUGIN_ROOT": str(plugin),
-             "PATH": "/usr/bin:/bin"},
+        env=scrubbed_env(tmp_path / "_home", CLAUDE_PROJECT_DIR=str(repo),
+                         CLAUDE_PLUGIN_ROOT=str(plugin)),
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert proc.stderr.startswith("NOTE:"), proc.stderr

@@ -70,6 +70,7 @@ Are tests earning their maintenance cost? Do they catch real bugs and document r
 - Test reliability — flaky tests or hidden dependencies on external state or ordering?
 - Test organization — is the structure intuitive and navigable?
 - Test speed — fast enough that developers (and agents) actually run them?
+- Determinism and dependency-closure breadth — shapes from `docs/test-determinism.md`: run `prawduct-hook determinism-scan` for the detected ones, and read the runner's cause list where the project's runner reports one; file the largest by blast radius.
 
 ### Dependency Health
 

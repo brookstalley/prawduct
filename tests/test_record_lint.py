@@ -39,6 +39,7 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 
 sys.path.insert(0, str(ROOT))
 from lib import learnings_files, record_lint  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 
 def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -50,13 +51,12 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         timeout=30,
-        env={
-            "HOME": str(home),
-            "CLAUDE_PROJECT_DIR": str(repo),
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "PYTHONDONTWRITEBYTECODE": "1",
-        },
+        env=scrubbed_env(
+            home,
+            CLAUDE_PROJECT_DIR=str(repo),
+            CLAUDE_PLUGIN_ROOT=str(ROOT),
+            PATH=os.environ.get("PATH", "/usr/bin:/bin"),
+        ),
     )
 
 
@@ -67,7 +67,7 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -1266,6 +1266,13 @@ class TestUncheckedReporting:
                 "retired-claim-survives": 0,
                 # No record changed, so no late requirement was added to grade.
                 "late-requirement-record": 0,
+                # Not record-scoped: the change touched no test file and no
+                # package `__init__.py`, so the test-scope arm read nothing.
+                "test-scope-conftest": 0,
+                "test-scope-autouse": 0,
+                "test-scope-init": 0,
+                "test-clock-fake": 0,
+                "test-clock-import": 0,
             },
         }
 

@@ -59,6 +59,7 @@ exemption nobody has examined reads as one somebody has.
 
 from __future__ import annotations
 
+import functools
 import posixpath
 import re
 import subprocess
@@ -81,20 +82,30 @@ from lib.buildplan_refs import (  # noqa: E402  (path set above)
 )
 
 
-def _tracked() -> list[str]:
+@functools.cache
+def _tracked() -> tuple[str, ...]:
     """Git-tracked paths. Asserted against tracked state so an untracked leftover cannot vouch
-    for itself — the same reasoning as the packaging tests."""
+    for itself — the same reasoning as the packaging tests.
+
+    Read on first use, not at import: a read at import counts against every test that shares
+    the process, this file's or not, while this one is only this file's subject (which is why
+    `.testament.toml` declines this file's tests)."""
     out = subprocess.run(
         ["git", "ls-files"], cwd=REPO, capture_output=True, text=True, check=True
     ).stdout
-    return out.split("\n") if out else []
+    return tuple(p for p in out.split("\n") if p)
 
 
-_TRACKED = [p for p in _tracked() if p]
-_TRACKED_SET = set(_TRACKED)
-_TRACKED_DIRS = {
-    "/".join(p.split("/")[:i]) for p in _TRACKED for i in range(1, len(p.split("/")))
-}
+@functools.cache
+def _tracked_set() -> frozenset[str]:
+    return frozenset(_tracked())
+
+
+@functools.cache
+def _tracked_dirs() -> frozenset[str]:
+    return frozenset(
+        "/".join(p.split("/")[:i]) for p in _tracked() for i in range(1, len(p.split("/")))
+    )
 
 # RECORDS vs INSTRUCTIONS — the distinction that keeps the allowlist from swallowing the check.
 #
@@ -218,7 +229,7 @@ def _resolves(containing: str, raw: str, form: str) -> bool:
         entitled = containing.startswith("plugin/") or containing.startswith(".prawduct/artifacts/")
         if entitled and form not in _INVOCATION_FORMS:
             candidates.append(f"plugin/{ref.lstrip('/')}")
-    return any(c in _TRACKED_SET or c in _TRACKED_DIRS for c in candidates)
+    return any(c in _tracked_set() or c in _tracked_dirs() for c in candidates)
 
 
 def _scan() -> tuple[list[str], list[tuple[str, str, str]]]:
@@ -231,7 +242,7 @@ def _scan() -> tuple[list[str], list[tuple[str, str, str]]]:
     """
     offenders: list[str] = []
     checked: list[tuple[str, str, str]] = []
-    for rel in _TRACKED:
+    for rel in _tracked():
         if not rel.endswith(".md"):
             continue
         try:
@@ -287,7 +298,7 @@ def test_the_scan_is_not_vacuous():
     the LIVE artifacts tree to keep contributing, so exempting the archive cannot shade
     into exempting artifacts.
     """
-    files = [p for p in _TRACKED if p.endswith(".md")]
+    files = [p for p in _tracked() if p.endswith(".md")]
     _, checked = _scan()
     assert len(files) > 150, f"expected to scan the tracked markdown tree, got {len(files)} files"
     assert len(checked) > 65, (
@@ -327,7 +338,7 @@ def test_the_allowlist_stays_small_and_reasoned():
         "a step in fixing a red test — the check stops being worth reading somewhere around here."
     )
     for path, reason in ALLOWLISTED_FILES.items():
-        assert path in _TRACKED_SET, f"allowlisted file is not tracked: {path} (stale entry?)"
+        assert path in _tracked_set(), f"allowlisted file is not tracked: {path} (stale entry?)"
         assert len(reason) > 40, f"allowlist entry for {path} needs a real reason, got: {reason!r}"
 
 
@@ -495,7 +506,7 @@ _SKILL_DIR_INTERPOLATION = re.compile(r"\$\{CLAUDE_SKILL_DIR\}")
 
 def _instruction_markdown() -> list[str]:
     return [
-        p for p in _TRACKED
+        p for p in _tracked()
         if p.endswith(".md") and p.startswith(_INSTRUCTION_TREES)
     ]
 
@@ -565,7 +576,7 @@ def _governance_prose() -> list[str]:
     inside one is correct history and renumbering does not falsify it.
     """
     return [
-        rel for rel in _TRACKED
+        rel for rel in _tracked()
         if rel.endswith(".md") and not _is_record(rel)
     ]
 

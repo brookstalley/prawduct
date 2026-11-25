@@ -220,9 +220,7 @@ build_state:
 # docs/project-state-keys.md (`/prawduct:methodology project-state`):
 # read it before setting one.
 
-# DEPRECATED: a plan claims its branch by `branch:` frontmatter
-# (`prawduct-hook plan bind`); read only while no plan does.
-# active_build_plan: artifacts/build-plan-my-scope.md
+# active_build_plan: artifacts/build-plan-x.md  # deprecated: plans bind by branch:
 
 # The branch feature work integrates onto. Set it on a gitflow repo.
 # base_branch: develop
@@ -256,6 +254,9 @@ coverage_required: false
 # Paths your tests read as data:
 # suite_coupled_prefixes:
 #   - documentation/
+# Static files nothing runs or parses:
+# static_content_prefixes:
+#   - design-system/
 
 # Learnings budgets: every rule is one line; core.md is capped and only the
 # owner raises it.
@@ -265,7 +266,7 @@ coverage_required: false
 # Block `/prawduct:pr create` while operator-verification entries are pending.
 operator_verification_required: false
 
-# The most full review rounds one build-plan scope may buy; null disables it.
+# Full review rounds a build-plan scope may buy past its cadence; null disables.
 review_round_budget: 6
 
 # Dev builds only; false opts out of the paired native reviews.

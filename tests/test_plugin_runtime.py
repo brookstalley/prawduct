@@ -7,8 +7,9 @@ ported runtime:
     with the sync cluster excised; hooks.json wires the briefing (clear) +
     Critic/reflection gate (stop) via ${CLAUDE_PLUGIN_ROOT}/bin/, and keeps the
     Chunk-1 banner.
-  * **Behavioral** — invoked as a subprocess with CLAUDE_PLUGIN_ROOT +
-    CLAUDE_PROJECT_DIR, the briefing renders, the Stop-hook Critic gate BLOCKS
+  * **Behavioral** — invoked with CLAUDE_PLUGIN_ROOT + CLAUDE_PROJECT_DIR (in-process
+    through `tests/_hook_inproc.py`, or as a child where a fake `git` on PATH is the
+    fixture), the briefing renders, the Stop-hook Critic gate BLOCKS
     (exit 2) when code changed against an active plan with no findings, the
     lib-backed subcommands resolve, and NOTHING is written outside .prawduct/
     (the design §2 invariant).
@@ -27,36 +28,52 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from conftest import SHAPED_REFLECTION
+from _hook_inproc import run_hook
+from conftest import SHAPED_REFLECTION, scrubbed_env, suite_now, suite_stamp
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 
 
-def as_just_run(report: Path) -> Path:
-    """Date a hand-written JUnit report as a run that STARTED just now — after
-    every file the fixture wrote — and ended its stated duration later.
+def as_just_run(report: Path, tree: "Path | None" = None) -> Path:
+    """Date a hand-written JUnit report as a run that STARTED a second after the
+    suite's current instant, after every file the fixture wrote, and ended its
+    stated duration later.
 
     The ingest bounds the tree by the run's start, read as the report's mtime
-    less its duration (#848, native finding at `report_predates_tree`). A report
-    written in the same instant as the fixture's files and claiming a run of a
-    second or more would have started before those files existed, so its stamp
-    is rightly withheld. Real runs start after their files; this makes the
-    fixture's report say so. The duration is read here independently of the
-    reader: the `<testsuites>` `time`, else the sum of the `<testsuite>` times."""
+    less its duration (#848, native finding at `report_predates_tree`), in two
+    ways: no file the suite reads may be newer than the start, and HEAD must not
+    have moved since it (`HEAD@{<start>}`, which git answers from the reflog's
+    dates, on the suite's clock). So the start is on the suite's clock: a commit
+    made on a clock moved past it (:func:`conftest.set_suite_clock`) is a HEAD
+    move the ingest can see, and one made before it is history the run read.
+    The fixture's files were written on the real clock, far later than that, so
+    each file and directory under ``tree`` (default: the report's own directory)
+    newer than the start is dated to the suite's instant, as written before the
+    run. The duration is read here independently of the reader: the
+    `<testsuites>` `time`, else the sum of the `<testsuite>` times."""
     import xml.etree.ElementTree as ET  # noqa: PLC0415
+
+    from lib import clock  # noqa: PLC0415
 
     root = ET.parse(report).getroot()
     suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
     total = root.get("time") if root.tag == "testsuites" else None
     duration = float(total) if total else sum(float(s.get("time") or 0) for s in suites)
-    end = datetime.now(timezone.utc).timestamp() + duration + 0.05
+    written = clock.now().timestamp()
+    start = written + 1
+    for folder, dirs, files in os.walk(tree or report.parent):
+        dirs[:] = [d for d in dirs if d != ".git"]
+        for path in [Path(folder), *(Path(folder) / name for name in files)]:
+            if path != report and path.lstat().st_mtime > written:
+                os.utime(path, (written, written), follow_symlinks=False)
+    end = start + duration + 0.05
     os.utime(report, (end, end))
     return report
 
@@ -292,13 +309,12 @@ def run_plugin_hook(
     # keeps the plugin-lib import from writing .pyc into this repo during tests.
     home = mock_bin.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), command, *args],
         capture_output=True, text=True, env=env, timeout=90, input=stdin,
@@ -306,8 +322,12 @@ def run_plugin_hook(
 
 
 def _make_session_start(prawduct: Path, offset_seconds: int = -60) -> None:
-    ts = datetime.now(timezone.utc) + timedelta(seconds=offset_seconds)
-    (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    # On the suite's one clock, text and mtime both: the hook reads the session start from the
+    # marker's mtime, and a real-clock stamp would sit months after every frozen git date.
+    marker = prawduct / ".session-start"
+    marker.write_text(suite_stamp(offset_seconds))
+    at = suite_now(offset_seconds).timestamp()
+    os.utime(marker, (at, at))
 
 
 class TestPluginClearBriefing:
@@ -931,9 +951,9 @@ class TestPluginSubcommandsResolveViaLib:
         # the advisory CLI resolves through the bundled lib (not the missing-lib
         # fallback message).
         self._repo(tmp_path)
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "advisory", "list"],
-            capture_output=True, text=True, timeout=90,
+        result = run_hook(
+            "advisory", "list",
+            cwd=tmp_path.parent,
             env={"HOME": str(tmp_path / "_home"), "CLAUDE_PROJECT_DIR": str(tmp_path),
                  "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": "/usr/bin:/bin",
                  "PYTHONDONTWRITEBYTECODE": "1"},
@@ -1085,9 +1105,11 @@ class TestWriteIsolationInvariant:
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    # Started FROM the fixture repo, not only aimed at it: testament vouches for a git child
+    # only when it starts in temp, so one started in this checkout is uncacheable, `-C` or not.
     return subprocess.run(
         ["git", "-C", str(repo), *args],
-        capture_output=True, text=True, timeout=30, check=True,
+        cwd=str(repo), capture_output=True, text=True, timeout=30, check=True,
         env={**os.environ,
              "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e",
              "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e"},
@@ -1095,14 +1117,19 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def _run_in(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """`prawduct-hook <args>` against ``repo``, in-process (`tests/_hook_inproc.py`), with the
+    project pinned by `CLAUDE_PROJECT_DIR`.
+
+    The cwd is ``repo``'s parent, a temp directory in no repository, so the project resolves
+    from the pin alone. Any cwd outside ``repo``'s repository does that; this one also keeps the
+    hook's own git calls off this checkout, whose live state a test must not read."""
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return subprocess.run(
-        [sys.executable, str(HOOK), *args],
-        capture_output=True, text=True, timeout=90,
+    return run_hook(
+        *args,
+        cwd=repo.parent,
         env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-             "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-             "PYTHONDONTWRITEBYTECODE": "1"},
+             "CLAUDE_PLUGIN_ROOT": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
     )
 
 
@@ -3315,7 +3342,7 @@ class TestUnanchoredFreshnessFailsClosed:
         _make_session_start(repo / ".prawduct", offset_seconds=-60)
         ev_path = repo / ".prawduct" / ".test-evidence.json"
         ev = json.loads(ev_path.read_text())
-        ev["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ev["timestamp"] = suite_stamp()
         ev["evidence_tree"] = "0" * 40  # a tree that cannot possibly validate
         ev_path.write_text(json.dumps(ev))
         assert _run_in(repo, "test-status").returncode == 0, \
@@ -3470,6 +3497,415 @@ class TestSuiteCoupledPrefixesDeclaration:
         self._state(silent, "other_key: 1\n")
         ok, reason = gates._test_evidence_tree_valid(silent, "2222222222222222")
         assert ok is True, reason
+
+
+class TestStaticContentPrefixesDeclaration:
+    """`static_content_prefixes:` is read the opposite way on failure from
+    `suite_coupled_prefixes:`. Being static only lightens what a change costs,
+    so a declaration the reader cannot read whole must declare nothing, and say
+    it was refused."""
+
+    def _core(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import core  # noqa: PLC0415 — mirrors the other lib unit tests
+        return core
+
+    def test_a_declared_block_is_read(self):
+        core = self._core()
+        status, items = core.static_content_declaration(
+            "static_content_prefixes:\n  - design/\n  - 'site/'\n"
+        )
+        assert (status, items) == (core.YAML_DECLARED, ("design/", "site/"))
+
+    def test_absent_key_missing_file_and_empty_list_declare_nothing(self):
+        core = self._core()
+        assert core.static_content_declaration("other_key: 1\n")[1] == ()
+        assert core.static_content_declaration(None) == (core.YAML_ABSENT, ())
+        assert core.static_content_declaration("static_content_prefixes: []\n")[1] == ()
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "static_content_prefixes:\n  - design/\n    site/\n",  # wrapped continuation
+            "static_content_prefixes:\n  - design/\n  site/\n",  # mis-indented root
+            "static_content_prefixes: [design/, site/]\n",  # flow style
+            "static_content_prefixes:\n  - design/\n  -\n",  # bare dash
+            "static_content_prefixes:\n  - ''\n  - design/\n",  # empty entry
+            'static_content_prefixes:\n  - ""\n  - design/\n',  # empty entry
+        ],
+    )
+    def test_a_declaration_it_cannot_read_whole_declares_nothing_and_says_so(self, body):
+        """An empty entry is a prefix of every path; it is refused with the rest."""
+        core = self._core()
+        status, items = core.static_content_declaration(body)
+        assert (status, items) == (core.YAML_UNPARSEABLE, ())
+
+    def test_the_coupling_text_reader_matches_the_file_reader(self, tmp_path):
+        core = self._core()
+        for body in ("suite_coupled_prefixes:\n  - documentation/\n", "suite_coupled_prefixes: [x]\n", "k: 1\n"):
+            prawduct = TestSuiteCoupledPrefixesDeclaration._state(self, tmp_path / str(abs(hash(body))), body)
+            assert core.suite_coupled_prefixes_from_text(body) == core.suite_coupled_prefixes(prawduct)
+
+    def test_this_repo_declares_no_static_content(self):
+        """This repo's suite reads `plugin/` and `documentation/` as data, so
+        nothing here may be static. A declaration added later must be argued
+        against those couplings, which win any overlap anyway."""
+        core = self._core()
+        repo_root = Path(__file__).resolve().parents[1]
+        text = (repo_root / ".prawduct" / "project-state.yaml").read_text(encoding="utf-8")
+        assert core.static_content_declaration(text)[1] == ()
+
+    def _trees(
+        self, tmp_path: Path, *, committed: str, working: "str | None" = None,
+        on_main: "str | None" = None,
+    ):
+        """A run's tree T0 and a later committed tree T1 on a feature branch that
+        changes only `design/site.css`. ``committed`` is the state file both
+        trees carry; ``on_main`` the integration branch's (default: the same);
+        ``working``, when given, replaces it in the working tree, uncommitted."""
+        repo = tmp_path / "repo"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(on_main if on_main is not None else committed)
+        (repo / "design").mkdir()
+        (repo / "design" / "site.css").write_text("body { margin: 0 }\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c0 on the integration branch")
+        _git(repo, "checkout", "-b", "feat")
+        (repo / ".prawduct" / "project-state.yaml").write_text(committed)
+        _git(repo, "commit", "-am", "c1", "--allow-empty")
+        t0 = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / "design" / "site.css").write_text("body { margin: 1rem }\n")
+        _git(repo, "commit", "-am", "c2")
+        t1 = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        if working is not None:
+            (repo / ".prawduct" / "project-state.yaml").write_text(working)
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import gates  # noqa: PLC0415
+        return gates, repo, t0, t1
+
+    DECLARES = "static_content_prefixes:\n  - design/\n"
+
+    def test_a_declaration_the_run_tree_carries_relaxes_the_comparison(self, tmp_path):
+        gates, repo, t0, t1 = self._trees(tmp_path, committed=self.DECLARES)
+        met, reason = gates._tree_met(repo, t0, t1)
+        assert met is True, reason
+        assert "1 declared-static" in reason
+
+    def test_an_uncommitted_declaration_relaxes_nothing(self, tmp_path):
+        """Neither compared tree declares `design/`; only the working tree does.
+        Read from the working tree, it would vouch a run on T0 for T1 although
+        nothing either tree holds says the file cannot change the suite."""
+        gates, repo, t0, t1 = self._trees(
+            tmp_path, committed="other_key: 1\n", working=self.DECLARES
+        )
+        met, reason = gates._tree_met(repo, t0, t1)
+        assert met is False, reason
+        assert "design/site.css" in reason
+
+    def test_a_tree_that_cannot_be_read_declares_nothing(self, tmp_path):
+        gates, repo, _t0, _t1 = self._trees(tmp_path, committed=self.DECLARES)
+        assert gates.coverage.suite_declarations(repo, "0" * 40).static == ()
+        assert gates.coverage.suite_declarations(repo, "HEAD").static == ("design/",), "control"
+
+    def test_a_declaration_only_this_branch_carries_relaxes_nothing(self, tmp_path):
+        """A governance change cannot supply its own authority: the branch that
+        adds the declaration pays the full path, and says why."""
+        gates, repo, t0, t1 = self._trees(
+            tmp_path, committed=self.DECLARES, on_main="other_key: 1\n"
+        )
+        met, reason = gates._tree_met(repo, t0, t1)
+        assert met is False, reason
+        assert "not yet on the integration branch" in reason
+
+    def test_a_refused_declaration_says_so(self, tmp_path):
+        refused = "static_content_prefixes: [design/]\n"
+        gates, repo, t0, t1 = self._trees(tmp_path, committed=refused)
+        met, reason = gates._tree_met(repo, t0, t1)
+        assert met is False, reason
+        assert "cannot read" in reason
+
+    def test_an_uncommitted_coupling_removal_relaxes_nothing(self, tmp_path):
+        """Both trees couple `design/`; only the working tree has dropped it."""
+        coupled = self.DECLARES + "suite_coupled_prefixes:\n  - design/\n"
+        gates, repo, t0, t1 = self._trees(tmp_path, committed=coupled, working=self.DECLARES)
+        met, reason = gates._tree_met(repo, t0, t1)
+        assert met is False, reason
+
+    def test_a_metadata_only_diff_does_not_claim_static_files(self, tmp_path):
+        """The success line counts static files only when one changed."""
+        gates, repo, t0, _t1 = self._trees(tmp_path, committed=self.DECLARES)
+        (repo / ".prawduct" / "backlog.md").write_text("# b\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c3")
+        t2 = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        t1 = _git(repo, "rev-parse", "HEAD~1^{tree}").stdout.strip()
+        met, reason = gates._tree_met(repo, t1, t2)
+        assert met is True, reason
+        assert "declared-static" not in reason, reason
+
+
+class TestTheDeclarationsInForce:
+    """`coverage.suite_declarations`, the one owner: which declarations a check
+    judges a tree under."""
+
+    def _repo(self, tmp_path: Path, *, branch: str = "master") -> Path:
+        repo = tmp_path / "repo"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / "design" / "static").mkdir(parents=True)
+        (repo / "documentation").mkdir()
+        _git(repo, "init", "-b", branch)
+        return repo
+
+    def _commit(self, repo: Path, state: str, msg: str) -> str:
+        (repo / ".prawduct" / "project-state.yaml").write_text(state)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", msg, "--allow-empty")
+        return _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    def _coverage(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import coverage  # noqa: PLC0415
+        return coverage
+
+    def test_the_head_tilde_one_fallback_authorises_nothing(self, tmp_path):
+        """A `master` trunk with no `main` resolves only the moving fallback, whose
+        merge-base is the branch's own previous commit."""
+        coverage = self._coverage()
+        repo = self._repo(tmp_path)
+        self._commit(repo, "static_content_prefixes:\n  - design/\n", "declare")
+        self._commit(repo, "static_content_prefixes:\n  - design/\n", "work")
+        assert coverage._resolve_base_branch(repo)[0] == coverage.MOVING_FALLBACK_BASE, "fixture"
+        declared = coverage.suite_declarations(repo, "HEAD")
+        assert declared.static == ()
+        assert "no integration branch resolves" in declared.note
+
+    def test_a_branch_may_narrow_an_inherited_prefix(self, tmp_path):
+        coverage = self._coverage()
+        repo = self._repo(tmp_path, branch="main")
+        self._commit(repo, "static_content_prefixes:\n  - design/\n", "base")
+        _git(repo, "checkout", "-b", "feat")
+        self._commit(repo, "static_content_prefixes:\n  - design/static/\n", "narrow")
+        declared = coverage.suite_declarations(repo, "HEAD")
+        assert declared.static == ("design/static/",)
+        assert declared.note == ""
+
+    def test_a_branch_cannot_widen_one(self, tmp_path):
+        coverage = self._coverage()
+        repo = self._repo(tmp_path, branch="main")
+        self._commit(repo, "static_content_prefixes:\n  - design/static/\n", "base")
+        _git(repo, "checkout", "-b", "feat")
+        self._commit(repo, "static_content_prefixes:\n  - design/\n", "widen")
+        declared = coverage.suite_declarations(repo, "HEAD")
+        assert declared.static == ()
+        assert declared.pending == ("design/",)
+
+    def test_the_not_in_force_note_bears_only_on_paths_under_a_pending_prefix(self, tmp_path):
+        coverage = self._coverage()
+        repo = self._repo(tmp_path, branch="main")
+        self._commit(repo, "static_content_prefixes:\n  - design/\n", "base")
+        _git(repo, "checkout", "-b", "feat")
+        self._commit(repo, "static_content_prefixes:\n  - design/\n  - site/\n", "add site")
+        declared = coverage.suite_declarations(repo, "HEAD")
+        assert declared.static == ("design/",)
+        assert declared.note_for(["src/app.py"]) == ""
+        assert "site/" in declared.note_for(["site/index.html"])
+
+    def test_an_uncommitted_coupling_removal_keeps_a_prose_change_stale(self, tmp_path):
+        """Both trees and the base couple `documentation/`, which holds prose the
+        suite reads; only the working tree has dropped it. The changed file is
+        not judgeable, so nothing but the coupling union can stale the run."""
+        coverage = self._coverage()
+        from lib import gates  # noqa: PLC0415
+
+        repo = self._repo(tmp_path, branch="main")
+        coupled = "suite_coupled_prefixes:\n  - documentation/\n"
+        (repo / "documentation" / "guide.md").write_text("# a\n")
+        self._commit(repo, coupled, "base")
+        _git(repo, "checkout", "-b", "feat")
+        t0 = self._commit(repo, coupled, "run here")
+        (repo / "documentation" / "guide.md").write_text("# b\n")
+        t1 = self._commit(repo, coupled, "prose change")
+        (repo / ".prawduct" / "project-state.yaml").write_text("other_key: 1\n")
+        assert coverage.suite_declarations(repo, "HEAD").coupled[:1] == ("documentation/",)
+        met, reason = gates._tree_met(repo, t0, t1)
+        assert met is False, reason
+        assert "documentation/guide.md" in reason
+
+
+class TestStaticContentDoesNotWithholdAnIngestedRun:
+    """The `--from-junit` ingest asks the same freshness question at another
+    site: a file the suite reads, newer than the run's start, withholds the tree
+    stamp. A declared static file is not one the suite reads."""
+
+    def _repo(self, tmp_path: Path, state: str) -> "tuple[Path, Path]":
+        import time  # noqa: PLC0415
+
+        repo = tmp_path / "repo"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(state)
+        (repo / "design").mkdir()
+        (repo / "design" / "site.css").write_text("body { margin: 0 }\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        committed = time.time()
+        # A run that started well after the commit and every file above.
+        report = repo / "junit.xml"
+        report.write_text('<testsuite name="s" tests="1" time="10"><testcase name="t"/></testsuite>\n')
+        os.utime(report, (committed + 100, committed + 100))
+        for path in [repo / ".prawduct" / "project-state.yaml", *(repo / "design").iterdir()]:
+            os.utime(path, (committed - 5, committed - 5))
+        # An edit after the run's start (report mtime less its duration).
+        (repo / "design" / "site.css").write_text("body { margin: 1rem }\n")
+        os.utime(repo / "design" / "site.css", (committed + 95, committed + 95))
+        return repo, report
+
+    def _ask(self, repo: Path, report: Path):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import evidence  # noqa: PLC0415
+
+        return evidence.report_predates_tree(repo, [report])
+
+    def test_a_declared_static_edit_does_not_withhold_the_stamp(self, tmp_path):
+        repo, report = self._repo(tmp_path, "static_content_prefixes:\n  - design/\n")
+        assert self._ask(repo, report) is None
+
+    def test_the_same_edit_undeclared_withholds_it(self, tmp_path):
+        repo, report = self._repo(tmp_path, "other_key: 1\n")
+        reason = self._ask(repo, report)
+        assert reason is not None and "design/site.css" in reason, reason
+
+
+class TestStaticContentIsNotNamedAsDefeatingTheSuiteMatch:
+    """The PR gate's `CAUSE:` line names the uncommitted files that would stop
+    a suite run in this tree from meeting HEAD. That is the freshness question,
+    so it must agree with the freshness check: an uncommitted static file is not
+    one of them, while the Stop gate's review-side list still names it."""
+
+    def _explain(self, tmp_path: Path, state: str, target: str) -> dict:
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import coverage  # noqa: PLC0415
+
+        repo = tmp_path / f"{target}-{abs(hash(state))}"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(state)
+        (repo / "design").mkdir()
+        (repo / "design" / "site.css").write_text("body { margin: 0 }\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        (repo / "design" / "site.css").write_text("body { margin: 1rem }\n")
+        tree = "a" * 40
+        return coverage.explain_uncovered(
+            repo, [], tree, tree, tree, lambda a, b: [], target=target,
+            tally={"status": "counted", "reviews": []},
+        )
+
+    def test_declared_static_is_not_named_for_the_pr_gate(self, tmp_path):
+        explained = self._explain(tmp_path, "static_content_prefixes:\n  - design/\n", "head")
+        assert explained["status"] == "no-branch-review", explained
+        assert explained["uncommitted"] == []
+
+    def test_undeclared_it_is_named(self, tmp_path):
+        explained = self._explain(tmp_path, "other_key: 1\n", "head")
+        assert explained["uncommitted"] == ["design/site.css"], explained
+
+    def test_the_review_side_list_still_names_it(self, tmp_path):
+        """Static content is still judgeable, so the Stop gate, whose span
+        holds uncommitted work, still counts it as work to review."""
+        explained = self._explain(tmp_path, "static_content_prefixes:\n  - design/\n", "working")
+        assert explained["uncommitted"] == ["design/site.css"], explained
+
+
+class TestStaticContentIsStillReviewed:
+    """Owner ruling 2026-11-24 (#1239): declared static documents get a lighter
+    review, not the doc-only route that skips it. So the declaration must not
+    reach the doc-only fast path."""
+
+    def test_a_static_only_pr_is_not_doc_only(self, gitflow_repo):
+        # Uncommitted, as `_use_develop_base` keeps it, so the state file is
+        # not itself in the PR diff and cannot be what refuses.
+        (gitflow_repo / ".prawduct" / "project-state.yaml").write_text(
+            "backlog_format_version: 2\nbase_branch: develop\n"
+            "static_content_prefixes:\n  - design/\n"
+        )
+        (gitflow_repo / "design").mkdir()
+        (gitflow_repo / "design" / "site.css").write_text("body { margin: 0 }\n")
+        _git(gitflow_repo, "add", "design/site.css")
+        _git(gitflow_repo, "commit", "-m", "F3 static page styles")
+
+        r = _run_in(gitflow_repo, "check-pr-doc-only")
+
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        assert "review-needing files: design/site.css" in r.stdout + r.stderr
+
+
+class TestStaticContentKeepsEvidenceCurrent:
+    """#1239 end to end through `test-status`: a real recorded run, dated
+    before the session, judged against a change confined to declared static
+    content. The same change undeclared must read stale."""
+
+    def _seed(self, tmp_path, name: str, state: str) -> Path:
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / ".prawduct" / "project-state.yaml").write_text(state)
+        (repo / "src").mkdir()
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "design" / "data").mkdir(parents=True)
+        (repo / "design" / "site.css").write_text("body { margin: 0 }\n")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0, "seed record"
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        assert isinstance(ev.get("evidence_tree"), str) and ev["evidence_tree"], "seed tree"
+        ev["timestamp"] = "2000-01-01T00:00:00Z"  # predate the session
+        ev_path.write_text(json.dumps(ev))
+        assert _run_in(repo, "test-status").returncode == 0, "control: unchanged tree is current"
+        return repo
+
+    DECLARED = "static_content_prefixes:\n  - design/\n"
+
+    def _edit_static(self, repo: Path) -> None:
+        (repo / "design" / "site.css").write_text("body { margin: 1rem }\n")
+        (repo / "design" / "page.html").write_text("<main></main>\n")
+        (repo / "design" / "tokens.json").write_text('{"gap": 4}\n')
+
+    def test_a_static_only_change_keeps_the_run_current(self, tmp_path):
+        repo = self._seed(tmp_path, "declared", self.DECLARED)
+        self._edit_static(repo)
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "declared-static" in result.stdout
+
+    def test_the_same_change_undeclared_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "undeclared", "other_key: 1\n")
+        self._edit_static(repo)
+        assert _run_in(repo, "test-status").returncode == 1
+
+    def test_a_code_change_beside_it_is_still_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "mixed", self.DECLARED)
+        self._edit_static(repo)
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return b + a\n")
+        assert _run_in(repo, "test-status").returncode == 1
+
+    def test_a_coupled_path_under_the_prefix_is_still_stale(self, tmp_path):
+        repo = self._seed(
+            tmp_path, "coupled",
+            self.DECLARED + "suite_coupled_prefixes:\n  - design/data/\n",
+        )
+        (repo / "design" / "data" / "values.json").write_text('{"x": 1}\n')
+        assert _run_in(repo, "test-status").returncode == 1
 
 
 class TestDocsCanStaleTestEvidence:
@@ -3732,14 +4168,12 @@ class TestJurisdictionSubcommand:
         repo = self._seed(tmp_path)
         home = repo.parent / "_home"
         home.mkdir(exist_ok=True)
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "jurisdiction"],
+        result = run_hook(
+            "jurisdiction",
+            cwd=repo.parent,
             input="adopt the telemetry substrate for tracing",
-            capture_output=True, text=True, timeout=90,
             env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
-                 "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                 "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-                 "PYTHONDONTWRITEBYTECODE": "1"},
+                 "CLAUDE_PLUGIN_ROOT": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
         )
         assert result.returncode == 0, result.stderr
         assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout

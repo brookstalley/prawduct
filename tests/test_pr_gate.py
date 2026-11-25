@@ -33,11 +33,7 @@ from lib import evidence, pr_gate  # noqa: E402
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    env = dict(
-        os.environ,
-        GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-        GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t",
-    )
+    env = dict(os.environ)
     return subprocess.run(
         ["git", *args], cwd=str(repo), capture_output=True, text=True, env=env, timeout=30
     )
@@ -729,6 +725,109 @@ class TestCredentialShapeClassifier:
         for line in ("print('hello')", "https://example.com/a:b", "the " + "proxy-injected" + " token"):
             assert transport.credential_shape(line) is None, line
 
+    @pytest.mark.parametrize(
+        "creds",
+        [
+            "user:" + "password",  # a placeholder word
+            "app:" + "Secret",  # any case
+            "x-access-token:" + "TOKEN",  # the documented token-in-URL form
+            "orders:" + "orders",  # the same as its user: a dev default
+            "u:" + "p",  # three characters or fewer
+            "app:" + "${PG_PASS}",  # read from the environment
+            "app:" + "$PG_PASS",
+            "app:" + "{password}",  # a template field
+            "app:" + "{{db.password}}",
+            "app:" + "{_PG_PASSWORD}",
+            "shop_dev:" + "$_pw",
+            "app:" + "<password>",
+            "app:" + "%(password)s",
+            "app:" + "****",  # masked
+            "app:" + "xxxx",
+            "app:" + "...",
+        ],
+    )
+    def test_a_placeholder_url_password_is_not_a_credential(self, creds):
+        """The placeholder families a survey of every governed repo here found
+        refused at PR time (2026-11-24), none of them secrets."""
+        from lib.backlog import transport
+
+        assert transport.credential_shape(f"DSN = postgres://{creds}@db:5432/app") is None
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "url = https://" + "user:s3cr3tpass@github.com/o/r.git",  # random-looking
+            "url = https://" + "user:password1@host",  # contains a word, is not one
+            "url = https://" + "admin:" + "Xk9#mQ2vL@host",
+            # A generated secret inside a template wrapper is a secret in a wrapper.
+            "url = postgres://" + "app:$Kx9fPq2mZ@db",
+            "url = postgres://" + "app:{Kx9fPq2mZ}@db",
+            "url = postgres://" + "app:<Xk9mQ2vLr7>@db",
+            "url = postgres://" + "app:${PG_PASS@db",  # unbalanced: not a template field
+            # An unencoded `@` in the password: the piece before it is not the password.
+            "url = https://" + "admin:ab@Xk9mQ2vLr7@host/x",
+            # One placeholder beside a real one on the same line is still reported.
+            "a = postgres://" + "u:password@h  b = postgres://" + "u:hunter2x@h",
+        ],
+    )
+    def test_a_real_looking_url_password_is_still_a_credential(self, line):
+        from lib.backlog import transport
+
+        assert transport.credential_shape(line) == "url-embedded password", line
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            # A password holding an unencoded `@`, then a `/`, `?` or `#`: the
+            # piece before the first `@` is not the password.
+            "url = https://" + "admin:ab@Xk9/mQ2vLr7@host",
+            "url = postgres://" + "app:password@Kx9fPq?2mZ@db",
+            "url = postgres://" + "app:pw@Kx9#2mZ@db",
+            # `,` `'` and `<` are legal in a URL too, so they cannot end it.
+            "url = https://" + "admin:ab@Xk9,mQ2vLr7@host",
+            "url = postgres://" + "app:pw@Kx9'2mZ@db",
+            "url = postgres://" + "app:<x>@Kx9mQ2vL@db",
+            # The same syntax as a placeholder followed by an email in the query:
+            # settled toward reporting, and a waiver answers it.
+            "url = postgres://" + "app:password@db?notify=ops@example.com",
+        ],
+    )
+    def test_a_second_at_sign_anywhere_in_the_url_reports(self, line):
+        from lib.backlog import transport
+
+        assert transport.credential_shape(line) == "url-embedded password", line
+
+    def test_the_url_ends_at_a_quote_or_comma(self):
+        """A later `@` on the same line is outside the URL: an email beside a DSN
+        in JSON or a quoted assignment does not make the placeholder refuse."""
+        from lib.backlog import transport
+
+        for line in (
+            '{"dsn":"postgres://' + 'app:password@db","owner":"ops@example.com"}',  # compact JSON
+            "DSN = 'postgres://" + "app:password@db'  # ask ops@example.com",
+            "postgres://" + "app:password@db, ops@example.com",
+        ):
+            assert transport.credential_shape(line) is None, line
+
+    @pytest.mark.parametrize(
+        "creds",
+        [
+            "Ab3kZ9qLmX2pT7:" + "X",  # an API key as the user, a dummy password
+            "sk_live_" + "Ab3kZ9qLmX2p:" + "password",
+            "a" * 30 + ":" + "x",  # too long to be a name
+        ],
+    )
+    def test_a_secret_in_the_user_position_reports(self, creds):
+        from lib.backlog import transport
+
+        assert transport.credential_shape(f"url = https://{creds}@api.example.com") == "url-embedded password"
+
+    def test_a_placeholder_is_still_scrubbed_from_output(self):
+        """Exemption is the CHECK's; hiding a placeholder from output costs nothing."""
+        from lib.backlog import transport
+
+        assert transport.scrub_secrets("postgres://" + "u:password@h/x") == "postgres://[REDACTED]@h/x"
+
     def test_scrubbing_is_unchanged_by_the_classifier(self):
         """The scrub still reads every pattern, the placeholder and the whole
         multi-line key included."""
@@ -756,6 +855,46 @@ class TestCredentialShape:
         # A re-check of the unchanged branch is the same event, not a second one.
         _run(repo, "check-pr-hygiene")
         assert len(_refusals(repo, pr_gate.HYGIENE_GUARD)) == 1
+
+    def test_a_branch_adding_only_placeholder_dsns_passes_without_waivers(self, tmp_path):
+        """The consumer case: docs and tests carry `user:password@host` DSNs."""
+        repo = _repo(tmp_path, branch_files={
+            "README.md": "Connect with postgres://" + "shop:password@localhost/shop\n",
+            "settings.py": 'DATABASES = "postgres://' + 'app:${PG_PASS}@db/app"\n',
+        })
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert _refusals(repo, pr_gate.HYGIENE_GUARD) == []
+
+    def test_a_real_looking_dsn_beside_them_still_refuses(self, tmp_path):
+        repo = _repo(tmp_path, branch_files={
+            "README.md": "Connect with postgres://" + "shop:password@localhost/shop\n",
+            "settings.py": 'DATABASES = "postgres://' + 'app:Xk9mQ2vLr7@db/app"\n',
+        })
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        assert "settings.py:1" in r.stdout and "README.md" not in r.stdout
+
+    def test_the_branch_entry_point_reports_what_it_could_not_read(self, tmp_path, monkeypatch):
+        """`branch_credential_shapes` is what `critic-begin` asks before a
+        cumulative: a span it cannot read, or a check that raises, comes back
+        `unchecked`, never as a clean empty answer."""
+        repo = _repo(tmp_path, branch_files={"config.py": f"token = '{_TOKEN}'\n"})
+        found, unchecked = pr_gate.branch_credential_shapes(repo)
+        assert found and unchecked is None, (found, unchecked)
+
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: f\nbase_branch: nowhere\n")
+        found, unchecked = pr_gate.branch_credential_shapes(repo)
+        assert found == [] and unchecked and "base branch" in unchecked, unchecked
+
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: f\nbase_branch: develop\n")
+
+        def _boom(*_a, **_k):
+            raise RuntimeError("diff reader fell over")
+
+        monkeypatch.setattr(pr_gate, "_credential_shape", _boom)
+        found, unchecked = pr_gate.branch_credential_shapes(repo)
+        assert found == [] and "RuntimeError" in unchecked, unchecked
 
     def test_the_same_line_with_a_waiver_passes(self, tmp_path):
         repo = _repo(tmp_path, branch_files={"config.py": f"token = '{_TOKEN}'  # {_WAIVER}\n"})
@@ -834,8 +973,7 @@ class TestCredentialShape:
         def plumb(*args: bytes, stdin: bytes | None = None) -> bytes:
             proc = subprocess.run(
                 [b"git", *args], cwd=repo, input=stdin, capture_output=True, check=True,
-                env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-                         GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"),
+                env=dict(os.environ),
             )
             return proc.stdout
 

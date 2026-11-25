@@ -56,9 +56,9 @@ from __future__ import annotations
 import bisect
 import re
 import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
 
+from . import clock
 from . import consumer_digest
 from . import waivers
 from .core import read_str_yaml_key
@@ -402,7 +402,7 @@ def _search_backlog(
 ) -> "tuple[list[dict], str | None]":
     from .backlog import cachequery  # noqa: PLC0415 — lazy: only a repo on an issue backlog
 
-    envelope = cachequery.open_items(project_dir, scope=scope, now=datetime.now(timezone.utc))
+    envelope = cachequery.open_items(project_dir, scope=scope, now=clock.now())
     if envelope.get("status") != "ok":
         err = envelope.get("error") or {}
         reason = err.get("message") or err.get("code") or "unknown error"

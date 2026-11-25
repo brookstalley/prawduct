@@ -51,7 +51,7 @@ def _isolated_registry():
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -394,7 +394,7 @@ def _two_branch_prepend_merge(tmp_path: Path, *, attribute: bool) -> subprocess.
     _git(repo, "checkout", "-q", "main")
     _prepend_entry(repo, "2026-08-12: develop", "dev")
     return subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "--no-edit", "feat"],
+        ["git", "merge", "--no-edit", "feat"],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -488,7 +488,7 @@ class TestUnionMergeRecommendation:
         _git(repo, "checkout", "-q", "main")
         _prepend_entry(repo, "2026-08-13: shared entry", "shared")
         proc = subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "--no-edit", "feat"],
+            ["git", "merge", "--no-edit", "feat"],
             cwd=str(repo), capture_output=True, text=True, timeout=15,
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -510,7 +510,7 @@ class TestUnionMergeRecommendation:
         _git(repo, "checkout", "-q", "main")
         _prepend_entry(repo, "2026-08-13: shared entry", "reworded-on-main")
         proc = subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "--no-edit", "feat"],
+            ["git", "merge", "--no-edit", "feat"],
             cwd=str(repo), capture_output=True, text=True, timeout=15,
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr

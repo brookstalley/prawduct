@@ -20,25 +20,19 @@ if str(_PLUGIN) not in sys.path:
     sys.path.insert(0, str(_PLUGIN))
 
 from lib import change_fragments  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 HOOK = _PLUGIN / "bin" / "prawduct-hook"
 ARCHIVE = ".prawduct/change-log-archive"
 
 
 def _env(repo: Path) -> dict[str, str]:
-    return {
-        "HOME": str(repo.parent / "_home"),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "CLAUDE_PROJECT_DIR": str(repo),
-    }
+    return scrubbed_env(repo.parent / "_home", CLAUDE_PROJECT_DIR=str(repo))
 
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", *args],
+        ["git", "-c", "commit.gpgsign=false", *args],
         cwd=str(repo), capture_output=True, text=True, env=_env(repo), check=True, timeout=15,
     ).stdout
 

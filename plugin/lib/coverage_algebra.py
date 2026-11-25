@@ -58,6 +58,7 @@ coverage, because its tree is not a node the path stands on.
 
 from __future__ import annotations
 
+import re
 from collections import deque
 from typing import Callable, Iterator
 
@@ -204,10 +205,15 @@ TEST_COUPLED_STATE = frozenset(
 )
 
 
-def affects_test_outcome(path: str, extra_prefixes: "tuple[str, ...]" = ()) -> bool:
+def affects_test_outcome(
+    path: str,
+    extra_prefixes: "tuple[str, ...]" = (),
+    static_prefixes: "tuple[str, ...]" = (),
+) -> bool:
     """True if a change to ``path`` can change what the test suite says.
 
-    A strict superset of :func:`is_judgeable_path`, and the distinction is the
+    A superset of :func:`is_judgeable_path` except for declared static content
+    (``static_prefixes`` below), and the distinction is the
     point. "Does this need review coverage?" and "can this flip a test red?"
     are different questions that the metadata boundary answers differently:
     framework state needs no reviewer, and a non-hermetic test still reads it.
@@ -216,8 +222,8 @@ def affects_test_outcome(path: str, extra_prefixes: "tuple[str, ...]" = ()) -> b
 
     Kept as a second function rather than a second rule inside
     :func:`is_judgeable_path` because review coverage must NOT widen here: the
-    ``_BATCH_FIX_DIRECTIVE`` tells a builder that ``.prawduct/`` writes are
-    free mid-review, and that promise stays true.
+    ``_BATCH_FIX_DIRECTIVE`` tells a builder that ``.prawduct/`` writes cost no
+    new review between review rounds, and that promise stays true.
 
     ``extra_prefixes`` carries the half that CANNOT ship: path prefixes a repo
     declares its own non-hermetic tests read. **Prefixes, not a prose rule** —
@@ -244,26 +250,92 @@ def affects_test_outcome(path: str, extra_prefixes: "tuple[str, ...]" = ()) -> b
     widening it there would make a documentation-only PR buy a full Critic
     review, which nothing priced. Passing them is therefore a deliberate act
     at each site, not a default the predicate applies on its own.
+
+    ``static_prefixes`` is the repo's static-content declaration, the one
+    narrowing input: a judgeable file it covers cannot change what the suite
+    says (:func:`is_static_content`). The freshness callers pass it beside
+    ``extra_prefixes``, and a coupled path is never static, so the widening
+    declaration always wins an overlap.
     """
-    return (
-        is_judgeable_path(path)
-        or path in TEST_COUPLED_STATE
-        or bool(extra_prefixes) and path.startswith(tuple(extra_prefixes))
-    )
+    if path in TEST_COUPLED_STATE:
+        return True
+    if extra_prefixes and path.startswith(tuple(extra_prefixes)):
+        return True
+    if is_static_content(path, static_prefixes, extra_prefixes):
+        return False
+    return is_judgeable_path(path)
 
 
 def suite_coupled_files(
-    paths: "list[str] | None", extra_prefixes: "tuple[str, ...]" = ()
+    paths: "list[str] | None",
+    extra_prefixes: "tuple[str, ...]" = (),
+    static_prefixes: "tuple[str, ...]" = (),
 ) -> list[str]:
     """The subset of ``paths`` a test outcome can depend on (order preserved,
     None-safe) — :func:`affects_test_outcome` over :func:`judgeable_files`.
 
-    ``extra_prefixes`` is forwarded unchanged; see that function for why the
-    freshness callers pass it and the review callers must not."""
-    return [p for p in (paths or []) if affects_test_outcome(p, extra_prefixes)]
+    Both declarations are forwarded unchanged; see that function for why the
+    freshness callers pass them and the review callers must not."""
+    return [
+        p for p in (paths or []) if affects_test_outcome(p, extra_prefixes, static_prefixes)
+    ]
 
 
-def is_executable_path(path: str) -> bool:
+def is_static_content(
+    path: str,
+    static_prefixes: "tuple[str, ...]",
+    coupled_prefixes: "tuple[str, ...]",
+) -> bool:
+    """True if ``path`` is static content by this repo's declaration: a judgeable
+    file nothing in the product executes, serves as code or parses, such as a
+    stylesheet, a static example page or a design-value file kept with its
+    documents. Both declarations are the ones in force for the judged tree
+    (``coverage.suite_declarations``), and the coupling one is required so no
+    caller can classify a path without the declaration that overrides this.
+
+    Static content still needs review coverage. :func:`is_judgeable_path` is
+    not asked to change, so a static file is reviewed, never rides the doc-only
+    fast path, and still owes a change record. What the declaration buys is
+    narrower: such a file cannot change what the suite says
+    (:func:`affects_test_outcome`), no test can execute it
+    (:func:`is_executable_path`), and it does not count toward the boundary
+    review's volume escalator (``critic_consolidate._derive_roster``). The
+    review still runs because one over static pages has found real defects
+    (a design value contradicting an owner ruling, accessibility faults in
+    reference markup); it just runs lighter.
+
+    **Paths classify, and the declaration is the whole claim.** There is no
+    extension table: a second suffix table beside the one predicate is the
+    divergence :func:`is_executable_path` records as removed.
+
+    Never static, whatever the declaration says:
+
+    - a path under ``coupled_prefixes``,
+      because a test reads it as data. The declaration that widens the suite's
+      reach wins an overlap;
+    - governance-protected prose (``buildplan_refs.protected_path_violation``),
+      because an agent executes it. Its bounds match a path SEGMENT, so a
+      declared file under any ``skills/`` or ``templates/`` directory stays
+      judged in full; the safe direction;
+    - a path that is not judgeable anyway (metadata, unprotected ``.md``),
+      which already costs nothing. :data:`TEST_COUPLED_STATE` is metadata, so it
+      is never static, and :func:`affects_test_outcome` asks it first in any
+      case.
+    """
+    if not static_prefixes or not path.startswith(tuple(static_prefixes)):
+        return False
+    if coupled_prefixes and path.startswith(tuple(coupled_prefixes)):
+        return False
+    if buildplan_refs.protected_path_violation(path) is not None:
+        return False
+    return is_judgeable_path(path)
+
+
+def is_executable_path(
+    path: str,
+    static_prefixes: "tuple[str, ...]" = (),
+    coupled_prefixes: "tuple[str, ...]" = (),
+) -> bool:
     """True if a test could execute this path — the coverage floor's
     jurisdiction (COV-8R2K).
 
@@ -273,7 +345,7 @@ def is_executable_path(path: str) -> bool:
     this asks whether a test can *run* it — which is what the symbol-grep
     coverage floor is actually measuring when it demands a reference.
 
-    One clause on top of the judgeability answer, deliberately not a second
+    Clauses on top of the judgeability answer, deliberately not a second
     suffix table: **no ``.md`` is executable**, protected or not. Governance
     protection makes fork-skill prose review-worthy, which is a different claim
     from testable — demanding an executing test for ``methodology/building.md``
@@ -288,8 +360,14 @@ def is_executable_path(path: str) -> bool:
     file genuinely can be the subject of a test — and closing it properly needs
     the ``coverage_exempt_paths:`` knob COV-6T3P asks for, which is a question
     for the owner (binary vs path-scoped, and how it interacts with the
-    doc-only fast path) rather than a default anyone should pick here.
+    doc-only fast path) rather than a default anyone should pick here. Declared
+    static content (:func:`is_static_content`, given both declarations) is the
+    path-scoped half for files nothing parses: it is not executable. A config
+    the product reads is parsed, so it is not static by that declaration's own
+    definition, and this residual stands for it.
     """
+    if is_static_content(path, static_prefixes, coupled_prefixes):
+        return False
     return is_judgeable_path(path) and not path.endswith(".md")
 
 
@@ -374,31 +452,137 @@ def _store_position(reviews: list[dict], fact: dict) -> int:
     return len(reviews)
 
 
+#: The review-fact body key naming the review a ``verify-resolutions`` pass
+#: anchored to — written by ``critic_consolidate`` from the dispatch's own
+#: choice, read only through :func:`_resolve_claim`.
+VERIFIES_KEY = "verifies"
+
+#: The shape of a review id, ``rev-<UTC %Y%m%dT%H%M%SZ>-<8 hex>``: what
+#: ``critic_consolidate.mint_review_id`` mints, and what :func:`_resolve_claim`
+#: asks of an id no review carries. Defined here, in the pure layer both import;
+#: the dispatch-age reader asks only the ``rev-<stamp>-`` prefix, so an id with
+#: another suffix still has an age.
+REVIEW_ID = re.compile(r"^rev-(\d{8}T\d{6}Z)-[0-9a-f]{8}\Z")
+
+
+def _resolve_claim(
+    reviews: list[dict], fact: dict
+) -> "tuple[bool, dict | None, str | None]":
+    """``(claimed, anchor, missing)`` for ``fact``'s recorded :data:`VERIFIES_KEY`.
+
+    ``claimed`` is False when the body carries no such key (or null): a fact
+    written before the field, or one that is not a verify pass — the tree link
+    then decides. Otherwise ``anchor`` is the review in ``reviews`` with that
+    id, standing at the pass's ``base_tree``, or ``None``; ``missing`` is the id
+    when it has a review id's shape (:data:`REVIEW_ID`) and no review in
+    ``reviews`` carries it, else ``None``. That is the one unresolved claim an
+    ingest MIGHT repair, never one it will: the review may be another clone's
+    not yet synced, or a fact this store dropped or could not read. A value of
+    any other shape names no review anywhere, so it is unresolved and not
+    missing. Shape is asked only when no review carries the id, since one the
+    store holds is a review's id whatever its spelling.
+
+    **A claim that does not resolve is no link, never a fallback to the tree.**
+    The id is the dispatch's own choice, made because the tree alone cannot
+    tell two reviews of one tree apart; when the named review is not in this
+    store (not yet ingested from the clone that recorded it), the newest review
+    at the tree is exactly the guess the field exists to stop making, so a
+    reader would act on a review the pass did not verify. Every consumer reads
+    "no link" in the safe direction: the Stop hook names the missing review and
+    both repairs (sync it in, else run a ``final``), a chain ends at the pass
+    (no chunk is inherited, no boundary review is credited), and a roll-call
+    carries nothing it cannot name. The link resolves on its own once the
+    review arrives.
+
+    Unresolved too, though present: a value that is not a non-empty string, one
+    naming the pass itself, and an anchor whose ``head_tree`` is not the pass's
+    ``base_tree``. The dispatch takes the pass's base from its anchor's head,
+    so a recorded pair that disagrees is a malformed record, and neither half
+    says which review the interval started from.
+
+    Looked up by id over the WHOLE store, not only what precedes the pass:
+    ingest appends another clone's facts in note order, which can put a pass
+    ahead of the review it verifies, and the id says which review it is
+    wherever it sits. So store order does not end a walk over the link (a
+    malformed store could name a cycle); :func:`walk_links` ends it."""
+    body = fact.get("body") or {}
+    claim = body.get(VERIFIES_KEY)
+    if claim is None:
+        return False, None, None
+    if not isinstance(claim, str) or not claim or claim == fact.get("id"):
+        return True, None, None
+    for other in reviews:
+        if other is not fact and other.get("id") == claim:
+            if (other.get("body") or {}).get("head_tree") != body.get("base_tree"):
+                return True, None, None
+            return True, other, None
+    return True, None, claim if REVIEW_ID.match(claim) else None
+
+
+def missing_anchor(reviews: list[dict], fact: dict) -> "str | None":
+    """The id ``fact`` recorded as the review it verifies, when it is shaped
+    like a review id and no review in ``reviews`` carries it, else ``None``:
+    the one unresolved claim a reader can name a possible repair for
+    (:func:`_resolve_claim`).
+
+    ``None`` too when ``fact`` has no usable ``base_tree``, whatever it names:
+    :func:`linked_reviews` links such a pass to nothing even once its review
+    arrives, so naming an ingest as the repair would promise a link that
+    cannot form."""
+    base = (fact.get("body") or {}).get("base_tree")
+    if not isinstance(base, str) or not base:
+        return None
+    return _resolve_claim(reviews, fact)[2]
+
+
 def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
     """THE review-link rule: the reviews ``fact``'s interval starts from —
     every review recorded strictly BEFORE it (store order) whose ``head_tree``
     is its ``base_tree`` — oldest first, so ``[-1]`` is the one it links to
     (:func:`prior_review`).
 
+    **A verify-resolutions pass that recorded its anchor links to that review
+    alone.** Its body's :data:`VERIFIES_KEY` names the review the dispatch
+    anchored to, and the tree cannot: two worktrees of one clone can review the
+    same tree, in either order, and a fact's ``actor`` is trimmed when it
+    travels, so no store-order or worktree filter can say which other reviews
+    of that tree were this lineage's. The rest of the chain is reached by
+    walking on from the anchor. A claim that does not resolve links to nothing
+    (:func:`_resolve_claim` says why that, and not the tree, is the safe
+    reading). A fact without the key — one written before it, or any other
+    mode — links by tree as below.
+
     One rule for every reader that follows the link, because three copies of it
     had already drifted (identity by ``id()`` vs by fact id; every review at
-    the tree vs the newest; the pass itself excluded or not):
-    ``critic_mode.review_chain`` walks it back through every review at each
-    linked tree, ``plan_status._extended_reviews`` follows it to the review
-    that records a commit, and ``critic_consolidate.carried_blocking`` takes
-    one hop of it as a verify pass's anchor.
+    the tree vs the newest; the pass itself excluded or not). The walkers go
+    through :func:`walk_links`, which owns stepping back along the link and
+    ending the walk: ``gates._review_verified_passes_stand_on`` follows it back
+    over verify passes to the review they stand for, ``critic_mode.review_chain``
+    walks it back through every review at each linked tree, over only the
+    reviews its ``bound`` leaves on this branch (#1224: a tree link knows no
+    branch, so the walk is fed the branch's reviews rather than taught to stop), and
+    ``plan_status._extended_reviews`` follows it to the review that records a
+    commit. ``critic_consolidate.carried_blocking`` takes one hop of it, as a
+    verify pass's anchor, through :func:`prior_review`.
 
-    **Strictly before** is what makes every walk end and what excludes the
-    pass from its own anchor: a review cannot start from one recorded after
-    it. ``reviews`` is the store's review facts in store order (append order is
+    On the tree link, **strictly before** excludes the pass from its own
+    anchor: a review cannot start from one recorded after it. It does not
+    end a walk by itself, because a recorded anchor is found by id wherever
+    it sits; :func:`walk_links` refuses to revisit a fact instead, so a loop
+    that steps along this link by calling it repeatedly would have to repeat
+    that guard. ``reviews`` is the store's review facts in store order (append order is
     recording order; ``ts`` has one-second resolution). ``fact`` need not be
     in it — a dispatch asks before its fact exists, and then every review
     counts as earlier. A ``base_tree`` that is not a non-empty string links to
-    nothing (a missing tree must not match another fact's missing tree).
+    nothing, anchored or not: a missing tree must not match another fact's
+    missing tree, and a pass whose interval cannot be placed is no link.
     """
     base = (fact.get("body") or {}).get("base_tree")
     if not isinstance(base, str) or not base:
         return []
+    claimed, anchor, _missing = _resolve_claim(reviews, fact)
+    if claimed:
+        return [anchor] if anchor is not None else []
     here = _store_position(reviews, fact)
     return [
         f for f in reviews[:here]
@@ -409,9 +593,75 @@ def linked_reviews(reviews: list[dict], fact: dict) -> list[dict]:
 def prior_review(reviews: list[dict], fact: dict) -> "dict | None":
     """The review ``fact`` links to — the newest of :func:`linked_reviews` —
     or ``None`` when its interval starts at a tree no earlier review stands
-    at."""
+    at, or it names an anchor this store does not hold.
+
+    The one owner of "which review does this verify-resolutions pass verify":
+    the review its recorded :data:`VERIFIES_KEY` names, else, for a fact from
+    before that key, the newest earlier review at its ``base_tree``. A caller
+    that holds the dispatch's choice before the pass is recorded asks with a
+    probe carrying it (``critic_consolidate.carried_blocking``)."""
     linked = linked_reviews(reviews, fact)
     return linked[-1] if linked else None
+
+
+def _walk_identity(fact: dict) -> object:
+    """The key :func:`walk_links` asks "already visited?" of: the fact's id,
+    else the object itself (by ``id()``) for a fact without a non-empty string
+    id.
+
+    The id, because it is the store's own identity: ``evidence.read_facts``
+    keeps one fact per ``(kind, id)``, and the link rule finds a recorded
+    anchor and a fact's own store position by id, so a copy of a stored fact
+    (the envelope a consolidation just appended, an anchor read in another
+    pass over the store) is the same review as the stored one and must end the
+    walk as a revisit would. The object for an id-less fact, because ids that
+    are absent must not collide: every hand-built probe without one is a
+    different fact. Over what the store can hold the two readings agree,
+    since every review fact there carries a unique non-empty id."""
+    fid = fact.get("id")
+    return fid if isinstance(fid, str) and fid else id(fact)
+
+
+def walk_links(
+    reviews: list[dict], fact: "dict | None", *, siblings: bool = False
+) -> Iterator[dict]:
+    """The facts on the line ``fact`` stands on, nearest first: ``fact``, the
+    review it links to (:func:`prior_review`), the one that links to, and so
+    on, each yielded once.
+
+    The ONE owner of stepping back along the link and of ending the walk. A
+    recorded anchor is found by id wherever it sits in the store
+    (:func:`_resolve_claim`), so store order does not end a walk over a
+    malformed store naming a cycle; this ends it, at a fact whose link is
+    empty or whose linked review is already yielded, under one identity rule
+    (:func:`_walk_identity`). A caller stops early by breaking out; the next
+    link is computed only when the caller asks for the next fact.
+
+    ``siblings`` also yields, after each spine fact, the OTHER reviews it links
+    to (:func:`linked_reviews`' ``[:-1]``: the older reviews at the same tree)
+    that are not yet yielded, then steps back through the newest. They are
+    yielded but not walked themselves, and they count as visited: a walk ends
+    where the review a fact links to is already on it, siblings included,
+    because stepping on to it again would walk a line already walked.
+    ``critic_mode.review_chain`` asks for them; the walkers that only follow
+    the link to one review do not.
+
+    ``reviews`` is the store's review facts in store order; ``fact`` need not
+    be in it, and ``None`` yields nothing."""
+    seen: "set[object]" = set()
+    current = fact
+    while current is not None and _walk_identity(current) not in seen:
+        seen.add(_walk_identity(current))
+        yield current
+        linked = linked_reviews(reviews, current)
+        if not linked or _walk_identity(linked[-1]) in seen:
+            return
+        if siblings:
+            for other in linked[:-1]:
+                if _walk_identity(other) not in seen:
+                    seen.add(_walk_identity(other))
+                    yield other
+        current = linked[-1]
 
 
 def reviews_linked_from(reviews: list[dict], root_tree: str) -> list[dict]:
@@ -419,10 +669,16 @@ def reviews_linked_from(reviews: list[dict], root_tree: str) -> list[dict]:
     store order: one standing AT it, one starting from it, and — the link rule
     read forward — one starting from the ``head_tree`` of an earlier member.
 
-    The same relation :func:`linked_reviews` reads backward, from a root
-    instead of from a review, so the forward and backward readings cannot
-    disagree about what links. ``coverage.branch_review_ids`` bounds its
-    empty-span fallback with it."""
+    The tree relation :func:`linked_reviews` reads backward, from a root
+    instead of from a review, so the two agree about which TREES link. A
+    verify pass's recorded anchor is not consulted here: one that resolves
+    stands at the pass's ``base_tree`` (:func:`_resolve_claim` refuses one that
+    does not), so it names which review at a linked tree the pass verified,
+    never another tree, and this answers membership
+    (does a review's chain reach the root), not which review it verified.
+    ``coverage.branch_review_ids`` bounds its empty-span fallback with it,
+    over one worktree's reviews, where the anchor may have been recorded
+    elsewhere."""
     if not isinstance(root_tree, str) or not root_tree:
         return []
     reached = {root_tree}
@@ -700,16 +956,22 @@ def _verify_anchor_id(facts: list[dict], nodes: "set[str]") -> "str | None":
       a step's ``dst`` IS its fact's ``head_tree``, so this is a superset of
       the path-step reading rather than a different one.
 
-    **The residual, stated rather than implied.** This is a faithful *proxy*
-    for the dispatcher's anchor, not the same value. Should the cache point at
-    a fact that is not on the composed path, an on-path blocker is reported
-    reachable and the message prescribes a verify pass that will demote rather
-    than clear it — the original defect in a narrower case. Nothing detects
-    that, and nothing here can: reading the cache to check is the very thing
-    D7 forbids a gate to do. It stays a proxy because the failure is soft (the
-    verdict never moves, only the advice) and because closing it properly means
-    giving the anchor a home in the shared store, which is a larger change than
-    a message correction.
+    **The residual, stated rather than implied.** This PREDICTS the anchor a
+    future verify pass will choose, by the newest review at the path's trees;
+    it is a *proxy* for the dispatcher's choice, not the same value. A pass
+    already recorded names its anchor (:data:`VERIFIES_KEY`, read through
+    :func:`prior_review`), but the pass this advice is about has not been
+    dispatched, and the dispatcher picks its anchor from this worktree's
+    findings cache pointer or this branch's newest review. So the two can
+    differ: when a sibling worktree reviews the same tree later, its review is
+    the newest here, this branch's own blocker at that tree reads superseded,
+    and the remedy prescribes a review spanning the interval where a verify
+    pass would clear it; and should the cache point at a fact that is not on
+    the composed path, an on-path blocker reads reachable and the message
+    prescribes a verify pass that will demote rather than clear it. Nothing
+    here can detect either: reading the cache to check is the very thing D7
+    forbids a gate to do. It stays a proxy because the failure is soft (the
+    verdict never moves, only the advice).
     """
     newest = None
     for fact in _facts_at_nodes(facts, nodes):

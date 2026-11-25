@@ -33,6 +33,7 @@ from lib import critic_marker as cm  # noqa: E402
 # Reuse the proven plugin-runtime subprocess harness (same tests/ dir → importable
 # under pytest's prepend import mode).
 from test_plugin_runtime import run_plugin_hook  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 
 def _prawduct(tmp_path: Path) -> Path:
@@ -262,12 +263,7 @@ def _real_repo(tmp_path: Path) -> Path:
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    env = {
-        "HOME": str(tmp_path / "_home"),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-    }
+    env = scrubbed_env(tmp_path / "_home")
     (tmp_path / "_home").mkdir(exist_ok=True)
 
     def git(*args):
@@ -288,14 +284,7 @@ def _run_real(command: str, repo: Path, *args: str):
     import subprocess
 
     root = Path(__file__).resolve().parent.parent / "plugin"
-    env = {
-        "HOME": str(repo.parent / "_home"),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "CLAUDE_PLUGIN_ROOT": str(root),
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(repo.parent / "_home", CLAUDE_PLUGIN_ROOT=str(root))
     return subprocess.run(
         [sys.executable, str(root / "bin" / "prawduct-hook"), command, *args],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,

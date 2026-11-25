@@ -153,11 +153,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force] [--chunks a,b]` (write dispatch manifest, mutating;
-  `--force` overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted
+  `--force` overrides the pre-dispatch refusals: exit-3 no-review-needed, exit-4 budget-exhausted,
+  exit-7 stale test evidence and exit-9 credential shapes
   — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
   (`methodology/planning.md` "Chunk state") — a comma list,
   repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` (the old one-element
-  alias) is gone and is a usage error (exit 1) naming `--chunks`; omitted, the declared set is the code-derived proposal; an id the plan
+  alias) is gone and is a usage error (exit 1) naming `--chunks`; omitted, the declared set is the code-derived proposal
+  (a path proposes a chunk only while every earlier open chunk is proposed — `methodology/planning.md`
+  "Chunk state"), except that a `chunk` dispatch whose proposal names more than one chunk is refused
+  before anything is written (exit 8, `chunks-ambiguous`, § Error Model); the manifest and fact record
+  `chunks_declared` (whether `--chunks` was passed) and `chunks_evidence` (what named each proposed
+  chunk); an id the plan
   does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a
   usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note;
   `--session-model <id>` is the model the dispatcher runs as, from which code answers the
@@ -191,7 +197,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the newest by default, exit 0, or exit 1 with why), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
-  inverse), `evidence status|list` (`status` also prints `N transported fact(s) with no note on
+  inverse), `evidence status|list` (`list [--kind <k>] [--id <fact-id>] [-n <count>] [--json]`:
+  one row per fact, newest first, or with `--json` each matching envelope whole as a JSON line, body
+  included — added 2026-11-23, #1141; `status` also prints `N transported fact(s) with no note on
   their commit, on this branch's commits (merge base..HEAD)` — what `evidence sync` re-attaches
   before it pushes; older facts are not counted;
   every `evidence` op exits 0 ok, 1 a reported failure, 2 usage — an unknown op or a bad flag —
@@ -300,10 +308,27 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `stale_count`, `stale_bytes`, and `profiles[]`, each with `config_roots[]`, `cache`,
   `cache_readable`, `manifest` (`ok` | `missing` | `unreadable`), `ungraded_reason` (`null` when
   graded), `in_use[]`, `stale[]{path, bytes}`, `stale_bytes` and `ungraded[]`.
+- **Determinism scan** — `determinism-scan [--json]` (read-only): the test-determinism and
+  dependency-scope sites that already exist at HEAD, largest blast radius first, and the tool state
+  left in the checkout that changes test outcomes (`lib/determinism_lint.py` owns what counts).
+  `/prawduct:janitor`'s Test Fitness theme reads it. Exit 0 whenever the scan ran, whatever it
+  found; 2 on an unknown argument; 3 when HEAD could not be read. `--json` keys: `status`
+  (`scanned` | `unchecked`); on `unchecked`, `reason`; on `scanned`, `sites[]{check, path, line,
+  detail}`, `tool_state[]{path, detail}`, `scanned` (Python files read, so an empty `sites[]` is a
+  scan of something), `unparsed[]` and `unruled[]` (test files in a language with no rules yet).
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
   `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
+  **`check-boundary-coverage [--json]`** (read-only, advisory; owner `lib/boundary_coverage.py`)
+  classifies each release-pending scope by the first-parent commit on the integration base that added
+  its fragment: `no-judgeable`, `pr-covered`, `batch-covered`, `inner-only`, `uncovered`, `direct` or
+  `unknown`, each with its reason; the human form marks each scope not counted as covered
+  `[not covered]` and ends with a count line naming its denominator. Exit 0
+  whenever it answered, whatever it found; 2 on an unknown argument; 3 when it could not evaluate.
+  `--json` keys: `status` (`ok` | `unevaluable`), `base`, `reason` (`null` when `ok`), `counts` (one
+  key per classification), `entries[]{scope, classification, reason, commit, subject}` and
+  `refusals[]` (fragments the pending set refused, which are not classified).
   **`check-pr-hygiene [--json]`** (read-only; owner `lib/pr_gate.py`) answers over merge-base…HEAD of
   the checked-out branch, the base from the resolver `resolve-base` uses. Named results:
   `credential-shape` (refuses: a line the branch ADDS matches the plugin's one credential denylist,
@@ -446,13 +471,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `built_unavailable` (null when git answered, else the cause — the plan unreadable, a declared
   `base:` naming no ref, `git log` failing — and the table ends with `built: unavailable (<cause>)`)
   and `chunks`, a list in plan order of `{id, state (open|done|dropped), fact_id, date, imported,
-  built, reason}`; `imported` marks a chunk completed by a `chunk-imported` fact or a legacy
+  built, reason, ahead_of}` (`ahead_of` added 2026-11-23, #1198: for a chunk `done` by a review fact,
+  the earliest open chunk before it, else null — advice, which no gate reads); `imported` marks a chunk completed by a `chunk-imported` fact or a legacy
   `## Status` tick read in memory, `built` is git-derived and certifies nothing (a commit naming the
   chunk in its subject or touching its deliverables, a change fragment still the `plan new` stub
   touching nothing; the short-plan Stop gate reads it only to arm its last-chunk block) and `reason` says why an entry that looked like an answer was not one (an
   unreadable `dropped:` line, a fact whose anchor is not in the branch's history), and for a
   `done` chunk certified by a fact that does not name it, that its review's interval carries a
-  commit whose scoped subject names the chunk (the span rule, `methodology/planning.md` "Chunk state"). It also
+  commit whose scoped subject names the chunk (the span rule, `methodology/planning.md` "Chunk state"),
+  and for one a fact names, how that fact came to name it (the proposal's path or commit, `--chunks`,
+  or that the fact predates the record, #1141). The table prints, under a row with `ahead_of`, a
+  line worded by that route. It also
   prints `lifecycle: <state>[ <released_in>] — <reason>`, and `--json` carries the same as
   `lifecycle: {state, reason, released_in, probed}` — `state` one of `in-progress`,
   `merged-unreleased`, `released`, `superseded`, `unknown`, observed from git, the review facts'
@@ -472,7 +501,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `status-block-undelimited`, `status-block-trailing-comment`, `fact-append-failed`,
   `plan-write-failed`; 2 usage or a path that is not a build plan. The preview is allowed inside a
   scratch worktree; `--apply` is a governance write and is refused there.
-  `plan retract <chunk> --reason R [--fact ID] [--plan <path>] [--json]` (mutating) withdraws one
+  `plan retract <chunk> --reason R [--fact ID | --all] [--plan <path>] [--json]` (mutating) withdraws one
   fact's certification of one chunk by appending a `chunk-retracted` fact (`{scope, chunk,
   fact_id, reason, retracted_at}`), attached as a note on HEAD like an import. `--fact` omitted
   names the fact certifying the chunk now — by name or by its interval; `--plan` omitted, the bound plan. It can only reopen a
@@ -483,7 +512,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `no-scope`, `unknown-chunk`, `box-import` (the chunk's `## Status` box is ticked, and certifies it
   after any withdrawal: untick it first), `not-certified`,
   `unknown-fact`, `other-scope`, `not-named` (the fact neither names the chunk nor certifies it by its interval), `fact-append-failed`; 2 usage or a path that is not
-  a build plan. Refused inside a scratch worktree.
+  a build plan. Refused inside a scratch worktree. `--all` (added 2026-11-23, #1198) withdraws EVERY
+  certification of the chunk, one `chunk-retracted` fact per pair: each fact naming it (a blocked one
+  too) and any span a withdrawal uncovers (`plan_status.retraction_plan`); with `--fact` it is a usage
+  error (2); `--json` carries `action`, `chunk`, `pairs[{fact_id, retraction_id}]`, `state` and
+  `certified_by`; a write failing partway exits 1 `fact-append-failed` naming what was written, and
+  a re-run converges.
   `plan check-claims [--json]` (read-only) asks, for every live plan declaring `branch:` or
   `working-branches:`, whether each named branch exists locally or on a remote. Three outcomes per
   claim, each reported distinctly and carried in `--json` as `outcome`: `exists` (nothing printed);
@@ -562,14 +596,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `accept-operator-verification` refuses on that same unparsed queue rather than recording a bypass
   that covers no entries — an override reached by a different door must not inherit the defect the
   check just closed.
-- **Plugin activation** — `check-plugin-active [--path P] [--context onboard|doctor] [--json]`
+- **Plugin activation** — `check-plugin-active [--path P] [--context onboard|doctor|migrate] [--json]`
   (read-only). Answers whether the harness will actually LOAD the plugin for a repo, which
-  project-scope enablement in `.claude/settings.json` does not settle on its own. **Three-way by
-  construction**: `active` exit 0, `inactive` exit 1, `unknown` exit **3** — the third-outcome
+  project-scope enablement in `.claude/settings.json` does not settle on its own. **Three exit codes
+  by construction**: `active` exit 0, `inactive` or `disabled` exit 1, `unknown` exit **3** — the third-outcome
   shape below, for the reason given there. `--context` selects the WORDING, not the verdict: the
   same `inactive` means "this repo loads nothing" to an onboarding session and "the manifest
   record does not name this path" to a doctor run, which by construction executes inside a
-  session where the plugin did load. `--json` carries `status` for a caller that must branch.
+  session where the plugin did load. `disabled` means installed, but a settings file's `enabledPlugins` sets it to false (named in `disabled_by`); it shares exit 1 with `inactive` because both load nothing, and the text names the different fix. `--json` carries `status` for a caller that must branch.
 - **Learnings pairing** — `check-learnings-pairing [--json]` (**deprecated, inert** since the v2
   cutover). Exits **0** always and writes nothing; `--json` yields empty stdout. It graded
   `.prawduct/learnings.md` against `learnings-detail.md`, and that corpus no longer exists — rules
@@ -740,6 +774,9 @@ files to touch previews first. That framing is descriptive — the binding rule 
     runs the command and relays its human form. The key set is listed once, in the § Operations
     "Stale plugin caches" entry. A profile with a non-null `ungraded_reason` has nothing in it
     graded, so its empty `stale[]` means *not looked at*, not *nothing unused*.
+  - `determinism-scan --json` → **no JSON consumer today.** `/prawduct:janitor`'s Test Fitness
+    theme runs the command and reads its human form. The key set is listed once, in the
+    § Operations "Determinism scan" entry.
   - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /
     `misplaced` / `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`,
     `first_rule_line`, `detail`, `repairable`, `applied`, `insert_before_line`, `insert_text`).
@@ -871,6 +908,12 @@ would have said, because the argument is only convincing in the concrete.
   `no-upstream`, `upstream-ref-missing`), where a push or an integrate-then-push is the remedy in
   every case. Both codes BLOCK — the third outcome buys the caller an applicable remedy, not a
   different verdict.
+- `check-boundary-coverage` (2026-11-23), *no integration base, an unreadable change record,
+  evidence facts a newer plugin wrote, or a fault inside the classification (named, never a
+  traceback)* — folded into 0 it prints a coverage count over a pending set or a store it never read, so
+  a release reads "all covered" off nothing; folded into 1 it would give advice a failing exit it
+  never has, since every answered run exits 0 whatever it found. It is advice, so 3 blocks nothing
+  that reads it as advice; it is the "could not answer" the scheme reserves.
 - `check-pr-hygiene` (2026-11-11), *no base or no merge-base* — folded into 0 it reports a clean
   branch off an interval it never had; folded into 1 it claims a refusing result it never computed.
   A single result it could not read is `unchecked` in the output, not a third exit, unless that
@@ -936,6 +979,20 @@ Fail-direction is deliberate and per-purpose:
   over the same stale suite; the remedy printed is `gates.suite_remedy`'s (wait for a record attempt
   still running, else run the suite), then the same mode. Absent evidence does not
   refuse. `--force` dispatches anyway;
+  `critic-begin` **8** = `chunk` dispatch refused because, with `--chunks` omitted, its proposal names
+  more than one chunk (added 2026-11-23, #1141) — a `chunk` review is one chunk's review, and the
+  plan-order rule cannot tell adjacent chunks apart. Refused before the manifest, marker or archive of
+  leftovers is written; stdout names each chunk's proposing paths and the two `--chunks` re-runs; one
+  `guard-refusal` fact is recorded. Distinct from **1** because the skill's exit-1 row reports and
+  stops, and the remedy here is one re-dispatch naming the chunk built;
+  `critic-begin` **9** = `cumulative` dispatch refused because `check-pr-hygiene` would refuse the
+  PR for a credential-shaped line the branch adds (added 2026-11-24, `credential-placeholders`) — the
+  PR gate's own check over the same span (merge-base…HEAD), so it refuses only what the PR would,
+  before the boundary review instead of after it. Refused before anything is derived; stdout names
+  each line by file, line and shape, never the text; one `guard-refusal` fact is recorded. Distinct
+  from **1** because the skill's exit-1 row reports and stops, and the remedy here is an edit, then
+  the same mode. A diff the check cannot read dispatches with a note, since the PR gate still fails
+  closed on it. `--force` dispatches anyway;
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
   `test-status --wait` **75** = the wait timed out with the run still in progress (added
   2026-11-15, #1178). sysexits' EX_TEMPFAIL, "try again later", which is the remedy. Folded into
@@ -949,7 +1006,7 @@ Fail-direction is deliberate and per-purpose:
   an old number.)
 
   **`critic-begin` 3 — no review needed.** The dispatch interval holds no judgeable file
-  (`coverage_algebra.is_judgeable_path`) and no finding this mode could resolve, so the coverage gate
+  (`coverage_algebra.is_judgeable_path`) and no blocker this mode could resolve, so the coverage gate
   already composes it as a **free edge** and a review would record a fact nothing needs. It is a
   distinct code for the same reason `check-released` 3 is: both foldings are wrong. Folded into
   **0** the caller proceeds to spawn reviewers against a manifest that was never written; folded into
@@ -967,6 +1024,8 @@ Fail-direction is deliberate and per-purpose:
 
   **`critic-begin` 4 — round budget exhausted.** This build-plan SCOPE has already bought the full
   rounds `review_round_budget` allows (`.prawduct/project-state.yaml`, default 6, `null` disables).
+  The plan's cadence is not counted (the scope's first `cumulative`, and each chunk's first review in any
+  other mode), and a dispatch that is itself one is not refused. It is judged on the chunks it will name.
   A distinct code rather than folded into 3: both refuse a dispatch, but a 3 says the *gate* does not
   want this round and a 4 says the *loop* has run out while the gate may still be unsatisfied, and
   the caller's next move differs — a 3 is "you are done", a 4 is "you are done buying rounds, and any

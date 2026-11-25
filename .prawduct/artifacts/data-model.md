@@ -46,7 +46,7 @@ out where reality still lags.
    decided — `project-state.yaml`) are distinct from per-clone, gitignored *nags and caches*
    (`.advisories.json`, the evidence store, session state). A teammate's committed decision resolves
    an advisory for everyone; local nag state never pollutes the shared record. The evidence store
-   stays per clone, but its review, resolution and chunk-imported facts are shared *answers* too:
+   stays per clone, but its review, resolution, disposition and chunk-imported facts are shared *answers* too:
    they travel as notes on `refs/notes/prawduct` (Evidence Store, below), never as a committed file.
 
 ## Direction
@@ -109,18 +109,18 @@ by every worktree of a clone), so it is uncommitted by construction and shared a
 An absent file is the empty store.
 
 **Reach beyond the clone.** The kinds in `evidence.TRANSPORTED_KINDS` — `review`, `resolution`,
-`chunk-imported`, `chunk-retracted` — are also written, as their store lines with the actor's locator fields
+`disposition`, `chunk-imported`, `chunk-retracted` — are also written, as their store lines with the actor's locator fields
 reduced (the worktree's basename, or `.claude/worktrees/<name>` for a harness scratch tree; no
 session; never the path above it), into a note on
 `refs/notes/prawduct` on the fact's anchor commit (a review's `head_commit`, or its
-`dispatch_commit` for a dirty tree; a resolution on its verifying review's anchor; an import or
+`dispatch_commit` for a dirty tree; a resolution or a disposition on the anchor of the review it answers; an import or
 a retraction on the HEAD it was written at). `evidence ingest` appends note lines this store lacks, deduplicated by
 `(kind, id)`, bounded to the branch's commits from the merge base unless `--all`; a schema-ahead
 line is appended verbatim so the receiving clone blocks on it exactly as the writer's would.
 `evidence sync` fetches, merges (`cat_sort_uniq`), ingests and pushes the ref. A note is a copy
 and a locator: gates read only this store, and verdicts compose by the tree ids inside each fact,
-so a clone that lacks a fact's tree reads that interval as a gap. Every other kind stays in the
-clone that wrote it.
+so a clone that lacks a fact's tree reads that interval as a gap. The kinds that stay in the
+clone that wrote them are `guard-refusal`, `test-run` and `session-start`.
 
 | Field | Type | Purpose |
 |-------|------|---------|
@@ -135,9 +135,13 @@ clone that wrote it.
   `mode`, `stage` (`inner` | `boundary`, derived once at dispatch from the mode's interval; null on a
   fact consolidated from a manifest written before the field), `roster` (roles + models),
   `files_reviewed`/`files_changed`, `chunks[]` (the build-plan chunks this review **names**, each of which it certifies (as it
-  does an unnamed chunk a scoped commit subject in its interval names), in plan order — declared at dispatch with `critic-begin --chunks`, or exactly the code-derived
-  proposal when omitted; ST8 of #1050), `chunks_proposed[]` (that proposal, recorded beside the
-  declaration so an edit to it is visible on the record, never silent), `chunk` (on facts written
+  does an unnamed chunk a scoped commit subject in its interval names), in plan order — declared at dispatch with `critic-begin --chunks`, or the code-derived
+  proposal when omitted, in which a path proposes a chunk only while every earlier open chunk is
+  proposed (#1198); ST8 of #1050), `chunks_proposed[]` (that proposal, recorded beside the
+  declaration so an edit to it is visible on the record, never silent), `chunks_declared` (bool:
+  whether `--chunks` was passed) and `chunks_evidence` (per proposed chunk `{paths[≤3], paths_more,
+  commits[≤3]}`: what named it) — both optional, added 2026-11-23 (#1141), read only for the route a
+  `done` row prints and by the bug-report intake, never for state; `chunk` (on facts written
   by v3.8.1 and earlier only — `chunks[0]` or null, or alone on a fact from before `chunks`; new facts
   omit it, and `plan_status.fact_chunks` is the reader rule for both), `findings[]` (each with a
   stable `fid`, `goal`, `severity`, `title`, `recommendation`, and — on a test-failure finding —
@@ -145,7 +149,14 @@ clone that wrote it.
   (`instance`|`class`|`none`), `closure` (one sentence: the property that decides a class's
   membership) and `members[]` (`{id, site, note?}`, ids unique within the finding) — each absent
   when the reviewer gave none, and a malformed part dropped at consolidation, never refused),
-  `counts`, and `observations[]` —
+  `counts`, `verifies` (a `verify-resolutions` pass only: the id of the review it anchored to,
+  which every reader walking from a pass to its review follows; absent on a fact from a plugin
+  version before the field, which older clones keep writing, and such a fact links by tree. A
+  present value that does not resolve links to no review, never to the tree's: one that is not a
+  non-empty string, one naming the pass itself, one whose review's `head_tree` is not the pass's
+  `base_tree`, and one naming no review this store holds (when shaped like a review id, perhaps
+  another clone's not yet synced). A pass with no usable `base_tree` links to none either way), and
+  `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
   `recommendation` and no severity. A `verify-resolutions` pass keeps only observations whose
   `about: {review_id, fid}` names the finding or observation whose fix they judge; it counts the rest
@@ -210,12 +221,20 @@ clone that wrote it.
   (`ships`/`withheld`) and resolution (`fixed`/`waived`). **A disposition never resolves anything:**
   gate composition filters on `kind` before reading a body, so a BLOCKING finding stays blocking until
   a real resolution lands. Written by the builder via `prawduct-hook disposition` (validated join, no
-  reviewer in the loop); a changed answer is a newer fact under a sequenced id, and last-recorded
-  wins. **Droppability:** a disposition sits on no coverage path, so the store's reachability rule
+  reviewer in the loop); a changed answer is a newer fact under the id
+  `disp:<review_id>:<fid>:<seq>:<tag>`, where `seq` is one above the greatest the finding's history
+  holds and `tag` is the first 12 hex characters of SHA-256 over the canonical body. A finding's
+  winner is its answer with the greatest `(seq, id)` (`dispositions.answer_key`), never the
+  last-recorded by store order, so every clone holding the same facts shows the same answer: one
+  given after seeing another outranks it on any clock, two given without seeing each other are both
+  kept and ranked by id, and the same answer at one `seq` is one fact. Ids from before the tag
+  (`disp:<review_id>:<fid>:<n>`) still read; an id that does not parse ranks below every one that
+  does. **Droppability:** a disposition sits on no coverage path, so the store's reachability rule
   cannot speak to it — a disposition fact is droppable exactly when the review fact it targets is,
-  and never on its own. Compaction that violated this would silently un-answer a finding; the
-  sequenced id defends against it by stepping past ids already present rather than counting
-  surviving history.
+  and never on its own. Compaction that violated this would silently un-answer a finding; minting
+  `seq` from the greatest held, never from the count of surviving history, keeps a new answer above
+  the one it supersedes after a superseded line is pruned, and it steps past every `seq` already
+  held, so a live id is never recycled.
 - **Guard-refusal fact `body`** — that a **pre-dispatch guard** fired: a control that declined to
   spend something (a reviewer, a build) *before* spending it. Carries the `guard` name (the grouping
   key every yield query groups on, and the authority even if a caller's body offers its own), the
@@ -227,7 +246,7 @@ clone that wrote it.
   `critic-dispatch-stale-evidence` (exit 7, a `verify-resolutions` refused on stale or red saved test
   evidence) carries `mode`/`branch`, the freshness verdict's prose as `verdict`, and `reason` from its
   closed set `running` | `interrupted` | `failing` | `degraded` | `not-current` — the state
-  `gates.suite_remedy` reads off the record, the same reading that picks the remedy printed beside it. The PR gate's two guards are recorded the same way, a refusal declining to open a PR rather than to dispatch: `pr-hygiene` (reason the result's name: the refusing `credential-shape`, with file, line and shape class, never the matched text; or a warning that found something and declines nothing, `closes-unresolved` | `closes-still-open`, with its ids — an `unchecked` or information result records nothing) and `pr-body-template` (`missing-template-lines` | `ambiguous-template`). **The interval is nested under `interval`, never spread to the body's top level**, which
+  `gates.suite_remedy` reads off the record, the same reading that picks the remedy printed beside it. `critic-dispatch-credential-shape` (exit 9, a `cumulative` refused on a line the PR's credential check would refuse) carries `mode`/`branch` and the count of such `lines`, with `reason` `credential-shape`; the lines themselves are printed, never recorded. The PR gate's two guards are recorded the same way, a refusal declining to open a PR rather than to dispatch: `pr-hygiene` (reason the result's name: the refusing `credential-shape`, with file, line and shape class, never the matched text; or a warning that found something and declines nothing, `closes-unresolved` | `closes-still-open`, with its ids — an `unchecked` or information result records nothing) and `pr-body-template` (`missing-template-lines` | `ambiguous-template`). **The interval is nested under `interval`, never spread to the body's top level**, which
   is where a coverage edge carries `base_tree`/`head_tree`: one level down, no reader walking bodies
   for edges can mistake a refusal for one. **This kind is purely observational and CANNOT become
   authoritative** — composition derives edges from `kind == "review"` alone, so a refusal contributes

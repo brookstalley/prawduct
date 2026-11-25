@@ -23,20 +23,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from lib import coverage  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 
 def _env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"  # outside the repo: macOS pyc caches land under HOME
     home.mkdir(exist_ok=True)
-    return {
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "CLAUDE_PROJECT_DIR": str(repo),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-    }
+    return scrubbed_env(home, CLAUDE_PROJECT_DIR=str(repo), CLAUDE_PLUGIN_ROOT=str(ROOT))
 
 
 def _git(repo: Path, *args: str) -> None:

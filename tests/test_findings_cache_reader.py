@@ -17,6 +17,8 @@ import json
 import sys
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
@@ -32,13 +34,7 @@ NAME = ".critic-findings.json"
 def _plugin_sources() -> "list[Path]":
     """Every Python source the plugin ships: ``*.py`` anywhere under it, and
     the extensionless executables in ``bin/`` that are Python."""
-    found = sorted(ROOT.rglob("*.py"))
-    for path in sorted((ROOT / "bin").iterdir()):
-        if path.is_file() and path.suffix == "" and path.read_text(
-            encoding="utf-8", errors="replace"
-        ).startswith("#!/usr/bin/env python"):
-            found.append(path)
-    return found
+    return plugin_python_sources()
 
 
 def _opens_the_cache(source: str) -> "list[int]":

@@ -27,7 +27,7 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo), capture_output=True, text=True, timeout=15,
     )
     assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
@@ -70,6 +70,15 @@ def test_a_declared_product_name_wins_as_a_slug(tmp_path):
     repo = _repo(tmp_path / "venv", "git@github.com:x/other.git")
     _declare(repo, "Acme Widgets")
     assert gitstate.project_label(repo) == "acme-widgets"
+
+
+def test_an_annotated_name_labels_the_product_without_its_comment(tmp_path):
+    """An owner's annotated line: the label is the name alone."""
+    repo = _repo(tmp_path / "widgets", "git@github.com:x/other.git")
+    (repo / ".prawduct" / "project-state.yaml").write_text(
+        'product_identity:\n  name: "acme"          # Owner ruling 2026-11-17.\n'
+    )
+    assert gitstate.project_label(repo) == "acme"
 
 
 def test_a_placeholder_name_declares_nothing(tmp_path):

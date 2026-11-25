@@ -44,6 +44,7 @@ if str(REPO_ROOT) not in sys.path:
 from lib import (  # noqa: E402
     briefing, buildplan_refs, critic_mode, evidence, gates, plan_index, plan_status, work_unit,
 )
+from conftest import scrubbed_env  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -52,13 +53,7 @@ from lib import (  # noqa: E402
 
 
 def _git_env(repo: Path) -> dict[str, str]:
-    return {
-        "HOME": str(repo.parent / "_home"),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-    }
+    return scrubbed_env(repo.parent / "_home")
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:

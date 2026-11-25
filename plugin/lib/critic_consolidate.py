@@ -68,19 +68,21 @@ staleness" defect class this plan deletes.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
 import re
 import shutil
 import sys
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
 from . import coverage, coverage_algebra, critic_marker, dispositions, evidence, evidence_notes, gates, gitstate, ledger, model_tier
-from .core import GITIGNORE_ENTRIES, atomic_write_text
+from .core import GITIGNORE_ENTRIES, TEMP_SUFFIX, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
 MANIFEST_NAME = "manifest.json"
@@ -228,7 +230,8 @@ FULL_ROUND_MODES = tuple(t for t in MODE_TOKEN_TO_VERBOSE if t != "verify-resolu
 #
 # Size is kept only as an escalator, at the one threshold the data supports:
 # 5-11 judgeable files with no risk surface touched is 13 coordinator reviews
-# with ZERO blocking findings, so it demotes; 12+ escalates on volume alone.
+# with ZERO blocking findings, so it demotes; 12+ escalates on volume alone
+# (declared static content not counted: `_derive_roster`).
 SINGLE_PASS_ROSTER = ("reviewer",)
 COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
 
@@ -264,6 +267,7 @@ COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
 
 #: Judgeable-file count at which volume alone buys the coordinator, with no
 #: risk surface touched. Below it the replay shows an empty blocking record.
+#: Declared static content in force is not counted (:func:`_derive_roster`).
 COORDINATOR_JUDGEABLE_THRESHOLD = 12
 
 # Background reviewers run for minutes after the dispatching fork returns, so
@@ -356,7 +360,9 @@ _BATCH_FIX_DIRECTIVE = (
     " gate anything; the verify pass is owed only if the fixes touch judgeable"
     " files and no later review the plan owes will carry them. "
     + gates.FIX_ORDER_AFTER_CUMULATIVE +
-    " Free to write at any time: everything under `.prawduct/` (change-log,"
+    " While a review runs, only prawduct's session files are free to write; any"
+    " other change needs `--tree-changed-by-builder` at its consolidation. Free of new"
+    " review once a review is recorded: everything under `.prawduct/` (change-log,"
     " backlog, project-state, build plans), `.claude/settings.json`, and `.md`"
     " files outside `skills/`, `methodology/`, `templates/`, `agents/` and a"
     " root `CLAUDE.md` or `AGENTS.md`. Everything else moves the tree: code,"
@@ -843,10 +849,13 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
 
     **Without ``counted`` it is the anchor alone** — the posture before #334,
     for a caller whose composition was unavailable (no merge base, no path to
-    the anchor). The anchor is ``anchor_id`` when the caller already chose it
-    (the dispatch picks its prior from the findings cache's pointer, which can
-    name a different review at the same tree than the link would), else the
-    review the link rule names (``coverage_algebra.prior_review``): structural,
+    the anchor). The anchor is the review the pass verifies, as
+    ``coverage_algebra.prior_review`` answers it: ``anchor_id`` is the id the
+    pass anchored to — the dispatch's choice before the fact exists (the
+    findings cache's pointer, or this branch's newest review), the fact's
+    recorded ``verifies`` after — and the probe carries it, so the link
+    follows it; an id the store does not hold carries nothing. Only a fact
+    from before that record passes ``None`` and is linked by tree: structural,
     without reading ``.critic-findings.json`` (D7), and never "most recent
     fact" — the store is shared by every worktree of the clone, so a sibling's
     newer review would otherwise be picked up as this branch's anchor. Only
@@ -876,15 +885,16 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
             out.append(entry)
         return out
     reviews = evidence.facts_of_kind({"facts": facts}, "review")
+    # The pass as the link rule sees it: its id places it in store order
+    # (strictly-before excludes it and anything recorded after it), its base
+    # is the caller's — at dispatch it is not in the store yet — and its
+    # anchor, when the caller holds one, decides over the tree.
+    probe_body: dict = {"base_tree": base_tree}
     if anchor_id is not None:
-        anchor = next((f for f in reviews if f.get("id") == anchor_id), None)
-    else:
-        # The pass as the link rule sees it: its id places it in store order
-        # (strictly-before excludes it and anything recorded after it), and
-        # its base is the caller's — at dispatch it is not in the store yet.
-        anchor = coverage_algebra.prior_review(
-            reviews, {"id": this_review_id, "body": {"base_tree": base_tree}}
-        )
+        probe_body[coverage_algebra.VERIFIES_KEY] = anchor_id
+    anchor = coverage_algebra.prior_review(
+        reviews, {"id": this_review_id, "body": probe_body}
+    )
     if anchor is None or anchor.get("id") == this_review_id:
         return []
     resolved = coverage_algebra.resolution_index(facts)
@@ -1547,6 +1557,10 @@ def dispatch_directives(
     return directives
 
 
+#: A review id's dispatch stamp, group 1: only the ``rev-<stamp>-`` prefix, so
+#: an id with any suffix still has an age (fixtures and hand-written manifests
+#: carry such ids). The whole minted shape, which the link rule asks, is
+#: ``coverage_algebra.REVIEW_ID``.
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
 
@@ -2489,7 +2503,12 @@ def _dispatch_chunk_type(prawduct_dir: Path, lint: dict) -> "str | None":
 
 
 def _derive_roster(
-    mode_token: str, files_changed: list[str], prawduct_dir: Path
+    mode_token: str,
+    files_changed: list[str],
+    prawduct_dir: Path,
+    *,
+    project_dir: "Path | None" = None,
+    head_tree: "str | None" = None,
 ) -> tuple[list[str], str]:
     """The roster this dispatch requires, plus the rationale (Q7 debugging).
 
@@ -2498,11 +2517,25 @@ def _derive_roster(
     measured yield of the file-count fallback this used to carry for repos
     with no declaration. A repo that declares nothing runs the same two
     escalators as one that does; what a declaration buys is the paths it names.
+
+    **Declared static content does not count toward the volume escalator**
+    (``coverage_algebra.is_static_content``). Depth is a risk question, not a
+    judgeability one, and the declaration is the repo saying those paths carry
+    none a third reviewer would find: files nothing executes or parses. They
+    are still reviewed, by the single pass, and a static file on a risk
+    surface still buys the coordinator, because the risk check runs first over
+    every changed file. The owner ruled the lighter review on 2026-11-24
+    (#1239). The 82-review replay above holds no static content, so how many
+    blockers a third reviewer would find there is not measured. The
+    declarations in force come from ``coverage.suite_declarations`` for
+    ``head_tree``, the tree under review: a static one only once the
+    integration branch carries it, so a branch cannot lighten its own review
+    by declaring. With no tree, nothing is discounted.
     """
     if mode_token in ("chunk", "verify-resolutions"):
         return list(SINGLE_PASS_ROSTER), f"mode={mode_token} is always single-pass"
 
-    from . import coverage_algebra, risk  # noqa: PLC0415 — lazy; keeps the import graph flat
+    from . import coverage, coverage_algebra, risk  # noqa: PLC0415 — lazy; keeps the import graph flat
 
     touched, why = risk.paths_touch_risk_surface(prawduct_dir, files_changed)
     if touched:
@@ -2510,15 +2543,30 @@ def _derive_roster(
             f"mode={mode_token}, risk surface touched: {why} — coordinator"
         )
 
-    nj = len(coverage_algebra.judgeable_files(files_changed))
+    judgeable = coverage_algebra.judgeable_files(files_changed)
+    nj, discounted, why_not = len(judgeable), 0, ""
+    # Read only when the count would buy the coordinator: below the threshold
+    # the answer is single-pass whatever is declared.
+    if nj >= COORDINATOR_JUDGEABLE_THRESHOLD and project_dir is not None and head_tree:
+        declared = coverage.suite_declarations(project_dir, head_tree)
+        nj = sum(
+            1 for p in judgeable
+            if not coverage_algebra.is_static_content(p, declared.static, declared.coupled)
+        )
+        discounted = len(judgeable) - nj
+        why_not = declared.note_for(judgeable)
+        why_not = f"; {why_not}" if why_not else ""
+    counted = f"{nj} judgeable file(s)" + (
+        f" ({discounted} declared static, not counted)" if discounted else ""
+    ) + why_not
     if nj >= COORDINATOR_JUDGEABLE_THRESHOLD:
         return list(COORDINATOR_ROSTER), (
-            f"mode={mode_token}, no risk surface, {nj} judgeable file(s) >= "
+            f"mode={mode_token}, no risk surface, {counted} >= "
             f"{COORDINATOR_JUDGEABLE_THRESHOLD} — coordinator"
         )
 
     return list(SINGLE_PASS_ROSTER), (
-        f"mode={mode_token}, {why}, {nj} judgeable file(s) < "
+        f"mode={mode_token}, {why}, {counted} < "
         f"{COORDINATOR_JUDGEABLE_THRESHOLD} — single-pass"
     )
 
@@ -2825,14 +2873,18 @@ BOUND_WORKTREE = coverage.BOUND_WORKTREE
 
 
 def _round_budget_verdict(
-    project_dir: Path, prawduct_dir: Path, scope: "str | None"
+    project_dir: Path, prawduct_dir: Path, scope: "str | None",
+    incoming: "dict | None" = None,
 ) -> dict:
     """Has this body of work already spent its full-round budget?
 
-    Returns ``{"status": "within", "spent", "budget", "review_ids", "bound"}``,
-    ``{"status": "exhausted", "spent", "budget", "review_ids", "bound"}``,
+    Returns ``{"status": "within", "spent", "budget", "incoming_is_cadence", "cadence_ids", "review_ids", "bound"}``,
+    ``{"status": "exhausted", ...the same keys}``,
     ``{"status": "disabled"}`` when the repo set the budget to ``null``, or
-    ``{"status": "unavailable", "reason"}``.
+    ``{"status": "unavailable", "reason"}``. ``incoming`` is the dispatch being
+    asked about, as a fact body's ``mode`` and ``chunks``. When it is itself a
+    cadence step (:func:`_cadence_round_ids`), ``incoming_is_cadence`` is true
+    and the verdict is never ``exhausted``.
 
     **The unit is the SCOPE, not the branch, and the two are not the same
     question.** The declared ceiling bounds one body of work, and a branch is
@@ -2902,14 +2954,29 @@ def _round_budget_verdict(
         if f.get("kind") == "review"
     }
     in_scope = branch["review_ids"]
+    cadence = _cadence_round_ids(in_scope, body_of)
+    # The dispatch being asked about, walked after every recorded round. The
+    # ceiling caps the rounds past the plan's cadence, so a dispatch that is
+    # itself a cadence step (a chunk's first review, the first boundary review)
+    # is not refused for rounds the loops spent. It is known only when the
+    # dispatch says what it reviews: its declared chunks, or none.
+    incoming_is_cadence = bool(incoming) and _INCOMING_ROUND in _cadence_round_ids(
+        [*in_scope, _INCOMING_ROUND], {**body_of, _INCOMING_ROUND: incoming},
+    )
     spent = sum(
         1 for rid in in_scope
         if mode_token_of(body_of[rid].get("mode")) in FULL_ROUND_MODES
+        and rid not in cadence
     )
     return {
-        "status": "exhausted" if spent >= budget else "within",
+        "status": "exhausted" if spent >= budget and not incoming_is_cadence else "within",
         "spent": spent,
         "budget": budget,
+        "incoming_is_cadence": incoming_is_cadence,
+        # The rounds the plan's own cadence bought, which `spent` leaves out.
+        # Returned so the refusal can say what it did NOT count: "6 rounds"
+        # read against a 7-chunk plan is otherwise a loop that never happened.
+        "cadence_ids": [rid for rid in in_scope if rid in cadence],
         # WHICH bound produced the count. The two answer different questions and
         # returned indistinguishable verdicts, so the control's own falsification
         # query — "did it ever refuse a round that turned out to be needed?" —
@@ -2921,6 +2988,61 @@ def _round_budget_verdict(
         # of them or the census it renders is not a census.
         "review_ids": in_scope,
     }
+
+
+def _cadence_round_ids(review_ids: "list[str]", body_of: dict) -> "set[str]":
+    """The full rounds a build plan's own cadence buys, which the budget does
+    not charge (owner ruling 2026-11-23).
+
+    That is the scope's first boundary review, and each chunk's first review in
+    whatever mode it ran. The budget exists to end a review LOOP (re-reviewing
+    one body of work), and those reviews are the plan's planned steps, not a
+    loop. Charged, they exhausted any plan of more chunks than the budget on
+    cadence alone, refusing the boundary review the methodology says is never
+    skipped, with ``--force`` its only route.
+
+    **The boundary review is the first review in the boundary stage**
+    (:data:`STAGE_OF_MODE`, so the first ``cumulative``), wherever it falls and
+    whatever it names. Picked by what a review names instead, the slot went to
+    the wrong one both ways: a chunk's second ``final`` named nothing new and
+    took it, refusing the real boundary review; and a boundary ``cumulative``
+    naming a still-open chunk (a short plan, a ``cumulative-final`` plan's last
+    chunk) never took it, so a repeat ``cumulative`` was free. A ``final`` is an
+    inner-stage review: free as a chunk's first review, charged as a re-review.
+
+    Walked in ``review_ids`` order, the store's append order, over full rounds
+    only (a ``verify-resolutions`` pass neither claims nor spends an
+    allowance). A review naming no chunk claims no chunk's step, since no plan
+    step can be shown to have bought it. A ``chunk`` review like that is
+    charged, so name the chunk with ``--chunks``. Every later round is charged
+    as before.
+    """
+    from . import buildplan_refs, plan_status  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    cadence: "set[str]" = set()
+    reviewed: "set[str]" = set()
+    boundary_seen = False
+    for rid in review_ids:
+        body = body_of.get(rid) or {}
+        mode = mode_token_of(body.get("mode"))
+        if mode not in FULL_ROUND_MODES:
+            continue
+        named = {
+            buildplan_refs._normalize_chunk_id(c)
+            for c in plan_status.fact_chunks(body)
+        }
+        if stage_of(mode) == STAGE_BOUNDARY and not boundary_seen:
+            cadence.add(rid)
+            boundary_seen = True
+        elif named - reviewed:
+            cadence.add(rid)
+        reviewed |= named
+    return cadence
+
+
+#: The id :func:`_round_budget_verdict` gives the dispatch it is asked about,
+#: walked last. No fact can carry it, since review ids are minted.
+_INCOMING_ROUND = "\x00incoming"
 
 
 def _refuse_over_budget(
@@ -2959,11 +3081,32 @@ def _refuse_over_budget(
         else "in this worktree (the branch span holds no commits, so lineage "
              "could not bound the count)"
     )
+    cadence = len(budget.get("cadence_ids") or [])
     reason = (
         f"round budget exhausted — this work bought {budget['spent']} full "
         f"review round(s) {counted} against a budget of {budget['budget']}"
+        + (
+            f", not counting the {cadence} its plan's cadence bought (each "
+            "chunk's first review, and the first boundary review)"
+            if cadence else ""
+        )
     )
     swept = dispositions.auto_accept(project_dir, budget["review_ids"], reason=reason)
+    # Each sweep ACCEPT travels to other clones like any other answer, attached
+    # to its review's note as it is recorded. One left with no note is still in
+    # the store, so it is said here, in the block critic-begin prints, rather
+    # than left for the reader to find.
+    unsent = swept.get("unsent", 0)
+    if not isinstance(unsent, int):
+        unsent = 0
+    swept = {**swept, "unsent": unsent}
+    if unsent:
+        notes = [
+            *notes,
+            f"{unsent} budget ACCEPT(s) were recorded but not attached to "
+            f"{evidence_notes.NOTES_REF}, so other clones do not see them yet; "
+            f"{evidence_notes.REPAIR_CLAUSE}",
+        ]
     # Rendered over the SWEPT ids, not over the scope: those are the findings
     # this refusal just answered, and the census is the answer's only trace
     # outside the store. Selecting differently from the sweep is how a builder
@@ -2982,6 +3125,9 @@ def _refuse_over_budget(
             "mode": mode_token,
             "spent": budget["spent"],
             "budget": budget["budget"],
+            # Present from the cadence allowance on. A record without it
+            # predates the allowance, and its `spent` counted cadence rounds.
+            "cadence": cadence,
             "auto_accepted": swept.get("accepted"),
             "blocking_left": swept.get("skipped_blocking"),
             "scope": scope,
@@ -3295,6 +3441,20 @@ def _unresolved_scope_cause(
 #: dispatch error): the remedy is to fix the id, not to demote the mode.
 UNKNOWN_CHUNK_KIND = "unknown-chunk"
 
+#: A `chunk` dispatch with `--chunks` omitted whose proposal names more than one
+#: chunk. A `chunk` review is one chunk's review, and the plan-order rule
+#: cannot tell adjacent chunks apart, so the builder chooses before anything is
+#: written. Exit 8 (`api-contract.md`, Error Model).
+CHUNKS_AMBIGUOUS_KIND = "chunks-ambiguous"
+
+#: A `cumulative` dispatch on a branch whose added lines `check-pr-hygiene` would
+#: refuse for a credential shape: the waiver or removal belongs before the PR's
+#: boundary review, not after it. Exit 9 (`api-contract.md`, Error Model).
+CREDENTIAL_REFUSED = "credential-shape-refused"
+
+#: The guard-refusal fact's `guard` for that refusal.
+CREDENTIAL_GUARD = "critic-dispatch-credential-shape"
+
 
 def _declared_chunks(
     project_dir: Path, plan_path: "Path | None", chunks: "list | None"
@@ -3347,8 +3507,27 @@ def _proposed_chunks(
     base_commit: "str | None" = None,
     head_tree: "str | None" = None,
 ) -> "tuple[list[str], tuple[str, ...]]":
-    """The chunk set this dispatch proposes to name, and the proposal's notes
-    for the dispatch to print: ``files_changed`` is the interval, ending at
+    """:func:`_dispatch_proposal`'s chunks and notes alone."""
+    proposal = _dispatch_proposal(
+        project_dir, plan_path, read_store, files_changed, mode_token, verify_anchor,
+        base_commit, head_tree,
+    )
+    return proposal.chunks, proposal.notes
+
+
+def _dispatch_proposal(
+    project_dir: Path,
+    plan_path: "Path | None",
+    read_store,
+    files_changed: list,
+    mode_token: str,
+    verify_anchor: "dict | None" = None,
+    base_commit: "str | None" = None,
+    head_tree: "str | None" = None,
+):
+    """The chunk set this dispatch proposes to name, as a
+    :class:`plan_status.ChunkProposal` — its notes for the dispatch to print,
+    and what named each chunk: ``files_changed`` is the interval, ending at
     ``head_tree``, ``read_store`` the dispatch's one store read. ``[]`` with no
     plan bound, or when the store cannot be read (the proposal is advice beside
     a declaration; a store that cannot be read certifies nothing).
@@ -3364,44 +3543,106 @@ def _proposed_chunks(
     naming a new chunk still warns. ``base_commit`` is the interval's base,
     which bounds a whole-plan mode's subject walk to the commits this review
     covers (:func:`plan_status.chunk_proposal`, ``since``)."""
-    if plan_path is None:
-        return [], ()
     from . import plan_status  # noqa: PLC0415 — lazy; pulls the plan readers
 
+    none = plan_status.ChunkProposal([])
+    if plan_path is None:
+        return none
     store = read_store()
     if store.get("status") == "error":
-        return [], ()
+        return none
     if mode_token == "verify-resolutions":
         if verify_anchor is None:
-            return [], ()
+            return none
         from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
-        chain = critic_mode.review_chain(store.get("facts") or [], verify_anchor)
+        chain = critic_mode.branch_review_chain(
+            project_dir, store.get("facts") or [], verify_anchor
+        )
         named = {
             buildplan_refs._normalize_chunk_id(c) for c in critic_mode.chain_named_chunks(chain)
         }
+        # How the verified review named them rides along. The pass names them
+        # only because that review did, and the route a `done` row prints is
+        # read off the certifying fact, which is this pass once it resolves a
+        # blocker. Without it a chunk the builder declared read as a proposal.
+        naming = (critic_mode.chain_naming_fact(chain) or {}).get("body") or {}
+        inherited_declared = (
+            naming.get("chunks_declared")
+            if isinstance(naming.get("chunks_declared"), bool) else None
+        )
+        if isinstance(naming.get("chunks_proposed"), list) and any(
+            buildplan_refs._normalize_chunk_id(c) not in {
+                buildplan_refs._normalize_chunk_id(p) for p in naming["chunks_proposed"]
+            }
+            for c in plan_status.fact_chunks(naming)
+        ):
+            # A chunk outside that review's own proposal was declared, whatever
+            # its fact recorded (`plan_status._route`'s first rule).
+            inherited_declared = True
+        naming_evidence = (
+            naming.get("chunks_evidence") if isinstance(naming.get("chunks_evidence"), dict) else {}
+        )
         from . import plan_index  # noqa: PLC0415 — lazy, as above
 
         try:
             content = Path(plan_path).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
-            return [], ()
+            return none
         _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
         chain_ids = {f.get("id") for f in chain}
         named -= {
             n for (fid, n) in plan_status.retractions(store, scope) if fid in chain_ids
         }
         roster = plan_status.chunk_states(Path(plan_path), {"facts": []}, repo_dir=Path(project_dir))
-        return [
+        chunks = [
             k for k, s in roster.items()
             if not s.synthetic and buildplan_refs._normalize_chunk_id(k) in named
-        ], ()
-    proposal = plan_status.chunk_proposal(
+        ]
+        evidence_by_norm = {
+            buildplan_refs._normalize_chunk_id(k): v for k, v in naming_evidence.items()
+            if _valid_chunk_evidence(k, v)
+        }
+        return plan_status.ChunkProposal(
+            chunks,
+            evidence={
+                k: dict(evidence_by_norm[buildplan_refs._normalize_chunk_id(k)])
+                for k in chunks if buildplan_refs._normalize_chunk_id(k) in evidence_by_norm
+            },
+            declared=inherited_declared,
+        )
+    return plan_status.chunk_proposal(
         Path(plan_path), store, list(files_changed), mode_token, repo_dir=Path(project_dir),
         since=base_commit if gitstate.is_object_id(base_commit) else None,
         head_tree=head_tree,  # chunk_proposal guards it: a malformed id names fewer
     )
-    return proposal.chunks, proposal.notes
+
+
+def _chunks_ambiguous_reason(proposal) -> str:
+    """The `chunks-ambiguous` refusal's text: per proposed chunk the paths that
+    proposed it (three, then a count), then a re-run line per chunk and one for
+    them all.
+
+    One line per chunk, not the earliest: the refusal exists for the builder
+    who built a later chunk and touched an earlier one's path in passing, and
+    offering the earliest as "the chunk you built" would certify the unbuilt one
+    (#1141). The builder picks the line naming the chunk they built."""
+    lines = [
+        f"this `chunk` review's diff proposes {len(proposal.chunks)} chunks "
+        f"({', '.join(proposal.chunks)}), and a `chunk` review is one chunk's review:"
+    ]
+    for c in proposal.chunks:
+        ev = proposal.evidence.get(c) or {}
+        paths = ", ".join(f"`{p}`" for p in ev.get("paths") or []) or "(no path recorded)"
+        more = f" +{ev['paths_more']} more" if ev.get("paths_more") else ""
+        lines.append(f"  chunk {c}: {paths}{more}")
+    lines.append("  re-run with the line naming the chunk you built:")
+    for c in proposal.chunks:
+        lines.append(f"    `--chunks {c}`")
+    lines.append(
+        f"  with `--chunks {','.join(proposal.chunks)}` if this review is all of their work"
+    )
+    return "\n".join(lines)
 
 
 # --- The paired native review (#1130) ------------------------------------------
@@ -3590,6 +3831,8 @@ def native_review_block(
     was paired with. Where the text lands is not in it: ``record`` derives the
     session-side path (``native_review.text_path``) and the prompt names only
     the wrapper's own."""
+    from . import clock  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
     args = f"{NATIVE_REVIEW_LEVEL} {base_commit}...{head_commit}"
     return {
         "skill": NATIVE_REVIEW_SKILL,
@@ -3599,7 +3842,9 @@ def native_review_block(
         "args": args,
         "model": reviewer_model,
         "prompt": native_review_prompt(review_id, worktree, args),
-        "dispatched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # The plugin's clock, which stamps the ledger event this rides to: the interval
+        # between the two is the native review's measured duration.
+        "dispatched_at": clock.now_iso(),
     }
 
 
@@ -3667,12 +3912,18 @@ def begin_review(
     set. The code-derived proposal,
     ``chunks_proposed``, is :func:`plan_status.chunk_proposal` over this
     dispatch interval's ``files_changed`` (``chunk`` mode: the open chunks whose
-    Deliverables it touches; ``final``/``cumulative``: those and the open
-    chunks a scoped commit subject in the interval names — a mode sets depth,
-    never reach; ``verify-resolutions``: the chunks the review it verifies
-    names, inherited along that review's chain). The proposal's own notes —
-    why it named fewer than a reader might expect — join ``notes``. With
-    nothing declared, the declared set IS the proposal. A declared id the reviewed plan does not declare is refused
+    Deliverables it touches, a path joining only while every earlier open chunk
+    is in; ``final``/``cumulative``: those and the open chunks a scoped commit
+    subject in the interval names — a mode sets depth, never reach;
+    ``verify-resolutions``: the chunks the review it verifies names, inherited
+    along that review's chain). The proposal's own notes — why it named fewer
+    than a reader might expect — join ``notes``. With nothing declared, the
+    declared set IS the proposal — except in ``chunk`` mode when it names more
+    than one chunk: that dispatch is refused (``{"status": "error", "kind":
+    "chunks-ambiguous"}``, exit 8) before anything is written, with one
+    ``guard-refusal`` fact recorded. ``chunks_declared`` and
+    ``chunks_evidence`` ride the manifest beside the two lists: whether a set
+    was declared, and what named each proposed chunk. A declared id the reviewed plan does not declare is refused
     (``{"status": "error", "kind": "unknown-chunk"}``, exit 1 through the CLI's
     error path) before the tree is captured; a declared set that leaves the
     proposal is recorded as declared, with a ``WARNING:`` note, so the edit is
@@ -3685,15 +3936,18 @@ def begin_review(
     "cleared_leftovers": bool, "manifest": {...}}`` or ``{"status": "error",
     "reason", "kind"?}`` where ``kind == "scope-widened"`` tells the CLI to
     exit 2 (the skill's demote-to-a-full-review signal), or ``{"status":
-    "no-review-needed", "reason", "free_files"}`` when the interval holds no
-    judgeable file and no finding this mode could resolve — the CLI exits 3.
+    "no-review-needed", "reason", "free_files", "open_warnings"?}`` when the
+    interval holds no judgeable file and no blocker this mode could resolve — the
+    CLI exits 3. ``open_warnings`` (a ``verify-resolutions`` refusal whose anchor
+    has warnings) names them with the disposition that records a free fix.
     That is a NO-OP, not a failure: the coverage gate already composes such an
     interval as a free edge, so the review would record a fact nothing needs.
     A ``verify-resolutions`` anchored to an unchanged tree with nothing
     outstanding takes the same answer, for the same reason.
 
     ``{"status": "budget-exhausted", ...}`` — the CLI exits 4 — when this
-    BODY OF WORK has already bought its declared full-round budget. The unit is
+    BODY OF WORK has already bought its declared full-round budget, past the
+    rounds its plan's cadence buys (:func:`_cadence_round_ids`). The unit is
     the build-plan scope, which a branch is only sometimes: see
     :func:`_round_budget_verdict` for what bounds the count when lineage cannot. The
     outstanding non-blocking findings are auto-accepted and a census is rendered
@@ -3701,6 +3955,13 @@ def begin_review(
     ``verify-resolutions`` is never refused by the round budget, so the loop
     can end but the gate can never be opened by ending it.
     ``force=True`` dispatches anyway.
+
+    ``{"status": CREDENTIAL_REFUSED, "findings"}`` — the CLI exits 9 — when
+    ``mode_token == "cumulative"`` and the branch adds a line `check-pr-hygiene`
+    would refuse the PR for (``findings`` are its ``path:line: shape`` items).
+    Checked after the in-flight and evidence guards, before anything is derived;
+    one ``guard-refusal`` fact is appended. ``force=True`` dispatches anyway,
+    with a note naming the lines; an unreadable span dispatches with a note.
 
     ``{"status": "precondition-failed", "reason"}`` — the CLI exits 7 — when
     ``mode_token == "verify-resolutions"`` and saved test evidence exists but
@@ -3833,6 +4094,41 @@ def begin_review(
             )
             return {"status": "precondition-failed", "reason": stale, "remedy": step.remedy}
 
+    # CREDENTIAL GUARD — `cumulative` only, before anything is derived. It is the
+    # review `/prawduct:pr create` composes, and `check-pr-hygiene` refuses the
+    # PR on a credential-shaped line the branch adds. Met there, AFTER this
+    # review, the waiver or removal moves HEAD and buys another round; met here,
+    # it lands before the round is spent. The check is the PR gate's own, over
+    # the same span (merge-base…HEAD, committed lines — this mode's head), so it
+    # refuses only what the PR would. A diff it cannot read dispatches with a
+    # note: the PR gate still fails closed on it.
+    credential_notes: list[str] = []
+    if mode_token == "cumulative":
+        from . import pr_gate  # noqa: PLC0415 — lazy; only this mode reads it
+
+        found, unchecked = pr_gate.branch_credential_shapes(project_dir)
+        if found and force:
+            # `--force` overrides every pre-dispatch refusal at once, so one
+            # forced past the round budget must not lose this one silently.
+            credential_notes.append(
+                f"dispatched with --force past {len(found)} credential-shaped line(s) "
+                "`check-pr-hygiene` will refuse the PR for: "
+                + ", ".join(found)
+            )
+        elif found:
+            _record_guard_refusal(
+                project_dir, CREDENTIAL_GUARD,
+                {"mode": mode_token, "lines": len(found),
+                 "branch": gitstate.current_branch(project_dir)},
+                reason="credential-shape",
+            )
+            return {"status": CREDENTIAL_REFUSED, "findings": found}
+        if unchecked:
+            credential_notes.append(
+                "the credential check `check-pr-hygiene` runs could not read this "
+                f"branch's lines ({unchecked}); the PR gate will still refuse on that"
+            )
+
     # Which unit this review is OF: the dispatch's explicit override, else the
     # checkout's work-unit binding — computed in code (`work_unit.resolve`), the
     # one answer every gate and record shares, rather than read off a pointer by
@@ -3904,7 +4200,7 @@ def begin_review(
             "(commit an initial state first)",
         }
 
-    notes: list[str] = list(notes_scope)
+    notes: list[str] = list(notes_scope) + credential_notes
     # Judgeable work the chosen interval EXCLUDES, and the tree it chose, both
     # carried structurally so a REFUSAL can name them. A committed-tree anchor
     # over a dirty working tree grades a tree the builder's files are not in;
@@ -3932,14 +4228,22 @@ def begin_review(
     base_reviewed = None
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
-    # Findings a THIS-mode review could still resolve. Only verify-resolutions
-    # records resolution facts for an EARLIER review's findings (a review's own
-    # inherited-baseline waivers are written when it consolidates), so it is
-    # the only mode that can carry a nonzero
-    # value; for every other mode there is nothing outstanding that running it
-    # would clear. Read by the free-interval refusal below, where it is the
-    # conjunct that keeps the gate from deadlocking.
-    pending_actionable = 0
+    # BLOCKING findings a THIS-mode review could still resolve. Only
+    # verify-resolutions records resolution facts for an EARLIER review's
+    # findings (a review's own inherited-baseline waivers are written when it
+    # consolidates), so it is the only mode that can carry a nonzero value; for
+    # every other mode there is nothing outstanding that running it would clear.
+    # Read by the free-interval refusal below, where it is the conjunct that
+    # keeps the gate from deadlocking. Blockers only, and only those the gate
+    # still counts (owner ruling 2026-11-23, decision 6 of
+    # documentation/issues/1222-1223-design.md): the gate counts no warning, so
+    # a warning cannot wedge it, and a warning fixed over a free interval is
+    # recorded with `prawduct-hook disposition <review-id> <fid> --fixed
+    # <path>[,<path>...]` without a round (the refusal names them, below).
+    pending_blocking = 0
+    # The anchor's warnings, named by the free-interval refusal so a builder who
+    # fixed them in records is told how to record that rather than "Nothing to do".
+    prior_warnings: "list[str]" = []
     # The blockers the gate still counts at a `verify-resolutions` dispatch's
     # anchor tree, composed once (#334): they count as actionable below, and the
     # roll-call the reviewer reads names them. `None` for every other mode, and
@@ -4248,31 +4552,37 @@ def begin_review(
                     f"Re-dispatch as `{fallback}`: {why}."
                 ),
             }
-        prior_counts = prior_body.get("counts") or {}
-        actionable = (prior_counts.get("blocking") or 0) + (
-            prior_counts.get("warning") or 0
-        )
+        prior_warnings = [
+            str(f.get("fid"))
+            for f in (prior_body.get("findings") or [])
+            if isinstance(f, dict) and str(f.get("severity", "")).lower() == "warning" and f.get("fid")
+        ]
         # An EARLIER round's blocker the gate still counts is as actionable as
         # the anchor's: this pass's roll-call names it (#334), and the gate's
         # remedy routes it here. Not counting it would refuse, as "nothing to
         # verify", the one pass that can clear it. One the gate no longer counts
         # (a clean spanning review routed around it) is NOT actionable: counting
         # it would manufacture the round `no-review-needed` exists to spare.
-        # The prior's own findings are already in `prior_counts`, so they are
-        # excluded by the prior THIS dispatch chose, not by a re-derived anchor.
+        # The same holds for the anchor's own blockers, so they come from the
+        # same count (below), anchored on the prior THIS dispatch chose.
         store_facts = read_store().get("facts") or []
         verify_prior_id = prior.get("id")
         counted_blockers = gate_counted_blockers(
             project_dir, store_facts, base_tree, read=read_store()
         )
-        actionable += sum(
-            1
-            for c in carried_blocking(
+        # One counter for both exits below: the blockers the gate still counts at
+        # the anchor's tree, the anchor's own included (`carried_blocking` with no
+        # review of its own to exclude), or the anchor's unresolved blockers when
+        # that composition is unavailable. Not the anchor's raw count, which still
+        # holds a blocker since waived or resolved and so dispatched a round the
+        # gate no longer needs. A judgeable fix is reviewed whatever this says,
+        # because the free-interval refusal also requires no judgeable file.
+        actionable = len(
+            carried_blocking(
                 store_facts, base_tree, None, counted_blockers, anchor_id=verify_prior_id
             )
-            if c.get("review_id") != verify_prior_id
         )
-        pending_actionable = actionable
+        pending_blocking = actionable
         if not delta and not actionable:
             # Name the tree that was compared. Under the tree-inequality anchor
             # above, an empty delta means the working tree AND committed HEAD
@@ -4305,9 +4615,9 @@ def begin_review(
             return {
                 "status": "no-review-needed",
                 "reason": (
-                    "nothing to verify: the prior review has no blocking/warning "
-                    "findings, no earlier review of this branch carries an "
-                    f"unresolved blocker, and {head_anchor} ({head_tree[:12]}) is the same "
+                    "nothing to verify: no blocker the gate counts is open at "
+                    "the prior review's tree (its own or an earlier round's), and "
+                    f"{head_anchor} ({head_tree[:12]}) is the same "
                     f"tree it reviewed ({base_tree[:12]})"
                 ),
                 "free_files": [],
@@ -4394,14 +4704,15 @@ def begin_review(
     # BOTH conjuncts are load-bearing. Without the first, reviews of real code
     # are refused. Without the second the gate DEADLOCKS: a `blocked` verdict's
     # only remedy is a verify-resolutions pass, and refusing that pass over a
-    # free interval would leave findings raised on prose permanently
-    # unresolvable, with no command that clears them.
+    # free interval would leave blockers raised on prose permanently
+    # unresolvable, with no command that clears them. Warnings are not in it:
+    # the gate counts none, so none can deadlock it (`pending_blocking`).
     from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
 
     if (
         not force
         and not coverage_algebra.judgeable_files(files_changed)
-        and not pending_actionable
+        and not pending_blocking
     ):
         # Record the firing. The norm this control ships under ("a control
         # names the yield it expects and emits it observably") is what makes
@@ -4468,41 +4779,15 @@ def begin_review(
             # rides — this path used to drop the lot.
             "notes": notes,
             "recorded": recorded,
+            # The anchor's warnings, and how to record a fix of them that bought no
+            # round. Before decision 6 this pass ran and recorded them; now it is
+            # refused, so the refusal is where the builder learns the route.
+            **(
+                {"open_warnings": {"review_id": verify_prior_id, "fids": list(prior_warnings)}}
+                if mode_token == "verify-resolutions" and prior_warnings and verify_prior_id
+                else {}
+            ),
         }
-
-    # ROUND BUDGET — the terminating rule. Yield does not decay (13.5 → 15.4 →
-    # 15.5 → 18.4 findings per full round across this clone's store, 99% of them
-    # new), so a review loop has no natural fixed point and every "one more
-    # round" reads locally reasonable. A declared ceiling is the only principled
-    # stop: arbitrary-but-visible beats arbitrary-but-hidden.
-    #
-    # BELOW the free-interval refusal, and that ordering is load-bearing. "The
-    # loop is over" and "there was nothing to review" are different answers —
-    # which is why exit 4 is a separate code from exit 3 — and asking the second
-    # question is advertised as free (`skills/pr/SKILL.md`: "You do not have to
-    # work out whether that pass is needed — asking is free"). Checked first, an
-    # exhausted branch charged a records-only dispatch an auto-ACCEPT of every
-    # outstanding finding for asking a question the gate answers for nothing,
-    # and free dispatches are commonest on exactly the long branches that
-    # exhaust a budget (62 of 492 facts, by the exit-3 leg's own measurement).
-    #
-    # Only full rounds are counted AND only a full round is refused. A
-    # `verify-resolutions` pass is how a BLOCKING finding clears, so refusing
-    # one at exhaustion would strand it with no command that resolves it —
-    # the same deadlock the free-interval guard's second conjunct avoids.
-    if mode_token in FULL_ROUND_MODES and not force:
-        budget = _round_budget_verdict(project_dir, prawduct_dir, scope)
-        if budget["status"] == "unavailable":
-            notes.append(
-                "the review round budget could not be derived "
-                f"({budget['reason']}) — this round was NOT counted against it, "
-                "so read the budget as not in force for this dispatch"
-            )
-        elif budget["status"] == "exhausted":
-            return _refuse_over_budget(
-                project_dir, budget, mode_token, scope, chunk,
-                dispatch_commit, notes,
-            )
 
     # Untracked files inside the tree this review will vouch for, named while
     # leaving one out is still free. "Commit verbatim" is `git add -A`; a commit
@@ -4564,7 +4849,9 @@ def begin_review(
             f for f in bundle_files if f not in files_reviewed and f not in files_oracle
         ]
 
-    roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
+    roster, roster_chosen_by = _derive_roster(
+        mode_token, files_changed, prawduct_dir, project_dir=project_dir, head_tree=head_tree
+    )
     review_id = mint_review_id()
 
     # ST8: the code-derived proposal from THIS interval, then the declared set
@@ -4578,11 +4865,31 @@ def begin_review(
     relay_files = bundle_files if bundle_files is not None else files_changed
     relay_base_commit = bundle_base_commit if span == SPAN_BOUNDED else base_commit
     relay_base_tree = bundle_base_tree if span == SPAN_BOUNDED else base_tree
-    chunks_proposed, proposal_notes = _proposed_chunks(
+    proposal = _dispatch_proposal(
         project_dir, graded_plan, read_store, relay_files, mode_token, verify_anchor,
         relay_base_commit, head_tree,
     )
+    chunks_proposed, proposal_notes = proposal.chunks, proposal.notes
     notes.extend(proposal_notes)
+    # `--chunks` is the builder's words. Without it, a derived proposal is the
+    # code's naming, and a verify pass's is the verified review's, whose own
+    # answer it carries (`ChunkProposal.declared`).
+    chunks_declared = True if declared_chunks is not None else proposal.declared
+    # Refused before the manifest, the marker or the archive of leftovers is
+    # written, so a refusal leaves nothing behind. Narrowing to the earliest
+    # chunk instead would name the wrong one when the builder works out of
+    # order and the diff touches an earlier chunk's path in passing.
+    if mode_token == "chunk" and declared_chunks is None and len(chunks_proposed) > 1:
+        _record_guard_refusal(
+            project_dir, "critic-dispatch-chunks-ambiguous",
+            {"mode": mode_token, "chunks_proposed": list(chunks_proposed), "scope": scope,
+             "branch": gitstate.current_branch(project_dir)},
+            reason=CHUNKS_AMBIGUOUS_KIND,
+        )
+        return {
+            "status": "error", "kind": CHUNKS_AMBIGUOUS_KIND,
+            "reason": _chunks_ambiguous_reason(proposal), "notes": notes,
+        }
     if declared_chunks is None:
         declared_chunks = list(chunks_proposed)
         chunk = declared_chunks[0] if declared_chunks else None
@@ -4593,6 +4900,56 @@ def begin_review(
                 f"WARNING: declared chunk(s) {', '.join(outside)} are not in the proposal "
                 f"for this {mode_token} interval ({', '.join(chunks_proposed) or 'none'}); "
                 "recorded as declared, with the proposal beside them on the fact"
+            )
+
+    # ROUND BUDGET — the terminating rule. Yield does not decay (13.5 → 15.4 →
+    # 15.5 → 18.4 findings per full round across this clone's store, 99% of them
+    # new), so a review loop has no natural fixed point and every "one more
+    # round" reads locally reasonable. A declared ceiling is the only principled
+    # stop: arbitrary-but-visible beats arbitrary-but-hidden.
+    #
+    # BELOW the free-interval refusal, and that ordering is load-bearing. "The
+    # loop is over" and "there was nothing to review" are different answers —
+    # which is why exit 4 is a separate code from exit 3 — and asking the second
+    # question is advertised as free (`skills/pr/SKILL.md`: "You do not have to
+    # work out whether that pass is needed — asking is free"). Checked first, an
+    # exhausted branch charged a records-only dispatch an auto-ACCEPT of every
+    # outstanding finding for asking a question the gate answers for nothing,
+    # and free dispatches are commonest on exactly the long branches that
+    # exhaust a budget (62 of 492 facts, by the exit-3 leg's own measurement).
+    #
+    # A plan's cadence is not charged: each chunk's first review, in any mode,
+    # and the first boundary review are the plan's steps, not a loop, and a
+    # dispatch that is itself one passes the ceiling (`_cadence_round_ids`).
+    # BELOW the proposal for that reason: whether this dispatch is a chunk's
+    # first review depends on the chunks it will name, and with `--chunks`
+    # omitted (the skill's default) those are the proposal's. Asked before it,
+    # the check saw no chunk, refused the chunk's own first review, and had
+    # already swept the findings it auto-accepts. Still before anything is
+    # written, as the chunks-ambiguous refusal above is.
+    #
+    # Only full rounds are counted AND only a full round is refused. A
+    # `verify-resolutions` pass is how a BLOCKING finding clears, so refusing
+    # one at exhaustion would strand it with no command that resolves it —
+    # the same deadlock the free-interval guard's second conjunct avoids.
+    if mode_token in FULL_ROUND_MODES and not force:
+        budget = _round_budget_verdict(
+            project_dir, prawduct_dir, scope,
+            incoming={
+                "mode": MODE_TOKEN_TO_VERBOSE[mode_token],
+                "chunks": list(declared_chunks),
+            },
+        )
+        if budget["status"] == "unavailable":
+            notes.append(
+                "the review round budget could not be derived "
+                f"({budget['reason']}) — this round was NOT counted against it, "
+                "so read the budget as not in force for this dispatch"
+            )
+        elif budget["status"] == "exhausted":
+            return _refuse_over_budget(
+                project_dir, budget, mode_token, scope, chunk,
+                dispatch_commit, notes,
             )
 
     # Machine-verified record checks, computed HERE so no reviewer re-derives
@@ -4671,6 +5028,14 @@ def begin_review(
         # code proposed for its interval.
         "chunks": list(declared_chunks),
         "chunks_proposed": list(chunks_proposed),
+        # Whether `--chunks` was passed — without it, a declared set equal to
+        # the proposal cannot be told from the proposal — and what named each
+        # proposed chunk. Read for the route a `done` row prints and by the
+        # bug-report intake; never for state (`chunks` alone is).
+        "chunks_declared": chunks_declared,
+        "chunks_evidence": {
+            c: dict(ev) for c, ev in proposal.evidence.items() if c in chunks_proposed
+        },
         "base_reviewed": base_reviewed,
         # Make the resolved target VISIBLE so a wrong-tree review is obvious
         # instead of silent (PDT-WT9K). ``branch`` is None on a detached HEAD.
@@ -4698,6 +5063,13 @@ def begin_review(
         manifest["bounded_from"] = bounded_from
         manifest["span_reason"] = span_reason
         manifest["files_context"] = files_context
+    if verify_anchor is not None:
+        # The review this verify pass anchored to, by id, so its fact says
+        # which review it verifies. The interval's base tree cannot: another
+        # worktree of the clone may have reviewed the same tree, and every
+        # reader that walks from the pass to its review
+        # (`coverage_algebra.prior_review`) would otherwise guess the newest.
+        manifest[coverage_algebra.VERIFIES_KEY] = verify_anchor.get("id")
     # The review STAGE, derived once here from the mode (which chose the
     # interval above) and read everywhere else — the reviewer prompt's signals
     # line, the review fact, the findings cache, the ledger event and
@@ -5267,13 +5639,38 @@ def validate_manifest(data) -> tuple[bool, str]:
     for key in ("chunks", "chunks_proposed"):
         if data.get(key) is not None and not _str_list(data.get(key)):
             return False, f"'{key}' must be a list of non-empty strings or null"
+    # The route of each named chunk (#1141). Optional, as a manifest written
+    # before the fields still consolidates and its rows say the route is not
+    # recorded; typed when present, because the route text reads them.
+    if data.get("chunks_declared") is not None and not isinstance(data.get("chunks_declared"), bool):
+        return False, "'chunks_declared' must be a boolean or null"
+    evidence_map = data.get("chunks_evidence")
+    if evidence_map is not None and not (
+        isinstance(evidence_map, dict)
+        and all(_valid_chunk_evidence(k, v) for k, v in evidence_map.items())
+    ):
+        return False, (
+            "'chunks_evidence' must map a chunk id to "
+            "{paths: [str], paths_more: int, commits: [str]} or be null"
+        )
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals", "dispatch_tree", "reviewer_model",
-                "bounded_from", "span_reason"):
+                "bounded_from", "span_reason", coverage_algebra.VERIFIES_KEY):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
+    # The review a verify pass anchored to. Optional, as a manifest written
+    # before the field still consolidates (its fact then links by tree); only a
+    # verify pass may carry one, because the readers follow it as "the review
+    # this pass verifies" whatever the fact's mode.
+    if data.get(coverage_algebra.VERIFIES_KEY) is not None and (
+        mode != MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
+    ):
+        return False, (
+            f"'{coverage_algebra.VERIFIES_KEY}' names a verified review, which only a "
+            f"verify-resolutions manifest records (mode is {mode!r})"
+        )
     # Optional for the same reason `files_oracle` is — a manifest restored from
     # before the field existed still consolidates — and typed because the value
     # reaches the fact and the severity rule keys on it: a misspelt stage must
@@ -5910,7 +6307,8 @@ def answered_lint_results(store: "dict | None", scope: "str | None") -> dict:
 
         {"warning": {identity: sentence}, "blocking": {identity: sentence}}
 
-    **A WARNING is answered by the newest disposition being an accept or a
+    **A WARNING is answered by the winning disposition (the greatest
+    ``dispositions.answer_key``, the same in every clone) being an accept or a
     file** — the answers ``prior_dispositions`` hands a reviewer so it declines
     to re-raise. A ``fixed`` disposition answers nothing here: the lint still
     reporting the identical result is the evidence it was not fixed.
@@ -6386,8 +6784,22 @@ def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
     return blocking, warning, note
 
 
+def _valid_chunk_evidence(chunk_id: object, entry: object) -> bool:
+    """One ``chunks_evidence`` entry: a chunk id to its paths (a list), the
+    count past them (a non-negative int) and its commits (a list)."""
+    if not _nonempty_str(chunk_id) or not isinstance(entry, dict):
+        return False
+    more = entry.get("paths_more")
+    return (
+        isinstance(entry.get("paths"), list) and all(_nonempty_str(p) for p in entry["paths"])
+        and isinstance(entry.get("commits"), list) and all(_nonempty_str(c) for c in entry["commits"])
+        and isinstance(more, int) and not isinstance(more, bool) and more >= 0
+    )
+
+
 def _fact_chunk_fields(manifest: dict) -> dict:
-    """``chunks`` and ``chunks_proposed`` for a review fact body.
+    """``chunks`` and ``chunks_proposed`` for a review fact body, with
+    ``chunks_declared`` and ``chunks_evidence`` when the manifest recorded them.
 
     The singular ``chunk`` (``chunks[0]``) is no longer written; facts already
     in a store keep theirs and :func:`plan_status.fact_chunks` still reads it.
@@ -6399,10 +6811,18 @@ def _fact_chunk_fields(manifest: dict) -> dict:
     chunks = manifest.get("chunks")
     if not isinstance(chunks, list):
         return {"chunk": manifest.get("chunk")}
-    return {
+    fields = {
         "chunks": list(chunks),
         "chunks_proposed": list(manifest.get("chunks_proposed") or []),
     }
+    # The route (#1141): copied only when the manifest recorded it, so a fact
+    # from a manifest written before the fields renders "not recorded" rather
+    # than a route nobody observed.
+    if isinstance(manifest.get("chunks_declared"), bool):
+        fields["chunks_declared"] = manifest["chunks_declared"]
+    if isinstance(manifest.get("chunks_evidence"), dict):
+        fields["chunks_evidence"] = {k: dict(v) for k, v in manifest["chunks_evidence"].items()}
+    return fields
 
 
 def build_fact_body(
@@ -6508,6 +6928,12 @@ def build_fact_body(
         "bounded_from": manifest.get("bounded_from"),
         "span_reason": manifest.get("span_reason"),
     }
+    # The review a verify pass anchored to (``coverage_algebra.prior_review``
+    # follows it). Absent on every other mode and on a fact from a manifest
+    # written before the field, which the readers link by tree instead.
+    verifies = manifest.get(coverage_algebra.VERIFIES_KEY)
+    if verifies is not None:
+        body[coverage_algebra.VERIFIES_KEY] = verifies
     # The dispatch clock, on the one record every worktree of the clone can
     # read. `duration_seconds` above is the reviewers' own estimate; this is
     # the stamp code read before they were spawned, and the interval ends at
@@ -6607,7 +7033,10 @@ def _plan_owes_a_later_review(
         binding = work_unit.resolve(project_dir)
         if binding.plan_path is None:
             return None
-        chain = critic_mode.review_chain(facts or [], fact) if fact is not None else []
+        chain = (
+            critic_mode.branch_review_chain(project_dir, facts or [], fact)
+            if fact is not None else []
+        )
         # Progress is read from the store AFTER this review's fact was appended,
         # so the chunks it just certified read as done (`plan_status`).
         owed = critic_mode.review_owed_after(
@@ -6766,6 +7195,7 @@ def branch_review_record(
             gate_counted_blockers(
                 prawduct_dir.parent, gate_facts, body.get("base_tree"), read=gate_read
             ),
+            anchor_id=body.get(coverage_algebra.VERIFIES_KEY),
         )
         if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
         else []
@@ -6826,20 +7256,33 @@ def derive_branch_cache(
     if held is not None and held.get("fact_id") == review:
         return {"status": "current", "review": review, "reason": None}
     # Validated before it replaces anything: a record no reader trusts is worse
-    # than the one it would displace, since they would anchor on it.
+    # than the one it would displace, since they would anchor on it. The
+    # candidate is the staging file renamed into place, so it carries
+    # TEMP_SUFFIX (a crash before the rename leaves a file the ignore contract
+    # and the session-file exemption cover), and its name is this writer's own
+    # (mkstemp): two sessions deriving in one checkout at once must not share a
+    # candidate, or one truncates the file the other has just validated and is
+    # about to rename into the cache.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
-    candidate = prawduct_dir / ".critic-findings.json.derived"
-    atomic_write_text(candidate, json.dumps(
+    text = json.dumps(
         branch_review_record(
             prawduct_dir, fact, facts if read is not None and read.get("facts") is facts else usable,
             read=read,
         ), indent=2
-    ))
-    if not gates.validate_critic_findings(candidate):
-        candidate.unlink(missing_ok=True)
-        return {"status": "invalid", "review": review,
-                "reason": "the rendered record failed the findings schema"}
-    os.replace(candidate, findings_path)
+    )
+    fd, staged = tempfile.mkstemp(
+        dir=str(prawduct_dir), prefix=".critic-findings.json.derived.", suffix=TEMP_SUFFIX
+    )
+    candidate = Path(staged)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="backslashreplace") as handle:
+            handle.write(text)
+        if not gates.validate_critic_findings(candidate):
+            return {"status": "invalid", "review": review,
+                    "reason": "the rendered record failed the findings schema"}
+        os.replace(candidate, findings_path)
+    finally:
+        candidate.unlink(missing_ok=True)  # a no-op once the rename consumed it
     return {"status": "derived", "review": review, "reason": None}
 
 
@@ -7301,10 +7744,11 @@ def _attach_note(project_dir: Path, envelope: object, anchor: "str | None") -> N
     outcome = evidence_notes.attach(project_dir, envelope, anchor)
     if outcome.get("status") == "error":
         print(
-            f"NOTE: critic-consolidate: {envelope.get('kind')} fact "
-            f"{envelope.get('id')!r} is recorded, but its git note was not "
-            f"written ({outcome.get('reason')}) — the fact stays in this clone's "
-            "store and does not travel to other clones.",
+            evidence_notes.unwritten_notice(
+                "critic-consolidate",
+                f"{envelope.get('kind')} fact {envelope.get('id')!r}",
+                outcome.get("reason"),
+            ),
             file=sys.stderr,
         )
 
@@ -7313,12 +7757,22 @@ def _is_session_file(path: str, prefix: str) -> bool:
     """Whether a repo-relative ``path`` is one of ``GITIGNORE_ENTRIES``, read
     with gitignore's own anchoring: an entry containing a ``/`` before its end
     is anchored at the project root (``prefix``); one without (``__pycache__/``)
-    matches at any depth. A trailing ``/`` names a directory."""
+    matches at any depth. A trailing ``/`` names a directory. A glob entry
+    (``.prawduct/**/*.prawduct.tmp``, ``core.TEMP_SUFFIX``) is read as gitignore
+    reads it: slash-free, against the basename at any depth; anchored, against
+    the whole path, where ``**/`` is zero or more directories (``fnmatch``'s
+    ``*`` already crosses ``/``, so dropping ``**/`` gives exactly that)."""
     parts = path.split("/")
     for entry in GITIGNORE_ENTRIES:
         is_dir = entry.endswith("/")
         name = entry.rstrip("/")
-        if "/" in name:
+        if any(ch in name for ch in "*?["):
+            if "/" in name:
+                if fnmatch.fnmatchcase(path, prefix + name.replace("**/", "")):
+                    return True
+            elif fnmatch.fnmatchcase(parts[-1], name):
+                return True
+        elif "/" in name:
             anchored = prefix + name
             if path == anchored or (is_dir and path.startswith(anchored + "/")):
                 return True
@@ -8363,6 +8817,7 @@ def _consolidate(
                 project_dir, store.get("facts") or [], manifest.get("base_tree"),
                 resolved=merge_base, read=store,
             ),
+            anchor_id=manifest.get(coverage_algebra.VERIFIES_KEY),
         )
         if is_verify
         else []

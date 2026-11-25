@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
 
 from lib import buildplan_refs, work_unit  # noqa: E402
 from lib.work_unit import Binding, resolve  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -39,13 +40,7 @@ def _git_env(repo: Path) -> dict[str, str]:
     # untracked files inside the fixture otherwise.
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-    }
+    return scrubbed_env(home)
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:

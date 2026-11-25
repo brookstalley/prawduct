@@ -42,6 +42,7 @@ from lib.advisory_store import (  # noqa: E402
     run_all_probes,
 )
 from lib.migrate_plugin import INSTALL_REFERENCE, transform_settings  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 _HOOK = _PLUGIN_ROOT / "bin" / "prawduct-hook"
 _LOUD = "PRAWDUCT GOVERNANCE IS NOT ACTIVE"
@@ -73,11 +74,11 @@ def _manifest(world, content) -> Path:
 
 
 def _run_hook(world, *, shell="/bin/sh", path=None, config=True, project=None):
-    env = {
-        "PATH": path if path is not None else f"{world['bin']}:/usr/bin:/bin",
-        "HOME": str(world["home"]),
-        "CLAUDE_PROJECT_DIR": str(project or world["repo"]),
-    }
+    env = scrubbed_env(
+        world["home"],
+        PATH=path if path is not None else f"{world['bin']}:/usr/bin:/bin",
+        CLAUDE_PROJECT_DIR=str(project or world["repo"]),
+    )
     if config:
         env["CLAUDE_CONFIG_DIR"] = str(world["config"])
     proc = subprocess.run(
@@ -274,6 +275,195 @@ def test_verdict_agrees_with_plugin_activation(world, content):
         assert got == expected, (project, out)
 
 
+# --- enabledPlugins: installed is not loaded (#1246) ---------------------------
+
+_DISABLED = "PRAWDUCT GOVERNANCE IS SWITCHED OFF"
+_USER_INSTALL = {"version": 2, "plugins": {pa.PLUGIN_ID: [{"scope": "user"}]}}
+
+
+def _settings(path: Path, value) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"enabledPlugins": {pa.PLUGIN_ID: value}}), encoding="utf-8")
+    return path
+
+
+def _local(world) -> Path:
+    return world["repo"] / ".claude" / "settings.local.json"
+
+
+def _project(world) -> Path:
+    return world["repo"] / ".claude" / "settings.json"
+
+
+def _user(world) -> Path:
+    return world["config"] / "settings.json"
+
+
+def _verdict(world, managed: Path) -> str:
+    """The inline verdict run directly, so a test can name the managed-settings
+    directory the shell half hard-codes to the machine's real one."""
+    proc = subprocess.run(
+        [sys.executable, "-c", tw._VERDICT_PY,
+         str(world["config"] / "plugins" / "installed_plugins.json"), str(world["repo"]), str(managed)],
+        capture_output=True, text=True, env=scrubbed_env(world["home"]),
+    )
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout.strip()
+
+
+def test_a_project_setting_of_false_is_the_disabled_line_naming_the_file(world):
+    """The report's repro: installed at user scope, switched off for the repo."""
+    _manifest(world, _USER_INSTALL)
+    path = _settings(_project(world), False)
+    out = _run_hook(world)
+    assert out.startswith(_DISABLED)
+    assert str(path.resolve()) in out
+    assert "/prawduct:repo-disable" in out, "a deliberate opt-out must be named, not accused"
+    assert not out.startswith(_LOUD)
+    # Control: the same file saying true is silent.
+    _settings(_project(world), True)
+    assert _run_hook(world) == ""
+
+
+@pytest.mark.parametrize("where,value,expect", [
+    # The highest-precedence file naming the plugin decides, key by key.
+    ({"local": True, "project": False}, None, ""),
+    ({"local": False, "project": True}, "local", _DISABLED),
+    ({"user": False}, "user", _DISABLED),
+    ({"project": True, "user": False}, None, ""),
+    ({"project": "yes"}, None, ""),  # not a boolean: never claim it is off
+])
+def test_precedence_local_then_project_then_user(world, where, value, expect):
+    _manifest(world, _USER_INSTALL)
+    files = {"local": _local(world), "project": _project(world), "user": _user(world)}
+    for name, setting in where.items():
+        _settings(files[name], setting)
+    out = _run_hook(world)
+    if expect:
+        assert out.startswith(expect)
+        assert str(files[value].resolve() if value != "user" else files[value]) in out
+    else:
+        assert out == ""
+
+
+def test_an_unreadable_settings_file_is_passed_over(world):
+    _manifest(world, _USER_INSTALL)
+    _local(world).parent.mkdir(parents=True)
+    _local(world).write_text("{broken", encoding="utf-8")
+    _settings(_project(world), False)
+    assert _run_hook(world).startswith(_DISABLED)
+
+
+def test_not_installed_is_still_the_loud_line_even_when_disabled(world):
+    """Installing is the first fix; the disabled line would send them to the wrong one."""
+    _manifest(world, {"version": 2, "plugins": {}})
+    _settings(_project(world), False)
+    assert _run_hook(world).startswith(_LOUD)
+
+
+def test_managed_settings_outrank_the_project_and_drop_ins_outrank_the_base(world, tmp_path):
+    """Claude Code merges managed-settings.json first, then each drop-in in name
+    order with later files winning, and ignores hidden files."""
+    managed = tmp_path / "managed"
+    drop_ins = managed / "managed-settings.d"
+    _manifest(world, _USER_INSTALL)
+    _settings(_local(world), True)
+    assert _verdict(world, managed) == "active"
+    _settings(managed / "managed-settings.json", False)
+    assert _verdict(world, managed) == "disabled:" + str(managed / "managed-settings.json")
+    # A drop-in naming the plugin overrides the base file, in either direction.
+    _settings(drop_ins / "10-allow.json", True)
+    assert _verdict(world, managed) == "active"
+    _settings(drop_ins / "50-block.json", False)
+    assert _verdict(world, managed) == "disabled:" + str(drop_ins / "50-block.json")
+    # Hidden and non-.json files are not read. Alone beside the base file, so a
+    # real drop-in cannot decide first and hide whether they were read.
+    for f in drop_ins.iterdir():
+        f.unlink()
+    _settings(drop_ins / ".90-hidden.json", True)
+    _settings(drop_ins / "90-notes.txt", True)
+    assert _verdict(world, managed) == "disabled:" + str(managed / "managed-settings.json")
+
+
+def test_settings_are_read_as_utf8_whatever_the_locale(world, tmp_path):
+    """The lib reads settings as UTF-8; under an ASCII locale the inline copy
+    must too, or a non-ASCII file is skipped and the two disagree."""
+    _manifest(world, _USER_INSTALL)
+    _local(world).parent.mkdir(parents=True)
+    _local(world).write_text(
+        json.dumps({"note": "caf\u00e9", "enabledPlugins": {pa.PLUGIN_ID: False}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    _settings(_project(world), True)
+    proc = subprocess.run(
+        [sys.executable, "-c", tw._VERDICT_PY,
+         str(world["config"] / "plugins" / "installed_plugins.json"), str(world["repo"]),
+         str(tmp_path / "managed")],
+        capture_output=True, text=True,
+        env=scrubbed_env(world["home"], LC_ALL="C", LANG="C", PYTHONUTF8="0", PYTHONCOERCECLOCALE="0"),
+    )
+    assert proc.stdout.strip() == "disabled:" + str(_local(world).resolve())
+
+
+@pytest.mark.parametrize("platform,uname", [
+    ("darwin", "Darwin"), ("linux", "Linux"), ("win32", "MINGW64_NT-10.0"),
+])
+def test_the_shell_picks_the_managed_directory_the_lib_names(tmp_path, platform, uname):
+    """One directory per OS, chosen by uname in the shell and sys.platform in the
+    lib; a fake uname on PATH lets every branch run here."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    fake = bindir / "uname"
+    fake.write_text(f"#!/bin/sh\necho {uname}\n")
+    fake.chmod(0o755)
+    case = next(line for line in tw.TRIPWIRE_COMMAND.splitlines() if line.startswith("case \"$(uname"))
+    proc = subprocess.run(
+        ["/bin/sh", "-c", case + '\nprintf %s "$d"'], capture_output=True, text=True,
+        env={"PATH": f"{bindir}:/usr/bin:/bin"},
+    )
+    expected = pa.managed_settings_dirs(platform)[0].replace("\\", "/")
+    assert proc.stdout == expected
+
+
+@pytest.mark.parametrize("settings", [
+    {},
+    {"project": False},
+    {"local": True, "project": False},
+    {"local": False},
+    {"user": False},
+    {"project": True, "user": False},
+    {"managed": False, "local": True},
+    {"managed": True, "drop_in": False},
+    {"managed": False, "drop_in": True},
+    {"drop_in": True, "drop_in_later": False},
+    {"local": "{broken", "project": False},
+    {"project": "yes"},
+])
+@pytest.mark.parametrize("installed", [True, False])
+def test_disabled_verdict_agrees_with_plugin_activation(world, tmp_path, settings, installed):
+    """The hook inlines ``plugin_activation.disabled_by``; the two must agree."""
+    managed = tmp_path / "managed"
+    path = _manifest(world, _USER_INSTALL if installed else {"version": 2, "plugins": {}})
+    files = {
+        "local": _local(world), "project": _project(world), "user": _user(world),
+        "managed": managed / "managed-settings.json",
+        "drop_in": managed / "managed-settings.d" / "10-a.json",
+        "drop_in_later": managed / "managed-settings.d" / "20-b.json",
+    }
+    for name, value in settings.items():
+        if value == "{broken":
+            files[name].parent.mkdir(parents=True, exist_ok=True)
+            files[name].write_text(value, encoding="utf-8")
+        else:
+            _settings(files[name], value)
+    result = pa.plugin_activation_status(world["repo"], plugins_file=path, managed_dirs=(managed,))
+    got = _verdict(world, managed)
+    word = got.split(":", 1)[0]
+    assert word == result["status"], (settings, got, result)
+    if word == pa.DISABLED:
+        assert got.split(":", 1)[1] == result["disabled_by"]
+
+
 def test_the_matcher_is_the_banner_hooks_own():
     """'No banner appeared' and 'the tripwire would have spoken' must cover the
     same session starts — read from the plugin's hooks.json, not restated."""
@@ -462,15 +652,15 @@ def test_init_product_adds_it_to_settings_that_carry_only_the_reference(tmp_path
 
 
 def _cli(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(_HOOK), "install-tripwire", *args],
-        capture_output=True,
-        text=True,
-        env={
-            "PATH": "/usr/bin:/bin",
-            "CLAUDE_PLUGIN_ROOT": str(_PLUGIN_ROOT),
-            "CLAUDE_PROJECT_DIR": str(root),
-        },
+    from _hook_inproc import run_hook  # noqa: PLC0415
+
+    home = root.parent / "_home"
+    home.mkdir(exist_ok=True)
+    return run_hook(
+        "install-tripwire", *args,
+        cwd=root.parent,
+        env={"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(_PLUGIN_ROOT),
+             "CLAUDE_PROJECT_DIR": str(root)},
     )
 
 

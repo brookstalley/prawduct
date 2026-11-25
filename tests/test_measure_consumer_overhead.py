@@ -167,8 +167,6 @@ def _fixture_repo(root: Path) -> Path:
     (repo / ".prawduct").mkdir(parents=True)
     env = dict(
         os.environ,
-        GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-        GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t",
         GIT_AUTHOR_DATE="2026-05-01T00:00:00", GIT_COMMITTER_DATE="2026-05-01T00:00:00",
     )
 

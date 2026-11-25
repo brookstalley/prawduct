@@ -30,9 +30,11 @@ through ``cachequery``, which is the same discipline one layer over.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+import re
+from datetime import datetime
 from pathlib import Path
 
+from .. import clock
 from . import encode, snapshot
 from .core import (
     error,
@@ -41,7 +43,7 @@ from .core import (
     log_diag,
     ok,
 )
-from .transport import Transport, TransportError, paginate
+from .transport import Transport, TransportError, git_log_subjects, paginate, resolve_base_ref
 
 # The structured facets ``list`` accepts as label filters (each an AND term).
 # ``tag`` rides the same mechanism because a tag *is* a namespaced label — the
@@ -231,7 +233,7 @@ def pick(
     """
     from . import cachequery, sync  # noqa: PLC0415 — lazy: only `pick` drives the store
 
-    now = now or datetime.now(timezone.utc)
+    now = now or clock.now()
     scope = f"{owner}/{repo}"
     warnings: list[str] = []
 
@@ -298,7 +300,126 @@ def pick(
         candidate["why"] = _why(candidate, blockers)
         candidates.append(candidate)
 
-    return ok({"candidates": candidates, "count": len(candidates)}, warnings)
+    history = _annotate_base_history(
+        candidates, project_dir=project_dir, scope=scope, warnings=warnings
+    )
+    return ok({"candidates": candidates, "count": len(candidates), "base_history": history}, warnings)
+
+
+#: Commits one ``pick`` reads from the base's history, in ONE ``git log``. The cost
+#: that matters is the walk, so it is bounded by commits and paid once per pick,
+#: never per candidate: a per-candidate ``--grep`` stops after N MATCHES, so for an item
+#: few messages name every call walks the whole history. 1000 is ~tens of days of a
+#: busy integration branch, the horizon in which "legs shipped while the issue stayed
+#: open" happens, and a few ms and ~100KB of subject lines for git. An item named only
+#: further back is an undercount accepted for advice; the answer says when the window
+#: was full (``capped``).
+_HISTORY_WALK_COMMITS = 1000
+#: Short shas named in the note; the count says how many more there are.
+_HISTORY_SHAS_LISTED = 5
+
+
+def _history_pattern(scope: str, number: int) -> re.Pattern[str]:
+    """The ONE pattern for ``#<number>`` as a whole reference, not a prefix of one.
+
+    Matched in Python over each commit subject. The number must not be followed by a
+    digit (``#12`` is not ``#123`` or ``#1204``) and must not be preceded by a word
+    character, ``.`` or ``-`` (``other/repo#12`` is another repo's issue), with one
+    exception: this tracker's own qualified form ``owner/repo#12``, which carries the
+    same leading guard (``xowner/repo#12`` is not it) and is case-insensitive, as
+    GitHub owners and repos are. Issues and pull requests share one number space, so a
+    ``#12`` naming a PR is not a different thing from the item.
+    """
+    qualified = re.escape(scope)
+    return re.compile(rf"(?<![A-Za-z0-9_.-])(?:{qualified})?#{number}(?![0-9])", re.IGNORECASE)
+
+
+def _history_matches(rows: list[tuple[str, str]], scope: str, number: int) -> list[str]:
+    """Short shas, newest first, of the ``(sha, subject)`` rows whose SUBJECT names ``#<number>``.
+
+    A subject is where a commit says what it is about; bodies mention items in
+    passing ("why #165 stayed deferred"), which is not work on the item.
+    """
+    matcher = _history_pattern(scope, number)
+    return [sha for sha, subject in rows if matcher.search(subject)]
+
+
+def _annotate_base_history(
+    candidates: list[dict], *, project_dir: Path, scope: str, warnings: list[str]
+) -> dict:
+    """Flag each candidate that commit subjects on the base branch already name.
+
+    The issue's labels and body are records; the code history is the other record,
+    and nothing at pick time looked at it, so a builder was dispatched on an item
+    whose legs had shipped. This is **advice only**: no candidate is hidden or
+    restaged, and one with commits gains a ``base_history`` key (``base``,
+    ``count``, ``shas``, ``capped``, ``note``) that the human formatter prints and the
+    skill tells the model to surface.
+
+    **Returns the indicator** the caller puts at ``data["base_history"]``, so a check
+    that never ran is told apart from one that found nothing:
+    ``{"checked": True, "base", "walked", "capped"}`` or ``{"checked": False,
+    "reason"}``.
+
+    **Only this checkout's own tracker is checked.** An item id is
+    ``<tracker>#<n>``; a commit message's ``#<n>`` names an item in the repo the
+    commit lives in. When ``--repo`` is a separate ``backlog_service_repo``, those
+    numbers belong to a different number space and a match would be a coincidence
+    dressed as evidence, so a scope that is not the checkout's ``origin`` is
+    skipped, as is a checkout with no readable ``origin`` (its tracker cannot be
+    known). Neither is an error, so neither warns; the indicator says why.
+
+    **Fails soft and says so once.** An unresolvable base (the moving ``HEAD~1``
+    fallback included) or a failed ``git log`` leaves the candidates unannotated and
+    adds one warning (stderr in human mode). Cost: ONE ``git log`` of at most
+    ``_HISTORY_WALK_COMMITS`` commits, timed out, however many candidates.
+    """
+    if not candidates:
+        return {"checked": False, "reason": "no candidates"}
+    from . import upstream  # noqa: PLC0415 — lazy: only the annotation reads the remote
+
+    origin = upstream.origin_repo(project_dir)
+    if origin is None:
+        return {"checked": False, "reason": "no readable origin remote to name this checkout's tracker"}
+    if origin.lower() != scope.lower():
+        return {"checked": False, "reason": f"--repo {scope} is not this checkout's origin ({origin})"}
+    base, reason = resolve_base_ref(project_dir)
+    if base is None:
+        warnings.append(
+            f"base-branch history not checked ({reason}); "
+            "no candidate was compared against the commits that may already name it"
+        )
+        return {"checked": False, "reason": reason}
+    try:
+        rows = git_log_subjects(project_dir, base, max_count=_HISTORY_WALK_COMMITS)
+    except TransportError as exc:
+        warnings.append(
+            f"base-branch history not checked ({exc.message}); "
+            "candidates are not annotated"
+        )
+        return {"checked": False, "reason": exc.message}
+    capped = len(rows) >= _HISTORY_WALK_COMMITS
+    window = f" in the last {len(rows)} commits" if capped else ""
+    for cand in candidates:
+        number = _number_of(cand["id"], scope=scope)
+        if number is None:
+            continue  # unreachable after the filter in `pick`; never guess a number
+        shas = _history_matches(rows, scope, number)
+        if not shas:
+            continue
+        listed = ", ".join(shas[:_HISTORY_SHAS_LISTED])
+        more = f", and {len(shas) - _HISTORY_SHAS_LISTED} more" if len(shas) > _HISTORY_SHAS_LISTED else ""
+        cand["base_history"] = {
+            "base": base,
+            "count": len(shas),
+            "shas": shas[:_HISTORY_SHAS_LISTED],
+            "capped": capped,
+            "note": (
+                f"{len(shas)} commit(s){window} on {base} already name this item: {listed}{more}; "
+                "check what is left before building"
+            ),
+        }
+    return {"checked": True, "base": base, "walked": len(rows), "capped": capped}
 
 
 def _number_of(canonical: str, *, scope: str) -> int | None:

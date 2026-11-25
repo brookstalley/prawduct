@@ -55,7 +55,7 @@ from . import (
     verdict_cache,
     work_unit,
 )
-from .core import FLAG_UNREADABLE, read_bool_flag, suite_coupled_prefixes
+from .core import FLAG_UNREADABLE, read_bool_flag
 
 
 _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
@@ -98,7 +98,7 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # SHA the recorded run ran against, captured via ``evidence.capture_tree`` just
     # before a live run starts (omitted when a path that affects the test outcome
     # changed before it ended — ``_test_evidence_tree_valid``'s test, a superset of
-    # judgeable), or at ingest for ``--from-junit`` and a restamp. Read by the
+    # judgeable except for declared static content), or at ingest for ``--from-junit`` and a restamp. Read by the
     # tree-validity clause of ``tests_are_current`` and ``suite_vouches_for_tree``
     # (each directly and through ``_store_run_vouching``), and by the restamp guard
     # in ``test-evidence record``. A str when present, always omitted (never null)
@@ -516,7 +516,7 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
        structurally incapable of a false stale, the failure class that retired
        the removed content-hash "fingerprint" and ``git_sha`` mechanisms. It
        classifies *paths* (git tree-diff + ``affects_test_outcome``, which is
-       a strict superset of ``is_judgeable_path`` and the predicate
+       a superset of ``is_judgeable_path`` except for declared static content, and the predicate
        :func:`_test_evidence_tree_valid` actually calls), never file
        *contents* — the standing ``coverage_algebra`` rule that kept those
        mechanisms dead. Records without ``evidence_tree`` (pre-clause, or a
@@ -672,7 +672,7 @@ def _test_evidence_tree_valid(
     **The question here is the suite's, not the reviewer's (COV-4H7N).** This
     asks ``affects_test_outcome``, not ``is_judgeable_path``, because a
     non-hermetic test reads live repo state that needs no review: a
-    ``.prawduct/project-state.yaml`` edit is free to write mid-review and can
+    ``.prawduct/project-state.yaml`` edit costs no new review between rounds and can
     still turn ``test_norm_probes`` red, so evidence recorded before it does
     not vouch for the tree after it.
 
@@ -700,13 +700,13 @@ def _test_evidence_tree_valid(
         target_tree = capture["tree"]
         same = f"working tree identical to the recorded run ({recorded_tree[:12]})"
         differ = "changed since the run"
-        clean = "only non-judgeable paths changed since the run"
+        clean = "only paths that cannot change the suite's outcome changed since the run"
     else:
         same = f"the suite ran against this exact tree ({recorded_tree[:12]})"
         differ = "differ between the saved run and the tree this gate vouches for"
         clean = (
-            "only non-judgeable paths differ between the saved run and "
-            f"{target_tree[:12]}"
+            "only paths that cannot change the suite's outcome differ between the "
+            f"saved run and {target_tree[:12]}"
         )
     met, reason = _tree_met(project_dir, recorded_tree, target_tree, same, differ, clean)
     return bool(met), reason
@@ -718,26 +718,41 @@ def _tree_met(
     target_tree: str,
     same: str = "the run met this exact tree",
     differ: str = "differ between the run and the target",
-    clean: str = "only non-judgeable paths differ between the run and the target",
+    clean: str = "only paths that cannot change the suite's outcome differ between the run and the target",
+    *,
+    base: "coverage.IntegrationBase | None" = None,
 ) -> "tuple[bool | None, str]":
     """Did a run on ``recorded_tree`` meet ``target_tree``? ``True`` / ``False``,
     or ``None`` when the comparison itself could not run (a missing object, a
     git failure) — the third answer :func:`_test_evidence_tree_valid` folds into
     ``False`` for its callers, and :func:`_store_run_vouching` must keep apart:
-    "cannot tell" has to deny a red run's claim to this tree, never waive it."""
+    "cannot tell" has to deny a red run's claim to this tree, never waive it.
+    ``base`` is the integration base when the caller already resolved it."""
     if target_tree == recorded_tree:
         return True, same
     changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
     if changed is None:
         return None, "tree diff unavailable (missing object or git failure)"
-    # The repo's own declaration is passed HERE and NOT at the doc-only PR
-    # gate: this is the freshness question. See `affects_test_outcome`.
-    coupled = coverage_algebra.suite_coupled_files(
-        changed, suite_coupled_prefixes(project_dir / ".prawduct")
-    )
+    # The repo's own declarations are passed HERE and NOT at the doc-only PR
+    # gate: this is the freshness question. See `affects_test_outcome`. Read
+    # whenever anything changed: the coupling in force is a union reaching past
+    # the working tree, so no working-tree-only answer can be trusted first.
+    declared = coverage.suite_declarations(project_dir, recorded_tree, base=base)
+    coupled = coverage_algebra.suite_coupled_files(changed, declared.coupled, declared.static)
     if coupled:
         preview = ", ".join(coupled[:3]) + ("…" if len(coupled) > 3 else "")
-        return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview})"
+        why_not = declared.note_for(coupled)
+        why_not = f"; {why_not}" if why_not else ""
+        return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview}){why_not}"
+    n_static = sum(
+        1 for p in changed
+        if coverage_algebra.is_static_content(p, declared.static, declared.coupled)
+    )
+    if n_static:
+        return True, (
+            f"{clean} ({len(changed) - n_static} metadata/doc and "
+            f"{n_static} declared-static file(s))"
+        )
     return True, f"{clean} ({len(changed)} metadata/doc file(s))"
 
 
@@ -858,6 +873,7 @@ def _store_run_vouching(
     candidates.sort(key=lambda c: c["ts"], reverse=True)
 
     seen: set = set()
+    base: "coverage.IntegrationBase | None" = None  # resolved once, on first use
     for candidate in candidates:
         tree = candidate["tree"]
         key = tree if tree is not None else ("no-tree", candidate["ts"])
@@ -865,7 +881,9 @@ def _store_run_vouching(
             continue
         seen.add(key)
         refused = bool(run_refusal(candidate["run"]))
-        met, why = (None, "") if tree is None else _tree_met(project_dir, tree, target_tree)
+        if tree is not None and base is None:
+            base = coverage.integration_base(project_dir)
+        met, why = (None, "") if tree is None else _tree_met(project_dir, tree, target_tree, base=base)
         if met is None:
             met = refused  # cannot tell: a refused run denies, a green one proves nothing
         if not met:
@@ -2918,28 +2936,81 @@ def _merge_base_verdict(
     }
 
 
-#: The modes that run the end-of-cycle goals; any other latest mode on a
-#: finished plan earns the synthesis nudge.
+#: The modes that run the end-of-cycle goals. ``verify-resolutions`` is not
+#: among them and is not their opposite either: it resolves an earlier review's
+#: findings, so whether synthesis ran is read off the review it resolves
+#: (:func:`_review_verified_passes_stand_on`), never off the pass itself.
 _CRITIC_MODE_SYNTHESIS = frozenset({
     _CRITIC_MODE_FINAL,
     _CRITIC_MODE_CUMULATIVE,
 })
 
 
+def _review_mode(fact: dict) -> str:
+    """A review fact's persisted mode; a fact with none predates the field and
+    was a ``final`` (legacy hooks pre-v1.3.13 recorded no mode).
+
+    ``evidence.read_facts`` keeps a review whose body is a dict whatever its
+    fields hold, and this feeds the Stop hook, so a mode that is not a string
+    (a list or a dict would raise on the set lookup the caller makes) reads as
+    ``""``: no known mode, so not synthesis."""
+    mode = (fact.get("body") or {}).get("mode", _CRITIC_MODE_FINAL)
+    return mode if isinstance(mode, str) else ""
+
+
+def _review_verified_passes_stand_on(
+    reviews: list[dict], fact: dict
+) -> "tuple[dict | None, dict]":
+    """``(stands_for, last)``: the review whose goals ``fact`` stands for, and
+    the fact the walk stopped at. ``stands_for`` is ``fact`` itself unless it
+    is a ``verify-resolutions`` pass, else — walked back over every such pass —
+    the review the first of them resolves, or ``None`` when the walk reaches no
+    review that is not a verify pass; then ``last`` is the pass whose link
+    ended it, which the caller asks why (:func:`coverage_algebra.missing_anchor`).
+
+    The walk follows the recorded LINK, not store position:
+    ``coverage_algebra.prior_review`` is the one owner of "which review does
+    this pass verify" — the review the pass recorded as its anchor, else, on a
+    fact from before that record, the newest earlier review at its
+    ``base_tree`` — and ``carried_blocking`` takes the same hop to find the
+    findings a pass rolls call over. Position would answer a nearby question
+    ("what ran before the pass") and differ from it whenever another review
+    was recorded between the reviewed one and its verification; the tree alone
+    differs from it whenever another worktree reviewed the same tree.
+    ``reviews`` is the store's review facts in store order. The steps and the
+    walk's end are ``coverage_algebra.walk_links``': a recorded anchor is found
+    wherever it sits, so a store naming a cycle of passes ends the walk at a
+    revisit, and that reaches no review.
+    """
+    last = fact
+    for current in coverage_algebra.walk_links(reviews, fact):
+        if _review_mode(current) != _CRITIC_MODE_VERIFY_RESOLUTIONS:
+            return current, last
+        last = current
+    return None, last
+
+
 def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
-    """Check whether the latest Critic review satisfies end-of-cycle synthesis.
+    """Check whether end-of-cycle synthesis has run on a finished plan.
 
     Returns ``(True, "")`` when the gate is satisfied, ``(False, reason)``
     otherwise. The gate is advisory: it fires when a multi-chunk build plan
     is finished — every chunk ``done`` or ``dropped`` by
-    ``plan_status.is_finished``, never by a ticked box (#1051) — but the most
-    recent Critic review was not a ``final`` or ``cumulative`` one, so the
-    end-of-cycle goals (Coherence, Design, the Records Pass, Framework-Specific
-    Checks) have not run. The mode is
-    telemetry read from the latest ``review`` FACT in the evidence store
-    (kernel-v3 chunk 04: no gate — even an advisory one — reads the
-    ``.critic-findings.json`` cache); it steers a workflow nudge, never
-    evidence acceptance (D4).
+    ``plan_status.is_finished``, never by a ticked box (#1051) — but the
+    review this session's latest one stands for was not a ``final`` or
+    ``cumulative``, so the end-of-cycle goals (Coherence, Design, the Records
+    Pass, Framework-Specific Checks) have not run. The mode is telemetry read
+    from ``review`` FACTS in the evidence store (kernel-v3 chunk 04: no gate —
+    even an advisory one — reads the ``.critic-findings.json`` cache); it
+    steers a workflow nudge, never evidence acceptance (D4).
+
+    "The review the latest one stands for" is the latest review fact from this
+    worktree and branch, unless it is a ``verify-resolutions`` pass: a pass
+    resolves an earlier review's findings and does not undo that review's
+    synthesis, so the walk follows each pass back to the review it verifies
+    (:func:`_review_verified_passes_stand_on`). Read off the pass itself, every
+    clean close of a boundary review that raised findings drew a nudge to run a
+    ``final`` nobody owed.
 
     Specific cases (in order):
     0. A broken work-unit binding (two live plans claim this branch) →
@@ -2947,12 +3018,24 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     1. No build plan bound, or no chunks declared → satisfied (non-chunked work).
     2. Single-chunk plan → satisfied (the one Critic run is the final).
     3. Multi-chunk plan not finished → satisfied (mid-cycle).
-    4. Finished multi-chunk plan, latest review fact from this worktree and
-       branch is neither ``final`` nor ``cumulative`` → unsatisfied. Run
+    4. Finished multi-chunk plan, no review fact from this worktree and branch
+       → satisfied (nothing to judge).
+    5. Finished multi-chunk plan, the review the latest one stands for is
+       ``final`` or ``cumulative`` → satisfied. A trailing chain of verify
+       passes over a ``cumulative`` is this case.
+    6. Finished multi-chunk plan, that review is anything else (a ``chunk``,
+       directly or under verify passes — including a ``chunk`` recorded after
+       a ``cumulative``, which the walk reaches first) → unsatisfied. Run
        ``/prawduct:critic final`` for end-of-cycle synthesis.
-    5. Finished multi-chunk plan, latest mode is final/cumulative (or no
-       review fact from this worktree and branch — nothing to judge)
-       → satisfied.
+    7. Finished multi-chunk plan, the latest review is a verify pass whose
+       links reach no other review → unsatisfied. A verify pass runs Goals 1-3
+       over a delta; the walk is how it inherits synthesis, and with nothing at
+       the end of it there is no record that synthesis ran. Unlike case 4 this
+       session DID review, so "nothing to judge" does not apply. When the pass
+       that ends the walk names, by a review id's shape, a review this store
+       does not hold, the NOTE names that review (and the pass that recorded
+       it, when that pass is not the latest review) and offers both repairs: sync it in if another clone recorded it, else
+       run a ``final``, since a dropped or unreadable fact never arrives.
     """
     binding = work_unit.resolve(project_dir)
     if binding.state == "broken":
@@ -2982,25 +3065,66 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     # recorded from THIS worktree on THIS branch, so another worktree's review
     # never steers this advisory. A fact with no `actor.branch` (written before
     # it was recorded) is matched on its worktree alone.
+    #
+    # Only the LATEST review is filtered so. The walk back from a verify pass
+    # follows its link over the whole store: the review a pass verifies is the
+    # one it stands on wherever it was recorded (a fresh worktree of a reviewed
+    # branch verifies a review recorded elsewhere — `verify_anchor`), and that
+    # is not a sibling's newer review steering this one.
     here = str(project_dir)
     branch = gitstate.current_branch(project_dir)
+    reviews = evidence.facts_of_kind(facts, "review")
     review_facts = [
         f
-        for f in evidence.facts_of_kind(facts, "review")
+        for f in reviews
         if (f.get("actor") or {}).get("worktree") == here
         and (f.get("actor") or {}).get("branch", branch) == branch
     ]
     if not review_facts:
         return True, ""
-    latest_body = review_facts[-1].get("body") or {}
-    mode = latest_body.get("mode", _CRITIC_MODE_FINAL)
-    if mode not in _CRITIC_MODE_SYNTHESIS:
+    latest = review_facts[-1]
+    stands_for, stopped_at = _review_verified_passes_stand_on(reviews, latest)
+    if stands_for is None:
+        missing = coverage_algebra.missing_anchor(reviews, stopped_at)
+        if missing is not None:
+            # The pass names a review this store does not hold. It may be
+            # another clone's, not yet synced, or a fact this store dropped or
+            # could not read, which no sync brings back, so the NOTE offers
+            # both repairs rather than waiting for one that may never come.
+            # The pass that named it is the one the walk stopped at, which is
+            # the latest only when no other pass stands between them.
+            who = (
+                "the review it verifies" if stopped_at is latest
+                else f"the review that {stopped_at.get('id')}, a pass on its chain, verifies"
+            )
+            return False, (
+                f"All {total} chunks done or dropped; last Critic review was "
+                f"'{_CRITIC_MODE_VERIFY_RESOLUTIONS}', and {who} ({missing}) is not "
+                "in this clone's evidence store, so nothing here shows end-of-cycle "
+                "synthesis ran. If that review was recorded in another clone, run "
+                "`prawduct-hook evidence sync` to ingest it and this NOTE re-judges; "
+                "otherwise run /prawduct:critic final for end-of-cycle synthesis "
+                "(Coherence, Design, the Records Pass) before pushing."
+            )
         return False, (
             f"All {total} chunks done or dropped; last Critic review was "
-            f"'{mode}'. Run /prawduct:critic final for end-of-cycle "
-            "synthesis (Coherence, Design, the Records Pass) before pushing."
+            f"'{_CRITIC_MODE_VERIFY_RESOLUTIONS}', and no review it verifies is "
+            "on record, so nothing shows end-of-cycle synthesis ran. Run "
+            "/prawduct:critic final for end-of-cycle synthesis (Coherence, "
+            "Design, the Records Pass) before pushing."
         )
-    return True, ""
+    mode = _review_mode(stands_for)
+    if mode in _CRITIC_MODE_SYNTHESIS:
+        return True, ""
+    last = (
+        f"'{mode}'" if stands_for is latest
+        else f"a verify-resolutions pass over a '{mode}' review"
+    )
+    return False, (
+        f"All {total} chunks done or dropped; last Critic review was {last}. "
+        "Run /prawduct:critic final for end-of-cycle synthesis (Coherence, "
+        "Design, the Records Pass) before pushing."
+    )
 
 
 def _repo_relative(project_dir: Path, path: Path) -> str:
@@ -4212,12 +4336,21 @@ def verify_coverage(project_dir: Path) -> int:
     # `coverage_algebra.is_executable_path` — the one predicate — so this stays
     # a reading of the CRT-5D8Q boundary rather than a second file-type table
     # beside it. `skipped` and `out_of_remit_changed` keep precedence: a file the
-    # verifier disclaimed is out of jurisdiction whatever its suffix.
+    # verifier disclaimed is out of jurisdiction whatever its suffix. A file the
+    # repo declares static content is not executable either, unless a test
+    # reads its prefix as data, which the coupling declaration says. The
+    # declarations in force are HEAD's, as the diff judged here is, and a
+    # static one only once the integration branch carries it
+    # (`coverage.suite_declarations`).
+    declared = coverage.suite_declarations(
+        project_dir, "HEAD", base=coverage.integration_base(project_dir, base)
+    )
+    static, coupled_prefixes = declared.static, declared.coupled
     nonexecutable = [
         f for f in changed
         if f not in skipped
         and f not in out_of_remit_changed
-        and not coverage_algebra.is_executable_path(f)
+        and not coverage_algebra.is_executable_path(f, static, coupled_prefixes)
     ]
     missing = [
         f for f in changed
@@ -4250,7 +4383,8 @@ def verify_coverage(project_dir: Path) -> int:
         )
         print(
             f"note: {len(nonexecutable)} changed file(s) no test can execute "
-            f"(prose / framework state) — reported, not gated ({preview})."
+            f"(prose / framework state / declared static content) — reported, not "
+            f"gated ({preview})."
         )
     if not missing:
         print(

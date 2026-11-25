@@ -43,9 +43,10 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 
+from . import clock
+from .core import temp_sibling
 from . import learnings_files, learnings_migrate
 
 SCHEMA = 1
@@ -194,7 +195,7 @@ def build_worksheet(project_dir: Path) -> dict:
         row["related"] = [rid for _o, rid in sorted(hits, reverse=True)[:RELATED_MAX]]
     return {
         "schema": SCHEMA,
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": clock.now_iso(),
         "limits": {
             "rule_line_max": learnings_files.RULE_LINE_MAX,
             "core_cap_kb": learnings_files.CORE_CAP_KB,
@@ -494,7 +495,7 @@ def apply(project_dir: Path, ws: dict, *, local: bool = False) -> Result:
         root = learnings_migrate.backup_root(project_dir)
         if root is None:
             raise CompactRefused("--local: git could not say where the backup goes")
-        stamp = datetime.now(timezone.utc).strftime("compact-%Y%m%dT%H%M%SZ")
+        stamp = clock.now().strftime("compact-%Y%m%dT%H%M%SZ")
         rels = sorted(set(ws["files"]) | set(res.outputs))
         try:
             learnings_migrate._back_up(
@@ -540,7 +541,7 @@ def load(path: Path) -> dict:
 
 def save(path: Path, ws: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
+    tmp = temp_sibling(path)
     tmp.write_text(
         json.dumps(ws, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8", errors="backslashreplace",

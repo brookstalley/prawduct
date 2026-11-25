@@ -8,10 +8,14 @@ run in parallel across workers.
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import re
+import shutil
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -27,6 +31,163 @@ import pytest
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(_PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_ROOT))
+
+#: The environment every child of this suite runs under, and the one clock its code reads, set
+#: once at import (below) so that a git or a hook the PRODUCTION code spawns, and production code
+#: called in-process, inherit it as surely as a child a test spawns.
+#:
+#: Two reasons, one set of variables. A git child that reads the machine's system or global
+#: config, its global attributes or ignore file, or the wall clock is a test whose result depends
+#: on the machine and the moment it ran; testament refuses to reuse such a result, and a suite
+#: that is half git is half uncached (its run advice, 2026-11-23). And the pool's runners have no
+#: global git config at all, while a developer's machine has one, so the same test saw a
+#: different git on each: this makes every machine the runner's.
+#:
+#: - `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL`, `GIT_ATTR_NOSYSTEM`: no system or global config
+#:   and no system attributes.
+#: - `XDG_CONFIG_HOME`: an empty directory, so the default global ignore and attributes files
+#:   (`~/.config/git/ignore`, `.../attributes`) that `GIT_CONFIG_GLOBAL` does not reach are not
+#:   read either. A test that wants one sets its own (`test_gitignore_contract_semantics.py`).
+#:   It is a fresh `mkdtemp` per process, never a fixed path: testament vouches for any config
+#:   directory under temp as the test's own without looking inside it, so a `git/ignore` that a
+#:   past run, another checkout or another user left at a shared path would change every later
+#:   run's git unseen. testament keys no environment value, so the path changing costs no cache
+#:   hit; each pytest process (an xdist worker included) makes its own and removes it at exit.
+#: - `GIT_AUTHOR_DATE`, `GIT_COMMITTER_DATE` and `lib.clock.FROZEN_ENV`: all :data:`TEST_NOW`, so a
+#:   commit and the code that stamps records both read one fixed clock, and the same commit has
+#:   the same SHA on every run. The gates compare the two: the session work span is the HEAD
+#:   reflog walked back to the `.session-start` stamp plus `git log --since=<stamp>`, the handoff
+#:   lists `git log --since=<stamp>`, and a HEAD move after a test run is found at
+#:   `HEAD@{<run start>}`; git dates every reflog entry by the committer date. With the two
+#:   clocks equal, a commit made after a session starts is in that session (the walk's bound is
+#:   `moved_at < started_at`, so an equal instant counts as in-session). History that must
+#:   PRECEDE the session is dated before it explicitly (:func:`pre_session_git_env`, or
+#:   `test_reflection_gate.py`'s `_Session`, which pins its start ten minutes ahead). Every commit
+#:   made under it carries the SAME date, as commits made within one second already did: a test
+#:   about commit-time ORDER sets its own dates. Noon UTC, so a local calendar date read from it
+#:   is the same day in every zone from UTC-11 to UTC+11; not epoch 0, which reads as "no
+#:   timestamp" to a truthiness check.
+#: - `GIT_ALLOW_PROTOCOL=file`: a clone or fetch reaches only local repositories.
+#: - The author and committer identity, which the global config used to supply on a developer's
+#:   machine: a test making a commit needs one, and the runner never had one to give. It
+#:   outranks any `user.*` config, so a test needs no `-c user.email=...` of its own.
+#:
+#: A helper that hands a child a SCRUBBED environment builds it with :func:`scrubbed_env`, which
+#: carries these; one that spreads `os.environ` already has them.
+TEST_NOW_EPOCH = 1767268800  # 2026-01-01T12:00:00Z
+TEST_NOW = f"@{TEST_NOW_EPOCH} +0000"
+_GIT_XDG_CONFIG_HOME = Path(tempfile.mkdtemp(prefix="prawduct-tests-empty-xdg-config-"))
+atexit.register(shutil.rmtree, _GIT_XDG_CONFIG_HOME, ignore_errors=True)
+try:
+    from lib import clock as _clock  # noqa: E402 — needs the plugin root on sys.path, set above
+except ModuleNotFoundError:
+    # A copy of this file run in a scratch project with no plugin beside it (the producer's
+    # integration tests do that): there is no plugin code there to put on the test clock.
+    _clock = None
+
+TEST_ENV = {
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_ATTR_NOSYSTEM": "1",
+    "XDG_CONFIG_HOME": str(_GIT_XDG_CONFIG_HOME),
+    "GIT_AUTHOR_DATE": TEST_NOW,
+    "GIT_COMMITTER_DATE": TEST_NOW,
+    "GIT_ALLOW_PROTOCOL": "file",
+    "GIT_AUTHOR_NAME": "Prawduct Tests",
+    "GIT_AUTHOR_EMAIL": "tests@prawduct.invalid",
+    "GIT_COMMITTER_NAME": "Prawduct Tests",
+    "GIT_COMMITTER_EMAIL": "tests@prawduct.invalid",
+}
+if _clock is not None:
+    TEST_ENV[_clock.FROZEN_ENV] = TEST_NOW
+os.environ.update(TEST_ENV)
+
+#: The PATH a scrubbed child gets: the system tools and git, wherever the machine keeps them.
+SCRUBBED_PATH = "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"
+
+
+def plugin_python_sources() -> list[Path]:
+    """Every Python source the plugin ships: ``*.py`` anywhere under ``plugin/``
+    and the extensionless Python executables in ``plugin/bin/``.
+
+    The hook's whole CLI lives in the extensionless ``bin/prawduct-hook``, so a
+    structural scan that globs ``*.py`` alone passes over the largest module in
+    the runtime and goes green on a defect there. A scan over the shipped runtime
+    reads this set; ``tests/test_source_scans_reach_the_hook.py`` holds every
+    ``*.py`` scan of ``plugin/`` to it."""
+    found = sorted(p for p in _PLUGIN_ROOT.rglob("*.py") if "__pycache__" not in p.parts)
+    for path in sorted((_PLUGIN_ROOT / "bin").iterdir()):
+        if path.is_file() and path.suffix == "" and _PYTHON_SHEBANG.match(
+            path.read_text(encoding="utf-8", errors="replace").partition("\n")[0]
+        ):
+            found.append(path)
+    return found
+
+
+#: Any Python interpreter line: `env python3`, `/usr/bin/python3`, `#! /usr/bin/env python`.
+_PYTHON_SHEBANG = re.compile(r"#!.*\bpython[0-9.]*\b")
+
+
+def scrubbed_env(home: "Path | str", **extra: str) -> dict[str, str]:
+    """A minimal environment for a child that must not inherit this process's.
+
+    :data:`TEST_ENV` (git isolation, identity and the suite's one clock), ``HOME`` (created if
+    missing; put it OUTSIDE any repository the test inspects, or macOS Python's bytecode cache
+    lands in it as untracked files), :data:`SCRUBBED_PATH`, no credential prompt and no bytecode
+    writes. ``extra`` adds or overrides keys, so a test that must lift one of the suite's
+    settings says so at its call site.
+
+    Each :data:`TEST_ENV` key takes this process's current value, so a test that moved the
+    clock (:func:`set_suite_clock`) moves its scrubbed children's with it, and one that removed
+    a key on purpose (`monkeypatch.delenv("GIT_CONFIG_GLOBAL")` to lift git's isolation) leaves
+    it out of them too."""
+    Path(home).mkdir(parents=True, exist_ok=True)
+    return {
+        **{name: os.environ[name] for name in TEST_ENV if name in os.environ},
+        "HOME": str(home),
+        "PATH": SCRUBBED_PATH,
+        "GIT_TERMINAL_PROMPT": "0",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        **extra,
+    }
+
+
+def suite_now(offset_seconds: float = 0) -> datetime:
+    """:data:`TEST_NOW` (plus ``offset_seconds``) as an aware UTC datetime: the instant the
+    plugin's clock reads in this suite, for a fixture that writes a stamp the code compares."""
+    return datetime.fromtimestamp(TEST_NOW_EPOCH + offset_seconds, timezone.utc)
+
+
+def suite_stamp(offset_seconds: float = 0) -> str:
+    """:func:`suite_now` as the ``YYYY-MM-DDTHH:MM:SSZ`` stamp `.session-start` and the records use."""
+    return suite_now(offset_seconds).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def set_suite_clock(monkeypatch, offset_seconds: int) -> str:
+    """Move the suite's one clock to :data:`TEST_NOW` plus ``offset_seconds`` for the rest of
+    this test: git's dates and the plugin's (``lib.clock.FROZEN_ENV``) together, so they never
+    disagree. For a test whose subject is an ORDER of moments, such as two sessions, where one
+    frozen instant would put both at once. Returns the new instant in git's date form."""
+    instant = f"@{TEST_NOW_EPOCH + offset_seconds} +0000"
+    for name in ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE", *([_clock.FROZEN_ENV] if _clock else [])):
+        monkeypatch.setenv(name, instant)
+    return instant
+
+
+#: An hour before :data:`TEST_NOW`, in git's date form: when history that must precede the
+#: session was made.
+PRE_SESSION_DATE = f"@{TEST_NOW_EPOCH - 3600} +0000"
+
+
+def pre_session_git_env(base: "dict[str, str] | None" = None) -> dict[str, str]:
+    """``base`` (default: this process's environment) with git's dates an hour before
+    :data:`TEST_NOW`, for a commit or checkout whose move must PRECEDE the session.
+
+    The session walk needs history older than `.session-start` to know it read the whole
+    session (it gives up otherwise), and a commit made at :data:`TEST_NOW` is in the session."""
+    env = dict(os.environ if base is None else base)
+    env["GIT_AUTHOR_DATE"] = env["GIT_COMMITTER_DATE"] = PRE_SESSION_DATE
+    return env
 
 # What an entry point loads from its OWN plugin tree before any `lib/` is chosen: the
 # host seam and its loader. A test that runs a copy of an entry point from a hand-built

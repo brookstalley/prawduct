@@ -36,6 +36,7 @@ import pytest  # noqa: E402
 from lib.backlog import cache, cachequery, cli, core, sync  # noqa: E402
 from fakes.fake_github import FakeGitHub, own_tracker  # noqa: E402
 from fixtures.backlog_fixtures import DISCODON_MINI  # noqa: E402
+from conftest import suite_now  # noqa: E402
 
 OWNER, REPO_NAME = "octo", "repo"
 SCOPE = f"{OWNER}/{REPO_NAME}"
@@ -98,9 +99,8 @@ def _resolves(repo_dir, item_id):
 
 
 def _now():
-    from datetime import datetime, timezone
 
-    return datetime.now(timezone.utc)
+    return suite_now()
 
 
 def _open_ids(repo_dir):

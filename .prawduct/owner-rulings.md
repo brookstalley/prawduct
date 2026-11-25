@@ -27,6 +27,67 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-24.** "Yes, and get to prawduct-live as well" — answering whether to open a PR for
+`feature/test-determinism` (#1243). The PR into `develop` is opened through `/prawduct:pr` and merged,
+and `../prawduct-live` is advanced to the new `origin/develop` (the dogfood track, as on 2026-11-22).
+
+**2026-11-24.** "Any first-party import (Recommended)" — answering the boundary review's question on
+#1243 (rev-20261124T234435Z-e6b3faf9, R-11). The ruling's "an autouse fixture … that imports
+everything" reads as: an autouse fixture in a `conftest.py` that imports any first-party module
+blocks at the merge boundary. That is the same cost as a root conftest's single module-level import,
+and "everything" cannot be checked statically for a fixture. The rule is restricted to `conftest.py`,
+because an autouse fixture in a test module reaches only that module. Landed in
+`plugin/lib/determinism_lint.py` and `plugin/docs/test-determinism.md`.
+
+**2026-11-24.** "Janitor only (Recommended)" — answering where the scan of a product's existing
+test-determinism sites lives. `/prawduct:janitor`'s Test Fitness theme runs
+`prawduct-hook determinism-scan`, and doctor and onboard do not, per `docs/doctor-vs-janitor.md`'s
+placement rule (the product's own test craft is the janitor's). This replaces the "onboard/doctor"
+part of the earlier 2026-11-24 #1243 entry below, item 3. Landed in
+`.prawduct/artifacts/build-plan-test-determinism.md` (Decisions made mid-build).
+
+**2026-11-24.** "Remember that prawduct does not require testament, but I think these are all
+best practices anyway right?" — a constraint on #1243 and its follow-up #1244. No part of the test
+determinism work may depend on testament. The patterns are defined tool-agnostically
+(`plugin/docs/test-determinism.md`), the detector reads only source and git
+(`plugin/lib/determinism_lint.py`), and #1244's measured check runs only when the project's runner
+reports per-test causes, doing nothing otherwise. Agreed in reply: each pattern is general
+practice. The clock, randomness, in-tree-state and write patterns cost correctness on any runner.
+The import-scope patterns cost collection time and isolation on any runner, and reuse on any
+incremental runner (pytest-testmon, Bazel/Pants, Jest's changed-files mode, testament).
+
+**2026-11-24.** "Agreed on all counts" (said in the testament session and relayed here by it), then
+"Agreed to all recommendations" here — the design of #1243 (test determinism and dependency-scope
+patterns P1–P8):
+1. The measured check (test-evidence keeps the runner's per-test determinism causes so the Critic
+   can flag a cause site a diff introduced) is a follow-up, gated on #1096's ledger.
+2. A newly introduced P1 (a root conftest's module-level import of the app or its core modules) or
+   P2 (an autouse fixture or package `__init__` that imports everything) is BLOCKING at the
+   merge-boundary review.
+3. That verdict comes from a mechanical base-vs-head detector, not the reviewer's reading, and is
+   waivable with `prawduct:allow prawduct/test-scope -- reason`; the detector also feeds
+   onboard/doctor and the janitor sweep.
+4. P1–P8 and their remedies live in one doc, `plugin/docs/test-determinism.md`, which
+   `building.md` points to in one sentence and the discipline table registers as a row.
+5. The issue's "measured improvement on two products" acceptance item moves to the follow-up as
+   its success measure, since a merge cannot verify it.
+These land in #1243's build plan and the follow-up backlog item.
+
+**2026-11-22.** "1. yes keep running 2. yes agred 3. yes please do fix" — answering three asks
+from the post-v3.9.0 orientation:
+1. The #1130 paired experiment runs to its stop condition (four weeks, about 2026-12-10), even
+   though the 60-boundary-pair sample is already met (104). Before the final blind check,
+   #1170 (consolidation duplicates inflate Critic-only counts) is fixed and native-review token
+   cost is measured (`compare.py --transcripts`). No fourth interim check. Lands on #1130.
+2. The next build is #1141 + #1198 (shared design `documentation/issues/1141-1198-design.md`),
+   then #1207.
+3. The delegation brief's verification ceiling names the whole-tree guard class, as the
+   scratch-subdirectory item does for scratch. Lands in `plugin/methodology/delegation.md`.
+
+**2026-11-22.** "yes update prawduct live" — `../prawduct-live` is advanced to `origin/develop` after
+the v3.9.0 release (the dogfood track, `documentation/release-process.md` § Dogfooding the develop
+track), so this machine's sessions run the released plugin plus the 3.9.1-dev reopen.
+
 **2026-11-22.** "1. agree confirm 2. yes agreed" — answering the two open asks on the #1141/#1198
 design:
 1. The plan-order rule binds only chunks proposed because the diff touched their paths. `--chunks`,
@@ -383,3 +444,134 @@ owes. Lands in `methodology/session-hygiene.md` (the clear verdict's delegate pa
 2. PR #1206 (`integration/backlog-roi-2026-11-18` → `develop`, the backlog ROI batch) is merged.
 
 **2026-11-19.** "Yes merge" — PR #1209 (`integration/backlog-roi-wave2-2026-11-18` → `develop`, backlog ROI wave 2) is merged.
+
+**2026-11-23.** "Yes backlog, and yes pr and merge" — answering two asks:
+1. "verify-resolutions facts record the id of the review they verify" is filed as a backlog item, separate from `fix/stop-final-nudge`.
+2. PR `fix/stop-final-nudge` → `develop` is created and merged once its gates pass, and `../prawduct-live` is advanced to the new `origin/develop`.
+
+**2026-11-23.** "Yes it's fine to push" — the testament-cache-areas review notes (rev-20261123T164037Z-5f10b40c, rev-20261123T175253Z-0e03ed11) go to the public remote through `evidence sync`, even though they quote small internals of the private testament repo (a module and function name, one CLI line).
+
+**2026-11-23.** "Yes please do. Also see why we got stop hook noise there" — PR `chore/testament-cache-areas` → `develop` (#1215, #1216) is created and merged once its gates pass. The Stop hook's output at that turn's close is investigated.
+
+**2026-11-23.** "Yes agreed and update 1218 with these learnings" — on whether tests need a real wall clock:
+1. `chore/testament-cache-areas` keeps the real-clock dates and `uncacheable` marks for tests that compare commits with a real-clock session stamp, as a stopgap. It makes those tests correct, though not cacheable.
+2. #1218's clock item becomes "one test clock shared by git and production code": production time reads go through one seam, which tests set to the same instant as `GIT_*_DATE`. That change removes the stopgap's marks. Lands on #1218.
+
+**2026-11-23.** "Yes pr and merge and push to prawduct-live" — PR `fix/dispositions-travel` → `develop` (#1207) is created and merged once its gates pass, and `../prawduct-live` is then advanced to the new `origin/develop` (the dogfood track, `documentation/release-process.md` § Dogfooding the develop track).
+
+**2026-11-23.** "Yes to both git and areas, it will help understand where time is going. Subagents are fine for implementing" — answering whether to act on testament's two pieces of run advice:
+1. The test suite's git subprocesses are made cacheable: an autouse fixture isolates git config and fixes git dates for the children tests spawn (testament advice `cache`, first site `gitstate.git_common_dir`).
+2. The suite declares areas in `.testament.toml`, so runs report and time by area.
+Both are filed as backlog items and built by delegates on their own branch off `develop`, separate from `fix/dispositions-travel`.
+
+**2026-11-23.** "Yes to all of your recommendations" — answering four asks together:
+1. The `chunk-plan-order` boundary `cumulative` is bought past the exhausted round budget with `--force`, as a
+   one-off round. Six `chunk` reviews (Chunks 01 to 06) had spent the budget before Chunk 07 was reviewed. The
+   refusal's census goes into the PR body.
+2. R-9(a), left open in `archive/build-plan-review-loop-termination.md` ("chunk-mode reviews spend budget, so a
+   6+-chunk plan exhausts on cadence alone"), is answered. The budget stops counting the first `chunk` review of
+   each chunk and the first boundary review (`final`/`cumulative`) of a scope. It keeps 6 as the cap on every full
+   round after those. The fix goes on its own branch off `develop`. Lands in `critic_consolidate._round_budget_verdict`,
+   `plugin/docs/project-state-keys.md` (`review_round_budget`) and `plugin/skills/critic/review-cycle.md`.
+   **2026-11-23, transcription corrected:** the ask the owner approved said "not counting the first review of
+   each chunk or the first branch-wide review", with no mode. The entry above narrowed it to `chunk` reviews,
+   and `fix/round-budget-cadence`'s boundary review (R-2 of rev-20261123T135555Z-05b709ab) found that a mid-plan
+   `final` was then charged. The implementation follows the approved words: a chunk's first full review in any
+   mode, and the first whole-plan review that names no new chunk.
+   **2026-11-23, later:** the boundary half changed after that review's round 4
+   (rev-20261123T142904Z-0bd6c78e). "The first branch-wide review" is the scope's first `cumulative`, the first
+   review in the boundary stage, whatever it names. The no-new-chunk test gave the slot to a chunk's second
+   `final` and denied it to a `cumulative-final` chunk's boundary review.
+3. `develop`'s two unpushed commits (a04758d4, 792d8c06, the delegate-ceiling whole-tree guards) ship as a PR after
+   `fix/chunk-plan-order`'s.
+   **2026-11-23, later:** "That's fine one PR works." `fix/chunk-plan-order` was cut after those two commits
+   landed on `develop`, so they are in its history and ship in its PR, which the body names. There is no separate
+   PR. Raised by R-5 of rev-20261123T132423Z-278552aa.
+4. The two inferred design calls in `build-plan-chunk-plan-order.md` Goals are confirmed as written: D8's exclusion
+   rule as revised in Chunk 07 (only the code's own naming of a done chunk is questioned), and D3's refusal
+   recorded as one `guard-refusal` fact through `evidence.append_guard_refusal` (the #596 one-sink ruling).
+
+**2026-11-23.** "Merge when ready" — PR #1212 (`fix/chunk-plan-order` → `develop`) and the `fix/round-budget-cadence`
+PR are each merged once their gates pass.
+
+**2026-11-23.** "yes pr and merge, and yes to 1220 call. Yes file remaining, and yes report to testament" — answering four asks:
+1. PRs `chore/testament-cache-blockers` (#1218) and `fix/verify-links-review-id` (#1220) → `develop` are created and merged once their gates pass, #1218 first; #1220 takes develop and re-runs its suite before its PR.
+2. #1220's link rule is confirmed: an anchored verify-resolutions pass links to its recorded anchor alone. The accepted cost is that, in one worktree, a pass anchored to a `chunk` re-review of an already cumulative-reviewed tree does not credit that cumulative. Lands in `coverage_algebra.linked_reviews` and `critic_mode.review_chain`'s docstring.
+3. #1218's remaining cacheability blockers are filed as one backlog item.
+4. Testament's reading of an absolute `git log --since=<stamp>` / `HEAD@{@<epoch>}` as a clock read is reported to the testament repo.
+
+**2026-11-23.** "Yes to all": the six decisions in `documentation/issues/1222-1223-design.md` are accepted as
+recommended there:
+1. A blocker-free fix tail may reach the integration branch before a review reads it, as a deferral to the
+   release review only, and only together with the release check. No file-level coverage grant.
+2. The NFR "Review rigor is stage-keyed … the boundary runs everything and is never skipped" is to be amended
+   so the boundary may run per release batch for eligible work, as a per-repo opt-in.
+3. Eligibility is derived (no risk surface touched, judgeable files at or under a bound, the plan
+   short-plan-eligible), never declared. No `Review lane:` field.
+4. The opt-in is one repo-level key, `boundary_review: per_pr | per_release`, defaulting to `per_pr`. This repo
+   stays `per_pr`.
+5. The release check is one `check-boundary-coverage` op, called by `check-releasability` and the PR skill's
+   release guard. It ships advisory first, to count uncovered merges.
+6. A free interval after a review whose only open findings are warnings is refused as needing no round:
+   `pending_actionable` counts blocking findings only. This is its own small change.
+The same message also answered the #987 ask; #987's re-run is not due until its `revisit: 2026-12-01`.
+
+**2026-11-24.** "Yes agreed" — the "covered" definition wave 1 of #1223 shipped (`check-boundary-coverage`,
+PR #1233) is accepted as written, and wave 2 (#1232) gates on it. A merge is covered at its PR when a
+boundary-stage review read the branch from where it left the integration branch, and only
+`verify-resolutions` passes (and free edges) composed what followed. The composition over all facts must also
+read `covered`. This settles the three inferences in `build-plan-boundary-coverage-check.md` Goals:
+1. The release unit is the pending fragment set. Each fragment is joined to the first-parent commit that added
+   `.prawduct/changes/<scope>.md`, not to the merges since a tag.
+2. A verify-resolutions pass is trusted to carry only fixes, so a verify-only tail after the boundary review
+   keeps the merge covered. A tail containing a new chunk review does not.
+3. A blocker-free boundary review counts as `batch-covered` when its base and head trees bracket the merge
+   on the integration branch's first-parent line.
+This also settles the correction to design doc §3 that was marked "pending the owner's ruling".
+
+**2026-11-24.** "Yes, agreed. PR and merge." — the credential check's placeholder exemption set is accepted
+as the plan states it (`build-plan-credential-placeholders.md` Goals), residual risk included. A url-embedded
+password needs no waiver when it is three characters or fewer, equal to its user, a placeholder word, a
+template or variable whose content is a single-case name, or a mask. A real secret of one of those forms
+passes `check-pr-hygiene`; a mixed-case secret in a wrapper, or one holding an unencoded `@`, still refuses.
+The same message asked for both of the session's branches (`fix/yaml-inline-comment`,
+`fix/credential-placeholders`) to be opened as PRs and merged.
+
+**2026-11-24.** "Yep, let's PR and merge. And let's take care of the static documents. I agree with your
+interpretation about making it light rather than skipped." Answering the triage of #1239 (a branch of
+static documents pays the full code path):
+1. A repo-declared set of static-document paths gets a **lighter** review at the PR boundary (one
+   independent reviewer, no paired native review), **not** the doc-only route that skips review. The
+   review on the reporting branch found real defects in such content, and the standing ruling in
+   `coverage_algebra.is_judgeable_path` is to make review cheap, not skippable.
+2. `fix/report-bug-triage-sync` is to be opened as a PR and merged.
+The #1239 work lands in that item's build plan.
+
+**2026-11-24.** "Yes on both, pr, merge, and get to develop and ../prawduct-live" — answering the two
+asks on PR #1241 (#1239, static content):
+1. PR #1241 is merged.
+2. The plan's reading of the 2026-11-24 "light rather than skipped" ruling is confirmed: the paired
+   native review stays out of scope, because it runs only on development builds and so is no
+   consumer cost (`.prawduct/artifacts/build-plan-static-content.md` Goals).
+The same message asked for this checkout to return to `develop` and for `../prawduct-live` to be
+advanced to `origin/develop` (the dogfood track, as on 2026-11-22).
+
+**2026-11-24.** "Yes to your recommendations" — PR #1242 (`fix/live-review-writes`) is merged, this
+checkout returns to `develop`, and `../prawduct-live` is advanced to the new `origin/develop`.
+
+**2026-11-25.** "let's get 1246 and 1238 in this release, both are important" — answering the release
+readiness report: #1246 (the install tripwire misses a disabled plugin) and #1238 (handoff notes survive
+only one session boundary) are fixed before the next release is cut, not deferred to a later one. The
+designs for each land in their build plans (`build-plan-tripwire-disabled.md`,
+`build-plan-handoff-notes-persist.md`).
+
+**2026-11-25.** "yes to all of your recommendations" — answering the three asks after #1238's PR and
+#1246's review:
+1. PR #1248 (#1238, handoff notes persist) is merged. The release-plan go-ahead given in the same
+   message covers merging #1246's PR once its gates pass, since the release needs it.
+2. The two #1238 decisions made on the owner's behalf are confirmed
+   (`build-plan-handoff-notes-persist.md` Goals): an empty notes file does not end inherited notes,
+   and inherited notes have no expiry, showing the count of boundaries carried instead.
+3. The next release is **v3.10.0**, a minor, because test-determinism adds a boundary-blocking
+   class a consumer's PR can meet. All release-pending scopes ship; the cut follows
+   `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.

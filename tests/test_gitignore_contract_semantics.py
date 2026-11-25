@@ -393,6 +393,14 @@ def test_a_per_clone_exclude_does_not_satisfy_the_contract(tmp_path):
     assert drift["ignored_by_rule"] == []
 
 
+#: Every test using `global_excludes` lifts the suite's git isolation (`conftest.TEST_ENV`) on
+#: purpose, so its git children read a global config, and testament must not reuse the result.
+_READS_A_GLOBAL_GIT_CONFIG = pytest.mark.uncacheable(
+    "its subject is a user-level git config: it lifts the suite's GIT_CONFIG_GLOBAL isolation "
+    "so git reads a global excludes file"
+)
+
+
 @pytest.fixture
 def global_excludes(tmp_path_factory, monkeypatch):
     """A user-level excludes file NAMED `.gitignore` (the common `~/.gitignore`), outside the repo.
@@ -414,6 +422,7 @@ def global_excludes(tmp_path_factory, monkeypatch):
     return gfile
 
 
+@_READS_A_GLOBAL_GIT_CONFIG
 def test_a_global_excludes_file_named_dot_gitignore_is_not_shared(world, global_excludes):
     """`core.excludesFile=~/.gitignore` shares a NAME with the repo's file and nothing else.
 
@@ -439,6 +448,7 @@ def test_a_global_excludes_file_named_dot_gitignore_is_not_shared(world, global_
     assert ".prawduct/.critic-active" in (world / ".gitignore").read_text().splitlines()
 
 
+@_READS_A_GLOBAL_GIT_CONFIG
 def test_a_gitignore_in_the_work_tree_still_counts_with_a_global_file_present(world, global_excludes):
     # The control for the path decision: same rule text, but in the repo's own `.gitignore`.
     _write(world, ".prawduct/.critic-active\n")
@@ -480,6 +490,77 @@ def test_without_git_the_comparison_falls_back_to_literal_lines_and_says_so(tmp_
 def test_with_git_the_basis_is_git(world):
     _write(world, WHOLESALE)
     assert gitignore_contract_drift(world)["basis"] == "git"
+
+
+# --- the scratch repo: a parent git's location is shed, nothing else ---------------
+#
+# With no work tree to ask, the rules are evaluated in a scratch repo. A hook running inside
+# a git hook inherits that git's GIT_DIR and GIT_WORK_TREE, which would aim the scratch repo's
+# git at the other repository; everything else in git's environment is the caller's own.
+
+
+def test_a_parent_gits_repository_location_does_not_reach_the_scratch_repo(tmp_path, monkeypatch):
+    """The exported location names a repository that does not exist yet, so asking in place
+    fails and the scratch repo is what answers. Inheriting it, the scratch repo's `git init`
+    would create that repository and its rules would be asked of the other work tree."""
+    other = tmp_path / "other"
+    other.mkdir()
+    elsewhere = tmp_path / "elsewhere.git"
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _write(proj, "*.log\n")
+    monkeypatch.setenv("GIT_DIR", str(elsewhere))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other))
+    assert gitignore_covers(proj, "debug.log")
+    assert not gitignore_covers(proj, "debug.txt")  # control: the rule, not a blanket yes
+    assert not elsewhere.exists(), "the scratch repo's git acted on the inherited GIT_DIR"
+
+
+@pytest.mark.parametrize("ignore_case", ["true", "false"])
+def test_the_scratch_repo_keeps_the_callers_git_configuration(tmp_path, monkeypatch, ignore_case):
+    """Config given in the environment still applies. Both values, because the scratch repo's
+    own config differs by filesystem (git sets `core.ignoreCase` on a case-insensitive one),
+    so whichever the platform defaults to, one case shows whether the caller's value arrived."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _write(proj, "*.log\n")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.ignoreCase")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", ignore_case)
+    assert gitignore_covers(proj, "DEBUG.LOG") is (ignore_case == "true")
+
+
+def test_only_the_location_variables_are_shed():
+    from lib import gitstate  # noqa: PLC0415
+
+    env = {name: "/elsewhere" for name in gitstate.REPO_LOCATING_ENV}
+    kept = {
+        "GIT_AUTHOR_NAME": "A", "GIT_COMMITTER_DATE": "@0 +0000",
+        "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_COUNT": "0", "PATH": "/usr/bin",
+        # Limits on discovery name no repository: shedding them would widen the search.
+        "GIT_CEILING_DIRECTORIES": "/home/someone", "GIT_DISCOVERY_ACROSS_FILESYSTEM": "0",
+    }
+    assert gitstate.env_without_repo_location({**env, **kept}) == kept
+    assert {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} <= gitstate.REPO_LOCATING_ENV
+
+
+def test_a_callers_ceiling_still_stops_the_plugin_build_read(tmp_path, monkeypatch):
+    """A home directory under version control that tracks a plugin copy's files: the caller's
+    `GIT_CEILING_DIRECTORIES` keeps the build read from discovering that repository, so the
+    plugin borrows no sha. Without the ceiling (the control) the same read finds it."""
+    from lib import evidence  # noqa: PLC0415
+
+    home = tmp_path / "home"
+    plugin = home / "plugins" / "p"
+    plugin.mkdir(parents=True)
+    (plugin / "VERSION").write_text("1.0.0\n")
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=home, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=home, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "dotfiles"], cwd=home, check=True)
+    monkeypatch.delenv("GIT_CEILING_DIRECTORIES", raising=False)
+    assert evidence.read_plugin_build(plugin) is not None, "control: the home repo is found"
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(home))
+    assert evidence.read_plugin_build(plugin) is None
 
 
 # --- the probe --------------------------------------------------------------------

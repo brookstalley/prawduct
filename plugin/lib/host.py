@@ -580,7 +580,8 @@ def _store_scan(
         return value if isinstance(value, (int, float)) else 0.0
 
     kept = dict(sorted(entries.items(), key=_read_at)[-ACTIVITY_CACHE_TRANSCRIPTS:])
-    tmp = f"{cache_path}.{os.getpid()}.tmp"
+    # `core.TEMP_SUFFIX`, spelled: this module imports nothing from `lib`.
+    tmp = f"{cache_path}.{os.getpid()}.prawduct.tmp"
     try:
         with open(tmp, "w", encoding="utf-8", errors="backslashreplace") as out:
             json.dump({"schema": _CACHE_SCHEMA, "transcripts": kept}, out)

@@ -46,7 +46,7 @@ from lib import critic_consolidate as cc  # noqa: E402
 from lib import learnings_files as lf  # noqa: E402
 from lib import ledger  # noqa: E402
 from lib import telemetry  # noqa: E402
-from conftest import SHAPED_REFLECTION  # noqa: E402 — one home for the shape
+from conftest import SHAPED_REFLECTION, scrubbed_env  # noqa: E402 — one home for the shape
 
 HOOK = _ROOT / "bin" / "prawduct-hook"
 LEDGER_REL = ".prawduct/.governance-ledger.jsonl"
@@ -72,8 +72,7 @@ RULE_B = (
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t",
-         "-c", "commit.gpgsign=false", *args],
+        ["git", "-c", "commit.gpgsign=false", *args],
         cwd=str(repo), capture_output=True, text=True, timeout=15, check=True,
     )
 
@@ -315,15 +314,7 @@ REVIEW_ID = "rev-fired-0001"
 def _consolidate_env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "CLAUDE_PLUGIN_ROOT": str(_ROOT),
-    }
+    return scrubbed_env(home, CLAUDE_PLUGIN_ROOT=str(_ROOT))
 
 
 def _run_consolidate(repo: Path) -> subprocess.CompletedProcess:

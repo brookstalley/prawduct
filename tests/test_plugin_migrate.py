@@ -40,6 +40,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from lib import migrate_plugin as _migrate_plugin  # noqa: E402 — sys.path mutated above
+from conftest import scrubbed_env  # noqa: E402
 
 
 def _writes_no_base_branch_key(text: str) -> bool:
@@ -178,13 +179,12 @@ def run_migrate(project_dir: Path, *flags: str) -> dict:
     """Invoke `bin/prawduct-hook migrate-plugin [flags] --json` as Claude would."""
     home = project_dir.parent / "_home"
     home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH="/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     proc = subprocess.run(
         [sys.executable, str(HOOK), "migrate-plugin", *flags, "--json"],
         capture_output=True, text=True, env=env, timeout=30,
@@ -994,19 +994,10 @@ class TestCollapseBlankRuns:
 
 
 def _git(repo: Path, *args: str) -> str:
-    home = repo.parent / "_home"
-    home.mkdir(exist_ok=True, parents=True)
     proc = subprocess.run(
         ["git", *args],
         cwd=str(repo), capture_output=True, text=True, timeout=30,
-        env={
-            "HOME": str(home),
-            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-            "GIT_CONFIG_GLOBAL": str(home / "gitconfig"),
-            "GIT_CONFIG_SYSTEM": str(home / "gitconfig-system"),
-            "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.com",
-            "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.com",
-        },
+        env=scrubbed_env(repo.parent / "_home", PATH="/usr/bin:/bin:/usr/sbin:/sbin"),
     )
     assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
     return proc.stdout.strip()
@@ -1154,13 +1145,12 @@ def test_human_output_names_the_recorded_base_branch(tmp_path: Path):
     proc = subprocess.run(
         [sys.executable, str(HOOK), "migrate-plugin", "--apply"],
         capture_output=True, text=True, timeout=30,
-        env={
-            "HOME": str(home),
-            "CLAUDE_PROJECT_DIR": str(repo),
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-            "PYTHONDONTWRITEBYTECODE": "1",
-        },
+        env=scrubbed_env(
+            home,
+            CLAUDE_PROJECT_DIR=str(repo),
+            CLAUDE_PLUGIN_ROOT=str(ROOT),
+            PATH="/usr/bin:/bin:/usr/sbin:/sbin",
+        ),
     )
     assert proc.returncode == 0, proc.stderr
     assert "base_branch: develop" in proc.stdout

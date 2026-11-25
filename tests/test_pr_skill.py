@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import SHAPED_REFLECTION
+from conftest import SHAPED_REFLECTION, scrubbed_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK_PATH = REPO_ROOT / "bin" / "prawduct-hook"
@@ -44,12 +44,12 @@ def run_hook(
     If git_script is provided, it's used as the full git mock script body.
     Otherwise a basic git mock is generated from git_output.
     """
-    env = {
-        "HOME": str(project_dir),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT),
-        "PATH": "",
-    }
+    env = scrubbed_env(
+        project_dir,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(REPO_ROOT),
+        PATH="",
+    )
 
     mock_bin = project_dir / "_mock_bin"
     mock_bin.mkdir(exist_ok=True)

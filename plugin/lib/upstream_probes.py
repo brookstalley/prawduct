@@ -48,8 +48,8 @@ feature-agnostic — the same pattern as ``lib/backlog_probes.py``.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
+from . import clock
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
 from .backlog import cachequery, upstream
 
@@ -109,7 +109,7 @@ def _intake_reading(state: ProjectState, codebase: Codebase) -> tuple[int | None
     all-clear, which is the one thing a triage nudge must never emit.
     """
     result = cachequery.unstaged_items(
-        codebase.root, scope=_backlog_store(state), now=datetime.now(timezone.utc)
+        codebase.root, scope=_backlog_store(state), now=clock.now()
     )
     if result.get("status") != "ok":
         return None, False
@@ -163,7 +163,7 @@ def _degraded_candidate() -> AdvisoryCandidate:
             "local copy is refreshed and the reports read straight from the "
             "tracker."
         ),
-        recommended_action="/prawduct:backlog",
+        recommended_action="/prawduct:report-bug",
         priority="info",
     )
 
@@ -205,7 +205,7 @@ def probe_untriaged_upstream_reports(state: ProjectState, codebase: Codebase):
                     "current and may be low; say go and the local copy is "
                     "refreshed, which is also what surfaces why it stopped."
                 ),
-                recommended_action="/prawduct:backlog",
+                recommended_action="/prawduct:report-bug",
                 priority="info",
             )
         ]
@@ -224,7 +224,7 @@ def probe_untriaged_upstream_reports(state: ProjectState, codebase: Codebase):
                     "current and may be low; say go and the local copy is "
                     "refreshed, which is also what surfaces why it stopped."
                 ),
-                recommended_action="/prawduct:backlog",
+                recommended_action="/prawduct:report-bug",
                 priority="info",
             )
         ]
@@ -244,7 +244,7 @@ def probe_untriaged_upstream_reports(state: ProjectState, codebase: Codebase):
                 "priority. Worth a look first if you want a say in which of them count "
                 "as real bugs and how urgent each one is."
             ),
-            recommended_action="/prawduct:backlog",
+            recommended_action="/prawduct:report-bug",
             priority="info",
         )
     ]

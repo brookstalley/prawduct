@@ -2,7 +2,7 @@
 name = "prawduct"
 # Vestigial packaging metadata (the repo is not PyPI-published). The canonical
 # plugin version is VERSION / .claude-plugin/plugin.json; keep this in step on release.
-version = "3.9.0"
+version = "3.10.0"
 requires-python = ">=3.14"
 
 [project.optional-dependencies]
@@ -83,15 +83,17 @@ select = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # `requires_history`: the test reads this repo's git history by content, so it runs only where
-# history exists. `requires_local_cache`: the test's full assertion needs this clone's backlog
-# cache under `<git-common-dir>/prawduct/`, which no fresh checkout has, so elsewhere it skips.
+# history exists. `requires_local_cache`: the test's full assertion needs this clone's local state
+# under `<git-common-dir>/prawduct/` (the backlog cache, the evidence store), which no fresh
+# checkout has, so elsewhere it skips.
 # `.testament.toml` selects both out, so `testament run` (pool or local fallback) never runs them;
 # the evidence recorder's third `test_commands` entry runs exactly these here, a plain `pytest`
 # run includes them, and CI's `pytest` job (`fetch-depth: 0`) runs them after its pool run.
 markers = [
     "requires_history: reads this repo's full git history; not runnable on a history-less checkout",
-    "requires_local_cache: full assertion needs this clone's backlog cache; skips on a fresh checkout",
+    "requires_local_cache: full assertion needs this clone's local prawduct state (backlog cache, evidence store); skips on a fresh checkout",
     "non_root: permission fixture that cannot refuse root; skipped when euid is 0",
+    "uncacheable(why): never reuse this test's result (testament); the why says what it reads on purpose",
 ]
 # Worker count is pinned rather than `auto` (owner request 2026-08-19): `auto`
 # takes every core, and a full-suite run then owns the developer's machine for

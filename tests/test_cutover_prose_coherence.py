@@ -29,6 +29,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 import pytest
 
 # Every surface this module reads — skills/, methodology/, docs/, lib/ — lives
@@ -420,11 +422,11 @@ class TestNoUngatedBacklogFileReaders:
         path_expr = re.compile(r"""['"]backlog\.md['"]""")
         offenders = []
         seen_scaffolding = set()
-        for path in sorted((REPO_ROOT / "lib").rglob("*.py")):
+        for path in plugin_python_sources():
             rel = path.relative_to(REPO_ROOT).as_posix()
             if rel.startswith("lib/backlog/"):
                 continue
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
             if not path_expr.search(content):
                 continue
             if rel in scaffolding:
@@ -433,7 +435,7 @@ class TestNoUngatedBacklogFileReaders:
             if "post_cutover" not in content and "backlog_service_repo" not in content:
                 offenders.append(rel)
         assert not offenders, (
-            f"These lib modules path to the markdown backlog with no cutover guard: "
+            f"These plugin sources path to the markdown backlog with no cutover guard: "
             f"{offenders}."
         )
         # A scaffolding exemption for a module that no longer paths to the file is

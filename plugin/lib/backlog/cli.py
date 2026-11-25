@@ -39,6 +39,7 @@ import json
 import sys
 from pathlib import Path
 
+from .. import clock
 from . import context, core, ids, query, upstream
 
 # GitHub-mutating ops — refused under an untrusted-triggered Actions run absent an
@@ -1159,7 +1160,6 @@ def _run_cache_query(rest: list[str], project_dir):
         return core.error("validation", "cache-query requires --repo owner/repo")
     scope = f"{parsed[0]}/{parsed[1]}"
 
-    from datetime import datetime, timezone  # noqa: PLC0415 — only this op needs a clock
     from pathlib import Path  # noqa: PLC0415 — only this op needs a path
 
     from . import cachequery  # noqa: PLC0415 — lazy; no other op reads the store
@@ -1183,7 +1183,7 @@ def _run_cache_query(rest: list[str], project_dir):
         return core.error("validation", f"{name} requires at least one argument")
 
     common = {"project_dir": Path(project_dir), "scope": scope,
-              "now": datetime.now(timezone.utc)}
+              "now": clock.now()}
     open_only = not flags.get("all")
 
     if name == "open":
@@ -2090,6 +2090,10 @@ def _print_human_ok(data) -> None:
             _print_item_line(cand)
             if cand.get("why"):
                 print(f"    {cand['why']}")
+            # Advice from the base branch's history, on the same footing as the
+            # why: a candidate whose legs already shipped must not read as clean.
+            if (cand.get("base_history") or {}).get("note"):
+                print(f"    history: {cand['base_history']['note']}")
         print(f"  {data.get('count', len(candidates))} candidate(s)")
     elif "items" in data:
         # A list result.

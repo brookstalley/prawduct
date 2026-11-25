@@ -413,6 +413,244 @@ class TestNotesConsumption:
 
 
 # =============================================================================
+# Inheritance — notes end when a session writes its own, never by silence
+# =============================================================================
+class TestInheritedNotes:
+    """A session that ends without writing notes (a crash, an exhausted
+    context) used to erase the notes it was handed: the file was consumed at the
+    boundary before it, and the next handoff was rebuilt from scratch."""
+
+    def test_notes_survive_a_session_that_wrote_none(self, tmp_path):
+        # The report's repro, through the real boundary: A writes, B starts and
+        # ends without writing, C must still see A's notes.
+        pr = _prawduct(tmp_path)
+        (pr / ".handoff-notes.md").write_text("do NOT merge before the schema lands")
+
+        assert run_plugin_hook("clear", tmp_path, git_status=" M src/app.py").returncode == 0
+        assert not (pr / ".handoff-notes.md").exists()
+        assert run_plugin_hook("clear", tmp_path, git_status=" M src/app.py").returncode == 0
+
+        text = (pr / ".session-handoff.md").read_text()
+        assert briefing.INHERITED_NOTES_HEADING in text
+        assert "do NOT merge before the schema lands" in text
+        assert "carried across 1 session boundary unchanged" in text
+        # Inherited text is never restored to the notes file: the checks that ask
+        # whether THIS session left notes must still see none.
+        assert not (pr / ".handoff-notes.md").exists()
+
+    def test_the_carried_count_grows_each_boundary(self, tmp_path):
+        pr = _prawduct(tmp_path)
+        (pr / ".handoff-notes.md").write_text("the original note")
+        for _ in range(3):
+            assert run_plugin_hook("clear", tmp_path).returncode == 0
+        text = (pr / ".session-handoff.md").read_text()
+        assert "carried across 2 session boundaries unchanged" in text
+        assert briefing.NOTES_BEGIN.format(2) in text
+        assert text.count("the original note") == 1
+
+    def test_a_session_that_writes_notes_replaces_them(self, tmp_path):
+        pr = _prawduct(tmp_path)
+        (pr / ".handoff-notes.md").write_text("old intent")
+        assert run_plugin_hook("clear", tmp_path).returncode == 0
+        (pr / ".handoff-notes.md").write_text("nothing beyond the plan")
+        assert run_plugin_hook("clear", tmp_path).returncode == 0
+
+        text = (pr / ".session-handoff.md").read_text()
+        assert "nothing beyond the plan" in text
+        assert "old intent" not in text
+        assert briefing.INHERITED_NOTES_HEADING not in text
+        assert "## Notes For The Next Session\n" in text
+
+    def test_an_empty_notes_file_does_not_end_them(self, tmp_path, monkeypatch):
+        # An empty file is what a session leaves by truncating, not a statement;
+        # the documented way to discharge notes is to write that nothing remains.
+        pr = _prawduct(tmp_path)
+        _quiet_git(monkeypatch)
+        (pr / ".handoff-notes.md").write_text("keep me")
+        briefing.generate_session_handoff(tmp_path)
+        (pr / ".handoff-notes.md").write_text("  \n")
+        # Something else to say, so the handoff is rewritten rather than left in
+        # place: an untouched file would hold the note whatever the code did.
+        (pr / ".session-reflected").write_text("the second session's reflection")
+
+        result = briefing.generate_session_handoff(tmp_path)
+        assert result.notes_state == briefing.NOTES_EMPTY
+        text = (pr / ".session-handoff.md").read_text()
+        assert "the second session's reflection" in text
+        assert briefing.INHERITED_NOTES_HEADING in text
+        assert "keep me" in text
+
+    def test_the_no_forward_note_notice_still_fires_beside_inherited_notes(
+        self, tmp_path, monkeypatch
+    ):
+        # Inherited notes are an earlier session's: that THIS one did work and
+        # left none is still the signal, and the briefing names both.
+        pr = _prawduct(tmp_path)
+        monkeypatch.setattr(briefing.gitstate, "_get_session_changed_files", lambda d: ["a.py"])
+        monkeypatch.setattr(briefing, "_git_session_commits", lambda d: [])
+        (pr / ".handoff-notes.md").write_text("still relevant")
+        briefing.generate_session_handoff(tmp_path)
+        (pr / ".handoff-notes.md").unlink()
+
+        briefing.generate_session_handoff(tmp_path)
+        handoff = pr / ".session-handoff.md"
+        text = handoff.read_text()
+        assert briefing.NO_FORWARD_NOTE_HEADING in text
+        assert briefing.INHERITED_NOTES_HEADING in text
+        pointer = briefing._handoff_pointer(handoff, continuation=False)
+        assert "carries an earlier session's notes, marked inherited" in pointer
+        assert "only a machine record" not in pointer
+
+        # Control: with nothing inherited, the pointer is the machine-record one.
+        handoff.unlink()
+        briefing.generate_session_handoff(tmp_path)
+        assert "only a machine record" in briefing._handoff_pointer(handoff, continuation=False)
+
+    def test_the_first_sentence_says_what_the_ending_session_left(self, tmp_path, monkeypatch):
+        pr = _prawduct(tmp_path)
+        _quiet_git(monkeypatch)
+        expected = {
+            None: "left no notes of its own",
+            b"  \n": "left its notes file empty, which does not end notes",
+            b"\xff\xfe not utf-8": "notes file could not be read",
+        }
+        for content, sentence in expected.items():
+            (pr / ".handoff-notes.md").write_text("A's note")
+            briefing.generate_session_handoff(tmp_path)
+            (pr / ".handoff-notes.md").unlink()
+            if content is not None:
+                (pr / ".handoff-notes.md").write_bytes(content)
+            (pr / ".session-reflected").write_text("so the handoff is rewritten")
+            briefing.generate_session_handoff(tmp_path)
+            text = (pr / ".session-handoff.md").read_text()
+            assert sentence in text, content
+            assert "A's note" in text, content
+            others = [v for k, v in expected.items() if k != content]
+            assert not any(o in text for o in others), content
+            for f in (".handoff-notes.md", ".session-handoff.md"):
+                (pr / f).unlink(missing_ok=True)
+
+    def test_an_unreadable_notes_file_keeps_the_inherited_notes(self, tmp_path):
+        # The unreadable file is kept, not delivered, so it ends nothing; once
+        # its owner removes it the inherited notes must still be there.
+        pr = _prawduct(tmp_path)
+        (pr / ".handoff-notes.md").write_text("A's merge warning")
+        assert run_plugin_hook("clear", tmp_path).returncode == 0
+        (pr / ".handoff-notes.md").write_bytes(b"\xff\xfe latin-1 paste")
+        # Something else to say, so this boundary rewrites the handoff rather
+        # than leaving the old one (and its notes) in place.
+        (pr / ".session-reflected").write_text("B's reflection")
+        assert run_plugin_hook("clear", tmp_path).returncode == 0
+        assert "B's reflection" in (pr / ".session-handoff.md").read_text()
+        (pr / ".handoff-notes.md").unlink()
+        assert run_plugin_hook("clear", tmp_path).returncode == 0
+        assert "A's merge warning" in (pr / ".session-handoff.md").read_text()
+
+    def test_notes_that_copy_the_inherited_block_still_carry(self, tmp_path):
+        # The natural trigger: an agent keeps what still bites by copying the
+        # inherited block, fences and all, into its own notes.
+        pr = _prawduct(tmp_path)
+        (pr / ".handoff-notes.md").write_text("A's note")
+        assert run_plugin_hook("clear", tmp_path).returncode == 0
+        assert run_plugin_hook("clear", tmp_path).returncode == 0
+        copied = (pr / ".session-handoff.md").read_text().split(briefing.HANDOFF_MARKER)[1]
+        assert briefing.NOTES_END in copied
+        (pr / ".handoff-notes.md").write_text("B's addition\n" + copied + "\nB's closing line")
+        assert run_plugin_hook("clear", tmp_path).returncode == 0
+        assert run_plugin_hook("clear", tmp_path).returncode == 0
+
+        text = (pr / ".session-handoff.md").read_text()
+        assert briefing.INHERITED_NOTES_HEADING in text
+        assert "B's addition" in text and "A's note" in text
+        assert "B's closing line" in text, "a copied end fence must not cut the notes short"
+        assert text.count(briefing.NOTES_END) == 1
+
+    def test_fence_lines_elsewhere_in_the_handoff_are_never_read(self, tmp_path, monkeypatch):
+        # A reflection (or review finding) quoting a fence line sits after the
+        # notes section; it neither hides the real notes nor invents any.
+        pr = _prawduct(tmp_path)
+        _quiet_git(monkeypatch)
+        quoted = f"{briefing.NOTES_BEGIN.format(7)}\nfake\n{briefing.NOTES_END}"
+        (pr / ".handoff-notes.md").write_text("the real note")
+        (pr / ".session-reflected").write_text(f"I quoted the fences:\n{quoted}")
+        briefing.generate_session_handoff(tmp_path)
+        assert briefing._read_inherited_notes(pr) == briefing.InheritedNotes(
+            "the real note", 0, briefing.INHERIT_CARRIED
+        )
+        # And with no notes section at all, a quoted pair is not notes.
+        (pr / ".handoff-notes.md").write_text("nothing beyond the plan")
+        (pr / ".session-handoff.md").write_text(
+            f"# Session Handoff\n\n{briefing.HANDOFF_MARKER}\n\n"
+            f"## Previous Session Reflection\n{quoted}\n"
+        )
+        assert briefing._read_inherited_notes(pr).state == briefing.INHERIT_NONE
+
+    def test_notes_with_their_own_headings_are_carried_whole(self, tmp_path, monkeypatch):
+        # Agent notes are markdown with `##` headings; only the fences delimit them.
+        pr = _prawduct(tmp_path)
+        _quiet_git(monkeypatch)
+        (pr / ".session-reflected").write_text("a reflection after the notes")
+        (pr / ".handoff-notes.md").write_text("## Release\n- step one\n\n## Issues\n- #1246 open")
+        briefing.generate_session_handoff(tmp_path)
+
+        inherited = briefing._read_inherited_notes(pr)
+        assert inherited.text == "## Release\n- step one\n\n## Issues\n- #1246 open"
+        assert inherited.state == briefing.INHERIT_CARRIED
+
+    def test_an_undecodable_handoff_still_carries_its_notes(self, tmp_path):
+        pr = _prawduct(tmp_path)
+        head = f"# Session Handoff\n\n{briefing.HANDOFF_MARKER}\n\n{briefing.NOTES_HEADING}\n"
+        (pr / ".session-handoff.md").write_bytes(
+            (head + f"{briefing.NOTES_BEGIN.format(0)}\nkeep ").encode("utf-8")
+            + b"\xe9"  # a lone Latin-1 byte: not valid UTF-8
+            + f" this\n{briefing.NOTES_END}\n".encode("utf-8")
+        )
+        inherited = briefing._read_inherited_notes(pr)
+        assert inherited.state == briefing.INHERIT_CARRIED
+        assert inherited.text.startswith("keep ") and inherited.text.endswith(" this")
+
+    def test_notes_it_cannot_delimit_are_named_not_dropped_silently(self, tmp_path, monkeypatch):
+        pr = _prawduct(tmp_path)
+        _quiet_git(monkeypatch)
+        handoff = pr / ".session-handoff.md"
+        # A handoff written before the fences existed.
+        handoff.write_text(
+            f"# Session Handoff\n\n{briefing.HANDOFF_MARKER}\n\n"
+            f"{briefing.NOTES_HEADING}\nold-format note\n"
+        )
+        assert briefing._read_inherited_notes(pr).state == briefing.INHERIT_LOST
+        (pr / ".session-reflected").write_text("so the handoff is rewritten")
+        briefing.generate_session_handoff(tmp_path)
+        text = handoff.read_text()
+        assert "## Earlier Notes Not Carried" in text
+        assert "written before notes were fenced" in text
+
+        # A begin fence with no end (a hand-edit) is the same state.
+        handoff.write_text(
+            f"# Session Handoff\n\n{briefing.HANDOFF_MARKER}\n\n{briefing.NOTES_HEADING}\n"
+            f"{briefing.NOTES_BEGIN.format(0)}\ncut off\n"
+        )
+        assert briefing._read_inherited_notes(pr).state == briefing.INHERIT_LOST
+
+    def test_handoffs_with_no_notes_carry_nothing(self, tmp_path):
+        pr = _prawduct(tmp_path)
+        handoff = pr / ".session-handoff.md"
+        fenced = (
+            f"{briefing.NOTES_HEADING}\n{briefing.NOTES_BEGIN.format(0)}\nnote\n"
+            f"{briefing.NOTES_END}\n"
+        )
+        # Control: the machine-written shape is read.
+        handoff.write_text(f"# Session Handoff\n\n{briefing.HANDOFF_MARKER}\n\n{fenced}")
+        assert briefing._read_inherited_notes(pr).text == "note"
+        # Hand-authored: no machine marker (the rescue path owns it).
+        handoff.write_text(f"# Session Handoff\n\n{fenced}")
+        assert briefing._read_inherited_notes(pr).state == briefing.INHERIT_NONE
+        # No handoff at all.
+        handoff.unlink()
+        assert briefing._read_inherited_notes(pr).state == briefing.INHERIT_NONE
+
+
+# =============================================================================
 # Session-file registration
 # =============================================================================
 class TestSessionFileRegistration:

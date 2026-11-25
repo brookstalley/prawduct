@@ -90,7 +90,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Implement.** Write the code that makes the tests pass, following `project-preferences.md` conventions. Prefer simplicity — the minimum abstraction the current chunk needs. Add observability alongside features, not after.
 
-**A verification ceiling — yours and a delegate's.** While building, run the narrowest thing that proves the change: the project's `Inner-loop verification` row where it has one, else the tests for the files you touched. The declared suite runs at the boundary, before the work lands (the `cumulative` review and PR, where there are ones), unless that row asks for it per chunk. A cost bound, not a rigor discount, and what it prevents fails *silently*: a partial or contended run reports a green that skipped a part nobody can name.
+**A verification ceiling.** While building, run the narrowest thing that proves the change: the project's `Inner-loop verification` row where it has one, else the tests for the files you touched. A delegate runs the one its brief names. The declared suite runs at the boundary, before the work lands (the `cumulative` review and PR, where there are ones), unless that row asks for it per chunk. A cost bound, not a rigor discount, and what it prevents fails *silently*: a partial or contended run reports a green that skipped a part nobody can name.
 
 **Update artifacts as you go.** When implementation changes something an artifact describes — API surface, data model, architecture — update that artifact as part of implementation, not at the end. Artifact drift is the #1 recurring quality issue at scale.
 
@@ -121,7 +121,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 ## Session Scope Discipline
 
-**Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the honest unit: a risk surface, or 12+ judgeable files. A multi-chunk plan spans sessions: the reviews it owes accumulate, and the final/cumulative lands with the last chunk.
+**Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the unit: a risk surface, or 12+ non-static judgeable files. A multi-chunk plan spans sessions: the reviews it owes accumulate, and the final/cumulative lands with the last chunk.
 
 **Complete required governance at chunk boundaries, then signal — never *ask* whether to prepare a handoff; prepare it and say so.** At a chunk boundary, or when the user switches tasks, complete in order:
 
@@ -155,13 +155,13 @@ Research scales to impact: medium (pervasive pattern, non-core dep) → quick in
 
 **When the user asks you to work in a subagent, do it** (Principle 23). Otherwise delegation is the default when it finishes the work sooner without collision — a plan's chunks or a mid-cycle tangent — recorded as the plan's `partition:` and re-checked at each chunk close. `/prawduct:methodology delegation` holds the default and what holds however you arrange it; read it before fanning out. This section is the mechanics.
 
-**How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction "Read the build cycle via `/prawduct:methodology building`", a verification ceiling (the `Delegate verification` row, else the narrowest run covering its own change; never the heavy run), and who integrates. Name its model, since an unnamed one inherits yours, and set its effort. Add "then `.prawduct/.subagent-briefing.md`" only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it.
+**How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction "Read the build cycle via `/prawduct:methodology building`", a verification ceiling (the `Delegate verification` row or narrowest run covering its change, either way plus the whole-tree guards; never the heavy run), and who integrates. Name its model, since an unnamed one inherits yours, and set its effort. Add "then `.prawduct/.subagent-briefing.md`" only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it.
 
 **Parallel chunks:** launch independent chunks as separate subagents. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts are invisible; commit first or inline it in the prompt, say the prompt outranks any file. **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope a later `git commit`; use `git commit -- <paths>`. Prefer isolation for independent chunks. The canary may fire O(agents × edits) — expected.
 
 **Who integrates:** you, or an integrator subagent holding the one integration branch, where delegate branches merge and the heavy run happens; Critic, reflection, state and the done decision stay with you. A scratch worktree is unbound; it builds, you govern.
 
-**A delegate's "Done" on a removal or a sweep arrives with its evidence.** These fail silently, in the direction of looking finished. Ask for the falsifying output in the brief (the grep for the removed symbol returning nothing, the recount against the source you named, the files it touched) and read it when the report lands; don't repeat the sweep.
+**A delegate's "Done" on a removal or a sweep arrives with its evidence**: ask for the falsifying output in the brief (the grep for the removed symbol returning nothing, the recount against the source you named), read it when the report lands, and don't repeat the sweep.
 
 ## Working With Specs
 
@@ -173,7 +173,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Tests are behavioral.** Test what the code does, not how it does it.
 
-**Tests are independent.** No shared mutable state, no ordering dependency.
+**Tests are independent.** No shared mutable state, no ordering dependency. A test's result depends only on what it exercises and is the same on any machine, any run: `docs/test-determinism.md` names the patterns that break it.
 
 **Tests never weaken.** Consolidation is fine — name the reason in the change-log (Principle 1 — a bright line).
 
@@ -187,7 +187,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Idiomatic tooling, honest coverage.** Use language-native incremental runners to skip re-runs when nothing changed. `bin/test-reference-verify` is a floor: symbol-grep catches untested new code but can't prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed` (the contract: `docs/project-state-keys.md` `coverage_required`).
 
-**Every run leaves a machine-readable report, and says what it covered.** The report path belongs in the runner's default-arguments file (pytest `addopts`, a `.runsettings`, Jest `reporters`) rather than in the command someone types, so the last run is never unrecordable and one made outside the recorder is ingested instead of repeated. Its pre/post-run hook records, beside the report, whether that invocation was narrowed — which is what stops a `-k`-scoped report being recorded as the suite's evidence. The schema and the per-ecosystem wiring: `docs/test-report-contract.md`.
+**Every run leaves a machine-readable report, and says what it covered.** The report path belongs in the runner's default-arguments file (pytest `addopts`, a `.runsettings`, Jest `reporters`) rather than in the command someone types, so the last run is never unrecordable and one made outside the recorder is ingested instead of repeated. The schema and the per-ecosystem wiring: `docs/test-report-contract.md`.
 
 ## The Critic
 

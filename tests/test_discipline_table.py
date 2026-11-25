@@ -33,10 +33,10 @@ def _strip_ticks(s: str) -> str:
     return s.strip("`")
 
 
-def test_the_table_has_the_ten_rows():
+def test_the_table_has_the_eleven_rows():
     rows = _rows()
-    assert [r["n"] for r in rows] == [str(i) for i in range(1, 11)], (
-        "the discipline table must carry exactly the ten audit rules, numbered 1-10"
+    assert [r["n"] for r in rows] == [str(i) for i in range(1, 12)], (
+        "the discipline table must carry exactly the eleven rules, numbered 1-11"
     )
 
 
@@ -89,3 +89,26 @@ def test_every_row_passes_the_three_generality_tests_by_construction():
     banned = re.compile(r"\b(pytest|python|prawduct-hook|critic-consolidate|\.prawduct/|discodon|samsung)\b", re.I)
     for row in _rows():
         assert not banned.search(row["rule"]), f"row {row['n']} is not stack-agnostic or names an internal: {row['rule']}"
+
+
+def test_building_pointer_names_a_real_heading_of_the_determinism_doc():
+    """building.md's one sentence points to `docs/test-determinism.md`; the pointer
+    is pinned to the doc by reading both files, and the doc must carry the
+    principle the sentence states and a heading for each part a reader is sent to."""
+    building = (ROOT / "methodology" / "building.md").read_text(encoding="utf-8")
+    sentence = next(
+        ln for ln in building.splitlines() if "`docs/test-determinism.md`" in ln
+    )
+    target = re.search(r"`(docs/[a-z-]+\.md)`", sentence).group(1)
+    doc_path = ROOT / target
+    assert doc_path.is_file(), f"building.md points at {target}, which does not exist"
+    doc = doc_path.read_text(encoding="utf-8")
+    headings = re.findall(r"^#{1,3} (.+)$", doc, re.M)
+    for needed in ("The patterns", "Waiving a site"):
+        assert needed in headings, f"{target} has no heading {needed!r}; found {headings}"
+    # the principle the sentence states is the one the doc opens with
+    principle = "result depends only on what it exercises"
+    assert principle in building and principle in doc
+    # every pattern the doc defines is a row of its table
+    for n in range(1, 9):
+        assert f"| P{n} |" in doc, f"{target} lacks a row for P{n}"

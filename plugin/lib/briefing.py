@@ -59,6 +59,8 @@ from .core import (
     atomic_write_text,
     pointer_plan_path,
     read_str_yaml_key,
+    strip_scalar_comment,
+    unquote_scalar,
 )
 
 
@@ -452,6 +454,12 @@ def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
             if not in_wip:
                 continue
 
+            # A comment is not content: a comment-only line is skipped (YAML does
+            # not end a mapping on one), and a trailing one leaves the key alone.
+            stripped = strip_scalar_comment(stripped)
+            if not stripped:
+                continue
+
             # Exit WIP section on unindented non-empty line
             if line and not line[0].isspace() and stripped:
                 break
@@ -467,15 +475,15 @@ def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
                 # Flat format: 2-space indent = field
                 if line.startswith("  ") and ":" in line:
                     key, _, val = stripped.partition(":")
-                    val = val.strip().strip("\"'")
-                    if val and val != "null":
+                    val = unquote_scalar(strip_scalar_comment(val))
+                    if val and val.lower() not in ("null", "~"):
                         wip[key.strip()] = val
                 continue
 
             # Branch-keyed format: look for our branch at 2-space indent
             if line.startswith("  ") and not line.startswith("    "):
                 # This is a branch key line like "  feature/foo:" or "  main:"
-                branch_key = stripped.rstrip(":").strip()
+                branch_key = unquote_scalar(stripped.rstrip(":").strip())
                 if branch_key == branch:
                     in_branch = True
                 elif in_branch:
@@ -484,8 +492,8 @@ def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
             elif in_branch and line.startswith("    ") and ":" in line:
                 # 4-space indent = field under our branch
                 key, _, val = stripped.partition(":")
-                val = val.strip().strip("\"'")
-                if val and val != "null":
+                val = unquote_scalar(strip_scalar_comment(val))
+                if val and val.lower() not in ("null", "~"):
                     wip[key.strip()] = val
 
         return wip
@@ -517,6 +525,12 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
             if not in_wip:
                 continue
 
+            # A comment is not content: a comment-only line is skipped (YAML does
+            # not end a mapping on one), and a trailing one leaves the key alone.
+            stripped = strip_scalar_comment(stripped)
+            if not stripped:
+                continue
+
             if line and not line[0].isspace() and stripped:
                 break
 
@@ -527,18 +541,18 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
                     # Flat format
                     if "_flat" not in branches:
                         branches["_flat"] = {}
-                    val_part = stripped.partition(":")[2].strip().strip("\"'")
-                    if val_part and val_part != "null":
+                    val_part = unquote_scalar(strip_scalar_comment(stripped.partition(":")[2]))
+                    if val_part and val_part.lower() not in ("null", "~"):
                         branches["_flat"][key_part] = val_part
                 else:
                     # Branch key
-                    current_branch = stripped.rstrip(":").strip()
+                    current_branch = unquote_scalar(stripped.rstrip(":").strip())
                     if current_branch not in branches:
                         branches[current_branch] = {}
             elif current_branch and line.startswith("    ") and ":" in line:
                 key, _, val = stripped.partition(":")
-                val = val.strip().strip("\"'")
-                if val and val != "null":
+                val = unquote_scalar(strip_scalar_comment(val))
+                if val and val.lower() not in ("null", "~"):
                     branches[current_branch][key.strip()] = val
 
         return branches
@@ -807,17 +821,18 @@ def _handoff_age(handoff_path: Path) -> str | None:
     return _humanize_age(max(0, int(seconds)))
 
 
-def _handoff_lacks_forward_note(handoff_path: Path) -> bool:
-    """True when the generated handoff says its session left no forward note.
+def _handoff_headings(handoff_path: Path) -> set[str]:
+    """The headings a generated handoff carries, read for the pointer.
 
-    Fails soft to False: an unreadable handoff keeps the ordinary pointer, which
+    Fails soft to none: an unreadable handoff keeps the ordinary pointer, which
     still names the file, rather than a claim about content nothing could read.
     """
     try:
         text = handoff_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return False
-    return any(line.strip() == NO_FORWARD_NOTE_HEADING for line in text.splitlines())
+        return set()
+    return {line.strip() for line in text.splitlines() if line.startswith("## ")}
+
 
 
 def _handoff_pointer(handoff_path: Path, *, continuation: bool) -> str:
@@ -853,7 +868,14 @@ def _handoff_pointer(handoff_path: Path, *, continuation: bool) -> str:
     age = _handoff_age(handoff_path)
     suffix = f" ({age})" if age else ""
     if not continuation:
-        if _handoff_lacks_forward_note(handoff_path):
+        headings = _handoff_headings(handoff_path)
+        if NO_FORWARD_NOTE_HEADING in headings and INHERITED_NOTES_HEADING in headings:
+            return (
+                "Previous session left no forward note, but .prawduct/.session-handoff.md"
+                f"{suffix} carries an earlier session's notes, marked inherited: read them, "
+                "and check them against the build plan before acting on them"
+            )
+        if NO_FORWARD_NOTE_HEADING in headings:
             return (
                 "Previous session left no forward note: .prawduct/.session-handoff.md"
                 f"{suffix} is only a machine record of what changed, not of what comes "
@@ -2075,6 +2097,39 @@ HANDOFF_MARKER = (
 # The forward channel: the one file in the handoff pair that a model owns.
 HANDOFF_NOTES_NAME = ".handoff-notes.md"
 
+# The fences around the notes inside a generated handoff. They exist so the next
+# boundary can find the notes again when its own session left none, and carry
+# them forward rather than drop them: notes end when a session writes its own,
+# never because a session ended without writing. The notes are agent-written
+# markdown with headings of their own, so a heading cannot delimit them; only a
+# fence can. ``carried`` counts the boundaries the text has crossed without a
+# session rewriting it, so the reader can judge how far it may have drifted.
+NOTES_BEGIN = "<!-- prawduct:notes-begin carried={} -->"
+NOTES_BEGIN_RE = re.compile(re.escape(NOTES_BEGIN).replace(r"\{\}", r"(\d+)"))
+NOTES_END = "<!-- prawduct:notes-end -->"
+NOTES_HEADING = "## Notes For The Next Session"
+INHERITED_NOTES_HEADING = f"{NOTES_HEADING} (inherited)"
+# The shared head of both fence lines. Agent-written notes are embedded between
+# the fences, and an agent keeping what still bites copies the inherited block,
+# fences and all, so the renderer defangs this prefix in the text it embeds: the
+# generator must own the only fence lines a handoff holds.
+_NOTES_FENCE_PREFIX = "<!-- prawduct:notes-"
+_DEFANGED_FENCE_PREFIX = "<!-- prawduct: notes-"
+
+# What became of the previous handoff's notes. "lost" is kept apart from "none"
+# for the reason the notes states are: a handoff that held notes this boundary
+# could not delimit must say so, not render as though there were none.
+INHERIT_NONE = "none"
+INHERIT_CARRIED = "carried"
+INHERIT_LOST = "lost"
+
+
+class InheritedNotes(NamedTuple):
+    text: str
+    carried: int
+    state: str
+    reason: str = ""
+
 # The heading a generated handoff carries when its session left no forward note.
 # One constant because two readers act on it: the generator writes it, and the
 # session briefing reads it to stop offering such a handoff as "context" — a
@@ -2149,8 +2204,9 @@ def _read_handoff_notes(prawduct_dir: Path) -> tuple[str, str]:
 
     The counterpart to every other handoff source, which is machine state
     looking backward: this is the only place an agent can leave intent for the
-    next session. Consumed into the handoff and then cleared by `/clear`, so a
-    note never outlives the session boundary it was written for.
+    next session. The file is consumed into the handoff and then cleared by
+    `/clear`; its TEXT lives on in the handoff, where
+    :func:`_read_inherited_notes` finds it if the next session writes none.
 
     The state is returned rather than inferred from an empty string because
     "there were no notes" and "the notes could not be read" demand opposite
@@ -2166,6 +2222,87 @@ def _read_handoff_notes(prawduct_dir: Path) -> tuple[str, str]:
     except (UnicodeDecodeError, OSError):
         return "", NOTES_UNREADABLE
     return (text, NOTES_CARRIED if text else NOTES_EMPTY)
+
+
+# The first sentence of the inherited section, by what the ending session left:
+# each says what happened, so a reader who emptied the file on purpose is not
+# told the session wrote nothing.
+_INHERITED_BECAUSE = {
+    NOTES_ABSENT: "The previous session left no notes of its own",
+    NOTES_EMPTY: "The previous session left its notes file empty, which does not end notes",
+    NOTES_UNREADABLE: (
+        "The previous session's notes file could not be read (it is kept for the next "
+        "boundary, and named at session start)"
+    ),
+}
+
+
+def _defang_fences(text: str) -> str:
+    """``text`` with any fence-shaped line made inert, so the fences the
+    generator writes around it are the only ones the next boundary finds."""
+    return "\n".join(
+        line.replace(_NOTES_FENCE_PREFIX, _DEFANGED_FENCE_PREFIX)
+        for line in text.splitlines()
+    )
+
+
+def _read_inherited_notes(prawduct_dir: Path) -> InheritedNotes:
+    """The notes the previous generated handoff carried.
+
+    Read when the session now ending left no notes the boundary could deliver: a
+    session that crashed or ran out of context before writing any must not erase
+    the notes it was handed, or they exist nowhere after the next boundary.
+    ``carried`` is how many boundaries the text had already crossed unrewritten.
+
+    Only a machine-written handoff is read (a hand-authored one has its own
+    rescue path), and only its notes section, which the renderer always writes
+    first: the notes heading, then the begin fence before any other section,
+    then the first end fence after it. Agent text the renderer embeds is
+    defanged, so that end fence is the generator's own; anything later in the
+    file (a quoted reflection, a rescued body, review findings) is never
+    consulted. An undecodable handoff is read lossily, as the rescue path reads
+    it: replacement characters in a carried note beat a deleted one.
+
+    The state is returned rather than an empty string, because a handoff with no
+    notes and one whose notes could not be delimited (a hand-edit, or a handoff
+    written before the fences existed) need different words in the next one.
+    """
+    path = prawduct_dir / ".session-handoff.md"
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        # The render declines to overwrite a handoff it cannot read, so the
+        # notes in it stay on disk; nothing is lost by carrying none here.
+        return InheritedNotes("", 0, INHERIT_NONE)
+    if HANDOFF_MARKER_PREFIX not in text:
+        return InheritedNotes("", 0, INHERIT_NONE)
+    lines = [line.strip() for line in text.splitlines()]
+    heading = next(
+        (i for i, line in enumerate(lines) if line.startswith("## ")), None
+    )
+    if heading is None or lines[heading] not in (NOTES_HEADING, INHERITED_NOTES_HEADING):
+        return InheritedNotes("", 0, INHERIT_NONE)
+    start = match = None
+    for i in range(heading + 1, len(lines)):
+        if lines[i].startswith("## "):
+            break
+        match = NOTES_BEGIN_RE.fullmatch(lines[i])
+        if match:
+            start = i
+            break
+    end = None if start is None else next(
+        (i for i in range(start + 1, len(lines)) if lines[i] == NOTES_END), None
+    )
+    if start is None or end is None:
+        return InheritedNotes(
+            "", 0, INHERIT_LOST,
+            "the previous handoff had a notes section this boundary could not "
+            "delimit (written before notes were fenced, or edited by hand)",
+        )
+    body = "\n".join(text.splitlines()[start + 1:end]).strip()
+    if not body:
+        return InheritedNotes("", 0, INHERIT_NONE)
+    return InheritedNotes(body, int(match.group(1)), INHERIT_CARRIED)
 
 
 def _read_unmarked_handoff(prawduct_dir: Path) -> tuple[str, str]:
@@ -2275,11 +2412,40 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
 
     # 0. The model's forward notes come first, above every machine section —
     #    intent for the next session outranks the record of the last one.
+    #    When the ending session wrote none, the notes the previous handoff
+    #    carried stay, marked inherited: silence never ends a note, and only a
+    #    session that writes the file (even "nothing beyond the plan") replaces
+    #    them. They are read from the handoff, never restored to the notes file,
+    #    so the checks that ask whether THIS session left notes still see none.
     notes, notes_state = _read_handoff_notes(prawduct_dir)
+    inherited = InheritedNotes("", 0, INHERIT_NONE)
+    if not notes:
+        inherited = _read_inherited_notes(prawduct_dir)
     if notes:
-        sections.append("## Notes For The Next Session")
+        sections.append(NOTES_HEADING)
         sections.append("<!-- written by the previous session's agent, not the machine -->")
-        sections.append(notes)
+        sections.extend([NOTES_BEGIN.format(0), _defang_fences(notes), NOTES_END])
+        sections.append("")
+    elif inherited.state == INHERIT_CARRIED:
+        crossed = inherited.carried + 1
+        sections.append(INHERITED_NOTES_HEADING)
+        sections.append(
+            f"{_INHERITED_BECAUSE[notes_state]}, so these are an earlier session's, carried "
+            f"across {crossed} session boundar{'y' if crossed == 1 else 'ies'} unchanged. "
+            "Check them against the build plan and git before acting on them: what they "
+            "describe may have moved since. Non-empty notes written to "
+            f"`.prawduct/{HANDOFF_NOTES_NAME}` replace them, so carry forward what still "
+            "applies; to end them, write \"nothing beyond the plan\"."
+        )
+        sections.extend([NOTES_BEGIN.format(crossed), _defang_fences(inherited.text), NOTES_END])
+        sections.append("")
+    elif inherited.state == INHERIT_LOST:
+        sections.append("## Earlier Notes Not Carried")
+        sections.append(
+            f"Notes from an earlier session were not carried into this handoff: "
+            f"{inherited.reason}. They are gone from here; if they mattered, the build "
+            "plan and the backlog are where their substance should already live."
+        )
         sections.append("")
 
     # 0b. Preservation net: rescue a handoff the machine did not write.
@@ -2314,7 +2480,9 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
     # NOTES_UNREADABLE: a note WAS left there, and saying otherwise would blame
     # the agent for the machine's failure to read it — that state has its own
     # notice at the consumption site. A rescued hand-authored handoff is forward
-    # context too, so it suppresses this as well.
+    # context too, so it suppresses this as well. Inherited notes do NOT: they
+    # are an earlier session's, and that this one did work and left none is
+    # still the signal; the briefing's pointer reads both headings.
     if notes_state in (NOTES_ABSENT, NOTES_EMPTY) and not rescued:
         sections.extend(_no_forward_note_section(changed, commits))
 

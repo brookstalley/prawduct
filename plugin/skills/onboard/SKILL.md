@@ -70,12 +70,13 @@ repo cannot detect about itself: the probes
 and `/prawduct:doctor` that would report it are delivered by the plugin that did not load. **This
 session is the only one that can ask**, which is why the check is here and not in `doctor`.
 
-Route on the status, not on the exit code alone — there are three answers, with exit codes 0, 1 and 3:
+Route on the status, not on the exit code alone — there are four answers, with exit codes 0, 1 and 3:
 
 | Status | What to do |
 |---|---|
 | `active` | Continue to Finish. |
 | `inactive` (exit 1) | **Do not report success.** Relay the command's own output — it names the consequence, the exact `claude plugin install` line, and which other paths the plugin *is* installed for. The operator runs it; onboarding is not finished until they do. |
+| `disabled` (exit 1) | **Do not report success.** The plugin is installed, but a settings file's `enabledPlugins` sets it to `false` for the target, so it loads nothing there. Relay the command's own output, which names the file; ask whether that was deliberate before anyone changes it. |
 | `unknown` (exit 3) | The check could not run — a harness-internal file was missing or unreadable. Say that it **was not established**, never that it passed. Tell them to confirm by opening the target and looking for the prawduct session briefing. |
 
 ## Finish: commit, then discovery
@@ -116,7 +117,7 @@ names what failed; relay it. It undoes nothing onboarding did.
 **2. Report in a few lines, not a manifest.** Lead with the outcome — onboarded, where the backlog
 lives, committed or not. Then add only what the owner must act on or would be surprised by:
 
-- the plugin check was `inactive` or `unknown` (the table above);
+- the plugin check was `inactive`, `disabled` or `unknown` (the table above);
 - `base_branch` was recorded, or there is evidence of gitflow the detection could not see (a
   `develop` branch while the remote defaults to `main`);
 - the labels are still pending because `gh` or the repo wasn't there yet;
@@ -131,8 +132,8 @@ settings-precedence notes. The next step goes last in the report, and there is o
 
 | This session is… | Then |
 |---|---|
-| **in the target** (its working directory) | **Go straight into discovery** — after relaying an `inactive` or `unknown` check result as the table above says. This session has the plugin loaded either way, so discovery can run here; on `inactive`, the report still calls onboarding unfinished until the install runs. Read `/prawduct:methodology discovery` and start it now, without asking whether to — the first discovery question *is* the next turn. When the repo already has code or docs, discovery runs in its reconciliation mode: read the README, docs and code first, then open with your own read of what the product is for, who it serves and what success looks like. Confirm that with the owner, ask only what the material leaves open, then write `project-state.yaml` and the preferences — a product vision the owner has confirmed, not one transcribed from the docs. |
-| **anywhere else** (onboarded `../foo` from another repo) | **End on one next step:** open the target in Claude Code (`claude <target>`) and start discovery there with `/prawduct:methodology discovery` — the install command comes first when the check said `inactive`. Don't run discovery from here: this session's hooks and gates govern its own directory, not the target. |
+| **in the target** (its working directory) | **Go straight into discovery** — after relaying an `inactive`, `disabled` or `unknown` check result as the table above says. This session has the plugin loaded either way, so discovery can run here; on `inactive` or `disabled`, the report still calls onboarding unfinished until the install runs or the setting is changed. Read `/prawduct:methodology discovery` and start it now, without asking whether to — the first discovery question *is* the next turn. When the repo already has code or docs, discovery runs in its reconciliation mode: read the README, docs and code first, then open with your own read of what the product is for, who it serves and what success looks like. Confirm that with the owner, ask only what the material leaves open, then write `project-state.yaml` and the preferences — a product vision the owner has confirmed, not one transcribed from the docs. |
+| **anywhere else** (onboarded `../foo` from another repo) | **End on one next step:** open the target in Claude Code (`claude <target>`) and start discovery there with `/prawduct:methodology discovery` — the install command comes first when the check said `inactive`, and the settings fix when it said `disabled`. Don't run discovery from here: this session's hooks and gates govern its own directory, not the target. |
 
 When discovery finishes in the target's session, close by recommending `/clear`. This session
 started before `.prawduct/` existed, and the session-start hooks stay silent in a repo without one —

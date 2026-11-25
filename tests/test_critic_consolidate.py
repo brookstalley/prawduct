@@ -32,11 +32,14 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from conftest import plugin_python_sources  # noqa: E402
+
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 sys.path.insert(0, str(ROOT))
+from _hook_inproc import run_hook  # noqa: E402
 from lib import critic_consolidate as cc  # noqa: E402
 from lib import dispositions as _dispositions_mod  # noqa: E402
 from lib import coverage_algebra as ca_mod  # noqa: E402
@@ -67,14 +70,7 @@ CUMULATIVE_MODE = "cumulative (bundle review, ready for merge)"
 def _git_env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
-    return {
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(home)
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -101,12 +97,15 @@ def _commit_file(repo: Path, rel: str, content: str, msg: str) -> str:
     return _git(repo, "rev-parse", "HEAD").stdout.strip()
 
 
-def _run_consolidate(repo: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), "critic-consolidate"],
-        cwd=str(repo), capture_output=True, text=True,
-        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+def _hook_in(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """`prawduct-hook <args>` from ``repo``, in-process (`tests/_hook_inproc.py`)."""
+    return run_hook(
+        *args, cwd=repo, env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
     )
+
+
+def _run_consolidate(repo: Path) -> subprocess.CompletedProcess:
+    return _hook_in(repo, "critic-consolidate")
 
 
 def _partials_dir(repo: Path) -> Path:
@@ -158,11 +157,7 @@ def _write_manifest(repo: Path, head: str, *, roster=None, **overrides) -> None:
 
 
 def _run_begin(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), "critic-begin", *args],
-        cwd=str(repo), capture_output=True, text=True,
-        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
-    )
+    return _hook_in(repo, "critic-begin", *args)
 
 
 def _abandon(repo: Path) -> subprocess.CompletedProcess:
@@ -174,10 +169,10 @@ def _abandon(repo: Path) -> subprocess.CompletedProcess:
     unguarded concurrent dispatch is allowed. Going through `critic-end` is what
     a caller genuinely does, so the setup models the lifecycle instead of a path
     the guard now refuses."""
-    return subprocess.run(
-        [sys.executable, str(HOOK), "critic-end"],
-        cwd=str(repo), capture_output=True, text=True,
-        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+    return run_hook(
+        "critic-end",
+        cwd=str(repo),
+        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
     )
 
 
@@ -206,7 +201,7 @@ FAKE_REVIEW_ID = "rev-test-0001"
 #: `fact_to_cache_record` reads its waivers from the store, so it takes one.
 _NO_FACTS = {"facts": []}
 
-from conftest import V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home for the shape
+from conftest import V2_MANIFEST as _V2_MANIFEST, scrubbed_env  # noqa: E402 — one home for the shape
 
 
 def _review_id(repo: Path) -> str:
@@ -1087,9 +1082,8 @@ class TestNextActionLine:
             assert act in text, act
 
     def test_the_blast_radius_check_has_one_home(self):
-        lib = ROOT / "lib"
         homes = [
-            p.name for p in sorted(lib.glob("*.py"))
+            p.name for p in plugin_python_sources()
             if "check each fix's dependents" in p.read_text(encoding="utf-8")
         ]
         assert homes == ["gates.py"], homes
@@ -1963,7 +1957,7 @@ _DIRECTIVE_PATH_CLASSES = {
 
 
 class TestBatchFixDirective:
-    """The directive states which writes are free mid-review. That is a prose
+    """The directive states which writes cost no new review between rounds. That is a prose
     restatement of ``coverage_algebra.is_judgeable_path``, so these tests parse
     the directive's own text and drive the assertions from it — drift in either
     direction fails, not just a predicate change.
@@ -1972,7 +1966,7 @@ class TestBatchFixDirective:
     catches a predicate that narrows, but leaves the cheaper mistake unguarded —
     editing the free-list alone (adding `docs/`, dropping `.claude/settings.json`)
     would keep the suite green while shipping a runtime message that tells a
-    builder to commit mid-review and lose their coverage."""
+    builder to commit between rounds and lose their coverage."""
 
     def test_the_directive_makes_no_positional_cross_reference(self):
         """It has TWO emission sites and they print different things after it:
@@ -2036,7 +2030,7 @@ class TestBatchFixDirective:
         With a hardcoded flag, *moving* a token between clauses — dropping
         `templates/` into the free list — left the suite green while shipping a
         message that tells a builder to edit a governance-protected file
-        mid-review and lose their coverage: the higher-cost direction.
+        between rounds and lose their coverage: the higher-cost direction.
         """
         from lib import coverage_algebra
 
@@ -2063,7 +2057,7 @@ class TestBatchFixDirective:
             assert coverage_algebra.is_judgeable_path(path) is expected_judgeable, (
                 f"the directive classifies {token} as "
                 f"{'costly' if expected_judgeable else 'free'} to write "
-                f"mid-review, but is_judgeable_path({path!r}) now disagrees. "
+                f"between rounds, but is_judgeable_path({path!r}) now disagrees. "
                 "Amend both together: a wrong 'free' claim costs a reader their "
                 "coverage, and a wrong 'costly' claim sends them to a round they "
                 "did not owe."
@@ -2097,7 +2091,7 @@ class TestBatchFixDirective:
         """The other direction, and the one hand-maintenance missed: every bound
         in the protected set (`buildplan_refs._GOVERNANCE_PROTECTED_PATHS`, the one
         home) must be named, or the directive calls a protected `.md` free to
-        write mid-review — which moves the tree the review is judging. Derived
+        write between rounds — which moves the tree the next review judges. Derived
         from the set, so a new member is covered the day it lands."""
         from lib import buildplan_refs
 
@@ -2105,6 +2099,28 @@ class TestBatchFixDirective:
             assert f"`{path}`" in cc._BATCH_FIX_DIRECTIVE, (
                 f"the directive does not name protected path `{path}`"
             )
+
+    def test_both_carriers_say_a_live_review_frees_only_session_files(self):
+        """`.prawduct/` is free of new review, not free while a review runs:
+        consolidation refuses any change outside prawduct's session files until
+        the builder attests it. The directive and `review-cycle.md` both carry
+        that, naming the flag the refusal asks for."""
+        flag = cc.TREE_CHANGED_FLAG
+        d = cc._BATCH_FIX_DIRECTIVE
+        assert f"`{flag}`" in d
+        assert d.index("While a review runs") < d.index("Free of new review")
+        cycle = (ROOT / "skills" / "critic" / "review-cycle.md").read_text(encoding="utf-8")
+        start = cycle.index("**Which writes cost no new review**")
+        paragraph = cycle[start: cycle.index("\n\n", start)]
+        assert "While a review runs, write only session files" in paragraph
+        assert f"`{flag}`" in paragraph
+
+    def test_the_session_files_a_builder_writes_are_exempt_from_the_tree_check(self):
+        """The two files the guidance sends a builder to while a review runs
+        must be ones consolidation exempts, or the advice buys the refusal."""
+        for path in (".prawduct/.session-reflected", ".prawduct/.handoff-notes.md"):
+            assert cc._is_session_file(path, ""), path
+        assert not cc._is_session_file(".prawduct/backlog.md", ""), "control"
 
     def test_directive_names_the_comment_only_trap(self):
         # The single most expensive misread of "free": a `.py` comment edit
@@ -3664,12 +3680,12 @@ class TestConsolidateIntegration:
         _set_marker(repo)
         _write_manifest(repo, head)
         _full_roster_partials(repo, head)
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "subagent-stop"],
+        result = run_hook(
+            "subagent-stop",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
             input=json.dumps({"cwd": str(repo),
                               "agent_type": "prawduct:critic-reviewer"}),
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )
         assert result.returncode == 0, result.stderr
         events = [json.loads(line) for line in
@@ -4111,10 +4127,11 @@ class TestConsolidateIntegration:
 
 
 def _run_validate_partial(repo: Path, path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), "validate-partial", str(path)],
-        cwd=str(repo), capture_output=True, text=True,
-        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+    return run_hook(
+        "validate-partial",
+        str(path),
+        cwd=str(repo),
+        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
     )
 
 
@@ -4326,10 +4343,11 @@ class TestValidatePartialVerb:
         elsewhere = tmp_path / "other"
         _init_repo(elsewhere)
         _commit_file(elsewhere, "README.md", "x\n", "init")
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "validate-partial", str(path)],
-            cwd=str(elsewhere), capture_output=True, text=True,
-            env={**_git_env(elsewhere), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        result = run_hook(
+            "validate-partial",
+            str(path),
+            cwd=str(elsewhere),
+            env={**_git_env(elsewhere), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "ok"
@@ -4344,10 +4362,10 @@ class TestValidatePartialVerb:
 
     def test_a_missing_path_is_a_usage_error(self, tmp_path):
         repo, _ = self._case(tmp_path, "valid")
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "validate-partial"], cwd=str(repo),
-            capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        result = run_hook(
+            "validate-partial",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert result.returncode == 2
 
@@ -4865,10 +4883,10 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         self._commit(repo)
         assert gates.branch_coverage_verdict(repo)["status"] == "covered"
         assert gates.session_review_verdict(repo)["status"] == "covered"
-        gate = subprocess.run(
-            [sys.executable, str(HOOK), "check-cumulative-critic"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        gate = run_hook(
+            "check-cumulative-critic",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert gate.returncode == 0, f"stdout={gate.stdout!r} stderr={gate.stderr!r}"
 
@@ -4931,11 +4949,11 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         self._run_on(repo, manifest["head_tree"], ["t1", "t2"])
         _write_partial(repo, "reviewer", manifest["commit_reviewed"],
                        findings=[self._blocker(("t1", "t2"))])
-        hook = subprocess.run(
-            [sys.executable, str(HOOK), "subagent-stop"],
+        hook = run_hook(
+            "subagent-stop",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
             input=json.dumps({"cwd": str(repo), "agent_type": "prawduct:critic-reviewer"}),
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )
         assert hook.returncode == 0, hook.stderr
         assert self._waivers(repo) == []
@@ -5173,10 +5191,11 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
                      "rationale": "accepted by the reviewer"},
         }]}
         assert stats.finding_outcome(judged)(("rev-other", "R-1")) == "waived"
-        report = subprocess.run(
-            [sys.executable, str(HOOK), "review-stats", "--json"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        report = run_hook(
+            "review-stats",
+            "--json",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert report.returncode == 0, report.stderr
         by_outcome = json.loads(report.stdout)["overall"]["dispositions"]["by_outcome"]
@@ -5203,10 +5222,13 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         from test_plugin_runtime import as_just_run  # noqa: PLC0415
 
         as_just_run(report)  # the run starts after the worktree it reads
-        recorded = subprocess.run(
-            [sys.executable, str(HOOK), "test-evidence", "record", "--from-junit", str(report)],
-            cwd=str(base_wt), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        recorded = run_hook(
+            "test-evidence",
+            "record",
+            "--from-junit",
+            str(report),
+            cwd=str(base_wt),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         (run,) = evidence.facts_of_kind(evidence.read_facts(repo), "test-run")
         assert run["body"]["tree"] == base_tree, recorded.stderr
@@ -5723,10 +5745,11 @@ class TestStageReachesEveryReader:
                   if '"review.critic"' in ln]
         assert len(events) == 1 and events[0]["review"]["stage"] == "inner"
 
-        stats = subprocess.run(
-            [sys.executable, str(HOOK), "review-stats", "--json"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        stats = run_hook(
+            "review-stats",
+            "--json",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert stats.returncode == 0, stats.stderr
         by_stage = {e["stage"]: e for e in json.loads(stats.stdout)["by_stage"]}
@@ -5763,14 +5786,21 @@ class TestStageReachesEveryReader:
         ]
 
         env = {**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
-        filed = subprocess.run(
-            [sys.executable, str(HOOK), "disposition", fact["id"], finding["fid"], "--file", "#1"],
-            cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+        filed = run_hook(
+            "disposition",
+            fact["id"],
+            finding["fid"],
+            "--file",
+            "#1",
+            cwd=str(repo),
+            env=env,
         )
         assert filed.returncode == 0, filed.stderr
-        stats = subprocess.run(
-            [sys.executable, str(HOOK), "review-stats", "--json"],
-            cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+        stats = run_hook(
+            "review-stats",
+            "--json",
+            cwd=str(repo),
+            env=env,
         )
         assert stats.returncode == 0, stats.stderr
         block = json.loads(stats.stdout)["overall"]["dispositions"]
@@ -6068,6 +6098,153 @@ class TestRosterKeyedToRiskSurface:
         assert (stale / "manifest.json").is_file()
 
 
+class TestDeclaredStaticContentDoesNotBuyTheCoordinator:
+    """#1239: a static-heavy boundary review takes one reviewer. Declared static
+    content is still reviewed but does not count toward the judgeable-volume
+    escalator; the risk check still runs first over every file. The owner ruled
+    the lighter review on 2026-11-24."""
+
+    STATIC = [f"design/page-{i:02d}.html" for i in range(40)] + ["design/site.css", "design/tokens.json"]
+    PROSE = [f"design/guide-{i}.md" for i in range(5)]
+
+    def _repo(self, tmp_path: Path, state: str) -> "tuple[Path, str]":
+        repo = tmp_path / "repo"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - untouched/by/these/tests/\n" + state
+        )
+        _init_repo(repo)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "state")
+        head = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        return repo, head
+
+    def _roster(self, tmp_path, files, state="static_content_prefixes:\n  - design/\n", tree=True):
+        repo, head = self._repo(tmp_path, state)
+        return cc._derive_roster(
+            "cumulative", list(files), repo / ".prawduct",
+            project_dir=repo, head_tree=head if tree else None,
+        )
+
+    def test_the_reported_shape_takes_one_reviewer(self, tmp_path):
+        roster, why = self._roster(tmp_path, self.STATIC + self.PROSE)
+        assert roster == list(cc.SINGLE_PASS_ROSTER), why
+        assert f"0 judgeable file(s) ({len(self.STATIC)} declared static, not counted)" in why
+
+    def test_undeclared_the_same_shape_takes_the_coordinator(self, tmp_path):
+        roster, why = self._roster(tmp_path, self.STATIC + self.PROSE, state="")
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+        assert "declared static" not in why
+
+    def test_without_the_reviewed_tree_nothing_is_discounted(self, tmp_path):
+        """The declaration is read from the tree under review; with none named,
+        the working tree's is never consulted."""
+        roster, why = self._roster(tmp_path, self.STATIC, tree=False)
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+
+    def test_a_declaration_only_this_branch_carries_discounts_nothing(self, tmp_path):
+        """A governance change cannot supply its own authority: the branch that
+        adds the declaration takes the full roster for its own review."""
+        repo, _head = self._repo(tmp_path, "")
+        _git(repo, "checkout", "-q", "-b", "feat")
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - untouched/by/these/tests/\nstatic_content_prefixes:\n  - design/\n"
+        )
+        _git(repo, "commit", "-q", "-am", "declare on the branch")
+        head = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        roster, why = cc._derive_roster(
+            "cumulative", self.STATIC, repo / ".prawduct", project_dir=repo, head_tree=head
+        )
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+        assert "not yet on the integration branch" in why
+
+    def test_an_uncommitted_declaration_discounts_nothing(self, tmp_path):
+        """The reviewed tree declares nothing; only the working tree does."""
+        repo, head = self._repo(tmp_path, "")
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - untouched/by/these/tests/\nstatic_content_prefixes:\n  - design/\n"
+        )
+        roster, why = cc._derive_roster(
+            "cumulative", self.STATIC, repo / ".prawduct", project_dir=repo, head_tree=head
+        )
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+
+    def test_a_static_file_on_a_risk_surface_still_takes_the_coordinator(self, tmp_path):
+        roster, why = self._roster(
+            tmp_path, ["design/site.css"],
+            state="static_content_prefixes:\n  - design/\n",
+        )
+        assert roster == list(cc.SINGLE_PASS_ROSTER), "control: off the surface it is light"
+        repo, head = self._repo(tmp_path / "risk", "static_content_prefixes:\n  - design/\n")
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - design/\nstatic_content_prefixes:\n  - design/\n"
+        )
+        roster, why = cc._derive_roster(
+            "cumulative", ["design/site.css"], repo / ".prawduct", project_dir=repo, head_tree=head
+        )
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+        assert "risk surface touched" in why
+
+    def test_twelve_counted_files_beside_static_ones_still_take_the_coordinator(self, tmp_path):
+        code = [f"src/m{i}.py" for i in range(cc.COORDINATOR_JUDGEABLE_THRESHOLD)]
+        roster, why = self._roster(tmp_path, code + self.STATIC)
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+        assert f"{cc.COORDINATOR_JUDGEABLE_THRESHOLD} judgeable file(s)" in why
+
+    def test_a_coupled_prefix_under_the_declaration_is_counted(self, tmp_path):
+        roster, why = self._roster(
+            tmp_path, self.STATIC,
+            state="static_content_prefixes:\n  - design/\nsuite_coupled_prefixes:\n  - design/\n",
+        )
+        assert roster == list(cc.COORDINATOR_ROSTER), why
+
+
+class TestEveryStatementOfTheVolumeThresholdNamesTheStaticException:
+    """The coordinator's volume threshold is restated wherever the roster rule
+    is explained. Each restatement must say declared static content is not
+    counted, or it tells its reader a static-heavy branch buys three reviewers.
+    Found by pattern, never by a list, so a new restatement is held to it too.
+    The replay table in `critic_consolidate.py` is a dated measurement taken
+    before static content existed, so code comments are not scanned."""
+
+    REPO = ROOT.parent
+    # The concept, not a wording: "12" or "twelve" within forty characters of
+    # "judgeable", in either order and across a line break. A wording-shaped
+    # pattern missed "12 or more judgeable files" the first time.
+    PATTERN = re.compile(
+        r"(?:\b12\b|twelve)[\s\S]{0,40}?judgeable|judgeable[\s\S]{0,40}?(?:\b12\b|twelve)",
+        re.IGNORECASE,
+    )
+
+    def _surfaces(self) -> list[Path]:
+        return [
+            *sorted(ROOT.rglob("*.md")),
+            self.REPO / ".prawduct" / "artifacts" / "architecture.md",
+            self.REPO / ".prawduct" / "cross-cutting-concerns.md",
+        ]
+
+    def test_each_statement_names_the_exception(self):
+        # Each statement is judged on its own, with the words just after it,
+        # across line breaks: one line can hold two statements (a table row's
+        # cells), and one statement can wrap onto the next line.
+        found = []
+        for path in self._surfaces():
+            if "CHANGELOG" in path.name:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for m in self.PATTERN.finditer(text):
+                line = text.count("\n", 0, m.start()) + 1
+                window = text[m.start(): m.end() + 60]
+                found.append((str(path.relative_to(self.REPO)), line, "static" in window))
+        assert len(found) >= 7, f"the scan reached too few statements to mean anything: {found}"
+        assert [f for f in found if not f[2]] == [], found
+
+    def test_the_constant_names_it_too(self):
+        text = (ROOT / "lib" / "critic_consolidate.py").read_text(encoding="utf-8")
+        comment = text[: text.index("COORDINATOR_JUDGEABLE_THRESHOLD = ")].rsplit("\n\n", 1)[1]
+        assert "static" in comment, comment
+
+
 class TestBeginArchivesLeftovers:
     """A leftover manifest at critic-begin belongs to a review that never
     consolidated (consolidate removes everything on success). Deleting it
@@ -6278,10 +6455,10 @@ class TestBeginMarksFindingsSuperseded:
         """
         repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
         assert _run_begin(repo, "--mode", "chunk").returncode == 0  # B dispatched…
-        subprocess.run(  # …and abandoned without consolidating
-            [sys.executable, str(HOOK), "critic-end"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        run_hook(
+            "critic-end",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
@@ -7272,11 +7449,13 @@ class TestWorktreeVisibility:
         _commit_file(repo_b, "b.py", "y = 1\n", "b")
         (repo_b / ".prawduct").mkdir()  # onboarded, so we reach the refuse
         (repo_b / "b.py").write_text("y = 2\n")
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "critic-begin", "--mode", "chunk"],
-            cwd=str(repo_a), capture_output=True, text=True,
+        result = run_hook(
+            "critic-begin",
+            "--mode",
+            "chunk",
+            cwd=str(repo_a),
             env={**_git_env(repo_a), "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                 "CLAUDE_PROJECT_DIR": str(repo_b)}, timeout=30,
+        "CLAUDE_PROJECT_DIR": str(repo_b)},
         )
         assert result.returncode == 1
         assert "refusing" in result.stderr
@@ -7510,6 +7689,59 @@ def _lint(findings=(), unchecked=()) -> dict:
 def _lint_finding(check: str, path: str = ".prawduct/artifacts/p.md", line=None,
                   detail: str = "the detail") -> dict:
     return {"check": check, "path": path, "line": line, "detail": detail}
+
+
+class TestTestScopeReachesTheReview:
+    """The test-scope detector's ruling, at the layer it was made about: a change
+    that newly imports the product in a root conftest is BLOCKING at the merge
+    boundary and an observation inside it (owner ruling 2026-11-24). Dispatch
+    computes the result for real; consolidation rates it from the manifest."""
+
+    def _dispatch(self, tmp_path, conftest: str):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "myapp/__init__.py", "", "app")
+        _commit_file(repo, "tests/conftest.py", "import pytest\n", "tests")
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        (repo / "tests/conftest.py").write_text(conftest)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        return repo, json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+
+    def test_an_introduced_root_conftest_import_blocks_at_the_boundary_only(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path, "import pytest\nimport myapp\n")
+        [found] = [f for f in manifest["record_lint"]["findings"]
+                   if f["check"] == "test-scope-conftest"]
+        assert (found["path"], found["line"]) == ("tests/conftest.py", 2)
+
+        inner = cc.build_fact_body(manifest, [])
+        assert inner["counts"]["blocking"] == 0
+        assert any("test-scope-conftest" in o["title"] for o in inner["observations"])
+
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        _set_marker(repo)
+        _write_manifest(repo, head, mode=CUMULATIVE_MODE, stage="boundary",
+                        roster=["reviewer"], record_lint=manifest["record_lint"])
+        _write_partial(repo, "reviewer", head, findings=[])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[-1]
+        [finding] = [f for f in fact["body"]["findings"] if "test-scope-conftest" in f["title"]]
+        assert finding["severity"] == "blocking"
+        assert "prawduct:allow prawduct/test-scope" in finding["recommendation"]
+        assert finding in ca_mod.unresolved_blocking(fact, set())
+
+    def test_a_waived_import_reaches_the_review_as_nothing(self, tmp_path):
+        """The control: the same change, waived with a reason, carries no result."""
+        _repo, manifest = self._dispatch(
+            tmp_path,
+            "import pytest\nimport myapp  # prawduct:allow prawduct/test-scope -- plugin registration\n",
+        )
+        assert [f for f in manifest["record_lint"]["findings"]
+                if f["check"].startswith("test-")] == []
+        assert manifest["record_lint"]["counts"]["test-scope-conftest"] == 0
 
 
 class TestRecordLintReachesTheReview:
@@ -9460,10 +9692,11 @@ class TestABlockerTheGateRoutedAroundIsNotOpen:
             assert "`prawduct-hook check-cumulative-critic` gives the gate's count" in line, line
 
     def _census(self, repo: Path) -> dict:
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "render-dispositions", "--json"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        result = run_hook(
+            "render-dispositions",
+            "--json",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert result.returncode == 0, result.stderr
         return json.loads(result.stdout)["summary"]
@@ -9528,10 +9761,11 @@ class TestTheEmptySpanFallbackIsBounded:
         assert line is not None and "1 review round(s)" in line, line
         assert ": 0 open blocking," in line, line
 
-        result = subprocess.run(
-            [sys.executable, str(HOOK), "render-dispositions", "--json"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        result = run_hook(
+            "render-dispositions",
+            "--json",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert result.returncode == 0, result.stderr
         report = json.loads(result.stdout)
@@ -9596,11 +9830,20 @@ class TestWideningBoundCountsTheCostSubset:
 
 
 CUMULATIVE_VERBOSE = cc.MODE_TOKEN_TO_VERBOSE["cumulative"]
+CHUNK_VERBOSE = cc.MODE_TOKEN_TO_VERBOSE["chunk"]
+
+#: A full round that the cadence allowance cannot claim. A `chunk` review naming
+#: no chunk buys no plan step, so every one is charged, where a `cumulative`
+#: is charged only after the scope's first. The policy tests below seed this so
+#: "N rounds seeded" still means "N rounds spent"; `TestRoundBudgetCadence`
+#: pins the allowance itself.
+LOOP_ROUND_VERBOSE = CHUNK_VERBOSE
 
 
-def _budget_repo(tmp_path: Path, rounds: int, *, mode: str = CUMULATIVE_VERBOSE,
+def _budget_repo(tmp_path: Path, rounds: int, *, mode: str = LOOP_ROUND_VERBOSE,
                  budget: "str | None" = None, findings=None,
-                 branch_commit=("src/app.py", "x = 2\n", "work")) -> "tuple[Path, str]":
+                 branch_commit=("src/app.py", "x = 2\n", "work"),
+                 boundary_spent: bool = False) -> "tuple[Path, str]":
     """A feature branch off `main` carrying ``rounds`` recorded review facts.
 
     The facts are seeded rather than produced by real dispatches because what
@@ -9616,6 +9859,16 @@ def _budget_repo(tmp_path: Path, rounds: int, *, mode: str = CUMULATIVE_VERBOSE,
     prawduct.mkdir(exist_ok=True)
     if budget is not None:
         (prawduct / "project-state.yaml").write_text(f"review_round_budget: {budget}\n")
+    if boundary_spent:
+        # The scope's boundary review already ran (and is cadence, so it is not
+        # charged). Without it, a `cumulative` dispatched at the ceiling IS the
+        # first boundary review and is let through, which a refusal test must
+        # not stand on.
+        evidence.append_fact(
+            repo, "review", "rev-boundary",
+            {"base_tree": "a" * 40, "head_tree": "b" * 40, "mode": CUMULATIVE_VERBOSE,
+             "head_commit": head, "scope": "budgeted", "findings": []},
+        )
     for i in range(rounds):
         evidence.append_fact(
             repo, "review", f"rev-round-{i}",
@@ -9636,6 +9889,9 @@ class TestRoundBudgetCounting:
         verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
         assert verdict == {
             "status": "within", "spent": 5, "budget": 6,
+            "cadence_ids": [],
+            # No dispatch was asked about, so none is a cadence step.
+            "incoming_is_cadence": False,
             "review_ids": [f"rev-round-{i}" for i in range(5)],
             # WHICH bound counted. Two bounds returning indistinguishable
             # verdicts left the control's own retirement query unable to tell a
@@ -9700,7 +9956,7 @@ class TestRoundBudgetCounting:
                 repo, "review", f"rev-other-{i}",
                 {
                     "base_tree": "a" * 40, "head_tree": "b" * 40,
-                    "mode": CUMULATIVE_VERBOSE, "head_commit": head,
+                    "mode": LOOP_ROUND_VERBOSE, "head_commit": head,
                     "scope": "some-other-plan", "findings": [],
                 },
             )
@@ -9738,7 +9994,7 @@ def _trunk_repo(tmp_path: Path, *, budget: "str | None" = None) -> "tuple[Path, 
 
 
 def _seed_round(project_dir: Path, fact_id: str, head_commit: str, scope: str,
-                mode: str = CUMULATIVE_VERBOSE) -> None:
+                mode: str = LOOP_ROUND_VERBOSE) -> None:
     """One full review round, appended AS `project_dir` — which is what puts
     that path in `actor.worktree`, the discriminator under test."""
     evidence.append_fact(
@@ -9943,7 +10199,7 @@ class TestRoundBudgetOnTheTrunkShape:
                 repo, "review", f"rev-trunk-{i}",
                 {
                     "base_tree": "a" * 40, "head_tree": "b" * 40,
-                    "mode": CUMULATIVE_VERBOSE, "head_commit": head,
+                    "mode": LOOP_ROUND_VERBOSE, "head_commit": head,
                     "scope": "budgeted", "findings": list(findings),
                 },
             )
@@ -9967,14 +10223,20 @@ class TestRoundBudgetOnTheTrunkShape:
         # branch on one bound and the worktree on the other, and a builder who
         # cannot tell them apart cannot tell what they are being refused for.
         assert "in this worktree" in refused.stdout, refused.stdout
+        # No cadence was subtracted here, so the reason claims none: "not
+        # counting the 0 its plan's cadence bought" read as if a plan had been
+        # credited, and it became every swept finding's accept reason.
+        reason = next(ln for ln in refused.stdout.splitlines() if "round budget exhausted" in ln)
+        assert "cadence" not in reason, reason
 
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "review_round_budget: 3\n"
         )
         allowed = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted")
-        assert allowed.returncode != 4, (
-            "the control: this fixture must be able to NOT refuse, or the 4 "
-            "above is evidence about something else"
+        assert allowed.returncode == 0, (
+            "the control: this fixture must be able to dispatch, or the 4 "
+            "above is evidence about something else",
+            allowed.stdout, allowed.stderr,
         )
 
     def test_a_branchs_first_round_is_not_charged_the_scopes_history(self, tmp_path):
@@ -10000,6 +10262,214 @@ class TestRoundBudgetOnTheTrunkShape:
         assert verdict["spent"] == 0
         assert verdict["review_ids"] == []
 
+
+def _seed_chunk_review(repo: Path, fact_id: str, head: str, chunks, *,
+                       mode: str = CHUNK_VERBOSE) -> None:
+    evidence.append_fact(
+        repo, "review", fact_id,
+        {
+            "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": mode,
+            "head_commit": head, "scope": "budgeted", "findings": [],
+            "chunks": list(chunks),
+        },
+    )
+
+
+class TestRoundBudgetCadence:
+    """A plan's cadence is not a review loop (owner ruling 2026-11-23, R-9(a)).
+
+    Each chunk's first review, in any mode, and the scope's first boundary
+    review are the plan's own steps. Charged, a 7-chunk plan with one clean review per
+    chunk spent a budget of 6 on Chunks 01 to 06, and `critic-begin` refused
+    the boundary review the methodology says is never skipped. That is the
+    shape `chunk-plan-order` hit, pinned first.
+    """
+
+    def test_a_long_plans_cadence_reaches_its_boundary_review(self, tmp_path):
+        repo, head = _budget_repo(tmp_path, 0)
+        for n in range(1, 7):
+            _seed_chunk_review(repo, f"rev-c{n:02d}", head, [f"{n:02d}"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "within", verdict
+        assert verdict["spent"] == 0
+        assert verdict["cadence_ids"] == [f"rev-c{n:02d}" for n in range(1, 7)]
+        # The same six reviews, counted as before this ruling, are exactly the
+        # ceiling: the premise that this fixture is the refused shape.
+        assert len(verdict["review_ids"]) == verdict["budget"]
+
+    def test_the_boundary_review_is_actually_dispatched(self, tmp_path):
+        """The gate, not the count, with a control one ruling away: the same
+        repo with the six reviews re-reviewing ONE chunk is a loop, and it
+        is refused."""
+        repo, head = _budget_repo(tmp_path, 0)
+        for n in range(1, 7):
+            _seed_chunk_review(repo, f"rev-c{n:02d}", head, [f"{n:02d}"])
+        allowed = _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted")
+        # Dispatched, not merely "not refused": a crash or an exit 3 would also
+        # be "not 4" (native review of this branch).
+        assert allowed.returncode == 0, (allowed.stdout, allowed.stderr)
+        assert (repo / PARTIALS_REL / "manifest.json").is_file()
+
+        looped, lhead = _budget_repo(tmp_path / "loop", 0, boundary_spent=True)
+        for n in range(6):
+            _seed_chunk_review(looped, f"rev-again-{n}", lhead, ["01"])
+        _seed_chunk_review(looped, "rev-again-6", lhead, ["01"])
+        refused = _run_begin(looped, "--mode", "cumulative", "--scope", "budgeted")
+        assert refused.returncode == 4, (refused.stdout, refused.stderr)
+        assert "not counting the 2 its plan's cadence bought" in refused.stdout, refused.stdout
+
+    def test_a_chunks_second_review_is_charged(self, tmp_path):
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-first", head, ["01"])
+        _seed_chunk_review(repo, "rev-again", head, ["01"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-first"]
+        assert verdict["spent"] == 1
+
+    def test_chunk_ids_are_compared_normalized(self, tmp_path):
+        """`1` and `01` are one chunk. Compared raw, a builder re-reviewing
+        Chunk 01 as `--chunks 1` would be handed a second free round."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-first", head, ["01"])
+        _seed_chunk_review(repo, "rev-again", head, ["1"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["spent"] == 1, verdict
+
+    def test_a_review_adding_one_new_chunk_is_cadence(self, tmp_path):
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-01", head, ["01"])
+        _seed_chunk_review(repo, "rev-01-02", head, ["01", "02"])
+        _seed_chunk_review(repo, "rev-02-again", head, ["02"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-01", "rev-01-02"]
+        assert verdict["spent"] == 1
+
+    def test_a_chunk_review_naming_no_chunk_is_charged(self, tmp_path):
+        """No plan step can be shown to have bought it, so it is a loop round.
+        This is also what keeps `LOOP_ROUND_VERBOSE` honest for the fixtures."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-unnamed", head, [])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == [] and verdict["spent"] == 1
+
+    def test_the_first_cumulative_is_the_boundary_review(self, tmp_path):
+        """Renegotiated in round 4 (R-1, R-3, native): the boundary review is
+        the first review in the boundary stage (`STAGE_OF_MODE`), not the first
+        whole-plan review that names nothing new. A second `cumulative` is a
+        re-review and charged."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-cum", head, [], mode=CUMULATIVE_VERBOSE)
+        _seed_chunk_review(repo, "rev-cum-again", head, [], mode=CUMULATIVE_VERBOSE)
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-cum"]
+        assert verdict["spent"] == 1
+
+    def test_a_final_is_never_the_boundary_review(self, tmp_path):
+        """A `final` naming nothing new took the boundary slot, and the real
+        boundary `cumulative` after it was charged, which is the refusal this
+        branch exists to end."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-final-01", head, ["01"], mode=cc.MODE_TOKEN_TO_VERBOSE["final"])
+        _seed_chunk_review(repo, "rev-final-01-again", head, ["01"], mode=cc.MODE_TOKEN_TO_VERBOSE["final"])
+        _seed_chunk_review(repo, "rev-cum", head, ["01"], mode=CUMULATIVE_VERBOSE)
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-final-01", "rev-cum"]
+        assert verdict["spent"] == 1
+
+    def test_a_boundary_cumulative_naming_an_open_chunk_still_takes_the_slot(self, tmp_path):
+        """A `cumulative-final` plan's last chunk is reviewed by the boundary
+        `cumulative` itself, which names that chunk for the first time. Keyed on
+        "names nothing new", it never took the boundary slot, and the next
+        `cumulative` (a loop) was free."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-c01", head, ["01"])
+        _seed_chunk_review(repo, "rev-cum", head, ["01", "02"], mode=CUMULATIVE_VERBOSE)
+        _seed_chunk_review(repo, "rev-cum-again", head, ["01", "02"], mode=CUMULATIVE_VERBOSE)
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-c01", "rev-cum"]
+        assert verdict["spent"] == 1
+
+    def test_a_chunks_first_review_is_its_step_whatever_its_mode(self, tmp_path):
+        """Renegotiated in the branch's boundary review (R-2). The allowance was
+        keyed on `chunk` mode, so a chunk whose plan declares `Critic mode:
+        final` spent the scope's one boundary allowance, and the real boundary
+        review was charged. The first review naming a chunk is that chunk's
+        step in any mode, and the boundary allowance goes to the first
+        whole-plan review that names nothing new."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-c01", head, ["01"])
+        _seed_chunk_review(repo, "rev-final-02", head, ["02"],
+                           mode=cc.MODE_TOKEN_TO_VERBOSE["final"])
+        _seed_chunk_review(repo, "rev-boundary", head, ["01", "02"], mode=CUMULATIVE_VERBOSE)
+        _seed_chunk_review(repo, "rev-boundary-again", head, ["01", "02"], mode=CUMULATIVE_VERBOSE)
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-c01", "rev-final-02", "rev-boundary"]
+        assert verdict["spent"] == 1
+
+    def test_a_chunk_review_after_its_whole_plan_review_is_a_re_review(self, tmp_path):
+        """The other direction: a `cumulative` that first names 01 is 01's step,
+        so a `chunk` review of 01 after it is a second look, and charged."""
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-cum", head, ["01"], mode=CUMULATIVE_VERBOSE)
+        _seed_chunk_review(repo, "rev-c01", head, ["01"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-cum"]
+        assert verdict["spent"] == 1
+
+    @pytest.mark.parametrize(("incoming", "refused"), [
+        ({"mode": CHUNK_VERBOSE, "chunks": ["02"]}, False),      # a new chunk's first review
+        ({"mode": CUMULATIVE_VERBOSE, "chunks": []}, False),     # the first boundary review
+        ({"mode": CHUNK_VERBOSE, "chunks": ["01"]}, True),       # the looping chunk again
+        ({"mode": CHUNK_VERBOSE, "chunks": []}, True),           # names nothing: unseen
+        ({"mode": cc.MODE_TOKEN_TO_VERBOSE["final"], "chunks": []}, True),  # not the boundary stage
+    ])
+    def test_at_the_ceiling_a_cadence_dispatch_still_runs(self, tmp_path, incoming, refused):
+        """Native review of this branch: the ceiling caps rounds PAST the
+        cadence, so loops that spent it on chunk 01 do not refuse chunk 02's
+        first review or the boundary review."""
+        repo, head = _budget_repo(tmp_path, 0)
+        for n in range(7):  # 01's first review, then six loop rounds on it
+            _seed_chunk_review(repo, f"rev-01-{n}", head, ["01"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted", incoming=incoming)
+        assert verdict["spent"] == 6
+        assert (verdict["status"] == "exhausted") is refused, verdict
+        assert verdict["incoming_is_cadence"] is (not refused)
+
+    def test_critic_begin_lets_a_new_chunks_first_review_through_the_ceiling(self, tmp_path):
+        """The gate, with a control in the same repo: `--chunks 01` (the
+        looping chunk) is refused, and chunk 02's first review dispatches with
+        `--chunks` omitted, the skill's default. Round 4 (R-2): the check ran
+        before the proposal, saw no chunk, and refused it."""
+        repo, _ = _budget_repo(tmp_path, 0)
+        # `--chunks` is read against the bound plan, so there has to be one.
+        head = _commit_file(
+            repo, ".prawduct/artifacts/build-plan-budgeted.md",
+            "---\nartifact: build-plan\nscope: budgeted\nbranch: feature\nbase: main\n---\n\n# Plan\n\n"
+            "### Chunk 01: one\n\n- **Deliverables:** `src/app.py`\n\n"
+            "### Chunk 02: two\n\n- **Deliverables:** `src/two.py`\n",
+            "plan",
+        )
+        (repo / "src" / "app.py").write_text("x = 3\n")
+        for n in range(7):
+            _seed_chunk_review(repo, f"rev-01-{n}", head, ["01"])
+        looping = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted", "--chunks", "01")
+        assert looping.returncode == 4, (looping.stdout, looping.stderr)
+        (repo / "src" / "app.py").write_text("x = 2\n")  # back to HEAD: no 01 work
+        (repo / "src" / "two.py").write_text("two = 1\n")
+        fresh = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted")
+        assert fresh.returncode == 0, (fresh.stdout, fresh.stderr)
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["chunks"] == ["02"] and manifest["chunks_declared"] is False, manifest
+
+
+    def test_verify_passes_neither_claim_nor_spend_an_allowance(self, tmp_path):
+        repo, head = _budget_repo(tmp_path, 0)
+        _seed_chunk_review(repo, "rev-verify", head, ["01"],
+                           mode=cc.MODE_TOKEN_TO_VERBOSE["verify-resolutions"])
+        _seed_chunk_review(repo, "rev-c01", head, ["01"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["cadence_ids"] == ["rev-c01"]
+        assert verdict["spent"] == 0
 
 
 class TestRoundBudgetConfigFallsSoft:
@@ -10075,7 +10545,7 @@ class TestRoundBudgetRefusal:
     def test_exhaustion_exits_4_sweeps_non_blocking_and_spares_blocking(self, tmp_path):
         from lib import dispositions as _d
 
-        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS, boundary_spent=True)
         result = _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted")
 
         assert result.returncode == 4, (result.stdout, result.stderr)
@@ -10106,7 +10576,7 @@ class TestRoundBudgetRefusal:
         assert "verify-resolutions" in result.stdout
 
     def test_force_buys_the_round_anyway(self, tmp_path):
-        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS, boundary_spent=True)
         result = _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted",
                             "--force")
         assert result.returncode != 4, (result.stdout, result.stderr)
@@ -10114,7 +10584,7 @@ class TestRoundBudgetRefusal:
     def test_verify_resolutions_is_never_refused(self, tmp_path):
         """The route that clears a blocker stays open at exhaustion. Whatever
         this dispatch does next, it must not be the budget that stops it."""
-        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS, boundary_spent=True)
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode != 4, (result.stdout, result.stderr)
 
@@ -10123,7 +10593,7 @@ class TestRoundBudgetRefusal:
         observably`. The yield argument for six rests on a measurement taken
         before the budget existed; only a record of real firings can falsify it
         or retire the control."""
-        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS, boundary_spent=True)
         _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted")
         refusals = [
             f for f in evidence.read_facts(repo)["facts"]
@@ -10235,16 +10705,19 @@ class TestGuardRefusalsReachTheirOwnQuery:
     so recording a field the lister drops only looks like emission."""
 
     def _list(self, repo: Path) -> str:
-        proc = subprocess.run(
-            [sys.executable, str(HOOK), "evidence", "list", "--kind", "guard-refusal"],
-            cwd=str(repo), capture_output=True, text=True,
-            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        proc = run_hook(
+            "evidence",
+            "list",
+            "--kind",
+            "guard-refusal",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
         )
         assert proc.returncode == 0, proc.stderr
         return proc.stdout
 
     def test_the_budget_refusal_lists_its_own_numbers(self, tmp_path):
-        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=[
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", boundary_spent=True, findings=[
             {"fid": "R-1", "severity": "warning", "goal": "Nothing Is Broken",
              "title": "a warning", "files": ["src/app.py"]},
             {"fid": "R-2", "severity": "blocking", "goal": "Nothing Is Broken",
@@ -10254,6 +10727,9 @@ class TestGuardRefusalsReachTheirOwnQuery:
         out = self._list(repo)
         assert "guard=critic-dispatch-round-budget" in out
         assert "rounds=6/1" in out, out
+        # The rounds the plan's cadence bought, beside the ones it charged: a
+        # `rounds=` read against a long plan is otherwise a loop that never ran.
+        assert "cadence=1" in out, out
         assert "accepted=6" in out, out
         assert "blocking-left=6" in out, out
         # The bound reaches the QUERY, not just the record. `evidence list`
@@ -10956,11 +11432,7 @@ class TestOneFixOrderEverywhere:
 
 
 def _run_consolidate_args(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(HOOK), "critic-consolidate", *args],
-        cwd=str(repo), capture_output=True, text=True,
-        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
-    )
+    return _hook_in(repo, "critic-consolidate", *args)
 
 
 class TestTreeUnchangedDuringReview:
@@ -11136,6 +11608,29 @@ class TestTreeUnchangedDuringReview:
         (repo / ".prawduct" / ".critic-active").write_text("{}")  # NOT this project's
         state, detail = cc.tree_changed_since_dispatch(proj, {"dispatch_tree": before})
         assert (state, detail) == ("changed", [".prawduct/.critic-active"])
+
+    def test_the_evidence_recorders_temp_file_is_a_session_file(self, tmp_path):
+        """`test-evidence record` writes `.test-evidence.json` through a temp
+        sibling (`core.TEMP_SUFFIX`) and renames it (#1202). A capture landing between the write and
+        the rename must read as unchanged, or the recorder's own write refuses a
+        review — which `building.md` says it never does."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        before = evidence.capture_tree(repo)["tree"]
+        from lib import core
+
+        temp = core.temp_sibling(Path(".prawduct/.test-evidence.json"))
+        (repo / temp).write_text("{}\n")
+        # The subject was reached: the temp file is in the captured tree, so an
+        # `unchanged` below comes from the exemption, not from an untracked file
+        # the capture never saw.
+        assert evidence.capture_tree(repo)["tree"] != before
+
+        state, detail = cc.tree_changed_since_dispatch(repo, {"dispatch_tree": before})
+
+        assert (state, detail) == ("unchanged", [])
 
 
 # ---------------------------------------------------------------------------
@@ -11313,9 +11808,11 @@ _ST8_PLAN = (
 
 def _st8_repo(tmp_path: Path, *, plan: "str | None" = _ST8_PLAN) -> Path:
     """A branch claimed by a three-chunk plan (no `## Status` block), with
-    uncommitted work touching chunks 01's and 03's Deliverables — so a `chunk`
-    dispatch proposes exactly 01 and 03. ``plan=None`` leaves the checkout
-    unbound (no plan at all)."""
+    uncommitted work touching chunks 01's and 02's Deliverables — so a `chunk`
+    dispatch proposes exactly 01 and 02. They are adjacent: work on 01 and 03
+    with 02 open would withhold 03 (the plan-order rule,
+    `test_plan_status.py::TestPlanOrder`).
+    ``plan=None`` leaves the checkout unbound (no plan at all)."""
     repo = tmp_path / "r"
     _init_repo(repo)
     for name in ("one", "two", "three"):
@@ -11325,7 +11822,7 @@ def _st8_repo(tmp_path: Path, *, plan: "str | None" = _ST8_PLAN) -> Path:
         _commit_file(repo, ".prawduct/artifacts/build-plan-cs.md", plan, "plan")
     _git(repo, "checkout", "-b", "feat/cs", "--quiet")
     (repo / "src/one.py").write_text("one = 1\n")
-    (repo / "src/three.py").write_text("three = 1\n")
+    (repo / "src/two.py").write_text("two = 1\n")
     return repo
 
 
@@ -11342,18 +11839,18 @@ class TestTheReviewNamesItsChunks:
 
     def test_a_fact_names_two_chunks_and_the_ledger_event_the_first(self, tmp_path):
         repo = _st8_repo(tmp_path)
-        result = cc.begin_review(repo, "chunk", chunks=["01", "03"])
+        result = cc.begin_review(repo, "chunk", chunks=["01", "02"])
         assert result["status"] == "ok", result
         manifest = _st8_manifest(repo)
-        assert manifest["chunks"] == ["01", "03"]
-        assert manifest["chunks_proposed"] == ["01", "03"]
+        assert manifest["chunks"] == ["01", "02"]
+        assert manifest["chunks_proposed"] == ["01", "02"]
         assert "chunk" not in manifest
         _write_partial(repo, "reviewer", manifest["commit_reviewed"])
         done = _run_consolidate(repo)
         assert done.returncode == 0, done.stderr
         (fact,) = _store_facts(repo, "review")
         body = fact["body"]
-        assert (body["chunks"], body["chunks_proposed"]) == (["01", "03"], ["01", "03"])
+        assert (body["chunks"], body["chunks_proposed"]) == (["01", "02"], ["01", "02"])
         assert "chunk" not in body
         # The ledger event keeps its `chunk` field (its own schema, read by
         # `review-stats`), now taken from the manifest's `chunks`.
@@ -11368,27 +11865,31 @@ class TestTheReviewNamesItsChunks:
             repo_dir=repo,
         )
         assert {k: s.state for k, s in states.items()} == {
-            "01": "done", "02": "open", "03": "done"
+            "01": "done", "02": "done", "03": "open"
         }
 
     def test_omitted_flags_declare_the_proposal(self, tmp_path):
+        """A `final` here: a `chunk` dispatch whose proposal names two chunks is
+        refused (TestAChunkDispatchProposingTwoChunksIsRefused), and this test
+        pins the default naming, which every whole-plan mode shares."""
         repo = _st8_repo(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk")
+        result = _run_begin(repo, "--mode", "final")
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
-        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "02"]
+        assert manifest["chunks_declared"] is False
         assert "chunk" not in manifest
         assert "WARNING: declared chunk" not in result.stderr
 
     def test_final_proposes_the_chunks_its_interval_built_not_every_open_one(self, tmp_path):
         """#1072: a `final` once proposed every open chunk, so a mid-plan keystone
-        review certified 02, which nothing in the interval touches and no commit
-        names. A mode sets depth, not reach: the proposal, and so the fact, is
-        what the interval built — here the uncommitted work on 01 and 03."""
+        review certified a chunk nothing in the interval touches and no commit
+        names (here 03). A mode sets depth, not reach: the proposal, and so the
+        fact, is what the interval built — here the uncommitted work on 01 and 02."""
         repo = _st8_repo(tmp_path)
         assert cc.begin_review(repo, "final")["status"] == "ok"
         manifest = _st8_manifest(repo)
-        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "02"]
 
     def test_a_declared_id_is_normalized_to_the_plan(self, tmp_path):
         """`--chunks 1` against a plan printing `01`: recorded as the plan prints it."""
@@ -11400,15 +11901,15 @@ class TestTheReviewNamesItsChunks:
 
     def test_a_declared_chunk_outside_the_proposal_warns_and_is_recorded(self, tmp_path):
         repo = _st8_repo(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk", "--chunks", "02")
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "03")
         assert result.returncode == 0, result.stderr
-        assert "WARNING: declared chunk(s) 02 are not in the proposal" in result.stderr
+        assert "WARNING: declared chunk(s) 03 are not in the proposal" in result.stderr
         manifest = _st8_manifest(repo)
-        assert manifest["chunks"] == ["02"]
-        assert manifest["chunks_proposed"] == ["01", "03"]
+        assert manifest["chunks"] == ["03"]
+        assert manifest["chunks_proposed"] == ["01", "02"]
         # Control: declaring inside the proposal says nothing.
         _abandon(repo)
-        inside = _run_begin(repo, "--mode", "chunk", "--chunks", "03")
+        inside = _run_begin(repo, "--mode", "chunk", "--chunks", "02")
         assert inside.returncode == 0, inside.stderr
         assert "WARNING: declared chunk" not in inside.stderr
 
@@ -11511,7 +12012,14 @@ class TestTheDispatchProposalLeavesOutTheStubAndSaysWhyItNamedFewer:
         at_tree = cc._proposed_chunks(repo, plan, read, files, "chunk", None, None, stub_tree)
         assert at_tree == ([], ())
         # Control: with no tree, the working tree's written fragment is read.
-        assert cc._proposed_chunks(repo, plan, read, files, "chunk") == (["04"], ())
+        # 01 to 03 are open, so the plan-order rule withholds 04 rather than
+        # proposing it (`test_plan_status.py::TestPlanOrder`); the withheld
+        # note is what shows the fragment was read as work, since an unread one
+        # touches nothing and says nothing.
+        chunks, notes = cc._proposed_chunks(repo, plan, read, files, "chunk")
+        assert chunks == []
+        (note,) = notes
+        assert note.startswith("chunk 04 not proposed") and "`.prawduct/changes/cs.md`" in note
 
     def test_a_whole_plan_proposal_git_cannot_walk_says_so_in_the_dispatch_notes(
         self, tmp_path, monkeypatch
@@ -11540,29 +12048,28 @@ class TestRecordLintGradesTheChunksTheFactNames:
     grades are the chunks the review fact will certify — every one of them, not
     the plan's first open chunk."""
 
-    def _repo_touching_two_and_three(self, tmp_path: Path) -> Path:
-        repo = _st8_repo(tmp_path)
-        (repo / "src/one.py").write_text("one = 0\n")  # back to committed
-        (repo / "src/two.py").write_text("two = 1\n")
-        return repo
+    def _repo_touching_one_and_two(self, tmp_path: Path) -> Path:
+        # Two adjacent open chunks, so neither is withheld by plan order.
+        return _st8_repo(tmp_path)
 
     def test_no_declared_chunks_grades_the_whole_proposal(self, tmp_path):
-        repo = self._repo_touching_two_and_three(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk")
+        repo = self._repo_touching_one_and_two(tmp_path)
+        # `final`: a `chunk` dispatch proposing two chunks is refused (exit 8).
+        result = _run_begin(repo, "--mode", "final")
         assert result.returncode == 0, result.stderr
         manifest = _st8_manifest(repo)
-        assert manifest["chunks"] == ["02", "03"]
+        assert manifest["chunks"] == ["01", "02"]
         lint = manifest["record_lint"]
-        assert lint["chunks_graded"] == ["02", "03"], lint
-        assert lint["chunk_graded"] == "02"
-        assert "record-lint graded chunk 02, 03 of" in result.stdout
+        assert lint["chunks_graded"] == ["01", "02"], lint
+        assert lint["chunk_graded"] == "01"
+        assert "record-lint graded chunk 01, 02 of" in result.stdout
 
     def test_an_explicit_chunk_grades_that_chunk(self, tmp_path):
-        repo = self._repo_touching_two_and_three(tmp_path)
-        result = _run_begin(repo, "--mode", "chunk", "--chunks", "03")
+        repo = self._repo_touching_one_and_two(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk", "--chunks", "02")
         assert result.returncode == 0, result.stderr
         lint = _st8_manifest(repo)["record_lint"]
-        assert (lint["chunks_graded"], lint["chunk_graded"]) == (["03"], "03"), lint
+        assert (lint["chunks_graded"], lint["chunk_graded"]) == (["02"], "02"), lint
 
 
 class TestAVerifyPassProposesTheChunksItVerifies:
@@ -11606,6 +12113,375 @@ class TestAVerifyPassProposesTheChunksItVerifies:
             n.startswith("WARNING: declared chunk(s) 02 are not in the proposal") and "(01, 03)" in n
             for n in result["notes"]
         ), result["notes"]
+
+
+class TestAChunkDispatchProposingTwoChunksIsRefused:
+    """#1141-R1, design D3. A `chunk` review is one chunk's review, and the
+    plan-order rule cannot tell adjacent chunks apart: building 01, a diff that
+    also touches 02's path proposes both. With `--chunks` omitted the dispatch
+    refuses with exit 8, before the manifest, the marker or the archive of
+    leftovers is written, and names both re-runs. Whole-plan modes name several
+    chunks by design and do not refuse."""
+
+    def test_the_adjacency_shape_exits_8_and_writes_nothing_but_the_refusal_fact(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        # A leftover partial a dispatch would archive: it must still be in
+        # place after the refusal, which shows the refusal precedes the sweep.
+        leftover = repo / PARTIALS_REL / "reviewer-old.json"
+        leftover.parent.mkdir(parents=True, exist_ok=True)
+        leftover.write_text("{}\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 8, (result.stdout, result.stderr)
+        assert "chunk review refused" in result.stdout
+        assert "chunk 01: `src/one.py`" in result.stdout
+        assert "chunk 02: `src/two.py`" in result.stdout
+        # One re-run line per proposed chunk, not the earliest labelled "the
+        # chunk you built" (R-3 of the Chunk 07 review): the refusal exists for
+        # the builder who built the later one and touched the earlier one's
+        # path in passing, and the earliest is the unbuilt chunk then.
+        lines = result.stdout.splitlines()
+        assert "    `--chunks 01`" in lines and "    `--chunks 02`" in lines, result.stdout
+        assert "for the chunk you built" not in result.stdout
+        assert "`--chunks 01,02`" in result.stdout
+        assert not (repo / PARTIALS_REL / "manifest.json").exists()
+        assert not (repo / MARKER_REL).exists()
+        assert leftover.read_text() == "{}\n"
+        assert not (repo / ".prawduct/.critic-partials-archive").exists()
+        (refusal,) = _store_facts(repo, "guard-refusal")
+        body = refusal["body"]
+        assert body["guard"] == "critic-dispatch-chunks-ambiguous"
+        assert (body["reason"], body["chunks_proposed"]) == ("chunks-ambiguous", ["01", "02"])
+
+    def test_naming_the_chunk_or_a_whole_plan_mode_dispatches(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        leftover = repo / PARTIALS_REL / "reviewer-old.json"
+        leftover.parent.mkdir(parents=True, exist_ok=True)
+        leftover.write_text("{}\n")
+        named = _run_begin(repo, "--mode", "chunk", "--chunks", "01")
+        assert named.returncode == 0, named.stderr
+        assert _st8_manifest(repo)["chunks"] == ["01"]
+        assert not leftover.exists()  # control: a dispatch that goes ahead sweeps it
+        _abandon(repo)
+        final = _run_begin(repo, "--mode", "final")
+        assert final.returncode == 0, final.stderr
+        assert _st8_manifest(repo)["chunks"] == ["01", "02"]
+        assert _store_facts(repo, "guard-refusal") == []
+
+    def test_a_chunk_withheld_by_plan_order_is_not_counted(self, tmp_path):
+        """Work on 01 and on 03 with 02 open proposes 01 alone (03 is
+        withheld), so the dispatch is one chunk's and goes ahead. Counting the
+        touched chunks before plan order would refuse it."""
+        repo = _st8_repo(tmp_path)
+        (repo / "src/two.py").write_text("two = 0\n")  # back to committed
+        (repo / "src/three.py").write_text("three = 1\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        manifest = _st8_manifest(repo)
+        assert (manifest["chunks"], manifest["chunks_proposed"]) == (["01"], ["01"])
+        assert "chunk 03 not proposed" in result.stderr
+
+
+class TestTheFactRecordsHowEachChunkWasNamed:
+    """#1141-R4, design D5. Whether `--chunks` was passed, and per proposed
+    chunk the paths or commits that named it, so `plan status` can say how a
+    `done` row became done. Recorded at dispatch, because the route costs a git
+    walk to recompute; never read for state."""
+
+    def test_declared_and_evidence_reach_the_fact(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        _git(repo, "commit", "-qam", "feat(cs): one and two")  # path-named: no chunk in the subject
+        _commit_file(repo, "notes.txt", "x\n", "docs(cs): three's notes (Chunk 03)")
+        sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        assert cc.begin_review(repo, "cumulative", force=True)["status"] == "ok"
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks_declared"] is False
+        assert manifest["chunks_evidence"]["01"] == {
+            "paths": ["src/one.py"], "paths_more": 0, "commits": [],
+        }
+        assert manifest["chunks_evidence"]["03"] == {"paths": [], "paths_more": 0, "commits": [sha[:12]]}
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        (fact,) = _store_facts(repo, "review")
+        assert fact["body"]["chunks_declared"] is False
+        assert fact["body"]["chunks_evidence"] == manifest["chunks_evidence"]
+
+    def test_a_span_ahead_of_an_open_chunk_is_flagged_as_expected(self, tmp_path):
+        """#1198-R5, design D6: a delegate's scoped `(Chunk 03)` commit, which a
+        clean cumulative spans while 02 is open, is done by span and flagged
+        ahead of 02, worded as expected out of order. The chunk the builder
+        named is in order and carries its route."""
+        from lib import plan_status
+
+        repo = _st8_repo(tmp_path)
+        (repo / "src/two.py").write_text("two = 0\n")  # 02 stays unbuilt
+        (repo / "src/three.py").write_text("three = 1\n")
+        _git(repo, "commit", "-qam", "feat(cs): one, and three by its delegate (Chunk 03)")
+        assert cc.begin_review(repo, "cumulative", chunks=["01"], force=True)["status"] == "ok"
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        states = plan_status.chunk_states(
+            repo / ".prawduct/artifacts/build-plan-cs.md", evidence.read_facts(repo), repo_dir=repo,
+        )
+        assert (states["01"].state, states["01"].reason, states["01"].ahead_of) == (
+            "done", "named by --chunks (in the proposal)", None,
+        )
+        assert (states["03"].state, states["03"].route, states["03"].ahead_of) == ("done", "span", "02")
+        assert plan_status.ahead_of_line("03", states["03"]).startswith(
+            "done ahead of open chunk 02 (by span) — expected when chunks are built out of order"
+        )
+
+    def test_retract_all_withdraws_every_naming_fact_and_the_span_it_uncovers(self, tmp_path):
+        """#1198-R7 and A3, design D7. Two naming facts and a span all certify
+        03. `--all` withdraws all three, one pair each, the span last (it
+        surfaces only once the naming facts are withdrawn), and 03 ends open.
+        Mutant M8 (stop after the naming facts) leaves the span certifying."""
+        from lib import plan_status
+
+        repo = _st8_repo(tmp_path)
+        (repo / "src/two.py").write_text("two = 0\n")
+        (repo / "src/three.py").write_text("three = 1\n")
+        _git(repo, "commit", "-qam", "feat(cs): one, and three by its delegate (Chunk 03)")
+        assert cc.begin_review(repo, "cumulative", chunks=["01"], force=True)["status"] == "ok"
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        (span_fact,) = _store_facts(repo, "review")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        for fid in ("rev-name-a", "rev-name-b"):
+            body = {"scope": "cs", "mode": "final", "chunks": ["03"], "chunks_proposed": ["03"],
+                    "head_commit": head, "dispatch_commit": head, "findings": [],
+                    "counts": {"blocking": 0, "warning": 0, "note": 0}}
+            assert evidence.append_fact(repo, "review", fid, body)["status"] == "appended"
+        plan = repo / ".prawduct/artifacts/build-plan-cs.md"
+        assert plan_status.chunk_states(plan, evidence.read_facts(repo), repo_dir=repo)["03"].state == "done"
+
+        proc = run_hook(
+            "plan",
+            "retract",
+            "03",
+            "--all",
+            "--reason",
+            "never built",
+            cwd=str(repo),
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)},
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        import re
+
+        withdrawn = re.findall(r"retracted (\S+)'s certification of chunk 03", proc.stdout)
+        assert withdrawn == ["rev-name-a", "rev-name-b", span_fact["id"]], proc.stdout
+        assert "chunk 03 now reads: open" in proc.stdout
+        retracted = _store_facts(repo, plan_status.RETRACTED_KIND)
+        assert [f["body"]["fact_id"] for f in retracted] == ["rev-name-a", "rev-name-b", span_fact["id"]]
+        assert plan_status.chunk_states(plan, evidence.read_facts(repo), repo_dir=repo)["03"].state == "open"
+
+    def test_a_subject_named_chunk_reads_as_the_builders_words(self, tmp_path):
+        """R-1 of the Chunk 07 review, at the layer it was reported: a real
+        boundary `cumulative` that names 03 by its scoped subject while 02 is
+        open. Its route was `proposal`, so the flag used the unexpected
+        wording and the Stop-path deferral questioned it."""
+        from lib import plan_status
+
+        repo = _st8_repo(tmp_path)
+        (repo / "src/two.py").write_text("two = 0\n")  # 02 stays unbuilt
+        _git(repo, "commit", "-qam", "feat(cs): one")
+        _commit_file(repo, "notes.txt", "x\n", "docs(cs): three, by its delegate (Chunk 03)")
+        assert cc.begin_review(repo, "cumulative", force=True)["status"] == "ok"
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        states = plan_status.chunk_states(
+            repo / ".prawduct/artifacts/build-plan-cs.md", evidence.read_facts(repo), repo_dir=repo,
+        )
+        assert (states["03"].state, states["03"].route, states["03"].ahead_of) == (
+            "done", "subject", "02",
+        )
+        assert states["03"].named_by_builder
+        assert states["01"].route == "proposal" and not states["01"].named_by_builder
+        assert plan_status.ahead_of_line("03", states["03"]).startswith(
+            "done ahead of open chunk 02 (by its scoped subject) — expected"
+        )
+
+    def test_a_verify_pass_carries_how_its_review_named_the_chunk(self, tmp_path):
+        """Native review, Chunk 07 round. A verify pass names a chunk because
+        the review it verifies did, so it carries that review's
+        `chunks_declared` and evidence. Without them, a chunk declared with
+        `--chunks 03` read as a proposal once the pass certified it."""
+        from lib import plan_status
+
+        repo = _st8_repo(tmp_path)
+        assert cc.begin_review(repo, "chunk", chunks=["03"])["status"] == "ok"
+        assert _st8_manifest(repo)["chunks_declared"] is True
+        warn = {"name": "Tighten", "goal": "Nothing Is Unintended", "severity": "warning",
+                "recommendation": "Tighten", "files": ["src/one.py"]}
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"], findings=[warn])
+        assert _run_consolidate(repo).returncode == 0
+
+        (repo / "src/one.py").write_text("one = 2  # the warning, fixed\n")
+        assert cc.begin_review(repo, "verify-resolutions")["status"] == "ok"
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == ["03"] and manifest["chunks_declared"] is True, manifest
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        verify_fact = _store_facts(repo, "review")[-1]
+        assert verify_fact["body"]["chunks_declared"] is True
+        kind, _text = plan_status._route(verify_fact["body"], "03", {})
+        assert kind == "declared"
+
+    def test_a_verify_pass_over_a_path_proposal_stays_a_proposal(self, tmp_path):
+        """The control: inherited, not invented. A verified review the code
+        named passes on `False` and its path evidence."""
+        repo = _st8_repo(tmp_path)
+        _git(repo, "commit", "-qam", "feat(cs): one and two")
+        assert cc.begin_review(repo, "cumulative", force=True)["status"] == "ok"
+        warn = {"name": "Tighten", "goal": "Nothing Is Unintended", "severity": "warning",
+                "recommendation": "Tighten", "files": ["src/one.py"]}
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"], findings=[warn])
+        assert _run_consolidate(repo).returncode == 0
+        (repo / "src/one.py").write_text("one = 2  # the warning, fixed\n")
+        assert cc.begin_review(repo, "verify-resolutions")["status"] == "ok"
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks_declared"] is False
+        assert manifest["chunks_evidence"]["01"]["paths"] == ["src/one.py"]
+
+    def test_a_declared_set_is_recorded_as_declared(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        assert cc.begin_review(repo, "chunk", chunks=["01"])["status"] == "ok"
+        assert _st8_manifest(repo)["chunks_declared"] is True
+
+    def test_the_validator_types_both_fields(self):
+        ok_entry = {"paths": ["a.py"], "paths_more": 0, "commits": []}
+        assert cc.validate_manifest(
+            _manifest_dict(chunks_declared=True, chunks_evidence={"01": ok_entry})
+        )[0]
+        bad, why = cc.validate_manifest(_manifest_dict(chunks_declared="yes"))
+        assert not bad and "'chunks_declared'" in why
+        bad, why = cc.validate_manifest(_manifest_dict(chunks_evidence=["01"]))
+        assert not bad and "'chunks_evidence'" in why
+        bad, why = cc.validate_manifest(
+            _manifest_dict(chunks_evidence={"01": {**ok_entry, "paths_more": -1}})
+        )
+        assert not bad and "'chunks_evidence'" in why
+
+    def test_a_manifest_without_the_fields_writes_neither(self):
+        """A fact from an older manifest renders "route not recorded"; copying
+        a default would claim a route nobody observed."""
+        body = cc.build_fact_body(_manifest_dict(chunks=["01"]), [_partial("reviewer", "abc123")])
+        assert "chunks_declared" not in body and "chunks_evidence" not in body
+
+
+class TestPartOneOfAPlanLeavesItsLaterChunksOpen:
+    """#1198 (A2, R3). A six-chunk plan ships 01 to 04 as part one; part one
+    also writes `docs/guide.md`, which only the cumulative-final 06 lists. Its
+    boundary `cumulative` names 01 to 04 and withholds 06 while 05 is open, and
+    a `verify-resolutions` over that review inherits the narrowed set rather
+    than naming 06 again. 05 and 06 stay open for part two."""
+
+    _PLAN = (
+        "---\nartifact: build-plan\nscope: cs\nbranch: feat/cs\nbase: main\n---\n\n# Plan\n\n"
+        + "".join(
+            f"### Chunk 0{n}: c{n}\n\n- **Deliverables:** `src/c{n}.py`\n\n" for n in range(1, 6)
+        )
+        + "### Chunk 06: the docs\n\n- **Type:** cumulative-final\n- **Deliverables:** `docs/guide.md`\n"
+    )
+    _WARN = {"name": "Tighten", "goal": "Nothing Is Unintended", "severity": "warning",
+             "recommendation": "Tighten", "files": ["src/c1.py"]}
+
+    def test_the_boundary_review_and_its_verify_pass_leave_05_and_06_open(self, tmp_path):
+        from lib import plan_status
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
+        _commit_file(repo, ".prawduct/artifacts/build-plan-cs.md", self._PLAN, "plan")
+        _git(repo, "checkout", "-b", "feat/cs", "--quiet")
+        for n in range(1, 5):
+            _commit_file(repo, f"src/c{n}.py", "x = 1\n", f"feat(cs): c{n} (Chunk 0{n})")
+        _commit_file(repo, "docs/guide.md", "draft\n", "docs(cs): the guide, drafted early")
+
+        result = cc.begin_review(repo, "cumulative", force=True)
+        assert result["status"] == "ok", result
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "02", "03", "04"]
+        assert any(
+            n.startswith("chunk 06 not proposed") and "chunk 05" in n for n in result["notes"]
+        ), result["notes"]
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[self._WARN])
+        assert _run_consolidate(repo).returncode == 0
+
+        (repo / "src/c1.py").write_text("x = 2  # the warning, fixed\n")
+        verify = cc.begin_review(repo, "verify-resolutions")
+        assert verify["status"] == "ok", verify
+        assert _st8_manifest(repo)["chunks"] == ["01", "02", "03", "04"]
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+
+        states = plan_status.chunk_states(
+            repo / ".prawduct/artifacts/build-plan-cs.md", evidence.read_facts(repo), repo_dir=repo,
+        )
+        assert {k: s.state for k, s in states.items()} == {
+            "01": "done", "02": "done", "03": "done", "04": "done", "05": "open", "06": "open",
+        }
+
+
+class TestAPlanShippedInTwoParts:
+    """#1198-A4 and owner ruling 2026-11-22 ("shipping one plan in two PRs is
+    a supported shape"), the sentence `planning.md` Plan Shape carries: each
+    part's boundary `cumulative` certifies what that part built; merged with a
+    merge commit, part one's certifications stand, and part two's boundary
+    review finishes the plan. A squash merge takes part one's reviewed commits
+    out of history, and its chunks reopen."""
+
+    _PLAN = TestPartOneOfAPlanLeavesItsLaterChunksOpen._PLAN
+
+    def _part_one(self, tmp_path: Path) -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
+        _commit_file(repo, ".prawduct/artifacts/build-plan-cs.md", self._PLAN, "plan")
+        _git(repo, "checkout", "-b", "feat/cs", "--quiet")
+        for n in range(1, 5):
+            _commit_file(repo, f"src/c{n}.py", "x = 1\n", f"feat(cs): c{n} (Chunk 0{n})")
+        assert cc.begin_review(repo, "cumulative", force=True)["status"] == "ok"
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+        return repo
+
+    def _states(self, repo: Path) -> dict:
+        from lib import plan_status
+
+        plan = repo / ".prawduct/artifacts/build-plan-cs.md"
+        return {k: s.state for k, s in plan_status.chunk_states(
+            plan, evidence.read_facts(repo), repo_dir=repo).items()}
+
+    def _part_two(self, repo: Path) -> None:
+        _commit_file(repo, "src/c5.py", "x = 1\n", "feat(cs): c5 (Chunk 05)")
+        _commit_file(repo, "docs/guide.md", "done\n", "docs(cs): the docs (Chunk 06)")
+        assert cc.begin_review(repo, "cumulative", force=True)["status"] == "ok"
+        _write_partial(repo, "reviewer", _st8_manifest(repo)["commit_reviewed"])
+        assert _run_consolidate(repo).returncode == 0
+
+    def test_merged_with_a_merge_commit_part_two_finishes_the_plan(self, tmp_path):
+        from lib import plan_status
+
+        repo = self._part_one(tmp_path)
+        assert [self._states(repo)[c] for c in ("01", "04", "05", "06")] == ["done", "done", "open", "open"]
+        _git(repo, "checkout", "main", "--quiet")
+        _git(repo, "merge", "--no-ff", "-m", "Merge part one", "feat/cs", "--quiet")
+        _git(repo, "checkout", "feat/cs", "--quiet")
+        _git(repo, "merge", "--ff-only", "main", "--quiet")
+        self._part_two(repo)
+        assert set(self._states(repo).values()) == {"done"}
+        plan = repo / ".prawduct/artifacts/build-plan-cs.md"
+        assert plan_status.is_finished(plan, evidence.read_facts(repo), repo_dir=repo)
+
+    def test_a_squash_merge_reopens_part_ones_chunks(self, tmp_path):
+        repo = self._part_one(tmp_path)
+        _git(repo, "checkout", "main", "--quiet")
+        _git(repo, "merge", "--squash", "feat/cs", "--quiet")
+        _git(repo, "commit", "-qm", "Squash part one")
+        _git(repo, "branch", "-D", "feat/cs")
+        _git(repo, "checkout", "-b", "feat/cs", "--quiet")
+        states = self._states(repo)
+        assert [states[c] for c in ("01", "02", "03", "04")] == ["open"] * 4
 
 
 class TestManifestChunkFields:

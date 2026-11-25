@@ -64,6 +64,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import clock
 from . import gitstate
 
 SCHEMA_VERSION = 1
@@ -142,10 +143,19 @@ OBSERVATIONAL_KINDS = frozenset(
 #: verdict composes; ``chunk-imported`` and ``chunk-retracted`` ride too because
 #: ``plan_status.chunk_states`` reads them, and one made in one clone is
 #: otherwise invisible to every other — an unseen retraction leaves those clones
-#: certifying the chunk it withdrew. Every other kind is about the clone that wrote it (a
-#: suite run, a session boundary, a guard firing, a builder's disposition) and
-#: stays in that clone's store.
-TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported", "chunk-retracted"})
+#: certifying the chunk it withdrew. ``disposition`` rides because a finding's
+#: answer (ACCEPT, FILE, a free fix) is about the finding, not the clone: left
+#: behind, every other clone reports the finding unanswered, re-raises it to its
+#: reviewers and sweeps it again. No gate reads one, so carrying it lifts none.
+#:
+#: The kinds left out each describe the clone that wrote them, and stay in its
+#: store: a ``guard-refusal`` is a control firing here, and its yield question
+#: is asked per clone (:func:`append_guard_refusal`); a ``test-run`` is a suite
+#: result about the machine and environment that ran it; a ``session-start`` is
+#: a session boundary of this clone, the denominator of its per-session rates.
+TRANSPORTED_KINDS = frozenset(
+    {"review", "resolution", "disposition", "chunk-imported", "chunk-retracted"}
+)
 
 
 def review_anchor(body: object) -> "str | None":
@@ -275,14 +285,6 @@ def _plugin_version() -> str | None:
 BUILD_SHA_LENGTH = 12
 #: Suffix on ``actor.build`` when the plugin tree differs from its commit.
 BUILD_DIRTY_SUFFIX = "+dirty"
-#: Git's repository-locating variables. A hook can run under a git hook or a
-#: caller that exported them for the PRODUCT repo, and git would then answer
-#: about the product rather than the plugin checkout.
-_REPO_LOCATING_ENV = (
-    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
-    "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX",
-    "GIT_NAMESPACE",
-)
 _UNREAD = object()
 _build_memo: object = _UNREAD
 
@@ -300,7 +302,10 @@ def read_plugin_build(plugin_root: Path) -> str | None:
     directory: a dirty sibling outside it did not change the code that ran.
     Runs with ``GIT_OPTIONAL_LOCKS=0``, so it never rewrites that index.
     Never raises (:func:`run_git` converts every failure)."""
-    env = {k: v for k, v in os.environ.items() if k not in _REPO_LOCATING_ENV}
+    # A hook can run under a git hook, or a caller that exported git's location
+    # variables for the PRODUCT repo; git would then answer about the product
+    # rather than the plugin checkout.
+    env = gitstate.env_without_repo_location()
     # A read must never refresh the checkout's index: this one is often a
     # developer's working tree, where a lock collides with their own git and a
     # rewritten index reads as activity to whatever watches its mtime.
@@ -344,10 +349,6 @@ def _session_epoch(project_dir: Path) -> str | None:
     except OSError:
         return None
     return datetime.fromtimestamp(mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def append_fact(
@@ -406,7 +407,7 @@ def append_fact(
         "schema": SCHEMA_VERSION,
         "kind": kind,
         "id": fact_id,
-        "ts": _now_iso(),
+        "ts": clock.now_iso(),
         "actor": actor,
         "body": body,
     }
@@ -655,7 +656,7 @@ def _append_guard_fact(project_dir, guard, body, dedupe_key, known_facts) -> dic
         )
     fact_id = "guard-{}-{}-{}".format(
         guard.strip(),
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        clock.now().strftime("%Y%m%dT%H%M%SZ"),
         uuid.uuid4().hex[:8],
     )
     # `guard` LAST, not first: the id was minted from the parameter, so a body
@@ -707,7 +708,7 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
     if not isinstance(body, dict) or not isinstance(body.get("tree"), str):
         return {"status": "error", "reason": "a test-run fact needs a tree"}
     fact_id = "test-run-{}-{}".format(
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        clock.now().strftime("%Y%m%dT%H%M%SZ"),
         uuid.uuid4().hex[:8],
     )
     return append_fact(project_dir, "test-run", fact_id, body)
@@ -835,7 +836,7 @@ def append_stop_block(
     correct whether or not its record lands.
     """
     stop_id = "{}-{}".format(
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+        clock.now().strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
     )
     results = []
     for gate in gates:
@@ -899,7 +900,7 @@ def append_session_start(project_dir: Path) -> dict:
     rates this fact exists for need only that a session began, so the
     SessionStart payload's ``source`` (``startup`` or ``clear``) is not read."""
     fact_id = "session-start-{}-{}".format(
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+        clock.now().strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
     )
     return append_fact(project_dir, "session-start", fact_id, {})
 
@@ -1544,8 +1545,8 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
     withholds too — as the live run path's before/after tree capture does.
 
     Three questions, each over the paths ``coverage_algebra.affects_test_outcome``
-    keeps (with the repo's ``suite_coupled_prefixes``), the predicate the tree
-    clause itself judges by:
+    keeps (with the declarations in force, ``coverage.suite_declarations``),
+    the predicate the tree clause itself judges by:
 
     1. **Edits.** A tracked or untracked (not ignored) file newer than the
        earliest run start — other than the reports and their scope records,
@@ -1579,7 +1580,7 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
     reason, which withholds the stamp: the safe direction costs a later re-run,
     never a false green.
     """
-    from . import core, coverage_algebra  # noqa: PLC0415 — lazy: leaf modules, ingest-only
+    from . import coverage_algebra  # noqa: PLC0415 — lazy: leaf modules, ingest-only
 
     if not reports:
         return None
@@ -1591,10 +1592,14 @@ def report_predates_tree(project_dir: Path, reports: "list[str | Path]") -> "str
         starts.append(start_ns)
     report_ns = min(starts)
     root = Path(project_dir)
-    prefixes = core.suite_coupled_prefixes(gitstate.get_prawduct_dir(project_dir))
+    from . import coverage  # noqa: PLC0415 — lazy: coverage imports this module
+
+    declared = coverage.suite_declarations(project_dir, "HEAD")
 
     def coupled(paths: "list[str]") -> "list[str]":
-        return coverage_algebra.suite_coupled_files(sorted(set(paths)), prefixes)
+        return coverage_algebra.suite_coupled_files(
+            sorted(set(paths)), declared.coupled, declared.static
+        )
 
     rc, out, err = run_git(
         project_dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard",
@@ -2029,7 +2034,7 @@ def distinct_trees(facts: list[dict]) -> set[str]:
 #: offers them (a test holds the two rosters equal) — the text an unknown op,
 #: or a ``list`` or ``ingest`` usage error, prints.
 _CLI_USAGE = (
-    "Usage: prawduct-hook evidence {status|list [--kind <k>] [-n <count>]"
+    "Usage: prawduct-hook evidence {status|list [--kind <k>] [--id <fact-id>] [-n <count>] [--json]"
     "|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}"
 )
 
@@ -2271,7 +2276,13 @@ def _cmd_status(project_dir: Path) -> int:
 
 
 def _cmd_list(project_dir: Path, argv: list[str]) -> int:
+    """``evidence list``: newest first, one row per fact. ``--id`` narrows to
+    one fact, and ``--json`` prints each matching envelope whole as a JSON
+    line, body included, for a reader that needs a fact's fields (the
+    bug-report intake asks for a certifying review's chunk fields, #1141-R10)."""
     kind_filter: str | None = None
+    id_filter: str | None = None
+    as_json = False
     limit = 20
     i = 0
     while i < len(argv):
@@ -2279,6 +2290,12 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         if arg == "--kind" and i + 1 < len(argv):
             kind_filter = argv[i + 1]
             i += 2
+        elif arg == "--id" and i + 1 < len(argv):
+            id_filter = argv[i + 1]
+            i += 2
+        elif arg == "--json":
+            as_json = True
+            i += 1
         elif arg == "-n" and i + 1 < len(argv):
             try:
                 limit = max(1, int(argv[i + 1]))
@@ -2296,6 +2313,12 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
     facts = result["facts"]
     if kind_filter is not None:
         facts = [f for f in facts if f.get("kind") == kind_filter]
+    if id_filter is not None:
+        facts = [f for f in facts if f.get("id") == id_filter]
+    if as_json:
+        for fact in list(reversed(facts))[:limit]:
+            print(json.dumps(fact, sort_keys=True))
+        return 0
     if not facts:
         print("no matching facts")
         return 0
@@ -2351,6 +2374,12 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         spent, ceiling = body.get("spent"), body.get("budget")
         if isinstance(spent, int) and isinstance(ceiling, int):
             guard_note += f" rounds={spent}/{ceiling}"
+        # The rounds the plan's cadence bought, which `spent` leaves out. A
+        # record without the key predates that allowance, and its `spent`
+        # counted them, so absence renders as nothing rather than as zero.
+        cadence = body.get("cadence")
+        if isinstance(cadence, int):
+            guard_note += f" cadence={cadence}"
         bound = body.get("bound")
         if isinstance(bound, str) and bound:
             guard_note += f" bound={bound}"

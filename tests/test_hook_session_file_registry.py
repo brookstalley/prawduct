@@ -112,6 +112,11 @@ _BOUNDARY_SURVIVORS = {
     ".prawduct/.test-evidence.json":
         "the test record the freshness gates compare against `.session-start` — the "
         "comparison is what makes it stale, so deleting it would defeat the gate",
+    ".prawduct/**/*.prawduct.tmp":
+        "the transient of an atomic write (`core.TEMP_SUFFIX`), overwritten by the next "
+        "one; a leftover from a write that died is inert because it is ignored, and "
+        "unlinking one at a boundary could race another session's writer between its "
+        "write and rename",
     ".prawduct/.session-activity.json":
         "a cache keyed inside by transcript path, inode and offset, so an entry never "
         "answers for another session; a second session in this checkout may be "

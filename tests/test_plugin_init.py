@@ -30,6 +30,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import scrubbed_env
+
 
 def _writes_no_base_branch_key(text: str) -> bool:
     """No *uncommented* `base_branch:` key in the rendered state file.
@@ -100,13 +102,12 @@ class TestCoreResolution:
 def _env(target: Path) -> dict:
     home = target.parent / "_home"
     home.mkdir(exist_ok=True, parents=True)
-    return {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(target),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(target),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH="/usr/bin:/bin:/usr/sbin:/sbin",
+    )
 
 
 def run_init(target: Path, name: str, *flags: str) -> dict:
@@ -471,19 +472,10 @@ def test_an_unrecognized_token_refuses_before_scaffolding(tmp_path):
 
 
 def _git(repo: Path, *args: str) -> str:
-    home = repo.parent / "_home"
-    home.mkdir(exist_ok=True, parents=True)
     proc = subprocess.run(
         ["git", *args],
         cwd=str(repo), capture_output=True, text=True, timeout=30,
-        env={
-            "HOME": str(home),
-            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-            "GIT_CONFIG_GLOBAL": str(home / "gitconfig"),
-            "GIT_CONFIG_SYSTEM": str(home / "gitconfig-system"),
-            "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.com",
-            "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.com",
-        },
+        env=scrubbed_env(repo.parent / "_home", PATH="/usr/bin:/bin:/usr/sbin:/sbin"),
     )
     assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
     return proc.stdout.strip()

@@ -33,6 +33,7 @@ if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 
 from fixtures.hook_env import isolated_hook_run  # noqa: E402
+from conftest import scrubbed_env  # noqa: E402
 
 _HOOK_PATH = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
 
@@ -443,8 +444,7 @@ class TestCommand:
         """Committing the live log's removals without the month files they moved
         to would drop history from git with no error anywhere."""
         prawduct = _repo(tmp_path, VERSIONED)
-        env = {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
-               "HOME": str(tmp_path), "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"}
+        env = scrubbed_env(tmp_path)
 
         def git(*args: str) -> None:
             subprocess.run(["git", *args], cwd=str(tmp_path), check=True,
@@ -456,7 +456,7 @@ class TestCommand:
             encoding="utf-8",
         )
         git("add", ".gitignore", ".prawduct/change-log.md", ".prawduct/project-state.yaml")
-        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+        git("commit", "-q", "-m", "init")
 
         proc = _cli(prawduct, "--apply")
         assert proc.returncode == 1, proc.stdout
@@ -480,8 +480,7 @@ class TestCommand:
         """A bare `.prawduct/` rule cannot be narrowed by a `!` line; the remedy routes it
         to `update-gitignore --dry-run`, and pasting the lines that prints is enough."""
         prawduct = _repo(tmp_path, VERSIONED)
-        env = {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
-               "HOME": str(tmp_path), "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"}
+        env = scrubbed_env(tmp_path)
 
         def git(*args: str) -> None:
             subprocess.run(["git", *args], cwd=str(tmp_path), check=True,
@@ -490,7 +489,7 @@ class TestCommand:
         git("init", "-q", "-b", "main")
         (tmp_path / ".gitignore").write_text(".prawduct/\n", encoding="utf-8")
         git("add", "-f", ".gitignore", ".prawduct/change-log.md", ".prawduct/project-state.yaml")
-        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+        git("commit", "-q", "-m", "init")
         proc = _cli(prawduct, "--apply")
         assert proc.returncode == 1 and "would ignore" in proc.stderr, proc.stderr
         assert "prawduct-hook update-gitignore --dry-run" in proc.stderr
@@ -509,9 +508,8 @@ class TestCommand:
 
 
 def _git(root: Path, *args: str) -> None:
-    env = {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
-           "HOME": str(root.parent), "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"}
-    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=str(root),
+    env = scrubbed_env(root.parent)
+    subprocess.run(["git", *args], cwd=str(root),
                    check=True, capture_output=True, env=env)
 
 

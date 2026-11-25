@@ -56,7 +56,8 @@ Other commands you may need:
 - `/prawduct:doctor` health-checks an onboarded repo and gives the fix for each problem.
 - `/prawduct:repo-disable` turns prawduct off in one repo, for the whole team or just you. To turn
   it back on, set `"prawduct@prawduct": true` under `enabledPlugins` in the settings file it
-  wrote, or use Claude Code's `/plugin` menu.
+  wrote, or use Claude Code's `/plugin` menu. In a repo that commits prawduct's tripwire hook, each
+  session there opens with a one-line note that prawduct is switched off, naming that file.
 - Repos from before 2.0, which committed framework files, move to the plugin with
   `/prawduct:migrate` ([MIGRATION](documentation/MIGRATION.md)). `/prawduct:onboard` routes you
   there.

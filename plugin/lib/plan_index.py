@@ -136,18 +136,23 @@ def _frontmatter_scalar(fm: list[str], key: str) -> tuple[bool, str | None]:
     to the scope map and to the branch claim. ``scope:`` and ``branch:`` were
     line-for-line twins here, differing only in the key.
 
-    Indented lines are skipped as nested rather than read; ``#`` starts a comment;
-    surrounding quotes are stripped. ``present`` distinguishes a key set to the
+    Indented lines are skipped as nested rather than read; a ``#`` opens a
+    comment by YAML's rule (unquoted, after whitespace); one wrapping pair of
+    quotes is removed. ``present`` distinguishes a key set to the
     YAML null literal (``(True, None)`` — an explicit opt-out) from an absent one
     (``(False, None)``), because ``scope:`` has a caller that must tell them apart.
     """
+    # Lazy: this module's top level stays free of other lib modules, which is
+    # what lets buildplan_refs import it at module scope on the hot path.
+    from .core import strip_scalar_comment, unquote_scalar  # noqa: PLC0415
+
     for line in fm:
         if line[:1] in (" ", "\t"):
             continue  # nested key, not a top-level declaration
-        stripped = line.split("#", 1)[0].rstrip()
-        if not stripped.startswith(f"{key}:"):
+        if not line.startswith(f"{key}:"):
             continue
-        value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+        # YAML's comment rule, not the first `#`: a branch may be `fix/#123`.
+        value = unquote_scalar(strip_scalar_comment(line.split(":", 1)[1]))
         if not value or value.lower() in ("null", "~"):
             return (True, None)
         return (True, value)

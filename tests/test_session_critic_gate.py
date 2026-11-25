@@ -36,7 +36,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import SHAPED_REFLECTION
+from conftest import SHAPED_REFLECTION, TEST_NOW_EPOCH, scrubbed_env
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
@@ -64,7 +64,7 @@ _ids = itertools.count(1)
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -753,13 +753,11 @@ class TestSessionBaseTreeMarker:
             text=True,
             cwd=str(repo),
             timeout=30,
-            env={
-                "CLAUDE_PROJECT_DIR": str(repo),
-                "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-                "HOME": str(repo.parent / "_home"),
-                "PYTHONDONTWRITEBYTECODE": "1",
-            },
+            env=scrubbed_env(
+                repo.parent / "_home",
+                CLAUDE_PROJECT_DIR=str(repo),
+                CLAUDE_PLUGIN_ROOT=str(ROOT),
+            ),
         )
 
     def test_clear_writes_head_tree_marker(self, tmp_path):
@@ -1041,6 +1039,176 @@ class TestModeAdvisoryReadsTheWorkSpan:
         assert self._SENTINEL not in err
 
 
+class TestModeAdvisoryAfterAVerifyPass:
+    """Gate 2.5 as the Stop hook prints it, with the REAL predicate: a finished
+    plan closed by a boundary `cumulative` whose findings one clean
+    `verify-resolutions` pass resolved owes no `final`, so the hook prints no
+    synthesis NOTE. The defect was reported as that printed line (2026-11-23);
+    a test on the predicate alone stays green with the hook's call deleted.
+
+    Only the coverage verdict is stubbed, to "covered" — Gate 2.5 runs only
+    when Gate 2 passes, and composition is not what this pins."""
+
+    _NOTE = "Run /prawduct:critic final for end-of-cycle synthesis"
+    _CUMULATIVE = "cumulative (bundle review, ready for merge)"
+    _CHUNK = "chunk (lighter pass, not ready for push)"
+    _VERIFY = "verify-resolutions (delta review, prior findings only)"
+
+    def _stop_after(self, tmp_path, monkeypatch, capsys, boundary_mode: str) -> str:
+        repo = _session_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n"
+            "- [x] Chunk 01: a\n- [x] Chunk 02: b\n- [x] Chunk 03: c\n"
+        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        _commit(repo, "code.py", "x = 2\n", "c2")
+        t0, t1, t2 = _tree(repo, "HEAD~1"), "1" * 40, _tree(repo)
+        for fid, mode, base, head in (
+            ("rev-boundary", boundary_mode, t0, t1),
+            ("rev-verify", self._VERIFY, t1, t2),
+        ):
+            appended = evidence.append_fact(repo, "review", fid, {
+                "mode": mode, "findings": [], "files_reviewed": ["code.py"],
+                "base_tree": base, "head_tree": head,
+            })
+            assert appended["status"] == "appended", appended
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda project_dir, **_kw: {"status": "covered"},
+        )
+        _hook.cmd_stop(repo, {})
+        return capsys.readouterr().err
+
+    def test_a_verify_pass_over_a_cumulative_prints_no_synthesis_note(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        err = self._stop_after(tmp_path, monkeypatch, capsys, self._CUMULATIVE)
+        assert self._NOTE not in err, err
+
+    def test_the_control_a_verify_pass_over_a_chunk_prints_it(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Same session, a `chunk` where the `cumulative` was: the NOTE prints,
+        naming the review that decided — so the absence above is the
+        predicate's answer, not a path that never reached Gate 2.5."""
+        err = self._stop_after(tmp_path, monkeypatch, capsys, self._CHUNK)
+        note = next(
+            (line for line in err.splitlines() if self._NOTE in line), None
+        )
+        assert note is not None, err
+        assert note.startswith("NOTE: All 3 chunks done or dropped;"), note
+        assert f"a verify-resolutions pass over a '{self._CHUNK}' review" in note
+
+
+class TestModeAdvisoryFollowsTheVerifiedReview:
+    """Gate 2.5 as the Stop hook prints it when another worktree of the clone
+    reviewed the same tree after this one did. The pass records the review it
+    anchored to (`verifies`), and the advisory judges that review, not the
+    newest review at the pass's base tree — read by tree, a sibling's `chunk`
+    drew a NOTE for a `final` this worktree's `cumulative` had made unowed.
+
+    Same stubbing as `TestModeAdvisoryAfterAVerifyPass`: only the coverage
+    verdict, to "covered", so Gate 2.5 runs."""
+
+    _NOTE = TestModeAdvisoryAfterAVerifyPass._NOTE
+    _CUMULATIVE = TestModeAdvisoryAfterAVerifyPass._CUMULATIVE
+    _CHUNK = TestModeAdvisoryAfterAVerifyPass._CHUNK
+    _VERIFY = TestModeAdvisoryAfterAVerifyPass._VERIFY
+
+    def _stop_after(
+        self, tmp_path, monkeypatch, capsys, own_mode, sibling_mode, verifies="rev-own"
+    ) -> str:
+        repo = _session_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n"
+            "- [x] Chunk 01: a\n- [x] Chunk 02: b\n- [x] Chunk 03: c\n"
+        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        _commit(repo, "code.py", "x = 2\n", "c2")
+        t0, t1, t2 = _tree(repo, "HEAD~1"), "1" * 40, _tree(repo)
+
+        def body(mode, base, head, **extra):
+            return {"mode": mode, "findings": [], "files_reviewed": ["code.py"],
+                    "base_tree": base, "head_tree": head, **extra}
+
+        appended = evidence.append_fact(repo, "review", "rev-own", body(own_mode, t0, t1))
+        assert appended["status"] == "appended", appended
+        store = evidence.store_path(repo)
+        with open(store, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({
+                "schema": evidence.SCHEMA_VERSION, "kind": "review", "id": "rev-sibling",
+                "ts": "2026-11-23T00:00:00Z",
+                "actor": {"session": "s", "worktree": "/sibling", "plugin": "x", "branch": "main"},
+                "body": body(sibling_mode, "2" * 40, t1),
+            }) + "\n")
+        appended = evidence.append_fact(
+            repo, "review", "rev-verify", body(self._VERIFY, t1, t2, verifies=verifies)
+        )
+        assert appended["status"] == "appended", appended
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda project_dir, **_kw: {"status": "covered"},
+        )
+        _hook.cmd_stop(repo, {})
+        return capsys.readouterr().err
+
+    def test_a_pass_over_this_worktrees_cumulative_prints_no_note(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        err = self._stop_after(tmp_path, monkeypatch, capsys, self._CUMULATIVE, self._CHUNK)
+        assert self._NOTE not in err, err
+
+    def test_the_mirror_a_pass_over_this_worktrees_chunk_prints_it(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A sibling's newer `cumulative` at the tree does not silence the NOTE
+        this worktree's `chunk` owes — and the line names that `chunk`."""
+        err = self._stop_after(tmp_path, monkeypatch, capsys, self._CHUNK, self._CUMULATIVE)
+        note = next((line for line in err.splitlines() if self._NOTE in line), None)
+        assert note is not None, err
+        assert f"a verify-resolutions pass over a '{self._CHUNK}' review" in note, note
+
+    _ELSEWHERE = "rev-20261123T120000Z-0e1f2a3b"
+
+    def test_a_pass_naming_a_review_this_store_lacks_names_both_repairs(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """The named review, shaped like a minted id, is not in this clone's
+        store. It may be another clone's, not yet synced, or a fact this store
+        dropped, which no sync brings back: the NOTE names the review and
+        offers both repairs in one sentence. The other two tests are its
+        controls."""
+        err = self._stop_after(
+            tmp_path, monkeypatch, capsys, self._CHUNK, self._CHUNK, verifies=self._ELSEWHERE
+        )
+        note = next((line for line in err.splitlines() if self._ELSEWHERE in line), None)
+        assert note is not None, err
+        assert note.startswith("NOTE: All 3 chunks done or dropped;"), note
+        assert f"({self._ELSEWHERE}) is not in this clone's evidence store" in note, note
+        assert (
+            "If that review was recorded in another clone, run `prawduct-hook evidence "
+            "sync` to ingest it and this NOTE re-judges; otherwise run /prawduct:critic "
+            "final for end-of-cycle synthesis"
+        ) in note, note
+
+    def test_a_pass_naming_no_review_id_prints_the_run_final_note(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A value shaped like no minted id names no review any clone holds, so
+        the NOTE offers no sync and asks for the `final`."""
+        err = self._stop_after(
+            tmp_path, monkeypatch, capsys, self._CHUNK, self._CHUNK, verifies="rev-elsewhere"
+        )
+        note = next((line for line in err.splitlines() if "no review it verifies" in line), None)
+        assert note is not None, err
+        assert self._NOTE in note, note
+        assert "evidence sync" not in err, err
+
+
 def _imported_history_session(
     tmp_path: Path, *, review_own: bool = True, findings: "list[dict] | None" = None
 ) -> Path:
@@ -1066,7 +1234,7 @@ def _imported_history_session(
     _commit(repo, "b.py", "b = 1\n", "upstream work, made before the session")
     _git(repo, "checkout", "-q", "feature")
 
-    started = int(time.time()) + 600
+    started = TEST_NOW_EPOCH + 600
     _write_marker(repo)
     (repo / ".prawduct" / ".session-start").write_text(
         time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started))
@@ -1076,7 +1244,7 @@ def _imported_history_session(
 
     def _session_git(*args: str) -> None:
         subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            ["git", *args],
             cwd=str(repo), capture_output=True, text=True, timeout=15,
             check=True, env=env,
         )

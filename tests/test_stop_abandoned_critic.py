@@ -25,10 +25,15 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from conftest import SHAPED_REFLECTION, V2_MANIFEST
+from conftest import (
+    SHAPED_REFLECTION,
+    V2_MANIFEST,
+    pre_session_git_env,
+    scrubbed_env,
+    suite_stamp,
+)
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -74,15 +79,12 @@ def _run_stop(
 ) -> subprocess.CompletedProcess:
     mock_bin = project_dir.parent / "_mock_bin"
     _write_mock_git(mock_bin, status=status)
-    home = project_dir.parent / "_home"
-    home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(project_dir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        project_dir.parent / "_home",
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+    )
     return subprocess.run(
         [sys.executable, str(HOOK), "stop"],
         capture_output=True, text=True, env=env, timeout=20,
@@ -103,8 +105,7 @@ def _active_plan_repo(tmp_path: Path, *, chunk_type: str = "code") -> Path:
     )
     (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (prawduct / ".session-git-baseline").write_text("")
-    ts = datetime.now(timezone.utc) - timedelta(seconds=60)
-    (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    (prawduct / ".session-start").write_text(suite_stamp(-60))
     return prawduct
 
 
@@ -182,7 +183,8 @@ def _dispatched_real_repo(
 
     ``commit_edit`` records the session base tree (as ``cmd_clear`` does) and
     COMMITS the session's edit before dispatch, so the porcelain is clean and
-    only the session work span still holds the work.
+    only the session work span still holds the work: the span is the commits
+    made after ``.session-start``.
 
     Real git rather than the mock: the dispatch manifest and the gate's own tree
     capture have to agree on real tree SHAs, so a faked HEAD makes the self-heal
@@ -190,13 +192,19 @@ def _dispatched_real_repo(
     """
     repo = tmp_path / "repo"
     repo.mkdir()
-    git = ["git", "-c", "user.email=t@t", "-c", "user.name=t"]
+    git = ["git"]
     subprocess.run([*git, "init", "-q", "-b", "main"], cwd=str(repo), check=True, timeout=15)
     (repo / ".gitignore").write_text(".prawduct/\n")
     (repo / "src").mkdir()
     (repo / "src" / "app.py").write_text("x = 1\n")
     subprocess.run([*git, "add", "-A"], cwd=str(repo), check=True, timeout=15)
-    subprocess.run([*git, "commit", "-q", "-m", "c1"], cwd=str(repo), check=True, timeout=15)
+    # History from before the session, dated so: the span's reflog walk must reach an entry
+    # older than `.session-start`, or it cannot vouch for the session and keeps the whole
+    # base-tree span instead of the commits it authored.
+    subprocess.run(
+        [*git, "commit", "-q", "-m", "c1"], cwd=str(repo), check=True, timeout=15,
+        env=pre_session_git_env(),
+    )
     prawduct = _active_plan_repo(repo)
     if commit_edit:
         base_tree = subprocess.run(
@@ -209,17 +217,16 @@ def _dispatched_real_repo(
         # On a feature branch, so the committed bundle has a base to review
         # against — a committed bundle is cumulative's scope, not chunk's.
         subprocess.run([*git, "checkout", "-q", "-b", "feature"], cwd=str(repo), check=True, timeout=15)
-        subprocess.run([*git, "commit", "-q", "-am", "c2"], cwd=str(repo), check=True, timeout=15)
+        # The session work span is the commits made after `.session-start`, which
+        # `_active_plan_repo` stamps a minute before the suite's clock; this commit
+        # takes the suite's date, so it lands inside the session.
+        subprocess.run(
+            [*git, "commit", "-q", "-am", "c2"], cwd=str(repo), check=True, timeout=15,
+        )
 
-    home = repo.parent / "_home"
-    home.mkdir(exist_ok=True)
-    env = {
-        "HOME": str(home),
-        "CLAUDE_PROJECT_DIR": str(repo),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = scrubbed_env(
+        repo.parent / "_home", CLAUDE_PROJECT_DIR=str(repo), CLAUDE_PLUGIN_ROOT=str(ROOT),
+    )
     begin = subprocess.run(
         [sys.executable, str(HOOK), "critic-begin", "--mode",
          "cumulative" if commit_edit else "chunk"],
@@ -303,8 +310,7 @@ class TestNoFalsePositive:
         prawduct.mkdir(parents=True)
         (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
-        ts = datetime.now(timezone.utc) - timedelta(seconds=60)
-        (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        (prawduct / ".session-start").write_text(suite_stamp(-60))
         _set_marker(prawduct)
         result = _run_stop(tmp_path, status=_CODE_DIFF)
         assert _ABANDONED_MSG not in result.stderr

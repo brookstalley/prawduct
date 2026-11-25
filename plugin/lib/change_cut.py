@@ -33,9 +33,9 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, field
 from datetime import date as date_cls
-from datetime import datetime
 from pathlib import Path
 
+from . import clock
 from . import change_fragments
 from . import change_log as change_log_mod
 from . import change_log_archive
@@ -218,7 +218,7 @@ def _today(today: date_cls | str | None) -> str:
     # the day its maintainer cut it, and UTC would date an evening cut west of
     # Greenwich tomorrow.
     if today is None:
-        return datetime.now().date().isoformat()
+        return clock.local_today().isoformat()
     return today if isinstance(today, str) else today.isoformat()
 
 

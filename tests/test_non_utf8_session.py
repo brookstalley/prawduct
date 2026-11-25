@@ -40,14 +40,7 @@ NAME = b"n\xe9.cfg"
 
 
 def _env(home: Path) -> dict[str, str]:
-    return {
-        **os.environ,
-        "HOME": str(home),
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    return {**os.environ, "HOME": str(home)}
 
 
 @pytest.fixture

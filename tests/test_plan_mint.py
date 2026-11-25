@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -25,6 +24,7 @@ if str(ROOT) not in sys.path:
 
 from lib import change_fragments, gitstate, plan_index, plan_mint, work_unit  # noqa: E402
 from lib.plan_mint import PlanMintRefused  # noqa: E402
+from conftest import scrubbed_env, suite_now  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -35,13 +35,7 @@ from lib.plan_mint import PlanMintRefused  # noqa: E402
 def _git_env(repo: Path) -> dict[str, str]:
     home = repo.parent / "_home"  # outside the repo: macOS pyc caches land under HOME
     home.mkdir(exist_ok=True)
-    return {
-        "HOME": str(home),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-    }
+    return scrubbed_env(home)
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -142,7 +136,8 @@ class TestNewMintsWhatTheReadersAccept:
         assert "branch: feature/1050-the-unit" in fm
         assert "base: main" in fm
         assert "working-branches: []" in fm
-        assert f"last_validated: {date.today().isoformat()}" in fm
+        # The local calendar's date of the suite's instant: the plan is dated where it was made.
+        assert f"last_validated: {suite_now().astimezone().date().isoformat()}" in fm
         # The template's example claim does not survive as a declaration, and its
         # body is what an author copying the template by hand would get.
         assert not any(line.startswith("scope: pantry") for line in fm)
@@ -466,12 +461,22 @@ class TestBind:
             "scratch-branch", lambda: plan_mint.bind(repo, plan, "worktree-agent-0123456789"), repo
         )
 
-    def test_a_branch_the_reader_would_truncate_is_refused_not_written(self, tmp_path):
-        # Legal to git, but the frontmatter reader takes `#` as a comment, so the
-        # plan would claim `feature/a` — a branch nobody named.
+    def test_a_branch_the_reader_would_misread_is_refused_not_written(self, tmp_path):
+        # Legal to git, but written bare the frontmatter reader takes the wrapping
+        # quotes as YAML quoting, so the plan would claim `quoted` — a branch
+        # nobody named.
         repo = _repo(tmp_path)
         plan = _plan(repo, "build-plan.md", scope="u")
-        _refused("unrepresentable", lambda: plan_mint.bind(repo, plan, "feature/a#b"), repo)
+        _refused("unrepresentable", lambda: plan_mint.bind(repo, plan, '"quoted"'), repo)
+
+    def test_a_branch_with_a_hash_reads_back_whole_and_binds(self, tmp_path):
+        # The reader takes `#` as a comment only by YAML's rule (after
+        # whitespace), so `feature/a#b` round-trips rather than reading as
+        # `feature/a`.
+        repo = _repo(tmp_path)
+        plan = _plan(repo, "build-plan.md", scope="u")
+        plan_mint.bind(repo, plan, "feature/a#b")
+        assert plan_index.parse_build_plan_frontmatter_branch(plan.read_text()) == "feature/a#b"
 
     def test_an_illegal_branch_name_is_refused(self, tmp_path):
         repo = _repo(tmp_path)

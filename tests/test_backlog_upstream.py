@@ -214,6 +214,180 @@ class TestFoundInIsSourcedNeverGuessed:
         assert "found_in: (unknown)" in payload["body"]
 
 
+class TestADevelopmentBuildNamesItsCommit:
+    """#1141-R11: a `-dev` version names a line of development, not a tree, so
+    the Found-in label of a report filed from one carries the plugin tree's
+    commit. A released version keeps its bare label, and the trimmed block's
+    `found_in` stays the bare version (a machine-read field)."""
+
+    def _git(self, root: Path, *args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(root), *args], cwd=str(root),
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+    def _tree(self, tmp_path: Path) -> "tuple[Path, str]":
+        """A plugin checkout: its `VERSION` tracked, as a real one's is."""
+        root = tmp_path / "plugin-tree"
+        root.mkdir()
+        self._git(root, "init", "-q")
+        (root / "VERSION").write_text("3.9.1-dev\n")
+        self._git(root, "add", "VERSION")
+        self._git(root, "commit", "-qm", "c")
+        return root, self._git(root, "rev-parse", "HEAD")[:12]
+
+    def test_a_dev_build_in_its_checkout_reads_its_commit(self, tmp_path):
+        root, short = self._tree(tmp_path)
+        assert upstream.plugin_build("3.9.1-dev", root) == short
+        assert upstream.version_label("3.9.1-dev", short) == f"prawduct v3.9.1-dev (plugin, build {short})"
+
+    def test_uncommitted_plugin_changes_read_dirty(self, tmp_path):
+        """The normal state of a development checkout: a clean HEAD is not the
+        code that ran."""
+        root, short = self._tree(tmp_path)
+        (root / "VERSION").write_text("3.9.1-dev edited\n")
+        assert upstream.plugin_build("3.9.1-dev", root) == f"{short}+dirty"
+
+    def test_a_plugin_root_inside_an_unrelated_repo_reads_none(self, tmp_path):
+        """A `-dev` copy inside a version-controlled home directory must not
+        publish that repository's commit as its build."""
+        home = tmp_path / "home"
+        home.mkdir()
+        self._git(home, "init", "-q")
+        (home / "dotfile").write_text("x\n")
+        self._git(home, "add", "dotfile")
+        self._git(home, "commit", "-qm", "home")
+        plugin = home / "cache" / "prawduct"
+        plugin.mkdir(parents=True)
+        (plugin / "VERSION").write_text("3.9.1-dev\n")  # present, not tracked
+        assert upstream.plugin_build("3.9.1-dev", plugin) is None
+
+    def test_a_released_version_reads_none(self, tmp_path):
+        root, _short = self._tree(tmp_path)
+        assert upstream.plugin_build("3.9.0", root) is None
+        assert upstream.version_label("3.9.0") == "prawduct v3.9.0 (plugin)"
+
+    def test_an_unknown_version_reads_none(self, tmp_path):
+        root, _short = self._tree(tmp_path)
+        assert upstream.plugin_build(upstream.VERSION_UNKNOWN, root) is None
+        assert upstream.version_label(upstream.VERSION_UNKNOWN) == "prawduct (unknown) (plugin)"
+
+    def test_a_dev_build_outside_any_checkout_reads_none(self, tmp_path):
+        """A copied cache has no commit to read; an honest None beats a guess."""
+        assert upstream.plugin_build("3.9.1-dev", tmp_path) is None
+
+    def test_the_default_root_is_the_running_plugin(self, monkeypatch):
+        """No root passed: the plugin tree this module runs from, the same one
+        `plugin_version` reads."""
+        from lib import evidence
+
+        seen = []
+        monkeypatch.setattr(evidence, "read_plugin_build", lambda root: seen.append(root) or "x")
+        upstream.plugin_build("3.9.1-dev")
+        assert seen == [upstream._plugin_root()]
+        assert (upstream._plugin_root() / ".claude-plugin" / "plugin.json").is_file()
+
+    def test_the_payload_carries_the_build_in_the_label_only(self):
+        payload = _payload(found_in="3.9.1-dev", build="0123456789ab")
+        assert "prawduct v3.9.1-dev (plugin, build 0123456789ab)" in payload["body"]
+        assert "found_in: 3.9.1-dev\n" in payload["body"]
+
+    def test_the_dedup_key_does_not_move_with_the_build(self):
+        """Native review, Chunk 07 round. A development build's label changes
+        with every commit, and a retry after one is the same report: keyed on
+        the build, the dedup scan missed the first filing and opened a second
+        issue. The body still carries the build; only the key leaves it out."""
+        def key(payload):
+            return encode.parse_block(payload["body"]).get("source-key")
+
+        a = _payload(found_in="3.9.1-dev", build="0123456789ab")
+        b = _payload(found_in="3.9.1-dev", build="ba9876543210+dirty")
+        assert a["body"] != b["body"]
+        assert key(a) == key(b) == key(_payload(found_in="3.9.1-dev"))
+        # The control: a different report is still a different key.
+        assert key(_payload(found_in="3.9.1-dev", build="0123456789ab", body=_BODY + " More.")) != key(a)
+
+    def test_a_dev_build_mismatch_names_the_build_as_a_cause(self):
+        digest = "sha256:" + "ab" * 32
+        dev = upstream.check_approval(
+            "sha256:beef", digest, preference=upstream.PREF_ASK_USER, dev_build=True
+        )
+        released = upstream.check_approval("sha256:beef", digest, preference=upstream.PREF_ASK_USER)
+        assert dev.code == released.code == "approval-mismatch"
+        assert "plugin's build" in dev.message and "plugin's build" not in released.message
+
+    def test_the_preview_reads_the_running_plugins_build(self, tmp_path, monkeypatch):
+        """The one recipe sources it (`render_preview`), so preview and send
+        cannot disagree about it."""
+        monkeypatch.setattr(upstream, "plugin_version", lambda: "3.9.1-dev")
+        monkeypatch.setattr(upstream, "plugin_build", lambda v: "0123456789ab" if v == "3.9.1-dev" else None)
+        payload, _digest = upstream.render_preview(tmp_path, title=_TITLE, body=_BODY, component=_COMPONENT)
+        assert "(plugin, build 0123456789ab)" in payload["body"]
+
+
+class TestTheIntakeAsksForWhatDecidesAChunkRow:
+    """#1141-R10: a report about `plan status` or chunk state carries the
+    affected row and the certifying fact's chunk fields. The skill names both
+    reads, and each is a command the CLI accepts."""
+
+    SKILL = Path(__file__).resolve().parent.parent / "plugin" / "skills" / "report-bug" / "SKILL.md"
+
+    def test_the_skill_names_both_reads_and_every_field(self):
+        text = self.SKILL.read_text(encoding="utf-8")
+        ask = text.split("**When the component is `plan status` or chunk state**", 1)[1].split("\n\n", 1)[0]
+        assert "`prawduct-hook plan status --json`" in ask
+        assert "`prawduct-hook evidence list --id <fact_id> --json`" in ask
+        for field in ("ahead_of", "chunks_proposed", "chunks_declared", "chunks_evidence"):
+            assert f"`{field}`" in ask, field
+
+
+class TestTheIntakeIsListedFresh:
+    """The intake listing reads the local cache, which holds nothing filed since
+    the last sync. So the receiving side refreshes first, and a refresh that fails
+    turns the list into a floor rather than an all-clear."""
+
+    SKILL = TestTheIntakeAsksForWhatDecidesAChunkRow.SKILL
+
+    def _step(self) -> str:
+        text = self.SKILL.read_text(encoding="utf-8")
+        start = text.index("**Refresh the local copy first**")
+        return text[start : text.index("Triage is done **on the issue itself**", start)]
+
+    def test_the_refresh_comes_before_the_listing(self):
+        step = self._step()
+        assert step.index("`prawduct-hook backlog sync --repo") < step.index(
+            "`prawduct-hook backlog cache-query unstaged --repo"
+        )
+
+    def test_a_failed_refresh_is_a_floor_never_an_all_clear(self):
+        step = self._step()
+        for signal in ("exits non-zero", "`sync_error`", "exits 6"):
+            assert signal in step, signal
+        assert '"at least N"' in step
+        assert 'never "none waiting"' in step
+        assert "`skills/backlog/cache-reads.md`" in step
+
+    def test_a_triage_caller_is_routed_past_the_filing_steps(self):
+        """The intake advisory sends its reader to this skill, which opens on the
+        filing side and whose step 1 calls itself the wrong channel in prawduct's
+        repo. So the opening, read before any step, must route a triager to the
+        receiving side by its exact heading."""
+        text = self.SKILL.read_text(encoding="utf-8")
+        body = text.split("\n---\n", 1)[1]
+        opening = body[: body.index("## 1.")]
+        heading = next(line for line in text.splitlines() if line.startswith("## Receiving side"))
+        assert "untriaged-upstream-reports" in opening
+        assert f"`{heading}`" in opening, heading
+
+    def test_both_named_ops_are_ones_the_cli_accepts(self):
+        result = subprocess.run(
+            [sys.executable, str(self.SKILL.parents[2] / "bin" / "prawduct-hook"), "backlog", "--help"],
+            capture_output=True, text=True, timeout=60,
+        )
+        ops = {line.split()[0] for line in result.stdout.splitlines() if line.startswith("  ") and line.split()}
+        assert {"sync", "cache-query"} <= ops, sorted(ops)
+
+
 class TestTheTrimmedBlockCarriesNothingElse:
     @pytest.mark.parametrize(
         "overrides",
@@ -359,9 +533,9 @@ class TestIdentityResolvesFromTwoSignals:
         )
 
     def _git_repo(self, tmp_path, origin):
-        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        subprocess.run(["git", "init", "-q", str(tmp_path)], cwd=str(tmp_path), check=True)
         subprocess.run(
-            ["git", "-C", str(tmp_path), "remote", "add", "origin", origin], check=True
+            ["git", "-C", str(tmp_path), "remote", "add", "origin", origin], cwd=str(tmp_path), check=True
         )
 
     def _write_config(self, tmp_path, body):
@@ -423,11 +597,10 @@ class TestIdentityResolvesFromTwoSignals:
         (clone / "seed.txt").write_text("seed", encoding="utf-8")
         for args in (
             ["-C", str(clone), "add", "seed.txt"],
-            ["-C", str(clone), "-c", "user.email=t@example.com", "-c", "user.name=t",
-             "commit", "-qm", "seed"],
+            ["-C", str(clone), "commit", "-qm", "seed"],
             ["-C", str(clone), "worktree", "add", "-q", "-b", "wt", str(tmp_path / "wt")],
         ):
-            subprocess.run(["git", *args], check=True)
+            subprocess.run(["git", *args], cwd=str(tmp_path), check=True)
 
         assert upstream.resolve_self_identity(tmp_path / "wt") == ("acme/widget",)
 
@@ -536,10 +709,10 @@ class TestRepoNamesCompareTheWayGitHubDoes:
         (prawduct / "project-state.yaml").write_text(
             "backlog_service_repo: Acme/Widget\n", encoding="utf-8"
         )
-        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        subprocess.run(["git", "init", "-q", str(tmp_path)], cwd=str(tmp_path), check=True)
         subprocess.run(
             ["git", "-C", str(tmp_path), "remote", "add", "origin",
-             "https://github.com/ACME/widget.git"],
+             "https://github.com/ACME/widget.git"], cwd=str(tmp_path),
             check=True,
         )
 
@@ -1267,10 +1440,11 @@ class TestTheSendPathFiles:
         envelope = json.loads(capsys.readouterr().out)
         filed = fake.list_issues(*upstream.PINNED_TARGET.split("/"), state="all")[0]
 
-        key = upstream.source_key(
-            title=_EXPECTED_TITLE,
-            body=envelope["data"]["payload"]["body"].split("\n\n```prawduct")[0],
-        )
+        # Read off the stamped marker, the key `find_filed` matches. It is not
+        # recomputed from the filed body: on a development build the key leaves
+        # out the build the body carries (the dedup key must not move with it).
+        key = encode.parse_block(filed["body"]).get("source-key")
+        assert key and key == encode.parse_block(envelope["data"]["payload"]["body"]).get("source-key")
         assert upstream.find_filed(
             fake, target=upstream.PINNED_TARGET, key=key
         )["number"] == filed["number"]
