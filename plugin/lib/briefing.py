@@ -2089,6 +2089,18 @@ HANDOFF_MARKER = (
 # The forward channel: the one file in the handoff pair that a model owns.
 HANDOFF_NOTES_NAME = ".handoff-notes.md"
 
+# The fences around the notes inside a generated handoff. They exist so the next
+# boundary can find the notes again when its own session left none, and carry
+# them forward rather than drop them: notes end when a session writes its own,
+# never because a session ended without writing. The notes are agent-written
+# markdown with headings of their own, so a heading cannot delimit them; only a
+# fence can. ``carried`` counts the boundaries the text has crossed without a
+# session rewriting it, so the reader can judge how far it may have drifted.
+NOTES_BEGIN = "<!-- prawduct:notes-begin carried={} -->"
+NOTES_BEGIN_RE = re.compile(re.escape(NOTES_BEGIN).replace(r"\{\}", r"(\d+)"))
+NOTES_END = "<!-- prawduct:notes-end -->"
+INHERITED_NOTES_HEADING = "## Notes For The Next Session (inherited)"
+
 # The heading a generated handoff carries when its session left no forward note.
 # One constant because two readers act on it: the generator writes it, and the
 # session briefing reads it to stop offering such a handoff as "context" — a
@@ -2163,8 +2175,9 @@ def _read_handoff_notes(prawduct_dir: Path) -> tuple[str, str]:
 
     The counterpart to every other handoff source, which is machine state
     looking backward: this is the only place an agent can leave intent for the
-    next session. Consumed into the handoff and then cleared by `/clear`, so a
-    note never outlives the session boundary it was written for.
+    next session. The file is consumed into the handoff and then cleared by
+    `/clear`; its TEXT lives on in the handoff, where
+    :func:`_read_inherited_notes` finds it if the next session writes none.
 
     The state is returned rather than inferred from an empty string because
     "there were no notes" and "the notes could not be read" demand opposite
@@ -2180,6 +2193,36 @@ def _read_handoff_notes(prawduct_dir: Path) -> tuple[str, str]:
     except (UnicodeDecodeError, OSError):
         return "", NOTES_UNREADABLE
     return (text, NOTES_CARRIED if text else NOTES_EMPTY)
+
+
+def _read_inherited_notes(prawduct_dir: Path) -> tuple[str, int]:
+    """The notes a previous generated handoff carried, as ``(text, carried)``.
+
+    Read when the session now ending left no notes of its own: a session that
+    crashed or ran out of context before writing any must not erase the notes it
+    was handed, or they exist nowhere after the next boundary. ``carried`` is how
+    many boundaries the text had already crossed unrewritten.
+
+    Only a machine-written handoff is read (a hand-authored one has its own
+    rescue path), and only notes it fenced: exactly one begin and one end line,
+    in that order. Anything else, including a handoff written before the fences
+    existed, carries nothing, because guessing where agent-written markdown ends
+    would hand the next session text the notes never held.
+    """
+    try:
+        text = (prawduct_dir / ".session-handoff.md").read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return "", 0
+    if HANDOFF_MARKER_PREFIX not in text:
+        return "", 0
+    lines = text.splitlines()
+    begins = [(i, m) for i, line in enumerate(lines) if (m := NOTES_BEGIN_RE.fullmatch(line.strip()))]
+    ends = [i for i, line in enumerate(lines) if line.strip() == NOTES_END]
+    if len(begins) != 1 or len(ends) != 1 or not begins[0][0] < ends[0]:
+        return "", 0
+    start, match = begins[0]
+    body = "\n".join(lines[start + 1:ends[0]]).strip()
+    return (body, int(match.group(1))) if body else ("", 0)
 
 
 def _read_unmarked_handoff(prawduct_dir: Path) -> tuple[str, str]:
@@ -2289,11 +2332,31 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
 
     # 0. The model's forward notes come first, above every machine section —
     #    intent for the next session outranks the record of the last one.
+    #    When the ending session wrote none, the notes the previous handoff
+    #    carried stay, marked inherited: silence never ends a note, and only a
+    #    session that writes the file (even "nothing beyond the plan") replaces
+    #    them. They are read from the handoff, never restored to the notes file,
+    #    so the checks that ask whether THIS session left notes still see none.
     notes, notes_state = _read_handoff_notes(prawduct_dir)
+    inherited, carried = "", 0
+    if notes_state in (NOTES_ABSENT, NOTES_EMPTY):
+        inherited, carried = _read_inherited_notes(prawduct_dir)
     if notes:
         sections.append("## Notes For The Next Session")
         sections.append("<!-- written by the previous session's agent, not the machine -->")
-        sections.append(notes)
+        sections.extend([NOTES_BEGIN.format(0), notes, NOTES_END])
+        sections.append("")
+    elif inherited:
+        crossed = carried + 1
+        sections.append(INHERITED_NOTES_HEADING)
+        sections.append(
+            "The previous session left no notes of its own, so these are an earlier "
+            f"session's, carried across {crossed} session boundar{'y' if crossed == 1 else 'ies'} "
+            "unchanged. Check them against the build plan and git before acting on them: "
+            "what they describe may have moved since. Writing "
+            f"`.prawduct/{HANDOFF_NOTES_NAME}`, even \"nothing beyond the plan\", replaces them."
+        )
+        sections.extend([NOTES_BEGIN.format(crossed), inherited, NOTES_END])
         sections.append("")
 
     # 0b. Preservation net: rescue a handoff the machine did not write.
@@ -2328,8 +2391,11 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
     # NOTES_UNREADABLE: a note WAS left there, and saying otherwise would blame
     # the agent for the machine's failure to read it — that state has its own
     # notice at the consumption site. A rescued hand-authored handoff is forward
-    # context too, so it suppresses this as well.
-    if notes_state in (NOTES_ABSENT, NOTES_EMPTY) and not rescued:
+    # context too, so it suppresses this as well. So do inherited notes: their
+    # heading already says this session left none, and this section's heading
+    # is what turns the briefing's pointer into "only a machine record", which
+    # inherited notes are not.
+    if notes_state in (NOTES_ABSENT, NOTES_EMPTY) and not rescued and not inherited:
         sections.extend(_no_forward_note_section(changed, commits))
 
     # 1. Work context (prefer the bound plan, fall back to project-state.yaml WIP)
