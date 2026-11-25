@@ -575,3 +575,7 @@ designs for each land in their build plans (`build-plan-tripwire-disabled.md`,
 3. The next release is **v3.10.0**, a minor, because test-determinism adds a boundary-blocking
    class a consumer's PR can meet. All release-pending scopes ship; the cut follows
    `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.
+
+**2026-11-25.** "when done also be sure ../prawduct-live is on this release" — after the v3.10.0 cut,
+`../prawduct-live` (the machine plugin every governed repo here runs) is moved onto the `v3.10.0`
+tag, detached, rather than onto `develop`.
