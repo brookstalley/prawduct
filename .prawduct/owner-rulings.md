@@ -558,3 +558,9 @@ advanced to `origin/develop` (the dogfood track, as on 2026-11-22).
 
 **2026-11-24.** "Yes to your recommendations" — PR #1242 (`fix/live-review-writes`) is merged, this
 checkout returns to `develop`, and `../prawduct-live` is advanced to the new `origin/develop`.
+
+**2026-11-25.** "let's get 1246 and 1238 in this release, both are important" — answering the release
+readiness report: #1246 (the install tripwire misses a disabled plugin) and #1238 (handoff notes survive
+only one session boundary) are fixed before the next release is cut, not deferred to a later one. The
+designs for each land in their build plans (`build-plan-tripwire-disabled.md`,
+`build-plan-handoff-notes-persist.md`).
