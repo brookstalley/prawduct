@@ -15,6 +15,10 @@ The last two rows are the ones a reader would merge, and the difference is the p
 is nobody's to fix and must not turn CI red, while a refused key means CI has stopped using the
 pool and nothing but a red job says so. In every row the tree gets a verdict from somewhere.
 
+A third stage, `plan`, runs before either for a pull request from this repository's own branch and
+says whether its run repeats the push run of the same head; its table is in the runner's
+docstring and its tests are `TestThePlanJob`, which build real merge commits.
+
 The stages' outside calls (install the pool's CLI, run on the pool, run pytest) are replaced in
 most of these tests; what is exercised is every decision between them. The last class drives the
 entry point with nothing handed to it.
@@ -867,3 +871,181 @@ class TestTheEntryPointBuildsItsOwnSeams:
 
         assert code == 2 and self.pytest_calls == []
         assert "usage" in capsys.readouterr().err
+
+
+class _MergeCheckout:
+    """A real repository left on a pull request's merge commit, as `actions/checkout` leaves one:
+    HEAD is the merge, `HEAD^1` the base and `HEAD^2` the pull request's head. The trees are the
+    answers of the tool the stage asks, so no test here believes a comparison it did not see made."""
+
+    def __init__(self, root: Path, *, base_moved: bool):
+        self.root = root
+        root.mkdir()
+        self.run("init", "-q", "-b", "base")
+        self._commit("base.txt", "base")
+        self.run("checkout", "-q", "-b", "feature")
+        self._commit("head.txt", "head")
+        self.run("checkout", "-q", "base")
+        if base_moved:
+            self._commit("moved.txt", "the base moved on after the branch left it")
+            self.head = self.run("rev-parse", "feature")
+        else:
+            # What `/prawduct:pr` does before it opens a pull request: the base is merged into
+            # the branch, so the branch already holds everything the base has.
+            self.run("checkout", "-q", "feature")
+            self.run("merge", "-q", "--no-edit", "base")
+            self.head = self.run("rev-parse", "HEAD")
+            self.run("checkout", "-q", "base")
+        self.run("merge", "-q", "--no-ff", "--no-edit", self.head)
+
+    def run(self, *args: str) -> str:
+        env = {
+            "PATH": os.environ["PATH"], "HOME": str(self.root.parent), "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1", "GIT_ATTR_NOSYSTEM": "1", "GIT_ALLOW_PROTOCOL": "file",
+            "GIT_AUTHOR_DATE": "@0 +0000", "GIT_COMMITTER_DATE": "@0 +0000", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid",
+        }
+        done = subprocess.run(["git", *args], cwd=self.root, env=env, capture_output=True, text=True, check=True)
+        return done.stdout.strip().lower()
+
+    def _commit(self, name: str, text: str) -> None:
+        (self.root / name).write_text(text)
+        self.run("add", name)
+        self.run("commit", "-q", "-m", text)
+
+    def env(self, **overrides: str) -> dict[str, str]:
+        base = {ci.PR_HEAD_REPO: "owner/repo", ci.PR_HEAD_SHA: self.head, "GITHUB_REPOSITORY": "owner/repo"}
+        return base | overrides
+
+    def git(self, args: list[str]) -> str:
+        return self.run(*args)
+
+
+@pytest.fixture
+def synced(tmp_path):
+    """A merge checkout whose head already holds the base: the merge result is the head's tree."""
+    return _MergeCheckout(tmp_path / "synced", base_moved=False)
+
+
+@pytest.fixture
+def moved(tmp_path):
+    """A merge checkout whose base moved on: the merge result is a tree the head never was."""
+    return _MergeCheckout(tmp_path / "moved", base_moved=True)
+
+
+class TestThePlanJob:
+    """`plan` decides a pull request's run repeats its head's push run. Each test is a case in the
+    runner's table, and every row but one answers "run": the cost of a wrong answer is a
+    skipped verdict."""
+
+    def test_the_two_checkouts_are_what_the_table_says_they_are(self, synced, moved):
+        # The control for every test below: the fixtures differ in exactly the property the
+        # decision reads, so a stage that answered the same for both is seen deciding.
+        for checkout, same in ((synced, True), (moved, False)):
+            merged = checkout.run("rev-parse", "HEAD^{tree}")
+            head = checkout.run("rev-parse", f"{checkout.head}^{{tree}}")
+            assert (merged == head) is same
+            assert checkout.run("rev-parse", "HEAD^2") == checkout.head
+
+    def test_a_merge_result_that_is_the_heads_tree_skips(self, synced):
+        skip, why = ci.covered_by_push(synced.env(), synced.git)
+
+        assert skip is True, why
+        assert synced.head[:12] in why
+
+    def test_a_base_that_moved_past_the_head_runs(self, moved):
+        skip, why = ci.covered_by_push(moved.env(), moved.git)
+
+        assert skip is False
+        assert "base has moved" in why
+
+    def test_a_pull_request_from_a_fork_never_skips_even_with_equal_trees(self, synced):
+        # The fork clause is the only thing that differs from the skipping case above.
+        skip, why = ci.covered_by_push(synced.env(**{ci.PR_HEAD_REPO: "stranger/repo"}), synced.git)
+
+        assert skip is False
+        assert "stranger/repo" in why
+
+    def test_a_head_that_names_no_repository_never_skips(self, synced):
+        # A fork whose repository was deleted has no `head.repo`, which GitHub renders as "".
+        skip, _ = ci.covered_by_push(synced.env(**{ci.PR_HEAD_REPO: ""}), synced.git)
+
+        assert skip is False
+
+    def test_this_repository_unknown_never_skips(self, synced):
+        env = synced.env()
+        del env["GITHUB_REPOSITORY"]
+
+        assert ci.covered_by_push(env, synced.git)[0] is False
+
+    def test_a_push_names_no_head_and_runs(self, synced):
+        env = synced.env()
+        del env[ci.PR_HEAD_SHA]
+
+        skip, why = ci.covered_by_push(env, synced.git)
+
+        assert skip is False
+        assert "not a pull request" in why
+
+    def test_a_checkout_of_some_other_head_than_the_event_names_runs(self, synced):
+        # The merge ref can be rebuilt for a newer head than the event that started this run.
+        skip, why = ci.covered_by_push(synced.env(**{ci.PR_HEAD_SHA: "0" * 40}), synced.git)
+
+        assert skip is False
+        assert "other than the one the event names" in why
+
+    def test_a_checkout_that_is_not_a_merge_commit_runs(self, synced):
+        # A plain commit has no `HEAD^2`: the question has no answer, and so no skip.
+        synced.run("checkout", "-q", "--detach", synced.head)
+
+        skip, why = ci.covered_by_push(synced.env(), synced.git)
+
+        assert skip is False
+        assert "could not say" in why
+
+    def test_a_git_that_names_no_tree_runs(self, synced):
+        # Two empty answers are equal and would read as equal trees.
+        skip, _ = ci.covered_by_push(synced.env(), lambda args: synced.head if args == ["rev-parse", "HEAD^2"] else "")
+
+        assert skip is False
+
+    def test_a_git_that_cannot_start_runs(self, synced):
+        def no_git(args):
+            raise FileNotFoundError("git")
+
+        assert ci.covered_by_push(synced.env(), no_git)[0] is False
+
+    def test_the_stage_reports_a_skip_and_a_run_and_never_fails(self, synced, moved):
+        for checkout, expected in ((synced, True), (moved, False)):
+            said = Said()
+
+            skipped = ci.plan_stage(checkout.env(), report=said.report, git=checkout.git)
+
+            assert skipped is expected
+            assert ("Skipped:" in said.all) is expected
+            assert ("::notice::" in said.all) is expected
+
+    def test_the_entry_point_builds_its_own_git_and_writes_the_output(self, synced, moved, tmp_path, monkeypatch):
+        # `main` constructs the git call itself; every test above hands one in.
+        for name in (ci.PR_HEAD_REPO, ci.PR_HEAD_SHA, "GITHUB_REPOSITORY"):
+            monkeypatch.delenv(name, raising=False)
+        for checkout, expected in ((synced, "skip=true\n"), (moved, "skip=false\n")):
+            output = tmp_path / f"{checkout.root.name}-output.txt"
+            monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+            monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(tmp_path / "summary.md"))
+            monkeypatch.setattr(ci, "REPO_ROOT", checkout.root)
+            for name, value in checkout.env().items():
+                monkeypatch.setenv(name, value)
+
+            assert ci.main(["ci-suite.py", "plan"]) == 0
+            assert output.read_text() == expected
+
+    def test_the_entry_point_given_nothing_runs_the_suite(self, tmp_path, monkeypatch):
+        for name in (ci.PR_HEAD_REPO, ci.PR_HEAD_SHA, "GITHUB_REPOSITORY"):
+            monkeypatch.delenv(name, raising=False)
+        output = tmp_path / "output.txt"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(tmp_path / "summary.md"))
+
+        assert ci.main(["ci-suite.py", "plan"]) == 0
+        assert output.read_text() == "skip=false\n"

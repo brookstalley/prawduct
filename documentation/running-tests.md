@@ -73,7 +73,16 @@ suite.
 ## In CI
 
 `.github/workflows/tests.yml` runs the pytest suite through `tools/ci-suite.py`, whose docstring
-is the reference for what follows. It has two stages, which are two jobs:
+is the reference for what follows. It has two stages that run tests, which are two jobs, and a
+small job in front of them that decides whether a pull request needs them at all:
+
+- **`plan`** exists only for a pull request from a branch of this repository. It asks whether the
+  merge commit's tree is the tree of the head the event names, which is so when the base was
+  merged into the branch before the PR opened. If it is, the push run of that same commit already
+  tested this tree, so the pull request's `pool`, `pytest` and `collector` jobs are skipped and
+  report as skipped. It holds no secret, installs nothing, and never fails the run. A fork's pull
+  request has no such job and always runs in full; so does any pull request whose base moved on
+  without being merged in, and any whose answer is in doubt.
 
 - **`pool`** holds the pool's key. It downloads the pool's own CLI build from the pool's console,
   runs `testament run --no-fallback`, and tells the next job whether the pool ran the suite. It

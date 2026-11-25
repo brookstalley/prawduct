@@ -46,6 +46,11 @@ POOL_IMAGE = REPO_ROOT / "docker" / "testament.Dockerfile"
 POOL_KEY = "${{ secrets.TESTAMENT_KEY }}"
 POOL_STAGE = "python tools/ci-suite.py pool"
 TESTS_STAGE = "python tools/ci-suite.py tests"
+PLAN_STAGE = "python tools/ci-suite.py plan"
+# What each job below the plan job waits on: run unless the plan job said the push run of the same
+# commit already tests this tree. `!cancelled()` is what keeps a plan job that failed, or that was
+# never created (a push, a fork), from skipping the suite along with it.
+NOT_COVERED = "${{ !cancelled() && needs.plan.outputs.skip != 'true' }}"
 
 
 @functools.cache
@@ -239,7 +244,8 @@ class TestThePoolKeyIsHeldByAJobThatRunsNoTest:
     def test_the_job_that_runs_the_tests_is_given_no_secret_and_only_the_pool_jobs_word(self):
         # The test job's one input from the pool job is where the suite ran. Anything
         # else passed across (a second output, the job's whole context) is a channel the
-        # key could be put on by a later edit.
+        # key could be put on by a later edit. The plan job's answer is the one other thing
+        # it reads, and only in its `if`: that job holds no secret.
         doc = _load(TESTS_WORKFLOW)
         assert doc["jobs"]["pool"].get("outputs") == {"suite": "${{ steps.pool.outputs.suite }}"}
         job = doc["jobs"]["pytest"]
@@ -247,7 +253,7 @@ class TestThePoolKeyIsHeldByAJobThatRunsNoTest:
         assert len(stage) == 1, "the pytest job must run the tests stage, once"
         assert stage[0].get("env") == {_runner().RAN_ON: "${{ needs.pool.outputs.suite }}"}
         crossing = [s for s in _scalars(job) if "needs." in s]
-        assert crossing == ["${{ needs.pool.outputs.suite }}"], crossing
+        assert sorted(crossing) == sorted(["${{ needs.pool.outputs.suite }}", NOT_COVERED]), crossing
 
     def test_the_pool_jobs_time_limit_outlasts_what_the_runner_may_wait(self):
         # Red if the allowance is raised and only its pin is updated. A job killed at its
@@ -265,8 +271,8 @@ class TestThePoolKeyIsHeldByAJobThatRunsNoTest:
         # refused key would leave the tree with no verdict at all: a red run that says
         # nothing about the code.
         job = _load(TESTS_WORKFLOW)["jobs"]["pytest"]
-        assert job.get("needs") == "pool"
-        assert job.get("if") == "${{ !cancelled() }}", job.get("if")
+        assert job.get("needs") == ["plan", "pool"]
+        assert job.get("if") == NOT_COVERED, job.get("if")
 
     def test_the_jobs_token_is_read_only(self):
         # The pool job runs a CLI it downloaded. What that process can do to this
@@ -348,6 +354,80 @@ class TestSuiteRunsOnEverything:
         assert "push" in triggers and "pull_request" in triggers, (
             "the suite must run on both push and pull_request"
         )
+
+
+class TestAPullRequestThatRepeatsAPushIsSkipped:
+    """A branch with an open pull request is pushed and pulled at once, and when the base was
+    merged into the branch the two runs are one tree. The `plan` job says so and the rest of the
+    pull request's run is skipped. Each test is an edit that would skip a run that must happen,
+    or stop skipping one that need not."""
+
+    def test_the_plan_job_exists_only_for_a_pull_request_from_this_repository(self):
+        # Red if the fork clause is dropped. A fork's pull request has no push run here, so a
+        # skip would leave its tree with no verdict; and a job that exists for it runs the
+        # fork's own copy of the runner, which could answer "skip" for itself. The expression
+        # is read by GitHub from the event, so it is the one lock the fork's code cannot touch.
+        condition = _load(TESTS_WORKFLOW)["jobs"]["plan"].get("if")
+        assert isinstance(condition, str), "the plan job must say where it exists"
+        assert "github.event.pull_request.head.repo.full_name == github.repository" in condition
+        assert "github.event_name == 'pull_request'" in condition
+        assert " || " not in condition, f"an `or` can let the clauses above be bypassed: {condition}"
+
+    def test_the_plan_job_is_told_the_head_by_the_event_and_runs_only_the_plan_stage(self):
+        # Red if the stage is told another head, or a second step joins it. The values are the
+        # event's and travel as environment values; the stage compares them with the checkout.
+        job = _load(TESTS_WORKFLOW)["jobs"]["plan"]
+        runs = [step for step in job["steps"] if "run" in step]
+        assert [step["run"] for step in runs] == [PLAN_STAGE]
+        assert runs[0]["env"] == {
+            _runner().PR_HEAD_REPO: "${{ github.event.pull_request.head.repo.full_name }}",
+            _runner().PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}",
+        }
+        assert job["outputs"] == {"skip": "${{ steps.plan.outputs.skip }}"}
+        actions = [str(step["uses"]).split("@")[0] for step in job["steps"] if "uses" in step]
+        assert actions == ["actions/checkout", "actions/setup-python"], actions
+        assert not [s for s in _scalars(job) if "secrets" in s]
+
+    def test_the_plan_job_checks_out_the_merge_commit_and_both_parents(self):
+        # Red if the depth drops to 1: the second parent is then absent, git cannot answer, and
+        # the stage runs every pull request in full, which is correct and defeats the job.
+        checkout = next(
+            step for step in _load(TESTS_WORKFLOW)["jobs"]["plan"]["steps"]
+            if str(step.get("uses", "")).startswith("actions/checkout")
+        )
+        depth = checkout["with"]["fetch-depth"]
+        assert depth == 0 or depth >= 2, depth
+
+    def test_every_job_that_runs_the_suite_waits_for_the_plan_and_skips_only_on_its_word(self):
+        # Red if a job is added or left out: a job without the `if` runs for a pull request
+        # that was skipped, and one with `needs: plan` alone is skipped when the plan job
+        # fails or is not created (a push, a fork), which would leave those with no run at all.
+        jobs = _load(TESTS_WORKFLOW)["jobs"]
+        assert set(jobs) == {"plan", "pool", "pytest", "collector"}, (
+            "a new job must say here whether the plan job's word skips it"
+        )
+        for name in ("pool", "pytest", "collector"):
+            needs = jobs[name]["needs"]
+            assert "plan" in ([needs] if isinstance(needs, str) else needs), name
+            assert jobs[name].get("if") == NOT_COVERED, (name, jobs[name].get("if"))
+
+    def test_only_the_plan_job_decides_a_skip_and_installs_nothing(self):
+        # An install here would put a stranger's dependency in the one job that decides
+        # whether the suite runs.
+        jobs = _load(TESTS_WORKFLOW)["jobs"]
+        assert [name for name, job in jobs.items() if "skip" in (job.get("outputs") or {})] == ["plan"]
+        runs = [str(step.get("run", "")) for step in jobs["plan"]["steps"]]
+        assert not [r for r in runs if "pip" in r], runs
+
+    def test_the_trigger_comment_names_what_still_runs(self):
+        # The workflow's own account of the pair was once false ("they test different trees").
+        # Parsing drops comments from every other test here, so this reads the text: the fork
+        # rule, and the case where the pull request still runs.
+        text = TESTS_WORKFLOW.read_text()
+        trigger = text[text.index("\non:\n"):text.index("  push:\n  pull_request:")]
+        assert "never skips" in trigger and "fork" in trigger
+        assert "base moved" in trigger
+        assert "different trees" not in trigger
 
 
 class TestVerifyReleaseNeverPublishes:

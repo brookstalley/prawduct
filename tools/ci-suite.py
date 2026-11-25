@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Run this repo's pytest suite for CI: on testament's pool when the workflow can use it, on
-GitHub's runner when it cannot. Two stages, which the workflow runs as two jobs:
+GitHub's runner when it cannot. Two stages, which the workflow runs as two jobs, and a third that
+decides whether either is needed:
 
+    python tools/ci-suite.py plan     the job that decides a pull request's run duplicates a push's
     python tools/ci-suite.py pool     the job that holds the pool's key
     python tools/ci-suite.py tests    the job that runs pytest
 
@@ -30,6 +32,27 @@ What each stage does, and which of the two jobs can fail:
                                    a red job is the only thing that says so to the person who
                                    can fix it.
 
+Before either runs, `plan` answers one question for a pull request from this repository's own
+branch: is its checkout, the merge of the base into the head, the very tree the `push` run of that
+head already tests? A branch with an open pull request is pushed and pulled at once, and a head
+that has the base merged in makes both runs one tree. Then the workflow skips every job of the
+pull request's run, and the push run's result on the same commit is the verdict. Anything else
+runs in full, and the table is the whole decision:
+
+    not a pull request, or no head sha given         runs: there is no push run to rely on
+    the head is in another repository (a fork)       runs: no push run exists here for it, and the
+                                                     fork's own code would be what answered
+    the merge commit's second parent is not the      runs: the checkout is of some other head than
+    head the event names                             the one the push run tested
+    the merge result's tree differs from the head's  runs: the base moved and was not merged in, so
+                                                     this run is the one that tests the merge
+    git cannot answer                                runs
+    the trees are equal                              skips
+
+Every doubt runs the suite, so a wrong answer here costs a minute of CI and never a verdict. The
+workflow also keeps this job from existing for a fork's pull request, so that the fork's own copy
+of this file never gets to answer for itself; the fork test here is the second lock.
+
 Anything not known to be an outage is a refusal: the two are told apart by the `verdict` the
 pool's envelope carries (`unavailable` is an outage; a `failed` test is the tree's result, never
 retried) or by what the console answers, and an ending this file does not recognise fails the
@@ -39,7 +62,7 @@ The CLI is the pool's own published build, fetched from its console with the job
 Testament's source is private, so a public repository's job cannot install it from source, and
 a build taken from the pool is never the wrong version for that pool.
 
-Standard library only: the `pool` stage runs where nothing has been installed.
+Standard library only: the `plan` and `pool` stages run where nothing has been installed.
 """
 
 from __future__ import annotations
@@ -102,6 +125,13 @@ POOL_WAIT_SECONDS = 600
 # job and never a suite that ran nowhere.
 RAN_ON = "CI_SUITE_RAN_ON"
 ON_POOL, ON_JOB = "pool", "job"
+
+# What the `plan` stage is told by the workflow, from the pull request event: the head's
+# repository and sha. The repository this runs in is `GITHUB_REPOSITORY`, which GitHub sets.
+PR_HEAD_REPO = "CI_SUITE_PR_HEAD_REPO"
+PR_HEAD_SHA = "CI_SUITE_PR_HEAD_SHA"
+# A git object name: a sha1 or sha256 hex digest. An empty answer is never two equal trees.
+OBJECT_NAME = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 # Console answers that mean "not now" rather than "not you": the server is failing, or busy.
 CONSOLE_OUTAGES = (408, 429)
 
@@ -481,6 +511,54 @@ def tests_stage(
     return code
 
 
+def _git(args: list[str]) -> str:
+    """One `git` answer from the repo root; it raises when git does not give one."""
+    done = subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=True)  # noqa: S603, S607 — list-form argv, no shell (project preference)
+    return done.stdout.strip().lower()
+
+
+def covered_by_push(env: Mapping[str, str], git: Callable[[list[str]], str] = _git) -> tuple[bool, str]:
+    """Whether this pull request's checkout is the tree its head's `push` run already tests, and
+    why. Every doubt answers False: a run that did not need to happen costs a minute, and a run
+    that was skipped and did needed to costs a verdict."""
+    head_sha = env.get(PR_HEAD_SHA, "").strip().lower()
+    head_repo = env.get(PR_HEAD_REPO, "").strip().lower()
+    repo = env.get("GITHUB_REPOSITORY", "").strip().lower()
+    if not head_sha:
+        return False, "this is not a pull request, or the event named no head"
+    if not repo or head_repo != repo:
+        return False, f"the pull request's head is in {head_repo or 'no repository'}, not in {repo or 'this one'}"
+    try:
+        second_parent = git(["rev-parse", "HEAD^2"])
+        merged = git(["rev-parse", "HEAD^{tree}"])
+        head = git(["rev-parse", f"{second_parent}^{{tree}}"])
+    except (subprocess.CalledProcessError, OSError) as e:
+        return False, f"git could not say what the checkout is ({e})"
+    if second_parent != head_sha:
+        return False, "the checkout merges a head other than the one the event names"
+    if not (OBJECT_NAME.fullmatch(merged) and OBJECT_NAME.fullmatch(head)):
+        return False, "git named no tree for the checkout or its head"
+    if merged != head:
+        return False, "the base has moved past the head, so the merge result is a tree no push run tested"
+    return True, f"the merge result is the tree of {head_sha[:12]}, which the push run tests"
+
+
+def plan_stage(env: Mapping[str, str], *, report: Report, git: Callable[[list[str]], str] = _git) -> bool:
+    """The job that decides whether a pull request's run repeats a push's: True to skip the rest.
+
+    It holds no secret, runs no test and never fails: a stage that failed would fail the run
+    for a question whose every uncertain answer is to run.
+    """
+    report.summary("### pytest suite: plan")
+    skip, why = covered_by_push(env, git)
+    if skip:
+        report.notice(f"this run is skipped: {why}")
+        report.summary(f"Skipped: {why}. The push run of the same commit is the verdict.")
+    else:
+        report.summary(f"Runs: {why}.")
+    return skip
+
+
 def _append(path: str | None, line: str) -> None:
     """A line for one of the files GitHub reads back from a step, or stdout where there is none."""
     if path:
@@ -494,6 +572,10 @@ def main(argv: list[str]) -> int:
     env = dict(os.environ)
     report = Report(sys.stdout, lambda line: _append(env.get("GITHUB_STEP_SUMMARY"), line))
     stage = argv[1] if len(argv) == 2 else ""
+    if stage == "plan":
+        skip = plan_stage(env, report=report)
+        _append(env.get("GITHUB_OUTPUT"), f"skip={'true' if skip else 'false'}")
+        return 0
     if stage == "pool":
         work = Path(tempfile.mkdtemp(prefix="ci-suite-"))
         code, ran_on = pool_stage(
@@ -506,7 +588,7 @@ def main(argv: list[str]) -> int:
         return code
     if stage == "tests":
         return tests_stage(env.get(RAN_ON, ""), pytest=lambda args: run_pytest(args, env), report=report)
-    print("usage: ci-suite.py pool | tests", file=sys.stderr)
+    print("usage: ci-suite.py plan | pool | tests", file=sys.stderr)
     return 2
 
 
