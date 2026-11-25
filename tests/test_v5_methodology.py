@@ -1885,7 +1885,11 @@ LAST_MEASURED_TOKENS = {
     # a second criterion for it. +7 more (verify round): the Stop-hook paragraph says background
     # work passes the clear-verdict check only while the forward notes are empty, as the hook now
     # computes it. A READING.
-    "methodology/session-hygiene.md": 3543,
+    # +59 on 2026-11-25 (#1238, owner ruling that day): the forward-notes section says notes stay
+    # in each handoff, marked inherited, until a session writes its own, which replaces them, so the
+    # writer carries forward what still applies, and that "nothing beyond the plan" ends them — the
+    # lifetime rule the boundary now enforces. A READING.
+    "methodology/session-hygiene.md": 3602,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
