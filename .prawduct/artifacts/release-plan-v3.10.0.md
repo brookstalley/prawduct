@@ -1,6 +1,9 @@
 # Release Plan — v3.10.0
 
-**Status:** in progress (2026-11-25).
+**Status:** COMPLETE as measured 2026-11-25: `main` promoted at `e9c06c07`, tag and Release
+`v3.10.0` published in one call, `check-released v3.10.0` verified 3 of 3, both `verify-release`
+runs green, develop reopened on `3.10.1-dev`. Re-derive rather than reading this as a
+measurement: `prawduct-hook check-released v3.10.0`.
 
 **Version:** v3.10.0, a **minor**, confirmed by the owner 2026-11-25 ("yes to all of your
 recommendations", `.prawduct/owner-rulings.md`). Conservative versioning (`operational-spec.md`
