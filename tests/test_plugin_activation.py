@@ -374,10 +374,34 @@ def test_disabled_by_takes_the_highest_source_naming_the_plugin(tmp_path):
     assert pa.disabled_by(repo, home, managed_dirs=(managed,)) == local
     _disable(managed / "managed-settings.json")
     assert pa.disabled_by(repo, home, managed_dirs=(managed,)) == managed / "managed-settings.json"
+    # Drop-ins merge over the base file in name order, later winning.
+    _disable(managed / "managed-settings.d" / "10-allow.json", True)
+    assert pa.disabled_by(repo, home, managed_dirs=(managed,)) is None
+    _disable(managed / "managed-settings.d" / "20-block.json")
+    assert pa.disabled_by(repo, home, managed_dirs=(managed,)) == (
+        managed / "managed-settings.d" / "20-block.json"
+    )
+    # A hidden drop-in is not read: alone beside the base file, so no real
+    # drop-in decides first.
+    for f in (managed / "managed-settings.d").iterdir():
+        f.unlink()
+    _disable(managed / "managed-settings.d" / ".30-hidden.json", True)
+    assert pa.disabled_by(repo, home, managed_dirs=(managed,)) == managed / "managed-settings.json"
     # A file that mentions only other plugins says nothing about this one.
     other = {"enabledPlugins": {"other@market": False}}
+    for f in (managed / "managed-settings.d").iterdir():
+        f.unlink()
     (managed / "managed-settings.json").write_text(json.dumps(other), encoding="utf-8")
     assert pa.disabled_by(repo, home, managed_dirs=(managed,)) == local
+
+
+@pytest.mark.parametrize("platform,expected", [
+    ("darwin", "/Library/Application Support/ClaudeCode"),
+    ("linux", "/etc/claude-code"),
+    ("win32", "C:\\Program Files\\ClaudeCode"),
+])
+def test_only_this_platforms_managed_directory_is_read(platform, expected):
+    assert pa.managed_settings_dirs(platform) == (expected,)
 
 
 def test_an_uninstalled_plugin_stays_inactive_whatever_the_settings_say(tmp_path):

@@ -13,17 +13,19 @@ said so. `check-plugin-active`, which onboarding, doctor and migrate run, answer
 the same way.
 
 Both now resolve `enabledPlugins` the way Claude Code documents it: key by key, the highest-precedence
-settings file that names the plugin decides (managed settings and their drop-ins, then the project's
-`settings.local.json`, its `settings.json`, then the user's `settings.json` in the config home). Only
-a literal `false` disables, and an unreadable file is passed over. A `--settings` file given on the
-command line is invisible to a file read and is not consulted. The rule has one home,
-`plugin_activation.disabled_by`; the tripwire inlines a copy, because it must run when the plugin
-does not, and a test holds the two to the same verdicts over every precedence case.
+settings file that names the plugin decides. That is managed settings for this OS (its
+`managed-settings.d` drop-ins, later names winning, over `managed-settings.json`), then the project's
+`settings.local.json`, its `settings.json`, then the user's `settings.json` in the config home. Only
+a literal `false` disables, an unreadable file is passed over, and files are read as UTF-8. A
+`--settings` file, and managed policy delivered by MDM or a remote source, are invisible to a file
+read and are not consulted. The rule has one home, `plugin_activation.disabled_by`; the tripwire
+inlines a copy, because it must run when the plugin does not, and a test holds the two to the same
+verdicts over the precedence cases, managed drop-ins and an unreadable file included.
 
 An installed plugin that a setting switches off is now `disabled`. The tripwire prints its own line
 naming the settings file. It is not the not-installed accusation, because `/prawduct:repo-disable`
-writes exactly this setting on purpose, so the agent is told to work without governance if that was
-deliberate, and to tell the user otherwise. `check-plugin-active` reports `disabled` with
+writes exactly this setting on purpose: the agent is told to say so in one line and let the user
+decide, and to ignore the line when it loaded the plugin with `--plugin-dir`. `check-plugin-active` reports `disabled` with
 `disabled_by` and exits 1, as `inactive` does, since both load nothing. The onboard, doctor and
 migrate skills route the new status. A plugin that is not installed still gets the not-installed
 line, since installing is the first fix.

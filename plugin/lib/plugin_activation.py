@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import sys
 from pathlib import Path
 
 from . import host
@@ -76,9 +77,22 @@ UNKNOWN = "unknown"
 #: outcome as ``inactive`` with a different fix.
 DISABLED = "disabled"
 
-#: Where Claude Code reads managed (organisation) settings: macOS, then Linux.
+#: Where Claude Code reads file-based managed (organisation) settings: one
+#: directory per OS, keyed by ``sys.platform``, with Linux and WSL the default.
 #: A ``false`` there blocks the plugin, and no other source overrides it.
-MANAGED_SETTINGS_DIRS = ("/Library/Application Support/ClaudeCode", "/etc/claude-code")
+#: (code.claude.com managed-settings, read 2026-11-25.)
+MANAGED_SETTINGS_DIR_BY_PLATFORM = {
+    "darwin": "/Library/Application Support/ClaudeCode",
+    "win32": "C:\\Program Files\\ClaudeCode",
+}
+MANAGED_SETTINGS_DIR_DEFAULT = "/etc/claude-code"
+
+
+def managed_settings_dirs(platform: str | None = None) -> tuple[str, ...]:
+    """The managed-settings directory Claude Code reads on this OS, as a
+    one-element tuple: it reads that OS's directory and no other."""
+    key = sys.platform if platform is None else platform
+    return (MANAGED_SETTINGS_DIR_BY_PLATFORM.get(key, MANAGED_SETTINGS_DIR_DEFAULT),)
 
 #: How a read of the manifest went. ``missing`` is kept apart from
 #: ``unreadable`` because a profile that never installed a plugin is ordinary,
@@ -190,23 +204,32 @@ def _same_path(a: str, b: Path) -> bool:
 
 
 def settings_sources(
-    project_dir: Path, config_home: Path, managed_dirs=MANAGED_SETTINGS_DIRS
+    project_dir: Path, config_home: Path, managed_dirs=None
 ) -> list[Path]:
     """The settings files that can carry ``enabledPlugins``, highest precedence
-    first: managed (the file, then its ``managed-settings.d`` drop-ins in name
-    order), then the project's local and shared files, then the user's.
+    first: managed, then the project's local and shared files, then the user's.
 
-    A ``--settings`` file given on the command line ranks between managed and
-    local, and is invisible to anything that reads files, so it is not listed.
+    Within managed, Claude Code merges ``managed-settings.json`` first and then
+    each ``managed-settings.d/*.json`` in alphabetical order, later files
+    winning, and ignores hidden files. Highest first, that is the drop-ins in
+    reverse name order, then the base file.
+
+    Not listed, because a file read cannot see them: a ``--settings`` file
+    given on the command line (between managed and local), and managed policy
+    delivered by MDM or a remote source rather than a file.
     """
     sources: list[Path] = []
-    for managed in managed_dirs:
+    for managed in managed_settings_dirs() if managed_dirs is None else managed_dirs:
         managed = Path(managed)
-        sources.append(managed / "managed-settings.json")
         try:
-            sources.extend(sorted((managed / "managed-settings.d").glob("*.json")))
+            drop_ins = sorted(
+                name for name in (p.name for p in (managed / "managed-settings.d").iterdir())
+                if name.endswith(".json") and not name.startswith(".")
+            )
         except OSError:
-            pass
+            drop_ins = []
+        sources.extend(managed / "managed-settings.d" / name for name in reversed(drop_ins))
+        sources.append(managed / "managed-settings.json")
     claude = Path(project_dir) / ".claude"
     sources += [claude / "settings.local.json", claude / "settings.json", Path(config_home) / "settings.json"]
     return sources
@@ -217,7 +240,7 @@ def disabled_by(
     config_home: Path,
     *,
     plugin_id: str = PLUGIN_ID,
-    managed_dirs=MANAGED_SETTINGS_DIRS,
+    managed_dirs=None,
 ) -> Path | None:
     """The settings file whose ``enabledPlugins`` switches ``plugin_id`` off for
     this project, or ``None``.
@@ -248,7 +271,7 @@ def plugin_activation_status(
     *,
     plugin_id: str = PLUGIN_ID,
     plugins_file: str | Path | None = None,
-    managed_dirs=MANAGED_SETTINGS_DIRS,
+    managed_dirs=None,
 ) -> dict:
     """Whether ``plugin_id`` will load for ``project_dir``: installed for it,
     and not switched off by ``enabledPlugins``.

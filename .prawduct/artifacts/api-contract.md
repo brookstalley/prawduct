@@ -596,14 +596,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `accept-operator-verification` refuses on that same unparsed queue rather than recording a bypass
   that covers no entries — an override reached by a different door must not inherit the defect the
   check just closed.
-- **Plugin activation** — `check-plugin-active [--path P] [--context onboard|doctor] [--json]`
+- **Plugin activation** — `check-plugin-active [--path P] [--context onboard|doctor|migrate] [--json]`
   (read-only). Answers whether the harness will actually LOAD the plugin for a repo, which
-  project-scope enablement in `.claude/settings.json` does not settle on its own. **Three-way by
-  construction**: `active` exit 0, `inactive` exit 1, `unknown` exit **3** — the third-outcome
+  project-scope enablement in `.claude/settings.json` does not settle on its own. **Three exit codes
+  by construction**: `active` exit 0, `inactive` or `disabled` exit 1, `unknown` exit **3** — the third-outcome
   shape below, for the reason given there. `--context` selects the WORDING, not the verdict: the
   same `inactive` means "this repo loads nothing" to an onboarding session and "the manifest
   record does not name this path" to a doctor run, which by construction executes inside a
-  session where the plugin did load. `disabled` (installed, but a settings file's `enabledPlugins` sets it to false, named in `disabled_by`) exits 1 with `inactive`: both load nothing, and the text names the different fix. `--json` carries `status` for a caller that must branch.
+  session where the plugin did load. `disabled` means installed, but a settings file's `enabledPlugins` sets it to false (named in `disabled_by`); it shares exit 1 with `inactive` because both load nothing, and the text names the different fix. `--json` carries `status` for a caller that must branch.
 - **Learnings pairing** — `check-learnings-pairing [--json]` (**deprecated, inert** since the v2
   cutover). Exits **0** always and writes nothing; `--json` yields empty stdout. It graded
   `.prawduct/learnings.md` against `learnings-detail.md`, and that corpus no longer exists — rules

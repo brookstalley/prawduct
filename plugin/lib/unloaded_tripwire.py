@@ -54,7 +54,7 @@ from pathlib import Path
 #: plugin the settings file beside it enables. ``migrate_plugin`` imports this
 #: module lazily, inside ``transform_settings``, to keep the import one-way.
 from .migrate_plugin import PLUGIN_ID
-from .plugin_activation import MANAGED_SETTINGS_DIRS
+from .plugin_activation import MANAGED_SETTINGS_DIR_BY_PLATFORM, MANAGED_SETTINGS_DIR_DEFAULT
 
 #: The first line of the command. ``:`` is the shell's no-op, so the line costs
 #: nothing at runtime and makes the hook findable by a writer. It carries no
@@ -81,17 +81,22 @@ _VERDICT_PY = "\n".join([
     # (plugin_activation.disabled_by, the same rule). Managed first, then the
     # project's local and shared files, then the user's beside the manifest.
     "def en(s):",
-    " try:x=json.load(open(s))",
+    # Bytes decoded as UTF-8, as the lib reads them: the locale's encoding would
+    # let the two copies disagree on the same file.
+    ' try:x=json.loads(open(s,"rb").read().decode("utf-8"))',
     " except (IOError,OSError,ValueError):return None",
     ' e=x.get("enabledPlugins") if isinstance(x,dict) else None',
     f' if not isinstance(e,dict) or "{PLUGIN_ID}" not in e:return None',
     f' return e["{PLUGIN_ID}"] is False',
     "def act():",
     " S=[]",
+    # Managed: drop-ins merge over the base file in name order, later winning,
+    # so highest first is the drop-ins reversed, then the base.
     " for d in sys.argv[3:]:",
+    '  try:N=sorted(n for n in os.listdir(os.path.join(d,"managed-settings.d")) if n.endswith(".json") and not n.startswith("."))',
+    "  except (IOError,OSError):N=[]",
+    '  S.extend(os.path.join(d,"managed-settings.d",n) for n in reversed(N))',
     '  S.append(os.path.join(d,"managed-settings.json"))',
-    '  try:S.extend(sorted(os.path.join(d,"managed-settings.d",n) for n in os.listdir(os.path.join(d,"managed-settings.d")) if n.endswith(".json")))',
-    "  except (IOError,OSError):pass",
     ' c=os.path.join(p,".claude")',
     ' S+=[os.path.join(c,"settings.local.json"),os.path.join(c,"settings.json"),os.path.join(os.path.dirname(os.path.dirname(f)),"settings.json")]',
     " for s in S:",
@@ -155,20 +160,30 @@ INACTIVE_MESSAGE = (
 #: What the agent reads when the plugin is installed for this repo but a
 #: settings file's ``enabledPlugins`` switches it off. ``$s`` is that file. Not
 #: the loud line's accusation: ``/prawduct:repo-disable`` writes exactly this on
-#: purpose, so the agent is told to ask, not to report a fault.
+#: purpose. The agent cannot tell a deliberate opt-out from an accident at
+#: session start, so it is told to say so in one line and let the user decide,
+#: never to judge intent and stay silent.
 DISABLED_MESSAGE = (
     "PRAWDUCT GOVERNANCE IS SWITCHED OFF IN THIS SESSION. This repo is governed by "
     f"Prawduct and {PLUGIN_ID} is installed, but enabledPlugins sets it to false in "
-    "$s: no session banner, no /prawduct:* skills, no Stop gates. If the user "
-    "switched it off here on purpose (/prawduct:repo-disable), work without it; "
-    "otherwise tell them before any work, and do not imitate the gates by reading "
-    "the plugin's files. To switch it back on, set that entry to true or delete it, "
-    "then restart the session."
+    "$s: no session banner, no /prawduct:* skills, no Stop gates. Tell the user in "
+    "one line before any work; it may be deliberate (/prawduct:repo-disable), and "
+    "then they need do nothing. Do not imitate the gates by reading the plugin's "
+    "files. To switch it back on, set that entry to true or delete it, then restart "
+    "the session. (Loaded the plugin with --plugin-dir? Then ignore this line.)"
 )
 
-#: The directories Claude Code reads managed settings from, passed to the
-#: verdict as arguments; their one home is ``plugin_activation``.
-_MANAGED_ARGS = " ".join(f'"{d}"' for d in MANAGED_SETTINGS_DIRS)
+#: Picks the one managed-settings directory Claude Code reads on this OS, by
+#: ``uname``, for the verdict's argument. The paths' one home is
+#: ``plugin_activation``; Git Bash and friends name Windows.
+_MANAGED_CASE = (
+    'case "$(uname -s 2>/dev/null)" in '
+    f'Darwin) d="{MANAGED_SETTINGS_DIR_BY_PLATFORM["darwin"]}" ;; '
+    'MINGW*|MSYS*|CYGWIN*) d="'
+    + MANAGED_SETTINGS_DIR_BY_PLATFORM["win32"].replace("\\", "/")
+    + '" ;; '
+    f'*) d="{MANAGED_SETTINGS_DIR_DEFAULT}" ;; esac'
+)
 
 #: What the agent reads when the check could not answer. ``$v`` is the reason
 #: word. It claims nothing about the install, only what to look for.
@@ -182,8 +197,9 @@ UNKNOWN_MESSAGE = (
 TRIPWIRE_COMMAND = "\n".join([
     TRIPWIRE_TAG,
     'm="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"',
+    _MANAGED_CASE,
     "if command -v python3 >/dev/null 2>&1; then",
-    "v=$(python3 -c '" + _VERDICT_PY + "' \"$m\" \"${CLAUDE_PROJECT_DIR:-.}\" " + _MANAGED_ARGS + " 2>/dev/null)"
+    "v=$(python3 -c '" + _VERDICT_PY + "' \"$m\" \"${CLAUDE_PROJECT_DIR:-.}\" \"$d\" 2>/dev/null)"
     " || v=\"python3 exited $?, so the check did not finish\"",
     'else v="python3 not found"; fi',
     'case "$v" in',

@@ -22,6 +22,7 @@ governed_by:
       - "every fact has one home → conforms: the enabledPlugins rule lives in `plugin_activation.disabled_by` and the managed directories in `MANAGED_SETTINGS_DIRS`; the tripwire's inline copy is the documented exception (it runs when the plugin does not) and a test holds it to the home"
   - artifact: api-contract
     dispositions:
+      - "whole-surface semantic versioning; CLI subcommands carry no per-subcommand version → conforms: a new status value on an existing subcommand, and a changed tripwire hook text that `install-tripwire --apply` replaces; patch-level within the release's own tier"
       - "exit codes are the contract → conforms: `disabled` exits 1, beside `inactive`, an existing code meaning 'will not load'; no code changes meaning"
       - "additive-first evolution → conforms: a new `status` value and a new `disabled_by` key in `--json`; existing values and keys are unchanged"
 partition: serial — one chunk
@@ -48,8 +49,21 @@ the tripwire's inline verdict carries the same rule.
 - *The class, not the instance:* `check-plugin-active` had the same blind spot, so the rule has one
   home in `plugin_activation` and both callers use it. `disabled` exits 1 like `inactive`.
 - *Precedence edge cases:* a non-boolean value never reads as disabled; an unreadable settings
-  file is passed over; managed drop-ins are read in name order after the managed file. A
-  `--settings` file cannot be seen and is not consulted.
+  file is passed over. A `--settings` file, and managed policy from MDM or a remote source, cannot
+  be seen by a file read and are not consulted.
+
+**Decisions made mid-build:**
+- Boundary review (rev-20261125T230216Z-7af05777), checked against code.claude.com
+  managed-settings (read 2026-11-25): Claude Code merges `managed-settings.json` first and each
+  `managed-settings.d/*.json` over it in name order, later winning, ignoring hidden and
+  non-`.json` files, and reads only its own OS's directory. Both copies had the managed tier
+  backwards and read both OS directories. Now: drop-ins in reverse name order, then the base; one
+  directory per OS (`sys.platform` in the lib, `uname` in the shell, held equal by a test that runs
+  every shell branch). The inline copy reads settings as UTF-8, as the lib does.
+- The disabled line tells the agent to say so in one line and let the user decide, since the
+  agent cannot judge intent at session start, and carries the `--plugin-dir` escape the
+  not-installed line has. Doctor grades `disabled` as degraded (the plugin loaded another way to run
+  doctor at all), and every later step of the onboard, doctor and migrate skills names it.
 
 ## Build Chunks
 

@@ -361,20 +361,68 @@ def test_not_installed_is_still_the_loud_line_even_when_disabled(world):
     assert _run_hook(world).startswith(_LOUD)
 
 
-def test_managed_settings_outrank_the_project(world, tmp_path):
+def test_managed_settings_outrank_the_project_and_drop_ins_outrank_the_base(world, tmp_path):
+    """Claude Code merges managed-settings.json first, then each drop-in in name
+    order with later files winning, and ignores hidden files."""
     managed = tmp_path / "managed"
+    drop_ins = managed / "managed-settings.d"
     _manifest(world, _USER_INSTALL)
     _settings(_local(world), True)
     assert _verdict(world, managed) == "active"
-    _settings(managed / "managed-settings.d" / "10-policy.json", False)
-    assert _verdict(world, managed) == "disabled:" + str(managed / "managed-settings.d" / "10-policy.json")
     _settings(managed / "managed-settings.json", False)
+    assert _verdict(world, managed) == "disabled:" + str(managed / "managed-settings.json")
+    # A drop-in naming the plugin overrides the base file, in either direction.
+    _settings(drop_ins / "10-allow.json", True)
+    assert _verdict(world, managed) == "active"
+    _settings(drop_ins / "50-block.json", False)
+    assert _verdict(world, managed) == "disabled:" + str(drop_ins / "50-block.json")
+    # Hidden and non-.json files are not read. Alone beside the base file, so a
+    # real drop-in cannot decide first and hide whether they were read.
+    for f in drop_ins.iterdir():
+        f.unlink()
+    _settings(drop_ins / ".90-hidden.json", True)
+    _settings(drop_ins / "90-notes.txt", True)
     assert _verdict(world, managed) == "disabled:" + str(managed / "managed-settings.json")
 
 
-def test_the_shell_passes_the_managed_settings_directories():
-    for d in pa.MANAGED_SETTINGS_DIRS:
-        assert f'"{d}"' in tw.TRIPWIRE_COMMAND
+def test_settings_are_read_as_utf8_whatever_the_locale(world, tmp_path):
+    """The lib reads settings as UTF-8; under an ASCII locale the inline copy
+    must too, or a non-ASCII file is skipped and the two disagree."""
+    _manifest(world, _USER_INSTALL)
+    _local(world).parent.mkdir(parents=True)
+    _local(world).write_text(
+        json.dumps({"note": "caf\u00e9", "enabledPlugins": {pa.PLUGIN_ID: False}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    _settings(_project(world), True)
+    proc = subprocess.run(
+        [sys.executable, "-c", tw._VERDICT_PY,
+         str(world["config"] / "plugins" / "installed_plugins.json"), str(world["repo"]),
+         str(tmp_path / "managed")],
+        capture_output=True, text=True,
+        env=scrubbed_env(world["home"], LC_ALL="C", LANG="C", PYTHONUTF8="0", PYTHONCOERCECLOCALE="0"),
+    )
+    assert proc.stdout.strip() == "disabled:" + str(_local(world).resolve())
+
+
+@pytest.mark.parametrize("platform,uname", [
+    ("darwin", "Darwin"), ("linux", "Linux"), ("win32", "MINGW64_NT-10.0"),
+])
+def test_the_shell_picks_the_managed_directory_the_lib_names(tmp_path, platform, uname):
+    """One directory per OS, chosen by uname in the shell and sys.platform in the
+    lib; a fake uname on PATH lets every branch run here."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    fake = bindir / "uname"
+    fake.write_text(f"#!/bin/sh\necho {uname}\n")
+    fake.chmod(0o755)
+    case = next(line for line in tw.TRIPWIRE_COMMAND.splitlines() if line.startswith("case \"$(uname"))
+    proc = subprocess.run(
+        ["/bin/sh", "-c", case + '\nprintf %s "$d"'], capture_output=True, text=True,
+        env={"PATH": f"{bindir}:/usr/bin:/bin"},
+    )
+    expected = pa.managed_settings_dirs(platform)[0].replace("\\", "/")
+    assert proc.stdout == expected
 
 
 @pytest.mark.parametrize("settings", [
@@ -385,6 +433,10 @@ def test_the_shell_passes_the_managed_settings_directories():
     {"user": False},
     {"project": True, "user": False},
     {"managed": False, "local": True},
+    {"managed": True, "drop_in": False},
+    {"managed": False, "drop_in": True},
+    {"drop_in": True, "drop_in_later": False},
+    {"local": "{broken", "project": False},
     {"project": "yes"},
 ])
 @pytest.mark.parametrize("installed", [True, False])
@@ -395,9 +447,15 @@ def test_disabled_verdict_agrees_with_plugin_activation(world, tmp_path, setting
     files = {
         "local": _local(world), "project": _project(world), "user": _user(world),
         "managed": managed / "managed-settings.json",
+        "drop_in": managed / "managed-settings.d" / "10-a.json",
+        "drop_in_later": managed / "managed-settings.d" / "20-b.json",
     }
     for name, value in settings.items():
-        _settings(files[name], value)
+        if value == "{broken":
+            files[name].parent.mkdir(parents=True, exist_ok=True)
+            files[name].write_text(value, encoding="utf-8")
+        else:
+            _settings(files[name], value)
     result = pa.plugin_activation_status(world["repo"], plugins_file=path, managed_dirs=(managed,))
     got = _verdict(world, managed)
     word = got.split(":", 1)[0]

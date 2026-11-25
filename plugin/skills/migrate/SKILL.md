@@ -110,7 +110,8 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
    Stop hook + SessionStart digest, skills are `/prawduct:*`, and framework updates arrive via
    the marketplace with zero repo diff. **Only on an `active` result from step 3** — after
    `inactive` say the files migrated but the repo is ungoverned until they run the install line;
-   after `unknown`, say activation was not established and to confirm by reopening the repo and
+   after `disabled`, that it is ungoverned until the named settings file stops setting the plugin
+   to `false`; after `unknown`, say activation was not established and to confirm by reopening the repo and
    looking for the prawduct session briefing. If they just installed it, a reopen activates it.
 
 ## Notes
