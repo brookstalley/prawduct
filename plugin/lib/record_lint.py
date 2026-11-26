@@ -80,6 +80,7 @@ from . import (
     buildplan_refs,
     determinism_lint,
     evidence,
+    gitstate,
     late_requirements,
     learnings_files,
     plan_index,
@@ -327,7 +328,6 @@ def records_in(paths: "list[str] | None") -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-_DIFF_HEADER_RE = re.compile(r"^diff --git a/(?:.*) b/(.+)$")
 _HUNK_RE = re.compile(r"^@@+ .*?\+(\d+)(?:,\d+)? @@")
 
 
@@ -354,12 +354,9 @@ def _added_lines(
     """
     rc, out, _err = evidence.run_git(
         project_dir,
-        # `core.quotepath` defaults on, so git C-quotes any non-ASCII pathname in
-        # the `diff --git` header (`"a/caf\303\251.md"`). The header parser would
-        # then miss it and attach that file's added lines to the PREVIOUS file —
-        # wrong attribution, silently. Turning it off is a one-flag fix and keeps
-        # this working for any repo whose records aren't named in ASCII.
-        "-c", "core.quotepath=false",
+        # git C-quotes a header's name when it holds a non-ASCII byte, a quote or a
+        # backslash (`"a/caf\303\251.md"`); `_parse_diff` decodes it, so the quoting
+        # is left at git's default, which keeps any name off a raw line of its own.
         "diff",
         "--unified=0",
         "--no-color",
@@ -383,21 +380,15 @@ def _parse_diff(out: str) -> "dict[str, list[tuple[int, str]]]":
     in_hunk = False
     line_num = 0
     for raw in out.splitlines():
-        header = _DIFF_HEADER_RE.match(raw)
-        if header:
-            current = by_path.setdefault(header.group(1), [])
-            in_hunk = False
-            continue
         if raw.startswith("diff --git "):
-            # A header the regex could not parse. `core.quotepath=false` above
-            # covers non-ASCII names, but git still C-quotes a pathname holding
-            # `"` or `\`, and that quoting is not disableable. Dropping the file
-            # loses one file's findings; leaving `current` alone would attach its
-            # added lines to the PREVIOUS file, and a finding naming a record
-            # that never contained the text is indistinguishable from a true one.
-            # Silence beats a confident lie. (Content lines cannot reach here —
-            # inside a hunk every line carries a `+`/`-`/space prefix.)
-            current = None
+            # The header's name, decoded (`gitstate.diff_header_path`). A header it
+            # cannot read drops the file: losing one file's findings is recoverable,
+            # while leaving `current` alone would attach its added lines to the
+            # PREVIOUS file, and a finding naming a record that never contained the
+            # text is indistinguishable from a true one. (Content lines cannot reach
+            # here — inside a hunk every line carries a `+`/`-`/space prefix.)
+            name = gitstate.diff_header_path(raw)
+            current = by_path.setdefault(name, []) if name else None
             in_hunk = False
             continue
         hunk = _HUNK_RE.match(raw)
@@ -789,9 +780,9 @@ def _resolve_artifact(project_dir: Path, prawduct_dir: Path, name: str) -> "Path
     )
     if rc != 0:
         return None
-    for line in out.splitlines():
-        candidate = project_dir / line.strip()
-        if line.strip() and candidate.is_file():
+    for name in gitstate.git_path_lines(out):
+        candidate = project_dir / name
+        if candidate.is_file():
             return candidate
     return None
 

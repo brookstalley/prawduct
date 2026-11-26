@@ -455,6 +455,8 @@ def validate(project_dir: Path, ws: dict) -> Result:
 def undo_refusals(project_dir: Path, local: bool) -> list[str]:
     """Why ``--apply`` cannot promise an undo. Empty under ``--local``, whose
     undo is the backup :func:`apply` verifies before writing."""
+    from . import gitstate  # noqa: PLC0415 — lazy; only this refusal reads porcelain
+
     if local:
         return []
     refusals: list[str] = []
@@ -477,7 +479,13 @@ def undo_refusals(project_dir: Path, local: bool) -> list[str]:
         refusals.append(
             "the rules files have uncommitted changes; commit them first, because "
             "the commit is this command's undo:\n    "
-            + "\n    ".join(proc.stdout.strip().splitlines())
+            + "\n    ".join(
+                # Each name decoded, so a rules file named outside ASCII shows its name.
+                f"{status} {source} -> {path}" if source else f"{status} {path}"
+                for status, source, path in filter(
+                    None, map(gitstate.parse_porcelain_line, proc.stdout.split("\n"))
+                )
+            )
         )
     return refusals
 

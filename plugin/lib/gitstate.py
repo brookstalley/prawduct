@@ -566,13 +566,16 @@ def worktree_records(project_dir: Path) -> list[dict] | None:
         return [] if in_repo != 0 else None
     records: list[dict] = []
     current: dict = {}
-    for line in out.splitlines():
+    for line in out.split("\n"):
         if not line.strip():
             if current:
                 records.append(current)
                 current = {}
             continue
         key, _sep, value = line.partition(" ")
+        # git prints a worktree path raw here, never C-quoted (measured, git 2.54), so it
+        # is not decoded; only a newline in a path, which `-z` (git 2.36+) would carry,
+        # breaks this record.
         current[key] = value
     if current:
         records.append(current)
@@ -989,6 +992,32 @@ def git_path_lines(stdout: str) -> list[str]:
     Split on git's newline only: a quoted name never holds one, and an unquoted name may hold a
     character ``str.splitlines`` also splits on. Blank lines are dropped."""
     return [unquote_git_path(line) for line in stdout.split("\n") if line]
+
+
+def diff_header_path(line: str) -> "str | None":
+    """The new-side name of a ``diff --git a/<old> b/<new>`` header, decoded; ``None`` when
+    ``line`` is not a header this can read. git quotes each side on its own (``"a/caf\\303\\251.md"
+    "b/caf\\303\\251.md"``), so a quoted new side is read as one token, and an unquoted header
+    is split at its last `` b/``, as git's own unquoted form allows."""
+    prefix = "diff --git "
+    if not line.startswith(prefix):
+        return None
+    rest = line[len(prefix):]
+    new_side: "str | None" = None
+    if rest.startswith('"'):
+        read = _read_quoted(rest, 0)
+        if read is not None and rest[read[1]:read[1] + 1] == " ":
+            new_side = rest[read[1] + 1:]
+    elif rest.endswith('"') and ' "b/' in rest:
+        new_side = rest[rest.rindex(' "b/') + 1:]
+    elif " b/" in rest:
+        new_side = rest[rest.rindex(" b/") + 1:]
+    if new_side is None:
+        return None
+    name = unquote_git_path(new_side)
+    if new_side.startswith('"') and name == new_side:
+        return None  # a quoted side that is not well-formed quoting
+    return name[2:] if name.startswith("b/") and len(name) > 2 else None
 
 
 def parse_porcelain_line(line: str) -> tuple[str, str | None, str] | None:

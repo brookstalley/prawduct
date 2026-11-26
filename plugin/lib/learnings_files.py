@@ -548,7 +548,9 @@ def corpus_texts_at(project_dir: str | Path, tree: str) -> "list[str] | None":
     if listed is None or listed.returncode != 0:
         return None
     texts = []
-    for rel in listed.stdout.splitlines():
+    from . import gitstate  # noqa: PLC0415 — lazy; only this tree reader decodes git's names
+
+    for rel in gitstate.git_path_lines(listed.stdout):
         if not rel.endswith(".md"):
             continue
         shown = _git("show", f"{tree}:{rel}")

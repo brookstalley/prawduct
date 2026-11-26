@@ -246,3 +246,120 @@ def test_native_review_tree_moved_reads_a_prawduct_file_as_prawduct(repo):
     (repo / "src.py").write_text("x = 2\n")
     sidecar = {"base_tree": base_tree, "head_tree": head_tree}
     assert native_review._tree_moved(repo, sidecar) is True
+
+
+# -- The readers (chunk 02) -----------------------------------------------------------------
+
+
+def test_risk_review_scope_paths_names_the_files(repo):
+    from lib import risk
+    base = git(repo, "rev-parse", "HEAD").strip()
+    write(repo, NAMES[:1])
+    commit_all(repo, "one")
+    write(repo, NAMES[1:])
+    assert set(risk._review_scope_paths(repo, base)) == set(NAMES)
+
+
+@pytest.mark.parametrize("at_tree", [False, True])
+def test_late_requirements_scan_reads_a_quoted_record(repo, at_tree):
+    """A quoted name read raw names no file, so the scan raised `could not read`."""
+    from lib import late_requirements
+    for name in NAMES:
+        path = repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# Doc\n\n## Late requirements\n\n- LR-1: a thing\n", encoding="utf-8")
+    tree = None
+    if at_tree:
+        commit_all(repo, "records")
+        tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
+    found = late_requirements.scan(repo, tree)
+    assert {req.path for req in found} == set(NAMES)
+
+
+def test_record_lint_added_lines_names_a_quoted_file(repo):
+    from lib import record_lint
+    base_tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
+    write(repo, NAMES)
+    commit_all(repo, "two")
+    head_tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
+    by_path = record_lint._added_lines(repo, base_tree, head_tree, NAMES)
+    assert by_path == {name: [(1, name)] for name in NAMES}
+
+
+def test_record_lint_resolve_artifact_finds_a_quoted_artifact(repo):
+    from lib import record_lint
+    (repo / "docs").mkdir()
+    artifact = repo / "docs" / "spécifications.md"
+    artifact.write_text("# x\n")
+    commit_all(repo, "artifact")
+    assert record_lint._resolve_artifact(repo, repo / ".prawduct", "spécifications") == artifact
+
+
+def test_learnings_corpus_texts_at_reads_a_non_ascii_area_file(repo):
+    from lib import learnings_files
+    rules = repo / learnings_files.RULES_DIR_REL
+    rules.mkdir(parents=True)
+    (rules / "core.md").write_text("core\n")
+    (rules / "réseau.md").write_text("network\n")
+    commit_all(repo, "rules")
+    texts = learnings_files.corpus_texts_at(repo, git(repo, "rev-parse", "HEAD^{tree}").strip())
+    assert sorted(texts) == ["core\n", "network\n"]
+
+
+def test_learnings_undo_refusal_shows_the_real_name(repo):
+    from lib import learnings_compact, learnings_files
+    rules = repo / learnings_files.RULES_DIR_REL
+    rules.mkdir(parents=True)
+    (rules / "réseau.md").write_text("network\n")
+    (refusal,) = learnings_compact.undo_refusals(repo, local=False)
+    assert "?? .claude/rules/learnings/réseau.md" in refusal
+    assert "\\303" not in refusal
+
+
+def test_worktree_records_keep_an_unusual_path_as_git_prints_it(repo, tmp_path):
+    """git prints a worktree path raw, never quoted, so the record is not decoded: a path
+    that really begins and ends with a quote keeps them."""
+    for name in ("wörk tree", 'q"uote', '"quoted"'):
+        git(repo, "worktree", "add", "-q", "--detach", str(tmp_path / name))
+    paths = {record["worktree"] for record in gitstate.worktree_records(repo)}
+    assert {str((tmp_path / n).resolve()) for n in ("wörk tree", 'q"uote', '"quoted"')} <= {
+        str(Path(p).resolve()) for p in paths}
+
+
+def test_judge_flakes_finds_a_non_ascii_test_file(repo, monkeypatch):
+    """A flake whose test file is named outside ASCII is matched to that file and judged by
+    the branch's diff, not read as unknown and so as touched."""
+    import importlib.machinery
+    import importlib.util
+
+    from lib import coverage
+    hook = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+    loader = importlib.machinery.SourceFileLoader("_hook_for_names", str(hook))
+    spec = importlib.util.spec_from_loader("_hook_for_names", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    (repo / "tests").mkdir()
+    (repo / "tests" / "tést_x.py").write_text("def test_x(): pass\n")
+    base = commit_all(repo, "test")
+    (repo / "other.py").write_text("x = 1\n")
+    commit_all(repo, "unrelated")
+    monkeypatch.setattr(coverage, "_coverage_resolve_base", lambda _p: (base, ""))
+    entry = {"file": "tests/tést_x.py", "name": "test_x"}
+    mod._judge_flakes(repo, [entry], "block")
+    assert entry["file"] == "tests/tést_x.py"
+    assert entry["touched"] is False
+
+
+def test_test_reference_verify_changed_files_names_the_files(repo):
+    import importlib.machinery
+    import importlib.util
+    script = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "test-reference-verify"
+    loader = importlib.machinery.SourceFileLoader("_trv_for_names", str(script))
+    spec = importlib.util.spec_from_loader("_trv_for_names", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    base = git(repo, "rev-parse", "HEAD").strip()
+    write(repo, NAMES[:1])
+    commit_all(repo, "one")
+    write(repo, NAMES[1:])
+    assert set(mod._changed_files(repo, base)) == set(NAMES)

@@ -28,6 +28,23 @@ The readers whose answer is a governance verdict now route through it: `critic_m
 `tests/test_git_path_names.py` reads git's own quoting of real files and holds each reader to
 the real names.
 
+### The remaining readers, and a lint (Chunk 02)
+`risk` (the review scope's paths), `late_requirements` (the scan, in the working tree and at a
+tree, where git quotes the name after its `<tree>:` prefix), `record_lint` (an artifact found by
+name, and the added lines of a diff, whose `diff --git` header `gitstate.diff_header_path` now
+decodes), `learnings_files` (the rules corpus at a tree), `learnings_compact` (the undo refusal
+now shows real names) and `prawduct-hook`'s flake judgment route through the decoder.
+`bin/test-reference-verify`, which imports nothing from `lib/`, reads with `-z` instead. The three
+sites that set `core.quotepath=false` drop it: it covered non-ASCII only, and the decoder covers
+every case it did and more. A file whose header cannot be read is still dropped, never attached
+to the previous file. `gitstate.worktree_records` is left as it is: git prints a worktree path raw
+there.
+
+`tests/test_git_path_read_lint.py` scans every git argument list that prints names, in every
+Python source the plugin ships (`conftest.plugin_python_sources`, hooks included). Each must pass `-z`, sit in a function that uses the decoder, or
+be listed with the reason it needs neither: an emptiness or exit-code check, a fixed ASCII
+pathspec, or git printing the name raw.
+
 ## Consumer note
 A file whose name holds a non-ASCII character, a quote or a backslash is now seen by the review,
 coverage, doc-only and change-record checks under its real name. A doc-only branch with such a

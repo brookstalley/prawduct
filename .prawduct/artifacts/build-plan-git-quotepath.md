@@ -55,6 +55,27 @@ Sites already passing `-z` stay as they are; `-z` output is never quoted.
 - *Display-only reads* (`learnings_compact.undo_refusals`, `learnings_migrate.dirty_legacy_files`)
   are decoded too, because the owner reads those names to act on them.
 
+**Decisions made mid-build (inferred, mine, open for the owner at the boundary review):**
+- *`gitstate.worktree_records` is not decoded.* Measured on git 2.54: `worktree list --porcelain`
+  prints a path raw, never C-quoted (non-ASCII, quote, backslash, tab, even a newline), so decoding
+  would rewrite a path that really starts and ends with `"`. The classification's "quoted when
+  unusual" was wrong. Only `-z` (git 2.36+) carries a newline there; not taken, since no git floor is
+  declared and a newline in a worktree path is pathological. The lint lists it with that reason.
+- *`bin/test-reference-verify` reads with `-z`* rather than decoding: it imports nothing from `lib/`,
+  and a second copy of the decoder there would be a second home for git's quoting rule.
+- *`git grep -l` at a tree* prints `<tree>:<name>` with the name alone quoted, so
+  `late_requirements.scan` strips the prefix before decoding (seen in the test, not assumed).
+- *`record_lint._parse_diff` now attributes a quoted header's lines to its real name*, through a new
+  `gitstate.diff_header_path`. Its test that pinned "a quoted header drops its file" is renegotiated
+  in the open: the quoted case now names its file, and the invariant that an unreadable header drops
+  its file (never the previous file) keeps its own test. `core.quotepath=false` comes off the three
+  sites that set it, since the decoder covers every case it did and more.
+- *The lint reads every Python source the plugin ships* (`conftest.plugin_python_sources`, which a
+  repo guard requires of any plugin scan), not `lib` and `bin` alone, and so reached a site the
+  classification did not: `hooks/banner.py`'s porcelain v2 read, a dirty flag only, listed.
+- *The lint counts a decoder passed uncalled* (`map(parse_porcelain_line, …)`) as decoding, as the
+  entropy inventory counts an API passed uncalled.
+
 **Level:** High. The site table below was built by reading each of the 66 grep hits plus a search
 past the grep (2026-11-26); the fix per site is mechanical.
 

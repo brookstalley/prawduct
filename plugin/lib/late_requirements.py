@@ -32,7 +32,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import evidence
+from . import evidence, gitstate
 
 #: Why the requirement is late, in the governance ROI study's terms: learned
 #: from operating it, a new consumer, an owner change, a discovered constraint.
@@ -211,14 +211,18 @@ def scan(project_dir: Path, tree: "str | None" = None) -> "list[LateReq]":
         args = ("grep", "-l", "-I", "-i", "-E", "--untracked", "-e", pattern, "--", "*.md")
     else:
         args = ("grep", "-l", "-I", "-i", "-E", "--full-name", "-e", pattern, tree, "--", "*.md")
-    rc, out, err = evidence.run_git(project_dir, "-c", "core.quotepath=false", *args)
+    rc, out, err = evidence.run_git(project_dir, *args)
     if rc == 1 and not err:
         return []
     if rc != 0:
         raise ScanError(err or f"git grep exited {rc}")
     found: list[LateReq] = []
-    for raw in sorted(p for p in out.splitlines() if p):
-        rel = raw[len(tree) + 1:] if tree is not None and raw.startswith(f"{tree}:") else raw
+    for raw in sorted(line for line in out.split("\n") if line):
+        # At a tree git prints `<tree>:<name>` and quotes the name alone, so the prefix comes
+        # off before the name is decoded.
+        if tree is not None and raw.startswith(f"{tree}:"):
+            raw = raw[len(tree) + 1:]
+        rel = gitstate.unquote_git_path(raw)
         text = read_at(project_dir, rel, tree)
         if text is None:
             raise ScanError(f"could not read {rel}")

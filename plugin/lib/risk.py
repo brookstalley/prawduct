@@ -339,23 +339,24 @@ def paths_touch_risk_surface(prawduct_dir: Path, paths: "list[str]") -> tuple[bo
 
 
 def _git_lines(project_dir: Path, *args: str) -> list[str] | None:
-    """Lines of one git read; ``None`` on any failure (callers decide whether
-    that fails open or closed — see module docstring).
+    """Lines of one git read, split on git's newline; ``None`` on any failure
+    (callers decide whether that fails open or closed — see module docstring).
 
-    ``core.quotepath=false`` returns non-ASCII names raw: under git's default,
-    ``skills/café.md`` comes back C-quoted and matches no surface, so a
-    risk-surface change would read ``standard`` and could be granted the
-    per-release lane (fail-open)."""
+    A name in them is as git prints it: C-quoted when it holds a non-ASCII byte,
+    a quote or a control character. A caller reading names decodes each with
+    ``gitstate.unquote_git_path`` (or ``parse_porcelain_line``); read raw,
+    ``skills/café.md`` matches no surface, so a risk-surface change would read
+    ``standard`` and could be granted the per-release lane (fail-open)."""
     try:
         proc = subprocess.run(
-            ["git", "-c", "core.quotepath=false", *args],
+            ["git", *args],
             cwd=str(project_dir), capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=30,
         )
     except Exception:  # prawduct:allow prawduct/broad-except -- verdict degrades per the declared fail-open/closed rule, never crashes
         return None
     if proc.returncode != 0:
         return None
-    return [ln for ln in proc.stdout.splitlines() if ln.strip()]
+    return [ln for ln in proc.stdout.split("\n") if ln]
 
 
 def _review_scope_paths(
@@ -380,7 +381,7 @@ def _review_scope_paths(
         )
         if committed is None:
             return None
-        paths.extend(committed)
+        paths.extend(gitstate.unquote_git_path(name) for name in committed)
     # --untracked-files=all: the default collapses an untracked directory to
     # one "?? dir/" line, hiding the files inside it from glob surfaces
     # (e.g. `lib/gates*` never sees a file under an untracked `lib/`) — a
@@ -389,13 +390,10 @@ def _review_scope_paths(
     if porcelain is None:
         return None
     for line in porcelain:
-        body = line[3:] if len(line) > 3 else ""
-        # Rename lines are "R  old -> new" — the new path is the review scope.
-        if " -> " in body:
-            body = body.split(" -> ", 1)[1]
-        body = body.strip().strip('"')
-        if body:
-            paths.append(body)
+        # A rename's new path is the review scope (`parse_porcelain_line`'s `path`).
+        parsed = gitstate.parse_porcelain_line(line)
+        if parsed is not None:
+            paths.append(parsed[2])
     deduped: list[str] = []
     for p in paths:
         if p not in deduped:

@@ -1783,8 +1783,9 @@ def tree_diff(
       reports no difference over a file it never compared, and a caller reading
       emptiness as agreement gets a fail-OPEN. ``-c core.quotepath=false`` is
       NOT sufficient: a name containing ``"`` or ``\\`` stays quoted regardless
-      (pinned in ``tests/test_record_lint.py``), so only ``-z`` closes it. Same
-      reasoning, same fix as :func:`tree_entries`.
+      (``tests/test_git_path_names.py`` reads git's own quoting of such names). A
+      line reader decodes it with ``gitstate.unquote_git_path``; this one takes
+      ``-z``, which needs no decoding. Same reasoning, same fix as :func:`tree_entries`.
     - ``:(literal)`` on each pathspec, because pathspecs are wildmatch patterns
       and real filenames carry glob metacharacters (``app/[id]/page.tsx`` is an
       ordinary route convention). Measured rather than assumed (2026-08-13):
