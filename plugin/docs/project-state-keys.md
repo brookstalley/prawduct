@@ -430,7 +430,9 @@ chunk's first review in any other mode. The budget ends a review loop, and those
 Counted, they ran out any plan with more chunks than the budget before its boundary review (owner ruling
 2026-11-23). At the ceiling a dispatch that is itself one of them still runs. Its chunks are the ones it will
 name, `--chunks` or the proposal. A later review of a chunk, a second `cumulative`, and a review naming no chunk
-are counted.
+are counted. A release batch review (`span: release`) is never counted and takes no scope's boundary
+slot: it is the release's own step on the integration branch, and counting it would leave `--force` as the only
+route past a held `per_release` release (owner ruling 2026-11-26).
 
 The unit is the build-plan SCOPE, not the branch: a branch may carry two scopes (one would charge
 the other), and on a trunk-based repo the merge-base span is zeroed by every push, so a
@@ -463,6 +465,64 @@ reading.
 
 Set to `null` to disable it entirely; raise it if this repo genuinely reviews more. A budget that
 gets `--force`d past every time is a budget set wrong.
+
+## boundary_review (opt-in)
+
+Where the boundary review runs. `per_pr`, the default, runs it at every PR. `per_release` is for a
+repo that releases often: eligible work takes its boundary review once per release batch instead
+of at its own PR. The review is moved, not skipped: the release check refuses the release until a
+boundary-stage review has read every merge since the last release, at its PR or in a release batch
+review.
+
+Eligible is derived, never declared: the branch's plan has at most three chunks, none declaring
+`Critic mode:` or `Type: cumulative-final`, nothing it changed is a risk surface, and it changes at
+most 10 judgeable files. That work's PR is covered by its inner review. In the same repo, a fix
+tail after a blocker-free review may merge before a review reads it, deferred to that release
+check; a tail on a risk surface still buys its verify round. BLOCKING findings clear only through
+`verify-resolutions`, at either point.
+
+The value in force is the repo's integration branch's, never a stacked unit's base: a PR needs
+it at both the merge-base and that branch's tip, the release check at the tip. So the branch that adds `per_release` is still judged
+`per_pr`, and so is one forked before the branch dropped it. A branch may drop it, never add it. Anything but exactly `per_release` (absent, null, a
+typo, another case) reads `per_pr`. A PR in a repo whose integration branch does not resolve is
+`per_pr`; the release check there takes this checkout's own value, the stricter reading for it.
+The lane and the deferral read risk surfaces the same way: `risk_surfaces:` and
+`boundary-patterns.md` as the integration branch holds them too, so a branch can add a surface,
+never remove one.
+
+**The release check blocks.** `check-releasability` refuses a `per_release` release, nothing
+pending or not, with `boundary-uncovered:` while any entry `check-boundary-coverage` lists is not
+covered, and `boundary-unevaluable:` when it cannot answer; `check-boundary-coverage --gate` exits
+1 and 3 on the same verdict. Under `per_pr` both stay advice, except that `--gate` exits 3 on a
+report it could not evaluate, and a `tail-deferred` tail (merged unread under `per_release`) still
+refuses, exit 1. The route out of
+`boundary-uncovered` is the release batch review: `/prawduct:critic cumulative` on the integration
+branch's own checkout at its tip with a clean tree, where `critic-begin --mode cumulative` derives
+the release span (`--span release` is the explicit form). It rates what no boundary review read
+since the release anchor, or since the oldest such entry when one sits before the anchor. A blocker
+it raises is fixed there and cleared by `verify-resolutions`. A merged branch's own blocker is not
+re-checked: merging over it was the owner's call at the PR.
+
+What a correct release can still meet, now that this blocks (each reads not covered unless said):
+
+| Class | Blocks? | Route out |
+|---|---|---|
+| Squash merge (`direct`) | Yes, unless its PR review spans exactly the trees it landed (`batch-covered`) | The release batch review |
+| Work committed on the base, a hotfix (`direct`) | Yes | The release batch review |
+| A reopen commit's version bump | Only when `release_version_files:` was not declared at the anchor (`direct`) | Declare it (it counts from the next release); the batch review this time |
+| Octopus merge (`unknown`) | Yes | The release batch review, which credits it like any merge |
+| A merge of a history sharing no merge-base with the base (`--allow-unrelated-histories`, a subtree import), or one git could not diff or read (`unknown`) | Yes | The release batch review, which credits it by what it brought onto the base |
+| A fragment no commit on the base added (untracked, or its branch unmerged): `unknown`, no commit | Yes, and no review can credit it | Commit or merge it, or delete a stray one |
+| A pruned release's withheld scope, merged before the anchor | Yes | The release batch review, whose span then starts at that scope's first parent |
+| #1250's base-advance transfer (`pr-transferred`) | No, covered. A transfer whose suite condition failed reads `uncovered` and blocks | The batch review, or the suite run its reason names |
+| A boundary review recorded in another clone | Yes until synced | `prawduct-hook evidence sync` |
+| Owed work whose every change is back to its content both at the release anchor and where the release span starts, or a merge that brought no judgeable change onto the base (`reverted`) | No, covered: nothing of it ships. A partial revert, or a revert of work the last release shipped, stays owed | — |
+| No release anchor (no release file, no version tag) | Yes, `boundary-unevaluable` | Tag the commit your last release shipped (`git tag vX.Y.Z <commit>`) or cut with `cut-change-log`; with no release yet, opt in after the first |
+| The walk since the anchor failed (`walk-failed`), an unreadable or newer-schema store, a refused fragment, an unresolvable base | Yes, `boundary-unevaluable` | Fix what the reason names (update the plugin for newer facts, `base_branch:` for the base) |
+
+```yaml
+boundary_review: per_release
+```
 
 ## native_review_pairing (development builds only, on by default)
 

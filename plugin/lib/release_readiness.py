@@ -614,18 +614,20 @@ def _heading_first_warning(decl: consumer_digest.Declaration, read: consumer_dig
     ]
 
 
-def _boundary_coverage_lines(project_dir: Path) -> "list[tuple[str, bool]]":
-    """``(line, to_stderr)`` for check-releasability's boundary-coverage advice.
+def _boundary_coverage_lines(project_dir: Path, report=None) -> "list[tuple[str, bool]]":
+    """``(line, to_stderr)`` for check-releasability's boundary-coverage advice,
+    the ``per_pr`` reading (:func:`_boundary_coverage_check` asks which applies).
 
     Stdout gets the op's count line, because a control heard only when it fires
     cannot be judged, so its passing reading is printed too. Stderr gets one
-    ``NOTE:`` per scope not covered, and one when the op could not evaluate. NOTE is
+    ``NOTE:`` per entry not covered (a scope, or a commit the walk since the release
+    anchor found), and one when the op could not evaluate. NOTE is
     advice's prefix, and every line is advice: `check-boundary-coverage` is the
-    detail."""
+    detail. ``report`` is the classification when the caller already holds it."""
     from . import boundary_coverage  # noqa: PLC0415 — lazy: it imports the consolidator
 
     try:
-        report = boundary_coverage.classify_pending(project_dir)
+        report = report or boundary_coverage.classify_pending(project_dir)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice beside a release gate: any fault in it is reported as a NOTE and must never become the gate's exit
         return [(f"NOTE: boundary-coverage: could not evaluate — {type(exc).__name__}: {exc}.", True)]
     if report.status != "ok":
@@ -636,11 +638,58 @@ def _boundary_coverage_lines(project_dir: Path) -> "list[tuple[str, bool]]":
     for entry in report.entries:
         if entry.classification not in boundary_coverage.COVERED:
             lines.append((
-                f"NOTE: boundary-coverage: {entry.scope} is {entry.classification}, not covered — "
-                f"{entry.reason} (`prawduct-hook check-boundary-coverage` lists every scope).",
+                f"NOTE: boundary-coverage: {entry.label} is {entry.classification}, not covered — "
+                f"{entry.reason} (`prawduct-hook check-boundary-coverage` lists every entry).",
                 True,
             ))
     return lines
+
+
+def _boundary_coverage_check(project_dir: Path, pending: bool) -> "tuple[list[tuple[str, bool]], bool]":
+    """``(lines, refused)``: the boundary-coverage lines check-releasability
+    prints, and whether they refuse the release (#1232).
+
+    Under ``per_pr`` (the policy ``review_lane.release_policy`` reads at the
+    integration branch's tip) the lines are :func:`_boundary_coverage_lines`'
+    advice, and only a fix tail deferred under ``per_release``
+    (``tail-deferred``) refuses, by ``boundary_coverage.release_gate``. Under ``per_release`` the verdict is
+    ``boundary_coverage.release_gate``'s, the one ``check-boundary-coverage
+    --gate`` exits with: an entry not covered refuses as
+    ``boundary-uncovered:``, an answer it could not give (a missing release
+    anchor included) as ``boundary-unevaluable:``, each with its remedy and the
+    entries it names. A policy whose read fails is ``review_lane``'s to answer
+    (``release_policy`` never raises; under a ``per_release`` checkout the
+    gate then refuses as unevaluable), so this check and ``--gate`` agree.
+    ``pending`` is whether anything is release-pending: under ``per_pr`` a
+    release with nothing pending prints no advice, so nothing is classified
+    unless ``per_release`` was in force since the release anchor
+    (``boundary_coverage.deferral_possible``), when a deferred tail may be held."""
+    from . import boundary_coverage, review_lane  # noqa: PLC0415 — lazy: they import the consolidator
+
+    policy = review_lane.release_policy(project_dir)
+    note = [(f"NOTE: boundary-coverage: {policy.note}.", True)] if policy.note else []
+    if not policy.per_release:
+        try:
+            if not pending and not boundary_coverage.deferral_possible(project_dir):
+                return [], False
+            report = boundary_coverage.classify_pending(project_dir)
+            gate = boundary_coverage.release_gate(report, policy)
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- per_pr advice beside a release gate: any fault in it is reported as a NOTE and must never become the gate's exit
+            return [(f"NOTE: boundary-coverage: could not evaluate — {type(exc).__name__}: {exc}.", True)] + note, False
+        lines = _boundary_coverage_lines(project_dir, report) + note if pending else []
+        if gate.exit == 1:
+            lines.append((f"{gate.message}.", True))
+            lines += [(f"  {e.label} is {e.classification} — {e.reason}", True) for e in gate.owed]
+        return lines, gate.exit == 1
+    report = boundary_coverage.classify_pending(project_dir)
+    gate = boundary_coverage.release_gate(report, policy)
+    lines = [(f"  {boundary_coverage.count_line(report)}.", False)] if report.status == "ok" else []
+    # A failed read's refusal already carries the note; printing it twice adds nothing.
+    lines += [] if policy.read_failed else note
+    if gate.message:
+        lines.append((f"{gate.message}.", True))
+        lines += [(f"  {e.label} is {e.classification} — {e.reason}", True) for e in gate.owed]
+    return lines, gate.exit != 0
 
 
 def _digest_advisories(
@@ -846,7 +895,9 @@ def pending_scopes(project_dir: Path) -> PendingSet:
 
 
 def check_releasability(project_dir: Path, release: str | None = None) -> int:
-    """Phase 0 gate. Exit 0 when every release-pending scope is classified.
+    """Phase 0 gate. Exit 0 when every release-pending scope is classified
+    (and, under ``boundary_review: per_release``, every release entry is
+    covered: :func:`_boundary_coverage_check`).
 
     Every failure path returns 1 with a named reason on stderr. Un-evaluable
     state (no change record, missing release plan) fails closed — the whole
@@ -879,7 +930,18 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     pending = pending_set.scopes
     accounting = _scan_accounting(len(pending_set.fragment_scopes), entries)
 
+    # Under `boundary_review: per_release` the boundary check refuses, and it
+    # reads every commit since the release anchor, not only the pending set, so
+    # it is asked on the no-pending branch too: unreviewed work committed with
+    # no fragment would otherwise ship through "nothing to classify". Under
+    # per_pr it is advice, asked below, where it always was.
+    boundary_lines, boundary_refused = _boundary_coverage_check(project_dir, bool(pending))
+
     if not pending:
+        for line, to_stderr in boundary_lines:  # none under per_pr with nothing pending
+            print(line, file=sys.stderr if to_stderr else sys.stdout)
+        if boundary_refused:
+            return 1
         # Name the denominator, and split it further: an empty pending set is
         # either everything already shipped in past releases, or Phase 1 step 3
         # just ran and emptied it out from under a re-run, and only the count of
@@ -914,11 +976,11 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     for emission in digest_emissions:
         print(f"  {emission}.")
 
-    # Which pending merges a boundary review covered (#1223 wave 1): advice beside
-    # the other advisories, never part of the verdict, so it cannot move the exit.
-    # It is here, under the pending return, because a release with nothing pending
-    # has no merges to ask about.
-    for line, to_stderr in _boundary_coverage_lines(project_dir):
+    # Which pending merges a boundary review covered (#1223 wave 1). Under per_pr
+    # it is advice beside the other advisories and cannot move the exit; under
+    # per_release (#1232) it refuses, and like the suite verdict the refusal is
+    # printed here and returned at the bottom, so every other check still runs.
+    for line, to_stderr in boundary_lines:
         print(line, file=sys.stderr if to_stderr else sys.stdout)
 
     # The suite verdict is REPORTED here and RETURNED at the bottom, and the
@@ -1112,6 +1174,11 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         # rest of the gate's output; this is only the verdict it earns. Nothing
         # is re-said here — a second copy of the sentence would read as a second
         # problem.
+        return 1
+
+    if boundary_refused:
+        # Printed above beside the advisories, as the suite's is; only the
+        # verdict it earns is returned here.
         return 1
 
     shipping = sorted(s for s in pending if classification[s][0] == SHIPS)

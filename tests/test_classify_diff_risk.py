@@ -238,6 +238,26 @@ class TestDerivedDefaults:
         assert result.stdout.strip() == "escalate"
         assert "skills/new.md matched skills/" in result.stderr
 
+    def test_a_non_ascii_name_matches_its_surface(self, tmp_path):
+        # git C-quotes a non-ASCII path ("skills/caf\303\251.md") under its
+        # default core.quotepath, so a quoted name never matched `skills/` and
+        # a risk-surface change read `standard`: a fail-open on the reads that
+        # also decide the per-release lane. Committed and uncommitted both.
+        repo = tmp_path / "repo"
+        _feature_repo(repo)
+        _commit_file(repo, "skills/café.md", "x\n", "skill change")
+        result = _run(repo, "main")
+        assert result.stdout.strip() == "escalate"
+        assert "skills/café.md matched skills/" in result.stderr
+
+        repo2 = tmp_path / "repo2"
+        _feature_repo(repo2)
+        (repo2 / "skills").mkdir()
+        (repo2 / "skills" / "naïve.md").write_text("draft\n")
+        result = _run(repo2, "main")
+        assert result.stdout.strip() == "escalate"
+        assert "skills/naïve.md matched skills/" in result.stderr
+
     def test_hook_glob_matches(self, tmp_path):
         repo = tmp_path / "repo"
         _feature_repo(repo)

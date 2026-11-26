@@ -41,7 +41,11 @@ not grading a plan:
 
 **Read the scope list, not the exit code.** Two outcomes matter — plus one that gives you no
 scope list to read at all. (The `boundary coverage:` line and any `NOTE: boundary-coverage:` lines
-are advice about which pending merges a boundary review covered; they never decide an outcome here.)
+are advice about which pending merges a boundary review covered; they never decide an outcome here,
+because this repo is `boundary_review: per_pr`. A `per_release` repo meets a fourth outcome, a
+`boundary-uncovered:` or `boundary-unevaluable:` refusal, exit 1, answered by a release batch review
+on the integration branch or the route `plugin/docs/project-state-keys.md` `boundary_review` names;
+it does not apply here.)
 
 - **A record refusal on stderr, exit 1, and NO scope list** — `bad-change-fragment:` or
   `legacy-pending-entry:`. The gate refused the pending record itself before it could be trusted,

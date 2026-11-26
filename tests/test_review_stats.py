@@ -419,17 +419,32 @@ class TestSpanRollup:
         ])
         report = json.loads(_run(repo, "--json").stdout)
         by = {e["span"]: e for e in report["by_span"]}
-        assert [e["span"] for e in report["by_span"]] == ["bounded", "full"]
+        assert [e["span"] for e in report["by_span"]] == ["bounded", "full", "release"]
         assert by["bounded"]["reviews"] == 1 and by["bounded"]["findings"]["blocking"] == 1
         assert by["full"]["reviews"] == 2
         assert by["full"]["reasons"] == {"path-not-clean": 1, "unrecorded": 1}
         assert "reasons" not in by["bounded"]
 
+    def test_a_release_batch_review_is_its_own_span_not_a_full_one(self, tmp_path):
+        """A release batch review (`critic-begin --span release`) reads from the
+        release anchor, not a branch's bundle: filed under `full`, its anchor
+        sentence would read as a decline code."""
+        repo = tmp_path / "repo"
+        release = _event(mode=CUMULATIVE_MODE, stage="boundary")
+        release["review"].update(span="release", bounded_from=None,
+                                 span_reason="436f44d3 adds the release file .prawduct/releases/v3.10.0.md")
+        _write_ledger(repo, [release])
+        report = json.loads(_run(repo, "--json").stdout)
+        by = {e["span"]: e for e in report["by_span"]}
+        assert (by["release"]["reviews"], by["full"]["reviews"]) == (1, 0)
+        assert by["full"]["reasons"] == {} and "reasons" not in by["release"]
+
     def test_both_spans_are_listed_at_zero(self, tmp_path):
         repo = tmp_path / "repo"
         _write_ledger(repo, [_event(mode=CHUNK_MODE)])
         report = json.loads(_run(repo, "--json").stdout)
-        assert [(e["span"], e["reviews"]) for e in report["by_span"]] == [("bounded", 0), ("full", 0)]
+        assert [(e["span"], e["reviews"]) for e in report["by_span"]] == [
+            ("bounded", 0), ("full", 0), ("release", 0)]
 
     def test_the_human_rendering_prints_the_split_and_the_reasons(self, tmp_path):
         repo = tmp_path / "repo"
@@ -616,7 +631,10 @@ class TestJsonSchemaStability:
         # 13 -> 14 (native-review-inner): `native_review` gained `by_stage`,
         # inner and boundary native runs apart. A nested key change, pinned
         # below so the next one is caught too.
-        assert report["schema_version"] == 14
+        # 14 -> 15 (boundary-review-per-release Chunk 06): `by_span` gained a
+        # `release` entry, the release batch review, which had read as `full`
+        # and filed its anchor sentence among full's decline codes. Added.
+        assert report["schema_version"] == 15
         assert list(report["native_review"]) == [
             "runs", "duration_measured", "countable_runs", "findings", "by_stage",
         ]
@@ -639,7 +657,7 @@ class TestJsonSchemaStability:
         assert list(report["by_scope"][0]) == ["scope", *stat_keys]
         assert list(report["by_stage"][0]) == ["stage", *stat_keys]
         assert [list(e) for e in report["by_span"]] == [
-            ["span", *stat_keys], ["span", *stat_keys, "reasons"],
+            ["span", *stat_keys], ["span", *stat_keys, "reasons"], ["span", *stat_keys],
         ]
         assert list(report["top_files"][0]) == ["path", "actionable_findings", "findings"]
         for key in ("duration_measured", "duration_self_reported"):
@@ -893,7 +911,7 @@ class TestDurationProvenanceSplit:
             _event(duration=300),
         ])
         report = json.loads(_run(repo, "--json").stdout)
-        assert report["schema_version"] == 14
+        assert report["schema_version"] == 15
         assert report["overall"]["duration_total_seconds"] == 900
         assert report["overall"]["duration_median_seconds"] == 450
 
