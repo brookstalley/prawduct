@@ -191,24 +191,29 @@ def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
 def _surfaces_at(project_dir: Path, rev: str) -> "tuple[list[str], str] | None":
     """:func:`resolve_surfaces` as the committed tree at ``rev`` declares them,
     or None when git cannot resolve ``rev``. A state file absent there declares
-    nothing, so the derived defaults apply, as they do in a working tree."""
-    def show(rel: str) -> "str | None":
-        done = subprocess.run(["git", "show", f"{rev}:{rel}"], cwd=project_dir,
-                              capture_output=True, text=True, encoding="utf-8",
-                              errors="replace", check=False)
-        return done.stdout if done.returncode == 0 else None
+    nothing, so the derived defaults apply, as they do in a working tree.
 
-    if subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}"],
-                      cwd=project_dir, capture_output=True, check=False).returncode != 0:
+    Git runs through :func:`evidence.run_git`, the plugin's one bounded runner
+    (its timeout, its tolerant decode, never raising), because this sits on
+    the PR gate's, the Stop gate's and inference's path: a git call that hangs
+    must not hang them."""
+    from . import evidence  # noqa: PLC0415 — lazy: only the per_release relaxations read a revision
+
+    if evidence.run_git(project_dir, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}")[0] != 0:
         return None
-    state = show(".prawduct/project-state.yaml")
-    status, declared = (read_block_sequence(state, "risk_surfaces") if state is not None
+    rc, state, _err = evidence.run_git(
+        project_dir, "show", f"{rev}:.prawduct/project-state.yaml", strip=False
+    )
+    status, declared = (read_block_sequence(state, "risk_surfaces") if rc == 0
                         else (YAML_ABSENT, ()))
     if status == YAML_UNPARSEABLE:
         return [], SOURCE_UNPARSEABLE
     if status == YAML_DECLARED:
         return list(declared), SOURCE_DECLARED
-    patterns = show(".prawduct/artifacts/boundary-patterns.md")
+    rc, patterns, _err = evidence.run_git(
+        project_dir, "show", f"{rev}:.prawduct/artifacts/boundary-patterns.md", strip=False
+    )
+    patterns = patterns if rc == 0 else None
     return ([*DERIVED_DEFAULT_SURFACES, *(_boundary_pattern_paths_in(patterns) if patterns else [])],
             SOURCE_DERIVED)
 

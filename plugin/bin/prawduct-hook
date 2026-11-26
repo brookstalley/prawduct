@@ -221,14 +221,13 @@ def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, binding):
         progress = cm.binding_progress(project_dir, binding)
         # `read_built`: committed chunks (`plan_status.built_chunks`) may ARM the
         # last-chunk block on a box-free plan; `short_plan_deferral` lets `built`
-        # only turn "warn" into "block", never the reverse.
-        deferral = cm.short_plan_deferral(
+        # only turn "warn" into "block", never the reverse. A deferral that
+        # defers carries the per-release lane's answer (`lane`, `lane_note`), so
+        # the messages below name the review inference will ask for; it changes
+        # wording only, never whether the gate warns or blocks.
+        return cm.short_plan_deferral(
             project_dir, prawduct_dir, binding, progress, read_built=True
         )
-        # Whether the per-release lane holds, so the messages below name the
-        # review inference will ask for (`critic_mode.with_lane`). It changes
-        # wording only, never whether the gate warns or blocks.
-        return cm.with_lane(project_dir, prawduct_dir, binding, progress, deferral)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a gate relaxation that cannot be evaluated must not relax the gate
         # Fail closed AND say so: a crashed predicate otherwise reads exactly
         # like an ineligible plan, and the builder runs the round the owner
@@ -240,6 +239,16 @@ def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, binding):
             file=sys.stderr,
         )
         return None
+
+
+def _lane_declined_lines(deferral) -> str:
+    """Why the per-release lane did not take this branch, as gate prose, where
+    a Stop-gate message names the per-PR boundary review: under
+    ``per_release`` the builder is otherwise shown the round the owner moved
+    with no word on why it is still owed. ``""`` under ``per_pr`` (the
+    deferral's ``lane_note`` is empty there), so its messages are unchanged."""
+    note = getattr(deferral, "lane_note", "")
+    return _wrap_gate_prose(f"{note[0].upper()}{note[1:]}.") if note else ""
 
 
 def _extension_deferral(project_dir: Path, prawduct_dir: Path, binding):
@@ -2253,7 +2262,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
            [--tier <t>] [--session-model <id>] [--span release] [--force]
 
     `--span release` (with `--mode cumulative` only) is the release batch
-    review (#1232): run on the integration base's own checkout at its tip,
+    review (#1232), and a plain `--mode cumulative` on the integration base's
+    own checkout at its tip derives it, the one place a plain one would review
+    nothing (`critic_consolidate.begin_review`): run on that checkout,
     with a clean tree, it reviews release anchor → HEAD (from the oldest owed
     entry's first parent when one sits before the anchor) and rates only the
     files of the release entries no boundary review covered
@@ -4285,6 +4296,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 stop_advisories.append(_LogOnlyAdvisory(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span}, and none is owed yet — {deferral.reason}.\n"
+                    + _lane_declined_lines(deferral)
                     + deferred_to
                     + _wrap_gate_prose(cm.short_plan_next_step(deferral) + ".")
                     + _wrap_gate_prose(cm.SHORT_PLAN_OWN_PR_NOTE + ".")
@@ -4302,6 +4314,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         if deferral.lane
                         else "  This plan is short and its per-chunk reviews were deferred to this\n"
                         f"  boundary review ({deferral.reason}):\n"
+                        + _lane_declined_lines(deferral)
                     )
                     + _wrap_gate_prose(_critic_mode().short_plan_next_step(deferral) + ".")
                     if deferral is not None and deferral.defers and deferral.last_chunk

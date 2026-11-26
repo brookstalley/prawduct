@@ -79,14 +79,19 @@ return the first that fires:
      rated on the inner BLOCKING set, and it fires on a signal rather than on
      the absence of one.
 
-**The per-release lane (#1232).** Where rule 2, rule 4's clean-tree redirect
-or an explicit ``chunk``/``final`` redirect would answer ``cumulative``, a
-branch the lane takes (:func:`lane_eligibility`: ``boundary_review:
-per_release`` and a small, short, risk-free plan) answers ``chunk`` instead,
-over the unreviewed interval and naming every chunk the boundary would have
-(``--chunks``); the boundary review moves to the release check. Rule 2b's
+**The per-release lane (#1232).** Where rule 2 or rule 4's clean-tree redirect
+would answer ``cumulative``, a branch the lane takes (:func:`lane_eligibility`:
+``boundary_review: per_release`` and a small, short, risk-free plan) answers
+``chunk`` instead, over the unreviewed interval and naming every chunk the
+boundary would have (``--chunks``); the boundary review moves to the release
+check. An explicit ``chunk``/``final`` on a clean tree, which would be
+redirected to ``cumulative``, is not redirected there: it keeps its token over
+the same interval, because the token is the operator's and turning a ``final``
+(all seven goals) into a ``chunk`` would silently downgrade it. Rule 2b's
 deferral then names that review (:data:`LAST_CHUNK_RELEASE_STEP`). A
 ``chunk`` that could not reach the unreviewed commits keeps the ``cumulative``.
+Wherever the lane was in play under ``per_release`` and a ``cumulative`` is
+still answered, the rationale says why (:func:`lane_declined_note`).
 
 The plan rule 4 grounds on is **this checkout's binding** (``lib.work_unit``):
 the plan that claims the branch, or none. A legacy-window binding — a repo
@@ -117,6 +122,8 @@ consumes them.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import subprocess
 import sys
 from pathlib import Path
@@ -253,8 +260,18 @@ def infer_mode(
         ``cumulative`` / ``verify-resolutions``). ``rationale`` is a
         human-readable string suitable both for stdout reporting and the
         ``mode_chosen_by`` field in ``.critic-findings.json``.
+
+    One inference asks :func:`lane_eligibility` once (:func:`_one_lane_read`):
+    the deferral, the owed-review reading and the lane's own answer each need
+    it, and each read is a policy read at two revisions, a path listing and
+    risk surfaces at two more.
     """
-    project_dir = Path(project_dir)
+    with _one_lane_read():
+        return _infer_mode(Path(project_dir), args)
+
+
+def _infer_mode(project_dir: Path, args: "str | None") -> tuple[str, str]:
+    """:func:`infer_mode`'s body, inside its one lane read."""
     prawduct_dir = project_dir / ".prawduct"
 
     if args is not None:
@@ -335,9 +352,9 @@ def infer_mode(
         if owed is None:
             return None
         kind, why = owed
-        # On a clean tree the owed boundary `cumulative` is the review to run
-        # now, not one to defer to.
-        return None if clean_tree and kind == OWED_BOUNDARY else why
+        # On a clean tree the owed boundary review (the `cumulative`, or the
+        # lane's `chunk`) is the review to run now, not one to defer to.
+        return None if clean_tree and kind in (OWED_BOUNDARY, OWED_LANE) else why
 
     # Asked once: rules 1 and 1b judge the same record, and deriving it re-reads
     # the findings cache, walks history (`verify_anchor`) and may read the fact
@@ -373,10 +390,11 @@ def infer_mode(
         mid = _mid_plan_answer(project_dir, prawduct_dir, plan, progress, "rule-2")
         if mid:
             return mid
-        lane = _lane_answer(project_dir, prawduct_dir, plan, progress, "rule-2")
+        declined: list = []
+        lane = _lane_answer(project_dir, prawduct_dir, plan, progress, "rule-2", declined)
         if lane:
             return lane
-        return "cumulative", f"rule-2 cumulative: {cumulative_reason}"
+        return "cumulative", f"rule-2 cumulative: {cumulative_reason}{_declined_clause(declined)}"
 
     # Short-plan deferral (#292), between rules 2 and 3. Rules 1, 1b and 2 are
     # untouched above it on purpose: a builder mid-fix on findings a prior
@@ -392,7 +410,6 @@ def infer_mode(
     # plan's committed chunks are `built`, so its last chunk is visible here.
     deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress, read_built=True)
     if deferral.defers and _get_uncommitted_code_files(project_dir):
-        deferral = with_lane(project_dir, prawduct_dir, plan, progress, deferral)
         return MODE_DEFERRED, _deferral_rationale(project_dir, deferral, plan)
 
     final_reason = _rule_final_fires(project_dir, progress)
@@ -442,10 +459,11 @@ def infer_mode(
             if mid:
                 return mid
             if not _branch_already_covered(project_dir, _facts_for(project_dir, progress)):
-                lane = _lane_answer(project_dir, prawduct_dir, plan, progress, "rule-4")
+                declined: list = []
+                lane = _lane_answer(project_dir, prawduct_dir, plan, progress, "rule-4", declined)
                 if lane:
                     return lane
-                return "cumulative", f"rule-4 cumulative: {redirect}"
+                return "cumulative", f"rule-4 cumulative: {redirect}{_declined_clause(declined)}"
             # A covered branch on a clean tree owes nothing: `chunk` would dispatch
             # an empty interval, and `cumulative` would buy a review the PR gate
             # does not need.
@@ -509,6 +527,11 @@ def _explicit_mode(
     ``critic-begin`` answers the empty interval with exit 3 (no review needed),
     because the last review already covers HEAD. Both answers come from
     :func:`_mid_plan_verdict`, the owner inference also asks.
+
+    **Nor under the per-release lane** (:func:`_lane_interval`), where the
+    boundary moved to the release and the lane's interval reaches the
+    unreviewed commits: the token stands over it, ``final`` included, and the
+    rationale names it as what runs in place of the lane's ``chunk``.
     """
     if token in _WORKING_TREE_MODES and _working_tree_is_empty(project_dir):
         redirect = _clean_tree_redirect(prawduct_dir, project_dir)
@@ -530,13 +553,16 @@ def _explicit_mode(
                     f"{_mid_plan_note(project_dir, plan, progress)}; {_interval_note(start)}"
                 )
             if not _branch_already_covered(project_dir, _facts_for(project_dir, progress)):
-                lane = _lane_interval(project_dir, prawduct_dir, plan, progress)
+                declined: list = []
+                lane = _lane_interval(project_dir, prawduct_dir, plan, progress, declined)
                 if lane is not None:
                     return token, (
                         f"explicit-args {token} (per-release lane, not redirected): "
-                        f"{_lane_interval_clause(*lane)}"
+                        f"{_lane_interval_clause(*lane, mode=token)}"
                     )
-                return "cumulative", f"explicit-args {token} redirected: {redirect}"
+                return "cumulative", (
+                    f"explicit-args {token} redirected: {redirect}{_declined_clause(declined)}"
+                )
     return token, "explicit-args"
 
 
@@ -956,7 +982,6 @@ def _mid_plan_answer(
     if verdict is None:
         return None
     if deferral.defers:
-        deferral = with_lane(project_dir, prawduct_dir, plan, progress, deferral)
         return MODE_DEFERRED, _deferral_rationale(project_dir, deferral, plan)
     kind, start = verdict
     note = _mid_plan_note(project_dir, plan, progress)
@@ -1357,9 +1382,14 @@ class ShortPlanDeferral(NamedTuple):
     unticked: tuple = ()
     #: Whether the per-release lane holds (:func:`lane_eligibility`), so the
     #: next step names the lane's review rather than the boundary
-    #: ``cumulative``. ``None`` until :func:`with_lane` asks; a deferral that
-    #: was never asked reads as no lane, which keeps the per-PR wording.
+    #: ``cumulative``. :func:`short_plan_deferral` fills it whenever the plan
+    #: defers, so no reader asks the lane again; ``None`` on a deferral that
+    #: does not defer, which reads as no lane and keeps the per-PR wording.
     lane: "bool | None" = None
+    #: :func:`lane_declined_note` of that answer: ``""`` unless the lane was
+    #: in play (``per_release``, or a predicate that could not be evaluated)
+    #: and did not take the branch, so a ``per_pr`` message is unchanged.
+    lane_note: str = ""
 
 
 def _progress_at_head(
@@ -1451,6 +1481,11 @@ def short_plan_deferral(
     deferring) into "the last chunk" (the gate blocks for the boundary review),
     never the reverse. It is OR-ed onto the facts-and-boxes answer, it never
     reaches ``defers``, and a chunk the facts or boxes call done stays done.
+
+    A deferral that defers carries the per-release lane's answer
+    (:attr:`ShortPlanDeferral.lane`, :attr:`ShortPlanDeferral.lane_note`),
+    asked here once, so every reader names the same review without asking
+    :func:`lane_eligibility` itself.
     """
     total = progress.total
     if total == 0:
@@ -1483,9 +1518,13 @@ def short_plan_deferral(
         # One left is the last chunk; none left while the plan is unfinished
         # means every open chunk is already built, which is the boundary too.
         last_chunk = len(left) == 1 or (bool(built) and not left)
-    return _short_plan_shape(
+    shape = _short_plan_shape(
         project_dir, prawduct_dir, plan, total, last_chunk, progress.open_ids
     )
+    if not shape.defers:
+        return shape
+    lane = lane_eligibility(project_dir, prawduct_dir, plan, progress)
+    return shape._replace(lane=lane.eligible, lane_note=lane_declined_note(lane))
 
 
 def _short_plan_shape(
@@ -1610,16 +1649,15 @@ def declares_boundary_cumulative(prawduct_dir: Path, plan) -> bool:
     return chunk_type == "cumulative-final"
 
 
-#: The two answers :func:`review_owed_after` gives: a later CHUNK's review
+#: The answers :func:`review_owed_after` gives: a later CHUNK's review
 #: starts from the newest committed state a review covers, while the boundary
 #: ``cumulative`` spans the branch from the merge-base. Both cover a fix committed before them, but
-#: the advice names the review that will, so the two stay distinguishable.
+#: the advice names the review that will, so the kinds stay distinguishable.
 OWED_LATER_CHUNK = "later-chunk"
 OWED_BOUNDARY = "boundary"
-#: Not an answer :func:`review_owed_after` gives: the review close's reading of
-#: :data:`OWED_BOUNDARY` where the per-release lane holds, so the review owed is
-#: :data:`LANE_REVIEW_NAME`, not a ``cumulative`` (``critic_consolidate``'s
-#: ``_plan_owes_a_later_review``).
+#: The boundary owed where the per-release lane holds: the review owed is
+#: :data:`LANE_REVIEW_NAME`, not a ``cumulative``. Its own kind, so no reader
+#: re-asks :func:`lane_eligibility` to tell the two apart.
 OWED_LANE = "lane"
 
 
@@ -1651,6 +1689,13 @@ def review_owed_after(
       chunk review (under review, or still to build), but not here: whichever
       it is, the cumulative is still owed, and nothing short of it discharges
       it.
+
+    Where the per-release lane holds, the boundary owed is the lane's
+    ``chunk``: the second reading answers :data:`OWED_LANE` instead of
+    :data:`OWED_BOUNDARY`, and the first answers ``None``, because the review
+    that finished the plan was the lane's last. The lane is asked here, through
+    :func:`short_plan_deferral`'s answer or :func:`lane_eligibility`, and never
+    by a reader of this answer.
 
     ``None`` on any read failure, through the predicates it composes.
     """
@@ -1687,11 +1732,13 @@ def review_owed_after(
         return OWED_BOUNDARY, _BOUNDARY_CUMULATIVE_FINAL_WHY
     deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress)
     if deferral.defers:
-        deferral = with_lane(project_dir, prawduct_dir, plan, progress, deferral)
-        last = LANE_REVIEW_NAME if deferral.lane else "the boundary `cumulative`"
-        return OWED_BOUNDARY, (
+        kind, last = (
+            (OWED_LANE, LANE_REVIEW_NAME) if deferral.lane
+            else (OWED_BOUNDARY, "the boundary `cumulative`")
+        )
+        return kind, (
             f"the plan is short ({deferral.reason}), so {last} is "
-            "every chunk's review and has not run yet"
+            f"every chunk's review and has not run yet{_declined_clause([deferral.lane_note])}"
         )
     return None
 
@@ -2162,14 +2209,14 @@ def extension_deferral_owed(
         return None
     kind, why = owed
     touched = _done_chunks_touched_clause(plan, progress, pending, reviewed, project_dir)
+    if kind == OWED_LANE:
+        return kind, (
+            f"chunk {label} was reviewed with no open blocker and {why}. "
+            "That review starts at the last reviewed state, or the merge-base, so it "
+            "covers this work too. Commit, then run `/prawduct:critic` when the chunk "
+            f"is done — it infers {LANE_REVIEW_NAME}{touched}"
+        )
     if kind == OWED_BOUNDARY:
-        if lane_eligibility(project_dir, prawduct_dir, plan, progress).eligible:
-            return kind, (
-                f"chunk {label} was reviewed with no open blocker and {why}. "
-                "That review starts at the last reviewed state, or the merge-base, so it "
-                "covers this work too. Commit, then run `/prawduct:critic` when the chunk "
-                f"is done — it infers {LANE_REVIEW_NAME}{touched}"
-            )
         return kind, (
             f"chunk {label} was reviewed with no open blocker and {why}. "
             "That review spans the branch from the merge-base, so it covers this work "
@@ -2376,7 +2423,8 @@ def _deferral_rationale(project_dir: Path, deferral: ShortPlanDeferral, plan) ->
     """
     return (
         f"short-plan deferral: no per-chunk review is owed — {deferral.reason}; "
-        f"{short_plan_next_step(deferral)}. {SHORT_PLAN_OWN_PR_NOTE}. "
+        f"{short_plan_next_step(deferral)}{_declined_clause([deferral.lane_note])}. "
+        f"{SHORT_PLAN_OWN_PR_NOTE}. "
         "An explicit mode (`/prawduct:critic chunk`) or a "
         "`Critic mode:` field on any chunk restores per-chunk review. "
         f"Grounded on {_plan_relation_note(project_dir, plan)}"
@@ -2399,6 +2447,10 @@ class LaneEligibility(NamedTuple):
     eligible: bool
     reason: str
     paths: tuple = ()
+    #: Whether the lane was in play: the policy in force is ``per_release``, or
+    #: the predicate could not be evaluated, so no one knows it is not. Only
+    #: then is a not-eligible ``reason`` worth telling (:func:`lane_declined_note`).
+    in_play: bool = False
 
 
 def lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> LaneEligibility:
@@ -2432,13 +2484,53 @@ def lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> L
     closed: anything that cannot be read, and any exception, is not eligible,
     because the lane relaxes where the boundary review runs — and a crash here
     must not break inference in a ``per_pr`` repo either.
+
+    Inside :func:`_one_lane_read` (one inference) a second ask of the same
+    plan and progress returns the first answer instead of reading git again.
     """
+    memo = _LANE_READ.get()
+    key = (
+        str(project_dir), str(prawduct_dir), str(getattr(plan, "plan_path", None)),
+        getattr(progress, "total", None), getattr(progress, "complete", None),
+        tuple(getattr(progress, "open_ids", ()) or ()),
+    ) if memo is not None else None
+    if memo is not None and key in memo:
+        return memo[key]
     try:
-        return _lane_eligibility(project_dir, prawduct_dir, plan, progress)
+        answer = _lane_eligibility(project_dir, prawduct_dir, plan, progress)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a relaxation that cannot be evaluated must not relax anything, nor break per_pr inference
-        return LaneEligibility(
-            False, f"the per-release lane could not be evaluated ({type(exc).__name__}: {exc})"
+        answer = LaneEligibility(
+            False, f"the per-release lane could not be evaluated ({type(exc).__name__}: {exc})",
+            in_play=True,
         )
+    if memo is not None:
+        memo[key] = answer
+    return answer
+
+
+#: The lane answers already read in this decision, or ``None`` outside one.
+#: Scoped, never module-wide: every input the answer reads (the policy at the
+#: merge-base and the tip, the paths changed, the risk surfaces) can change
+#: between two decisions, and nothing cheap tells that it has; within one
+#: inference nothing writes the tree, so the first read stands for it.
+_LANE_READ: "contextvars.ContextVar[dict | None]" = contextvars.ContextVar(
+    "prawduct_lane_read", default=None
+)
+
+
+@contextlib.contextmanager
+def _one_lane_read():
+    """The span of one decision inside which :func:`lane_eligibility` reads
+    git once per plan and progress. Re-entrant: an inner scope joins the outer
+    one's reads rather than starting its own."""
+    if _LANE_READ.get() is not None:
+        yield
+        return
+    token = _LANE_READ.set({})
+    try:
+        yield
+    finally:
+        _LANE_READ.reset(token)
 
 
 def _lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> LaneEligibility:
@@ -2452,39 +2544,42 @@ def _lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> 
     if not policy.per_release:
         note = f" ({policy.note})" if policy.note else ""
         return LaneEligibility(False, f"`boundary_review:` is {policy.value}{note}")
+
+    def declined(reason: str) -> LaneEligibility:
+        # Past the policy every refusal is the lane declining a per_release branch.
+        return LaneEligibility(False, reason, in_play=True)
+
     if total > LANE_MAX_CHUNKS:
-        return LaneEligibility(
-            False,
+        return declined(
             f"the plan has {total} chunks (the per-release lane takes at most {LANE_MAX_CHUNKS})",
         )
     if declares_boundary_cumulative(prawduct_dir, plan):
-        return LaneEligibility(
-            False, "the last chunk declares `Type: cumulative-final`, which names a boundary review"
+        return declined(
+            "the last chunk declares `Type: cumulative-final`, which names a boundary review"
         )
     shape = _short_plan_shape(project_dir, prawduct_dir, plan, total, True, progress.open_ids)
     if not shape.defers:
-        return LaneEligibility(False, shape.reason)
+        return declined(shape.reason)
     base_branch, _ = _resolve_base_branch(project_dir)
     paths = risk._review_scope_paths(project_dir, base_branch) if base_branch else None
     if paths is None:
-        return LaneEligibility(
-            False, "git could not list the paths this branch changed, so its size is unknown"
+        return declined(
+            "git could not list the paths this branch changed, so its size is unknown"
         )
     # The shape read risk surfaces from this checkout, which the branch can
     # rewrite. The lane is a relaxation, so it also needs them untouched as the
     # integration branch declares them, where the branch forked and at its tip.
     merge_base = coverage.integration_base(project_dir, base_branch).merge_base
     if not merge_base:
-        return LaneEligibility(False, f"no merge-base with {base_branch} resolves")
+        return declined(f"no merge-base with {base_branch} resolves")
     touched, why = risk.paths_touch_held_risk_surface(
         project_dir, prawduct_dir, paths, (merge_base, base_branch)
     )
     if touched:
-        return LaneEligibility(False, f"a changed path is a risk surface — {why}")
+        return declined(f"a changed path is a risk surface — {why}")
     judgeable = [p for p in paths if coverage_algebra.is_judgeable_path(p)]
     if len(judgeable) > LANE_MAX_JUDGEABLE_FILES:
-        return LaneEligibility(
-            False,
+        return declined(
             f"the branch changes {len(judgeable)} judgeable files (the per-release lane "
             f"takes at most {LANE_MAX_JUDGEABLE_FILES})",
         )
@@ -2493,27 +2588,33 @@ def _lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> 
         f"`boundary_review: per_release`, {shape.reason}, and it changes "
         f"{len(judgeable)} judgeable file(s) (at most {LANE_MAX_JUDGEABLE_FILES})",
         tuple(paths),
+        in_play=True,
     )
 
 
-def with_lane(
-    project_dir: Path, prawduct_dir: Path, plan, progress, deferral: ShortPlanDeferral
-) -> ShortPlanDeferral:
-    """``deferral`` carrying :attr:`ShortPlanDeferral.lane`, so
-    :func:`short_plan_next_step` names the lane's review where the lane holds.
+def lane_declined_note(lane: LaneEligibility) -> str:
+    """The clause (lower-case, unpunctuated) a message naming the per-PR
+    boundary review adds to say why the per-release lane did not take the
+    branch, or ``""``.
 
-    Asked only of a deferral that defers (only its step text reads the field),
-    and once: a deferral already asked comes back as it is. Inference and the
-    Stop gate both call it, so the step they print is the same.
-    """
-    if deferral.lane is not None or not deferral.defers:
-        return deferral
-    lane = lane_eligibility(project_dir, prawduct_dir, plan, progress)
-    return deferral._replace(lane=lane.eligible)
+    Said only where the lane was in play (:attr:`LaneEligibility.in_play`: the
+    policy in force is ``per_release``, or the predicate could not be
+    evaluated), so a ``per_pr`` repo's every message is unchanged and a
+    ``per_release`` builder shown the boundary ``cumulative`` the owner moved
+    learns why, a crash included (``hook-surface.md``: a swallow is fixed in
+    the frame that discards it)."""
+    if lane.eligible or not lane.in_play:
+        return ""
+    return f"the per-release lane does not take this branch: {lane.reason}"
+
+
+def _declined_clause(declined: "list[str]") -> str:
+    """``declined`` notes appended to a rationale, each after ``; ``."""
+    return "".join(f"; {note}" for note in declined if note)
 
 
 def _lane_interval(
-    project_dir: Path, prawduct_dir: Path, plan, progress
+    project_dir: Path, prawduct_dir: Path, plan, progress, declined: "list[str] | None" = None
 ) -> "tuple[LaneEligibility, dict, list[str]] | None":
     """The lane's ``chunk`` review where a clean tree would otherwise send the
     boundary to ``cumulative``: ``(eligibility, start, chunks)``, or ``None``.
@@ -2527,9 +2628,16 @@ def _lane_interval(
     ``cumulative`` mode over the branch's paths, scoped commit subjects
     included): a ``chunk`` dispatch names them only through ``--chunks``, and
     without it a proposal of more than one is refused (exit 8).
+
+    ``declined``, when given, gets the clause saying why the lane did not
+    answer (:func:`lane_declined_note`, ``""`` under ``per_pr``), so the
+    caller's ``cumulative`` rationale tells a ``per_release`` builder why the
+    round the owner moved is still owed here.
     """
     lane = lane_eligibility(project_dir, prawduct_dir, plan, progress)
     if not lane.eligible:
+        if declined is not None:
+            declined.append(lane_declined_note(lane))
         return None
     head_commit = gitstate._git_head_sha(project_dir)
     head_tree = _head_tree(project_dir)
@@ -2542,6 +2650,11 @@ def _lane_interval(
         project_dir, head_commit, head_tree, read=read
     )
     if not _reaches_committed_work(start):
+        if declined is not None:
+            declined.append(
+                "the per-release lane takes this branch, but its `chunk` interval "
+                "cannot reach the unreviewed commits, so the boundary `cumulative` stands"
+            )
         return None
     proposal = plan_status.chunk_proposal(
         Path(plan.plan_path), read, list(lane.paths), "cumulative", repo_dir=Path(project_dir)
@@ -2549,9 +2662,14 @@ def _lane_interval(
     return lane, start, list(proposal.chunks)
 
 
-def _lane_interval_clause(lane: LaneEligibility, start: dict, chunks: "list[str]") -> str:
-    """The rationale's body for a lane ``chunk``: why the lane holds, the
-    interval, and the ``--chunks`` the dispatch must pass."""
+def _lane_interval_clause(
+    lane: LaneEligibility, start: dict, chunks: "list[str]", *, mode: str = "chunk"
+) -> str:
+    """The rationale's body for a lane review: why the lane holds, the
+    interval, and the ``--chunks`` the dispatch must pass. ``mode`` is the
+    token that will run: inference's ``chunk``, or an explicit ``final``, which
+    keeps its token (:func:`_explicit_mode`) and so is named as what runs in
+    place of the lane's ``chunk``, never as that ``chunk``."""
     if chunks:
         names = ", ".join(f"Chunk {c}" for c in chunks)
         certify = (
@@ -2559,20 +2677,25 @@ def _lane_interval_clause(lane: LaneEligibility, start: dict, chunks: "list[str]
         )
     else:
         certify = "no open chunk is proposed, so pass no `--chunks`"
+    covered_by = (
+        LANE_REVIEW_NAME if mode == "chunk"
+        else f"the `{mode}` you asked for, run over the interval of {LANE_REVIEW_NAME}"
+    )
     return (
-        f"{lane.reason}, so this branch's PR is covered by {LANE_REVIEW_NAME} "
+        f"{lane.reason}, so this branch's PR is covered by {covered_by} "
         f"and {LANE_BOUNDARY_MOVED}; {_interval_note(start)}; {certify}. "
         "An explicit `/prawduct:critic cumulative` still runs the per-PR boundary review"
     )
 
 
 def _lane_answer(
-    project_dir: Path, prawduct_dir: Path, plan, progress, rule: str
+    project_dir: Path, prawduct_dir: Path, plan, progress, rule: str,
+    declined: "list[str] | None" = None,
 ) -> "tuple[str, str] | None":
     """``("chunk", rationale)`` where rule 2 or rule 4's clean-tree redirect
     would answer ``cumulative`` and the lane holds (:func:`_lane_interval`);
-    ``None`` keeps the ``cumulative``."""
-    lane = _lane_interval(project_dir, prawduct_dir, plan, progress)
+    ``None`` keeps the ``cumulative``, and ``declined`` gets why."""
+    lane = _lane_interval(project_dir, prawduct_dir, plan, progress, declined)
     if lane is None:
         return None
     return "chunk", (

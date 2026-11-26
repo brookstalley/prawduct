@@ -126,13 +126,19 @@ STAGE_VALUES = frozenset({STAGE_INNER, STAGE_BOUNDARY})
 
 #: A ``cumulative``'s span: the delta since the last boundary review, or the
 #: whole bundle (``begin_review``; ``gates.boundary_frontier`` decides), or a
-#: release batch on the integration base (``critic-begin --span release``:
-#: release anchor → HEAD, or from an older owed entry's first parent, rating
-#: only the merges no boundary review read).
+#: release batch on the integration base (``critic-begin --mode cumulative`` at
+#: that base's tip derives it, as ``--span release`` asks for it: release
+#: anchor → HEAD, or from an older owed entry's first parent, rating only the
+#: merges no boundary review read).
 SPAN_BOUNDED = "bounded"
 SPAN_FULL = "full"
 SPAN_RELEASE = coverage_algebra.RELEASE_SPAN
 SPAN_VALUES = frozenset({SPAN_BOUNDED, SPAN_FULL, SPAN_RELEASE})
+#: Said on every dispatch whose release span was derived rather than asked for.
+RELEASE_SPAN_DERIVED_NOTE = (
+    "this checkout is the integration base at its tip, where a `cumulative` is the "
+    "release batch review (`--span release` is derived here, not needed)"
+)
 STAGE_OF_MODE = {
     "chunk": STAGE_INNER,
     "final": STAGE_INNER,
@@ -3940,6 +3946,31 @@ def _validate_native_review(block) -> "tuple[bool, str]":
     return True, ""
 
 
+def _at_integration_base_tip(project_dir: Path) -> bool:
+    """Whether the checkout is the integration base's own branch with ``HEAD``
+    at that base's tip, the one state where merge-base…HEAD is empty for want
+    of any branch (``begin_review`` derives the release span there). The same
+    test the release subject opens with (``boundary_coverage.release_subject``,
+    ``off-base``), asked first so a feature branch never reaches the release
+    classification; ``False`` whenever git cannot answer, which keeps the plain
+    ``cumulative``."""
+    base, _why = coverage.repo_base_branch(project_dir)
+    branch = gitstate.current_branch(project_dir)
+    if not base or not branch:
+        return False
+    rc, remotes, _err = evidence.run_git(project_dir, "remote")
+    local = base
+    for remote in (remotes.split() if rc == 0 else []):
+        if base.startswith(f"{remote}/"):
+            local = base[len(remote) + 1:]
+            break
+    if branch != local:
+        return False
+    rc_head, head, _e1 = evidence.run_git(project_dir, "rev-parse", "HEAD")
+    rc_tip, tip, _e2 = evidence.run_git(project_dir, "rev-parse", f"{base}^{{commit}}")
+    return rc_head == 0 and rc_tip == 0 and bool(head) and head == tip
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -4054,7 +4085,8 @@ def begin_review(
       way. ``--chosen-by`` equal to ``critic_mode.FULL_SPAN_RATIONALE`` (the
       ``full`` token) asks for the whole bundle.
     - ``cumulative`` with ``span_request == "release"`` (``critic-begin --span
-      release``, the release batch review, #1232) — on the integration base's
+      release``, the release batch review, #1232; a ``cumulative`` asked with no
+      span derives it where :func:`_at_integration_base_tip` holds) — on the integration base's
       own checkout at its tip, with a clean tree: base = the release anchor
       (``boundary_coverage.release_anchor``), or the first parent of the oldest
       owed entry when one sits at or before it, head = ``HEAD`` (``span: release``,
@@ -4103,6 +4135,16 @@ def begin_review(
                 f"may ask for is `{SPAN_RELEASE}`, with mode `cumulative` (the release batch review)"
             ),
         }
+    # Derived, never chosen: a plain `cumulative` on the integration base's own
+    # checkout at its tip IS the release batch review. There merge-base…HEAD is
+    # empty, so a plain one would answer exit 3 ("no review needed") while the
+    # release check still holds the release; no model has to know to pass
+    # `--span release` for the remedy that check names to reach it.
+    span_derived = (
+        mode_token == "cumulative" and span_request is None and _at_integration_base_tip(project_dir)
+    )
+    if span_derived:
+        span_request = SPAN_RELEASE
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
 
     # IN-FLIGHT GUARD — refuse rather than displace a review that is still live.
@@ -4281,6 +4323,8 @@ def begin_review(
         }
 
     notes: list[str] = list(notes_scope) + credential_notes
+    if span_derived:
+        notes.append(RELEASE_SPAN_DERIVED_NOTE)
     # Judgeable work the chosen interval EXCLUDES, and the tree it chose, both
     # carried structurally so a REFUSAL can name them. A committed-tree anchor
     # over a dirty working tree grades a tree the builder's files are not in;
@@ -4435,7 +4479,11 @@ def begin_review(
             return {
                 "status": "error",
                 "kind": f"release-{subject.code}",
-                "reason": f"--span release refused ({subject.code}): {subject.reason}",
+                "reason": (
+                    f"{'the release batch review' if span_derived else '--span release'} "
+                    f"refused ({subject.code}): {subject.reason}"
+                    + (f" ({RELEASE_SPAN_DERIVED_NOTE})" if span_derived else "")
+                ),
             }
         base_commit, base_tree, span_reason = subject.start
         head_commit = dispatch_commit
@@ -7162,7 +7210,8 @@ def _plan_owes_a_later_review(
 ) -> "str | None":
     """Which review the branch's plan owes after the one just consolidated —
     ``critic_mode.OWED_LATER_CHUNK`` or ``OWED_BOUNDARY``, or ``OWED_LANE``
-    where the boundary owed is the per-release lane's ``chunk`` — or ``None``.
+    where the boundary owed is the per-release lane's ``chunk`` — or ``None``:
+    ``critic_mode.review_owed_after``'s kind, read as it is returned.
 
     The close's half of the interval-extension deferral: the review just
     written covers its tree with no blocker (the caller only asks on a
@@ -7192,13 +7241,7 @@ def _plan_owes_a_later_review(
             critic_mode.binding_progress(project_dir, binding),
             chain,
         )
-        if not owed:
-            return None
-        if owed[0] == critic_mode.OWED_BOUNDARY and critic_mode.lane_eligibility(
-            project_dir, prawduct_dir, binding, critic_mode.binding_progress(project_dir, binding)
-        ).eligible:
-            return critic_mode.OWED_LANE
-        return owed[0]
+        return owed[0] if owed else None
     except (OSError, ValueError):
         return None
 

@@ -560,6 +560,67 @@ class TestEveryRefusalIsNamed:
         assert not _manifest_written(repo)
 
 
+class TestTheSpanIsDerivedAtTheBaseTip:
+    """No model chooses the release span: `critic-begin --mode cumulative` on the
+    integration base's own checkout at its tip is the release batch review, the
+    one place a plain `cumulative` would review nothing (merge-base…HEAD is
+    empty) while the release check holds the release. Everywhere else a plain
+    `cumulative` is the branch's, exactly as before."""
+
+    @staticmethod
+    def _plain(repo: Path, tmp_path: Path) -> subprocess.CompletedProcess:
+        return _hook(repo, tmp_path, "critic-begin", "--mode", "cumulative")
+
+    @staticmethod
+    def _flat(text: str) -> str:
+        return " ".join(text.split())
+
+    def test_a_plain_cumulative_at_the_base_tip_is_the_release_review(self, repo, tmp_path):
+        _released(repo)
+        proc = self._plain(repo, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        m = _manifest(repo)
+        assert m["span"] == "release", m["span"]
+        assert sorted(m["files_reviewed"]) == ["src/a.py", "src/b.py", "src/direct.py"]
+        assert cc.RELEASE_SPAN_DERIVED_NOTE in self._flat(proc.stderr), proc.stderr
+
+    def test_on_a_feature_branch_it_stays_the_branch_s_cumulative(self, repo, tmp_path):
+        _released(repo)
+        _branch(repo, "feature")
+        _commit(repo, {"src/feature.py": "f = 1\n"}, "feature work")
+        proc = self._plain(repo, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        m = _manifest(repo)
+        assert m["span"] != "release" and m["files_reviewed"] == ["src/feature.py"], m
+        assert cc.RELEASE_SPAN_DERIVED_NOTE not in self._flat(proc.stderr)
+
+    def test_on_the_base_ahead_of_its_remote_tip_it_stays_plain(self, repo, tmp_path):
+        """Local main a commit ahead of origin/main: merge-base…HEAD holds that
+        commit, so the plain `cumulative` has work to review and keeps it."""
+        _released(repo)
+        remote = tmp_path / "remote.git"
+        _git(repo, "clone", "-q", "--bare", str(repo), str(remote))
+        _git(repo, "remote", "add", "origin", str(remote))
+        _git(repo, "fetch", "-q", "origin")
+        _commit(repo, {"src/unpushed.py": "u = 1\n"}, "not pushed")
+        proc = self._plain(repo, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        m = _manifest(repo)
+        assert m["span"] != "release" and m["files_reviewed"] == ["src/unpushed.py"], m
+        assert cc.RELEASE_SPAN_DERIVED_NOTE not in self._flat(proc.stderr)
+
+    def test_a_derived_release_review_s_refusal_says_it_was_derived(self, repo, tmp_path):
+        """No `--span release` was typed, so the refusal must not read as one."""
+        _released(repo)
+        _write(repo, "src/a.py", "a = 99\n")
+        proc = self._plain(repo, tmp_path)
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        err = self._flat(proc.stderr)
+        assert f"the release batch review refused ({bc.RELEASE_DIRTY})" in err, err
+        assert "--span release refused" not in err and cc.RELEASE_SPAN_DERIVED_NOTE in err, err
+        assert not _manifest_written(repo)
+
+
 class TestTailDeferred:
     def test_it_is_not_covered_and_a_release_review_owes_it_a_read(self, repo, monkeypatch):
         """Chunk 05's PR gate produces it; here it must read not covered, so the
