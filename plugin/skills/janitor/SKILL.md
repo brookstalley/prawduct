@@ -2,16 +2,24 @@
 description: Periodic codebase maintenance — systematic health check across VCS hygiene, code quality, documentation fitness, test coverage, dependencies, controllability, and more
 argument-hint: "[staleness=Nd] [scope=theme,...] [survey-only]"
 user-invocable: true
-# Model-invocable, so nothing here pre-approves an interpreter. `Bash(python3 *)`
-# and `Bash(npm *)` once let janitor drive the product's toolchain without a
-# prompt, and an interpreter reaches every op an allow-list withholds:
-# `python3 plugin/bin/prawduct-hook backlog import` included. The product's own
-# toolchain commands fall under the session's permission settings instead
-# (prompting in default mode). The git grant is the read verbs the survey uses;
-# branch and worktree removal is `git-tidy --apply`, granted below, and commits
-# in Step 6 go through the build cycle and the session's settings.
+# Model-invocable (`.prawduct/owner-rulings.md`, 2026-11-26), so every grant here
+# is judged by what it can reach (`tests/test_backlog_skill_metadata.py`, the
+# must-prompt rail): no interpreter, nothing that runs a command it is handed, and
+# no git write. The product's own toolchain commands fall under the session's
+# permission settings (prompting in default mode).
 #
-# Every hook subcommand the body instructs — `backlog cache-query`, `archive-plan`,
+# The git grants are the reads the themes need, space-terminated so a verb's star
+# cannot reach a longer verb (`git diff*` admits `git difftool -x <cmd>`): history
+# and staleness (`log`, `show`, `diff`, `blame`, `rev-parse`, `merge-base`), branch,
+# worktree and stash listing (`for-each-ref`, `branch --list`, `worktree list`,
+# `stash list`, the last bare because its arguments are log options), and ignore
+# hygiene (`status`, `ls-files`, `check-ignore`). Removal is not a read: `git-tidy`
+# is granted only in its dry-run forms, so `--apply` and `--reap` prompt, and that
+# prompt is the owner's yes. `archive-plan` is granted only with `--dry-run`, so
+# the archive itself prompts the same way. Commits in Step 6 go through the build
+# cycle and the session's settings.
+#
+# Every other hook subcommand the body instructs — `backlog cache-query`,
 # `review-stats`, `stats`, `aggregate-stats`, `determinism-scan` — is granted
 # explicitly in BOTH spellings. In a governed product the plugin is installed
 # elsewhere and the bare `prawduct-hook` spelling is the only one that works, so
@@ -20,9 +28,7 @@ user-invocable: true
 # Without `cache-query`, Step 2.5's Backlog Health queries prompt — and a prompt a
 # janitor declines looks to it exactly like the unreadable store it is scripted to
 # report, so the block would render "unavailable" and never run. Read-only: no
-# network, no writes. Without `archive-plan`, Past Work's stale-plan cleanup can
-# name the command it is told to run and not run it — and the failure is quiet in
-# the same way: an unarchived plan is indistinguishable from a repo that had none.
+# network, no writes.
 # Without `review-stats`, the Step 1 context read loses the review-cost history and
 # the survey grades maintenance signals it never saw. Without `stats`, it loses the
 # per-plugin-version cost and yield, including Stop-hook blocks per session.
@@ -30,7 +36,7 @@ user-invocable: true
 # It writes nothing; it opens a socket only under `--collector`, a GET of the
 # collector's public bundles, which Step 1 passes only when the person asks.
 disable-model-invocation: false
-allowed-tools: Bash(git status*), Bash(git log*), Bash(git show*), Bash(git diff*), Bash(git blame*), Bash(git for-each-ref*), Bash(git merge-base*), Bash(git ls-files*), Bash(git check-ignore*), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan*), Bash(python3 plugin/bin/prawduct-hook archive-plan*), Bash(prawduct-hook git-tidy*), Bash(python3 plugin/bin/prawduct-hook git-tidy*), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Bash(prawduct-hook stats*), Bash(python3 plugin/bin/prawduct-hook stats*), Bash(prawduct-hook aggregate-stats*), Bash(python3 plugin/bin/prawduct-hook aggregate-stats*), Bash(prawduct-hook determinism-scan*), Bash(python3 plugin/bin/prawduct-hook determinism-scan*), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git status *), Bash(git log *), Bash(git show *), Bash(git diff *), Bash(git blame *), Bash(git rev-parse *), Bash(git merge-base *), Bash(git for-each-ref *), Bash(git branch --list *), Bash(git worktree list *), Bash(git stash list), Bash(git ls-files *), Bash(git check-ignore *), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan * --dry-run), Bash(python3 plugin/bin/prawduct-hook archive-plan * --dry-run), Bash(prawduct-hook git-tidy), Bash(python3 plugin/bin/prawduct-hook git-tidy), Bash(prawduct-hook git-tidy --offline), Bash(python3 plugin/bin/prawduct-hook git-tidy --offline), Bash(prawduct-hook git-tidy --json), Bash(python3 plugin/bin/prawduct-hook git-tidy --json), Bash(prawduct-hook git-tidy --offline --json), Bash(python3 plugin/bin/prawduct-hook git-tidy --offline --json), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Bash(prawduct-hook stats*), Bash(python3 plugin/bin/prawduct-hook stats*), Bash(prawduct-hook aggregate-stats*), Bash(python3 plugin/bin/prawduct-hook aggregate-stats*), Bash(prawduct-hook determinism-scan*), Bash(python3 plugin/bin/prawduct-hook determinism-scan*), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.
@@ -41,7 +47,7 @@ You are performing periodic codebase maintenance — a systematic health check t
 well-built, current, and proportionate? It **surveys, then fixes** through the standard build cycle.
 For **prawduct governance/install health** — is the repo correctly set up and governed (install
 reference, distribution, anchor, core state, recorded decisions, the gitignore contract)? — use
-**`/prawduct:doctor`**, which reports-and-guides rather than fixes. Full split, and the rule for
+**`/prawduct:doctor`**, which reports, and repairs governance state only on the owner's yes. Full split, and the rule for
 where a new concern belongs: `docs/doctor-vs-janitor.md`.
 
 ## The Janitor's Perspective
