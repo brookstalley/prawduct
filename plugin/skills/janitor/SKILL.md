@@ -2,21 +2,21 @@
 description: Periodic codebase maintenance — systematic health check across VCS hygiene, code quality, documentation fitness, test coverage, dependencies, controllability, and more
 argument-hint: "[staleness=Nd] [scope=theme,...] [survey-only]"
 user-invocable: true
-# Human-invoked only. Janitor needs a broad interpreter grant (`Bash(python3 *)`,
-# `Bash(npm *)`) to drive whatever toolchain the product uses — and that grant
-# necessarily subsumes the backlog scrub ops an allow-list is supposed to hold
-# behind a prompt. An allow-list cannot fence an op when the skill legitimately
-# needs the interpreter, so the model-initiated path is closed here instead.
+# Model-invocable, so nothing here pre-approves an interpreter. `Bash(python3 *)`
+# and `Bash(npm *)` once let janitor drive the product's toolchain without a
+# prompt, and an interpreter reaches every op an allow-list withholds:
+# `python3 plugin/bin/prawduct-hook backlog import` included. The product's own
+# toolchain commands fall under the session's permission settings instead
+# (prompting in default mode). The git grant is the read verbs the survey uses;
+# branch and worktree removal is `git-tidy --apply`, granted below, and commits
+# in Step 6 go through the build cycle and the session's settings.
 #
 # Every hook subcommand the body instructs — `backlog cache-query`, `archive-plan`,
-# `review-stats`, `stats`, `aggregate-stats`, `determinism-scan` — is granted explicitly in BOTH spellings, despite that interpreter
-# grant, because the interpreter grant does NOT cover them where it matters:
-# `Bash(python3 *)` only reaches `python3 plugin/bin/prawduct-hook` in a repo that
-# carries the plugin in its own tree. In a governed product the plugin is installed
-# elsewhere and the bare `prawduct-hook` spelling is the only one that works, so the
-# bare grant is the load-bearing one; the `python3 plugin/bin/` sibling states the
-# self-hosted spelling on the line instead of leaving it to ride on an interpreter
-# grant that a later narrowing could take away.
+# `review-stats`, `stats`, `aggregate-stats`, `determinism-scan` — is granted
+# explicitly in BOTH spellings. In a governed product the plugin is installed
+# elsewhere and the bare `prawduct-hook` spelling is the only one that works, so
+# the bare grant is the load-bearing one; the `python3 plugin/bin/` sibling states
+# the self-hosted spelling on the line.
 # Without `cache-query`, Step 2.5's Backlog Health queries prompt — and a prompt a
 # janitor declines looks to it exactly like the unreadable store it is scripted to
 # report, so the block would render "unavailable" and never run. Read-only: no
@@ -29,8 +29,8 @@ user-invocable: true
 # Without `aggregate-stats`, the cross-product view Step 1 describes prompts mid-survey.
 # It writes nothing; it opens a socket only under `--collector`, a GET of the
 # collector's public bundles, which Step 1 passes only when the person asks.
-disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan*), Bash(python3 plugin/bin/prawduct-hook archive-plan*), Bash(prawduct-hook git-tidy*), Bash(python3 plugin/bin/prawduct-hook git-tidy*), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Bash(prawduct-hook stats*), Bash(python3 plugin/bin/prawduct-hook stats*), Bash(prawduct-hook aggregate-stats*), Bash(python3 plugin/bin/prawduct-hook aggregate-stats*), Bash(prawduct-hook determinism-scan*), Bash(python3 plugin/bin/prawduct-hook determinism-scan*), Read, Write, Edit, Glob, Grep, Agent
+disable-model-invocation: false
+allowed-tools: Bash(git status*), Bash(git log*), Bash(git show*), Bash(git diff*), Bash(git blame*), Bash(git for-each-ref*), Bash(git merge-base*), Bash(git ls-files*), Bash(git check-ignore*), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan*), Bash(python3 plugin/bin/prawduct-hook archive-plan*), Bash(prawduct-hook git-tidy*), Bash(python3 plugin/bin/prawduct-hook git-tidy*), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Bash(prawduct-hook stats*), Bash(python3 plugin/bin/prawduct-hook stats*), Bash(prawduct-hook aggregate-stats*), Bash(python3 plugin/bin/prawduct-hook aggregate-stats*), Bash(prawduct-hook determinism-scan*), Bash(python3 plugin/bin/prawduct-hook determinism-scan*), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.

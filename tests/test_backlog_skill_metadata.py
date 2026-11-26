@@ -243,7 +243,9 @@ def test_no_model_invocable_skill_grants_an_irreversible_op():
     skill alone, and missed janitor's ``Bash(python3 *)`` — a grant nobody reads
     as a backlog grant, which nonetheless permits ``python3
     plugin/bin/prawduct-hook backlog import``. The rail is about the OP, so the
-    check has to follow the op wherever it can be reached.
+    check has to follow the op wherever it can be reached. Janitor was then made
+    human-invoked to put it out of scope; it is model-invocable again, and in
+    scope with no exemption, because the interpreter grants were deleted instead.
 
     Scoped to ``IRREVERSIBLE_OPS`` rather than all four: onboard and doctor
     grant ``provision``/``reconcile-labels`` deliberately, and those are additive
@@ -273,6 +275,64 @@ def test_no_model_invocable_skill_grants_an_irreversible_op():
         "a model-invocable skill permits a high-consequence scrub op no-prompt — these "
         "must prompt at the migration write (BKL-5N9W):\n  - " + "\n  - ".join(leaked)
     )
+
+
+#: An interpreter or shell, granted whole: `Bash(python3 *)` admits every script
+#: and therefore every op an allow-list withholds.
+_INTERPRETER_GRANT = re.compile(
+    r"^(python3?|node|npm|npx|uv|uvx|pip3?|ruby|perl|bash|sh|zsh|deno|bun)? ?\*$"
+)
+
+#: Git writes no maintenance survey runs unprompted: janitor removes branches and
+#: worktrees through `git-tidy --apply`, which is granted on its own line.
+_DESTRUCTIVE_GIT = (
+    "git push --force origin main",
+    "git reset --hard HEAD~3",
+    "git branch -D feature",
+    "git clean -fdx",
+    "git checkout -- .",
+    "git worktree remove --force ../wt",
+)
+
+
+def _skill_bash_patterns(skill: Path) -> list[str]:
+    m = re.search(r"^allowed-tools:\s*(.+)$", skill.read_text(encoding="utf-8"), re.MULTILINE)
+    return re.findall(r"Bash\(([^)]*)\)", m.group(1)) if m else []
+
+
+def test_doctor_and_janitor_are_model_invocable():
+    """The owner's ruling: an agent may run both, not only a human typing the
+    slash command. Pinned because the rails above go quietly green on a skill
+    taken out of model invocation, which is how janitor was once fenced."""
+    for name in ("doctor", "janitor"):
+        assert _model_invocable(PLUGIN / "skills" / name / "SKILL.md"), name
+
+
+def test_no_model_invocable_skill_pre_approves_an_interpreter():
+    """A skill the model can invoke must not grant an interpreter whole."""
+    skills = sorted((PLUGIN / "skills").glob("*/SKILL.md"))
+    assert len(skills) > 5, "control: the skill corpus was reached"
+    for grant in ("python3 *", "npm *", "*", "node*"):
+        assert _INTERPRETER_GRANT.match(grant), f"control: {grant!r} must read as an interpreter"
+    for grant in ("python3 plugin/bin/prawduct-hook stats*", "git log*"):
+        assert not _INTERPRETER_GRANT.match(grant), f"control: {grant!r} is not an interpreter"
+    leaked = [
+        f"{skill.parent.name}: `Bash({p})`"
+        for skill in skills
+        if _model_invocable(skill)
+        for p in _skill_bash_patterns(skill)
+        if _INTERPRETER_GRANT.match(p.strip())
+    ]
+    assert not leaked, "a model-invocable skill pre-approves an interpreter:\n  - " + "\n  - ".join(leaked)
+
+
+def test_janitor_git_grant_admits_no_destructive_verb():
+    patterns = _skill_bash_patterns(PLUGIN / "skills" / "janitor" / "SKILL.md")
+    git = [p for p in patterns if p.startswith("git")]
+    assert git, "control: janitor's git grants were reached"
+    assert any(_grant_matches(p, "git log --since=14.days") for p in git), "survey reads must stay granted"
+    leaked = [f"`Bash({p})` permits `{c}`" for c in _DESTRUCTIVE_GIT for p in git if _grant_matches(p, c)]
+    assert not leaked, "janitor pre-approves a destructive git command:\n  - " + "\n  - ".join(leaked)
 
 
 def test_no_retired_op_survives_in_the_skill_prose():
