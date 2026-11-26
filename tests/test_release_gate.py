@@ -348,8 +348,7 @@ class TestTheGateExitTable:
 class TestRevertedWork:
     """The owner's 2026-11-26 ruling: owed work whose every judgeable change is
     back to where the release span starts ships nothing, so it reads `reverted`
-    (covered) and holds no release. A partial revert, or a reverted change with
-    an open BLOCKING finding, stays owed."""
+    (covered) and holds no release. A partial revert stays owed."""
 
     def _entries(self, repo: Path, tmp_path: Path) -> "tuple[subprocess.CompletedProcess, dict]":
         proc = _gate(repo, tmp_path, "--json")
@@ -383,122 +382,25 @@ class TestRevertedWork:
         assert proc.returncode == 1, proc.stdout + proc.stderr
         assert entries[merge]["classification"] == bc.INNER_ONLY, entries[merge]
 
-    def test_a_reverted_change_with_an_open_blocker_stays_owed(self, tmp_path):
+    def test_a_reverted_change_reads_reverted_whatever_its_branch_carried(self, tmp_path):
+        """Inverted with the merged-branch-blocker route's retirement (owner
+        ruling 2026-11-26): an open BLOCKING finding on the merged branch held
+        it owed while that route stood; now the release does not re-check a
+        merge the owner made over a blocker, so a full revert ships nothing
+        and passes."""
         repo = _repo(tmp_path)
         _cut(repo, "v1.0.0")
         base = _branch(repo, "a")
         _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
-        blocker = _review(repo, base, _tree(repo), _CHUNK, blocking=True)
+        _review(repo, base, _tree(repo), _CHUNK, blocking=True)
         _git(repo, "checkout", "-q", "main")
         _commit(repo, {"notes.md": "n\n"}, "base moves, nothing judgeable")
         merge = _merge(repo, "a")
         _git(repo, "rm", "-q", "src/a.py")
         _git(repo, "commit", "-q", "-m", "revert a")
         proc, entries = self._entries(repo, tmp_path)
-        assert proc.returncode == 1, proc.stdout + proc.stderr
-        assert entries[merge]["classification"] == bc.UNCOVERED, entries[merge]
-        assert [b["review_id"] for b in entries[merge]["blockers"]] == [blocker]
-
-
-class TestAMergedBranchBlockerClearsOnTheBase:
-    """The route the gate names for a merge whose branch carries an unresolved
-    BLOCKING finding (its PR gate was bypassed) terminates. The batch review
-    never clears that blocker (it is not the batch's), and BLOCKING findings
-    clear only through `verify-resolutions`, so the verify pass on the base must
-    be told it: its roll-call names it (`release_owed_blockers`), its resolution
-    clears it, and the release passes. Every step is the real CLI."""
-
-    @staticmethod
-    def _verify_consolidate(repo: Path, tmp_path: Path, resolutions: list) -> str:
-        manifest = _manifest(repo)
-        partial = {
-            "role": "reviewer", "goals": "1-7", "dispatch_id": manifest["id"],
-            "commit_reviewed": manifest["commit_reviewed"], "model": "opus",
-            "duration_seconds": 60, "findings": [], "resolutions": resolutions,
-            "summary": "verify the branch blocker's fix",
-        }
-        path = Path(manifest["rendezvous"]["reviewer"]["partial"])
-        path = path if path.is_absolute() else repo / path
-        path.write_text(json.dumps(partial))
-        proc = _hook(repo, tmp_path, "critic-consolidate")
         assert proc.returncode == 0, proc.stdout + proc.stderr
-        return manifest["id"]
-
-    def test_gate_batch_gate_verify_gate(self, tmp_path):
-        repo = _repo(tmp_path)
-        _cut(repo, "v1.0.0")
-        base = _branch(repo, "a")
-        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
-        blocker = _review(repo, base, _tree(repo), _CHUNK, blocking=True)
-        # The base moves first, so the blocker stands on the branch's tree only,
-        # never on a tree the batch review records.
-        _git(repo, "checkout", "-q", "main")
-        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
-        _merge(repo, "a")
-
-        held = _gate(repo, tmp_path)
-        assert held.returncode == 1, held.stdout + held.stderr
-        line = _refusal(held.stderr, bc.GATE_UNCOVERED)
-        assert f"({blocker} R-1), a merged branch's" in line, line
-        assert "run `/prawduct:critic verify-resolutions` there, whose roll-call names it" in line, line
-
-        # The batch review, by the remedy's own invocation: a plain cumulative here.
-        assert _hook(repo, tmp_path, "critic-begin", "--mode", "cumulative").returncode == 0
-        assert _manifest(repo)["span"] == "release"
-        _consolidate(repo, tmp_path)
-        still = _gate(repo, tmp_path)
-        assert still.returncode == 1, still.stdout + still.stderr
-        assert f"({blocker} R-1), a merged branch's" in _refusal(still.stderr, bc.GATE_UNCOVERED)
-
-        _commit(repo, {"src/a.py": "a = 2\n"}, "fix the branch's blocker on the base")
-        proc = _hook(repo, tmp_path, "critic-begin", "--mode", "verify-resolutions")
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-        roll_call = [d for d in _manifest(repo).get("dispatch_directives") or [] if blocker in d]
-        assert roll_call and "R-1" in roll_call[0], _manifest(repo).get("dispatch_directives")
-        self._verify_consolidate(repo, tmp_path, [
-            {"review_id": blocker, "fid": "R-1", "disposition": "fixed",
-             "rationale": "the fix on the base removes the defect"}])
-
-        passed = _gate(repo, tmp_path)
-        assert passed.returncode == 0, passed.stdout + passed.stderr
-
-    def test_off_the_base_nothing_is_owed(self, tmp_path):
-        """Control: the same store, asked from a feature branch, names nothing,
-        and under per_pr nothing either (no release gate counts it)."""
-        for key in ("per_release", None):
-            repo = _repo(tmp_path / str(key), key=key)
-            _cut(repo, "v1.0.0")
-            base = _branch(repo, "a")
-            _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
-            blocker = _review(repo, base, _tree(repo), _CHUNK, blocking=True)
-            _git(repo, "checkout", "-q", "main")
-            _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
-            _merge(repo, "a")
-            owed = [b["review_id"] for b in bc.release_owed_blockers(repo)]
-            assert owed == ([blocker] if key else []), (key, owed)
-            _git(repo, "checkout", "-q", "-b", "feature")
-            assert bc.release_owed_blockers(repo) == [], key
-
-    def test_ahead_of_the_remote_tip_the_blocker_is_still_owed(self, tmp_path):
-        """The fix committed on the base and not yet pushed: HEAD is ahead of
-        `origin/main`, so no release review can be taken there, but the verify
-        pass of that fix is still the one that owes the branch's blocker."""
-        repo = _repo(tmp_path, base="origin/main")
-        _cut(repo, "v1.0.0")
-        base = _branch(repo, "a")
-        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
-        blocker = _review(repo, base, _tree(repo), _CHUNK, blocking=True)
-        _git(repo, "checkout", "-q", "main")
-        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
-        _merge(repo, "a")
-        remote = tmp_path / "remote.git"
-        _git(repo, "clone", "-q", "--bare", str(repo), str(remote))
-        _git(repo, "remote", "add", "origin", str(remote))
-        _git(repo, "fetch", "-q", "origin")
-        _commit(repo, {"src/a.py": "a = 2\n"}, "the fix, not pushed")
-        where = bc.integration_base_tip(repo)
-        assert (where.on_branch, where.at_tip, where.code) == (True, False, bc.RELEASE_OFF_BASE), where
-        assert [b["review_id"] for b in bc.release_owed_blockers(repo)] == [blocker]
+        assert entries[merge]["classification"] == bc.REVERTED, entries[merge]
 
 
 def bc_cumulative() -> str:

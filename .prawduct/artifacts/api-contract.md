@@ -373,13 +373,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `[not covered]`, names the anchor, and ends with a count line naming its denominator and the anchor. Exit 0
   whenever it answered, whatever it found; 2 on an unknown argument; 3 when it could not evaluate.
   `--json` keys: `status` (`ok` | `unevaluable`), `base`, `reason` (`null` when `ok`), `counts` (one
-  key per classification), `entries[]{scope, classification, reason, commit, subject, source, blockers}`
+  key per classification), `entries[]{scope, classification, reason, commit, subject, source}`
   (`source`: `fragment`, `walk` or `both`, or `walk-failed` on the one `unknown` entry standing
   for a walk git could not run, with no commit; a walked commit no fragment names has an empty `scope`;
-  two fragments one merge added share one entry, scopes joined by `, `; `blockers` (added
-  2026-11-26, #1232) lists the unresolved BLOCKING findings standing on a not-covered entry's own
-  trees as `{review_id, fid, title}`, empty when none, and a `verify-resolutions` pass on the
-  base names them in its roll-call), `anchor` (`{commit, tree,
+  two fragments one merge added share one entry, scopes joined by `, `), `anchor` (`{commit, tree,
   source, reason}`, `source` `release-file` | `tag`, or `null`), `no_anchor_reason` (why there is
   none, else `null`) and `refusals[]` (fragments the pending set refused, which are not classified).
   `--gate` (added 2026-11-26, #1232) is the release check's blocking reading, the verdict

@@ -340,64 +340,30 @@ class TestTheBatchCreditsWhatItRead:
         assert fixed[fix]["classification"] == bc.BATCH_COVERED, fixed[fix]
         assert batch in fixed[fix]["reason"] and "verify-resolutions" in fixed[fix]["reason"]
 
-    def test_a_branch_merged_over_a_blocker_is_not_credited_until_it_is_resolved(self, repo, tmp_path):
-        """W2: the PR gate refuses a blocked branch, so this merge bypassed it,
-        and catching bypassed merges is the release check's job. A clean batch
-        review that outlives the blocker does not clear it: only a resolution
-        does (`BLOCKING findings clear only through verify-resolutions`)."""
+    def test_a_clean_batch_review_credits_a_branch_merged_over_a_blocker(self, repo, tmp_path):
+        """Inverted by the owner's 2026-11-26 ruling: merging over a blocker is
+        the owner's call at the PR, so the release does not re-check it. The
+        batch rule settles only the batch review's own two trees, and a clean
+        batch review credits the merge whatever its branch carried. (It read
+        not covered until a resolution was recorded, before that ruling.)"""
         _cut(repo, "v1.0.0")
         base = _branch(repo, "a")
         _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
-        blocker = _review(repo, base, _tree(repo), CHUNK, blocking=True)
+        _review(repo, base, _tree(repo), CHUNK, blocking=True)
         branch_tip = _tree(repo)
-        # The base moves first, so the merge's tree (the batch review's head) is
-        # not the branch tip's, where the blocker stands: only the entry's own
-        # trees can carry it to the batch rule.
+        # The base moves first, so the blocker stands on the branch's tree only,
+        # never on a tree the batch review records.
         _git(repo, "checkout", "-q", "main")
-        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
+        _commit(repo, {"notes.md": "n\n"}, "base moves, nothing judgeable")
         merge = _merge(repo, "a")
         assert _tree(repo, merge) != branch_tip, "the fixture must keep the blocker off the batch's trees"
         before = _coverage(repo, tmp_path)[merge]
         assert before["classification"] == bc.UNCOVERED and "unresolved blocking" in before["reason"], before
+        assert "blockers" not in before, before
         assert _begin_release(repo, tmp_path).returncode == 0
         batch = _consolidate(repo, tmp_path)
         after = _coverage(repo, tmp_path)[merge]
-        assert after["classification"] == bc.UNCOVERED, after
-        assert batch in after["reason"] and f"{blocker} R-1" in after["reason"], after
-        assert "the commit's own" in after["reason"], after
-        _resolve(repo, blocker)
-        resolved = _coverage(repo, tmp_path)[merge]
-        assert resolved["classification"] == bc.BATCH_COVERED and batch in resolved["reason"], resolved
-
-    def test_a_blocker_at_a_tree_no_commit_holds_is_still_owed(self, repo, tmp_path):
-        """A chunk review of UNCOMMITTED work records its blocker at a tree no
-        commit holds, so the entry's commit trees never reach it. The shape
-        reading's own blockers must: the clean batch review credits nothing,
-        the entry names the blocker (the verify pass's roll-call input), and a
-        resolution then lets the batch credit it."""
-        _cut(repo, "v1.0.0")
-        base = _branch(repo, "a")
-        _write(repo, "src/a.py", "a = 0  # draft\n")
-        _git(repo, "add", "-A")
-        draft = _git(repo, "write-tree")
-        blocker = _review(repo, base, draft, CHUNK, blocking=True)
-        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
-        tip = _tree(repo)
-        _review(repo, draft, tip, VERIFY, extra={"verifies": blocker})
-        assert _git(repo, "log", "--all", "--format=%T").split().count(draft) == 0, \
-            "the fixture must keep the blocker on a tree no commit holds"
-        _git(repo, "checkout", "-q", "main")
-        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
-        merge = _merge(repo, "a")
-        assert _begin_release(repo, tmp_path).returncode == 0
-        batch = _consolidate(repo, tmp_path)
-        after = _coverage(repo, tmp_path)[merge]
-        assert after["classification"] == bc.UNCOVERED, after
-        assert [(b["review_id"], b["fid"]) for b in after["blockers"]] == [(blocker, "R-1")], after
-        assert batch in after["reason"] and "own blocking finding is unresolved" in after["reason"], after
-        _resolve(repo, blocker)
-        resolved = _coverage(repo, tmp_path)[merge]
-        assert resolved["classification"] == bc.BATCH_COVERED and batch in resolved["reason"], resolved
+        assert after["classification"] == bc.BATCH_COVERED and batch in after["reason"], after
 
     def test_verify_resolutions_dispatches_on_the_base_against_the_batch(self, repo, tmp_path):
         """The fix tail's route exists: after the batch blocker is fixed on the base,
@@ -554,9 +520,8 @@ class TestNoGateMoves:
     def test_a_verify_pass_on_the_base_verifying_the_batch_does_not_hold_a_fork(
             self, repo, tmp_path, anchored):
         """The same property for the verify pass on the base that verifies a
-        release batch review (the batch fix tail, and the route that clears a
-        merged branch's blocker): its BLOCKING finding says the base is not fit
-        to release, so a branch forked at its head tree is not held by it, and
+        release batch review (the batch fix tail's pass): its BLOCKING finding
+        says the base is not fit to release, so a branch forked at its head tree is not held by it, and
         the release check still counts it. Control (`plain`): the same pass
         verifying an ordinary review holds the fork."""
         _cut(repo, "v1.0.0")
@@ -573,8 +538,10 @@ class TestNoGateMoves:
         status = gates.branch_coverage_verdict(repo)["status"]
         assert status == ("covered" if anchored == "release" else "blocked"), status
         facts = evidence.read_facts(repo)["facts"]
-        # The release check's settlements, and the base at that tree, still count it.
-        assert [b["review_id"] for b in coverage_algebra.entry_blockers(facts, [t2])] == [verify]
+        # The release check's settlement (a later batch review standing at t2),
+        # and the base at that tree, still count it.
+        later = {"kind": "review", "id": "rev-later", "body": {"base_tree": t1, "head_tree": t2}}
+        assert [b["review_id"] for b in coverage_algebra.batch_review_blockers(facts, later)] == [verify]
         verdict = coverage_algebra.coverage_verdict(
             facts, t2, t2, lambda a, b: evidence.tree_diff(repo, a, b))
         assert verdict["status"] == "blocked", verdict
@@ -644,25 +611,6 @@ class TestEveryRefusalIsNamed:
         proc = _begin_release(repo, tmp_path)
         assert proc.returncode == 3, proc.stdout + proc.stderr
         assert "already covered" in proc.stdout and not _manifest_written(repo)
-
-    def test_reverted_work_with_an_open_blocker_still_refuses_no_subject(self, repo, tmp_path):
-        """The refusal stays for what is still owed and has nothing left to
-        read: a merged branch's reverted change whose BLOCKING finding is
-        unresolved owes its verify pass, not a read."""
-        _cut(repo, "v1.0.0")
-        base = _branch(repo, "a")
-        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
-        _review(repo, base, _tree(repo), CHUNK, blocking=True)
-        _git(repo, "checkout", "-q", "main")
-        _commit(repo, {"notes.md": "n\n"}, "base moves, nothing judgeable")
-        merge = _merge(repo, "a")
-        _git(repo, "rm", "-q", "src/a.py")
-        _git(repo, "commit", "-q", "-m", "drop a again")
-        entry = {e.commit: e for e in bc.classify_pending(repo).entries}[merge]
-        assert entry.classification not in bc.COVERED and entry.blockers, entry
-        proc = _begin_release(repo, tmp_path)
-        self._refused(proc, bc.RELEASE_NO_SUBJECT, repo)
-        assert "change no judgeable file that still differs from" in proc.stderr, proc.stderr
 
     def test_what_is_owed_before_the_anchor_alone_starts_the_span_there(self, repo, tmp_path):
         """A pruned release withheld scope `w`: merged before the anchor, still
@@ -814,7 +762,7 @@ class TestTheSpanIsDerivedAtTheBaseTip:
         if pinned_at_tip:
             _branch(repo, "feature")
             _commit(repo, {"src/feature.py": "f = 1\n"}, "feature work")
-            answer = bc.BaseTip("main", on_branch=True)
+            answer = bc.BaseTip("main")
         else:
             answer = bc.BaseTip("main", bc.RELEASE_OFF_BASE, "a pinned answer")
         monkeypatch.setattr(bc, "integration_base_tip", lambda _p: answer)

@@ -102,9 +102,8 @@ def is_release_scoped(reviews: "list[dict]", fact: dict) -> bool:
     """Is ``fact`` a review taken on the integration base for the release: the
     release batch review (:func:`is_release_batch`), or a ``verify-resolutions``
     pass whose recorded :data:`VERIFIES_KEY` chain reaches one? The batch fix
-    tail's pass and the pass that clears a merged branch's blocker on the base
-    both anchor there, so their blockers say the same thing the batch's do: the
-    base at that tree is not fit to release.
+    tail's pass anchors there, so its blockers say the same thing the batch's
+    do: the base at that tree is not fit to release.
 
     Only a recorded claim is followed (:func:`walk_links`): a pass linked by
     tree alone, or one whose claim does not resolve, is not release-scoped, so
@@ -1032,8 +1031,8 @@ def _counts_at(fact: dict, target: "str | None", reviews: "Callable[[], list[dic
     the release batch review, or a verify pass verifying it) when the span ends
     anywhere but the tree it reviewed. Such a review is taken on the integration
     base, and its blocker says the base there is not fit to RELEASE: it is owed
-    by the release check (:func:`batch_review_blockers` and :func:`entry_blockers`,
-    which count it always) and by the base at that tree, where the verify pass
+    by the release check (:func:`batch_review_blockers`, which counts it always)
+    and by the base at that tree, where the verify pass
     that clears it composes to (its roll-call composes merge-base tree → the
     tree it anchors on, which is this one). A feature branch forked at that tree
     stands on it as its merge-base and ends at its own tip, so it is not held
@@ -1381,9 +1380,9 @@ def excused_gap_verdict(
 class Settlement:
     """One store read's verdict-input facts (:data:`VERDICT_INPUT_KINDS`), their
     resolution index and their review facts by head tree, built once and handed
-    to :func:`batch_review_blockers`, :func:`entry_blockers` and
-    :func:`batch_review_covers` in place of the fact list. The release check
-    asks those once per entry and per candidate review, and rebuilding the
+    to :func:`batch_review_blockers` and :func:`batch_review_covers` in place of
+    the fact list. The release check asks those once per entry and per
+    candidate review, and rebuilding the
     whole-store indices on every ask made its cost grow with the store, not the
     release (``boundary_coverage._Classifier`` builds one)."""
 
@@ -1408,26 +1407,25 @@ def _settled(facts: "list[dict] | Settlement") -> Settlement:
     return facts if isinstance(facts, Settlement) else Settlement(facts)
 
 
-def batch_review_blockers(facts: "list[dict] | Settlement", review: dict,
-                          entry_trees: "Iterable[str]" = ()) -> list[dict]:
-    """The unresolved blocking findings standing at ``review``'s two trees, and
-    at ``entry_trees`` (the trees of the commit a batch would credit and of
-    every commit it brought onto the base), over every review and resolution
-    fact (``review`` itself included, whether or not ``facts`` holds it). The
-    settlement half of :func:`batch_review_covers`, shared with the release
-    check's batch fix tail, which asks it of a review whose findings the tail
-    fixed: a ``verify-resolutions`` pass's resolution facts are what clear them.
+def batch_review_blockers(facts: "list[dict] | Settlement", review: dict) -> list[dict]:
+    """The unresolved blocking findings standing at ``review``'s two trees, over
+    every review and resolution fact (``review`` itself included, whether or not
+    ``facts`` holds it). The settlement half of :func:`batch_review_covers`,
+    shared with the release check's batch fix tail, which asks it of a review
+    whose findings the tail fixed: a ``verify-resolutions`` pass's resolution
+    facts are what clear them.
 
     Every fact standing at those trees counts, a release batch review's
     included: this is the release check's settlement, where a release batch
-    review's blockers always gate (contrast :func:`_counts_at`). ``facts`` may
-    be a :class:`Settlement` built once for many asks."""
+    review's blockers always gate (contrast :func:`_counts_at`). A blocker on a
+    merged branch's own trees is not asked: merging over it was the owner's
+    call at the PR (owner ruling 2026-11-26). ``facts`` may be a
+    :class:`Settlement` built once for many asks."""
     body = review.get("body") if isinstance(review, dict) else None
     if not isinstance(body, dict):
         return []
     settled = _settled(facts)
-    nodes = {t for t in (body.get("base_tree"), body.get("head_tree"), *entry_trees)
-             if isinstance(t, str) and t}
+    nodes = {t for t in (body.get("base_tree"), body.get("head_tree")) if isinstance(t, str) and t}
     at = settled.at_nodes(nodes)
     held = review.get("id") is not None and review.get("id") in settled.ids
     if not held and not any(f is review for f in at):
@@ -1436,32 +1434,12 @@ def batch_review_blockers(facts: "list[dict] | Settlement", review: dict,
     return _unresolved_at_nodes(settled.facts, settled.resolved, nodes, at_nodes=at)
 
 
-def entry_blockers(facts: "list[dict] | Settlement", entry_trees: "Iterable[str]") -> list[dict]:
-    """The unresolved blocking findings standing at ``entry_trees`` alone (the
-    trees of a release entry and of every commit it brought onto the base), over
-    every review and resolution fact, a release batch review's included.
-
-    The blockers a release entry owes a resolution whatever review would credit
-    it: :func:`batch_review_covers` refuses over them, and they are not the
-    batch review's own, so a ``verify-resolutions`` pass anchored to that review
-    names them only when it is told them (``critic_consolidate.release_owed_
-    blockers``, its roll-call's second input on the integration base).
-    ``facts`` may be a :class:`Settlement`."""
-    nodes = {t for t in entry_trees if isinstance(t, str) and t}
-    if not nodes:
-        return []
-    settled = _settled(facts)
-    return _unresolved_at_nodes(settled.facts, settled.resolved, nodes,
-                                at_nodes=settled.at_nodes(nodes))
-
-
 def batch_review_covers(
     facts: "list[dict] | Settlement",
     review: dict,
     entry_files: "list[str] | None",
     *,
     brackets: bool,
-    entry_trees: "Iterable[str] | None",
 ) -> dict:
     """Does one boundary-stage review ``review`` cover one release entry, a
     commit on the integration base whose changed files are ``entry_files``?
@@ -1481,14 +1459,8 @@ def batch_review_covers(
        no reading. A review whose subject is every judgeable file it changed
        (any valid edge) meets this for every entry, which is wave 1's
        whole-edge batch rule as the special case.
-    3. No unresolved blocking finding stands at the review's two trees, or at
-       ``entry_trees`` (the trees of the commit and of every commit it brought
-       onto the base: a merged branch's own), over every fact
-       (:func:`batch_review_blockers`). A blocker on the merged branch is owed a
-       resolution, and a clean review that outlives it does not clear it, so a
-       merge that bypassed a blocked PR gate stays not covered until
-       ``verify-resolutions`` records one. ``None`` (the caller could not read
-       them) refuses, as unread entry files do.
+    3. No unresolved blocking finding stands at the review's two trees, over
+       every fact (:func:`batch_review_blockers`).
 
     **Relax-only.** It reads facts and returns an answer about one entry; it adds
     no edge, and :func:`coverage_verdict` never calls it, so no gate verdict can
@@ -1528,15 +1500,12 @@ def batch_review_covers(
         return {"status": "not", "outside": outside,
                 "reason": f"the review did not rate {len(outside)} of the commit's judgeable "
                           f"file(s): {', '.join(outside)}"}
-    if entry_trees is None:
-        return {"status": "not", "reason": "the commit's own trees could not be read, so no "
-                                           "blocker standing on them could be ruled out"}
-    unresolved = batch_review_blockers(facts, review, entry_trees)
+    unresolved = batch_review_blockers(facts, review)
     if unresolved:
         named = ", ".join(f"{u.get('review_id')} {u.get('fid')}" for u in unresolved[:3])
         return {"status": "blocked", "unresolved": unresolved,
                 "reason": f"{len(unresolved)} unresolved blocking finding(s) stand at the review's "
-                          f"trees or the commit's own ({named}{' …' if len(unresolved) > 3 else ''})"}
+                          f"trees ({named}{' …' if len(unresolved) > 3 else ''})"}
     return {"status": "covered", "reason": "the review rated every judgeable file of the commit "
                                            "still changed across its interval, with no open blocker"}
 
