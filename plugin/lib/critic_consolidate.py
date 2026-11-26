@@ -125,10 +125,13 @@ STAGE_BOUNDARY = "boundary"
 STAGE_VALUES = frozenset({STAGE_INNER, STAGE_BOUNDARY})
 
 #: A ``cumulative``'s span: the delta since the last boundary review, or the
-#: whole bundle (``begin_review``; ``gates.boundary_frontier`` decides).
+#: whole bundle (``begin_review``; ``gates.boundary_frontier`` decides), or a
+#: release batch on the integration base (``critic-begin --span release``:
+#: release anchor → HEAD, rating only the merges no boundary review read).
 SPAN_BOUNDED = "bounded"
 SPAN_FULL = "full"
-SPAN_VALUES = frozenset({SPAN_BOUNDED, SPAN_FULL})
+SPAN_RELEASE = coverage_algebra.RELEASE_SPAN
+SPAN_VALUES = frozenset({SPAN_BOUNDED, SPAN_FULL, SPAN_RELEASE})
 STAGE_OF_MODE = {
     "chunk": STAGE_INNER,
     "final": STAGE_INNER,
@@ -2445,7 +2448,8 @@ CHUNK_TYPE_DEFAULT_LABEL = "code (default)"
 def signals_line(manifest: dict) -> str:
     """The one-line signals summary a coordinator hands each reviewer —
     ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``, then
-    ``· Span: bounded from <review id>`` or ``· Span: full`` on a cumulative.
+    ``· Span: bounded from <review id>``, ``· Span: full`` or
+    ``· Span: release from <anchor commit>`` on a cumulative.
 
     Rendered FROM the manifest, by code, so no coordinator composes it: the
     freeform ``Signals: [summary]`` it replaces was the one substitution in the
@@ -2471,6 +2475,8 @@ def signals_line(manifest: dict) -> str:
         line += f" · Span: bounded from {manifest.get('bounded_from')}"
     elif span == SPAN_FULL:
         line += " · Span: full"
+    elif span == SPAN_RELEASE:
+        line += f" · Span: release from {str(manifest.get('base_commit') or '?')[:12]}"
     return line
 
 
@@ -3899,6 +3905,7 @@ def begin_review(
     force: bool = False,
     chunks: "list[str] | None" = None,
     session_model: str | None = None,
+    span_request: "str | None" = None,
 ) -> dict:
     """Derive and write the dispatch manifest for one review. All code.
 
@@ -4002,6 +4009,23 @@ def begin_review(
       oracle; record-lint and the chunk proposal grade the whole bundle either
       way. ``--chosen-by`` equal to ``critic_mode.FULL_SPAN_RATIONALE`` (the
       ``full`` token) asks for the whole bundle.
+    - ``cumulative`` with ``span_request == "release"`` (``critic-begin --span
+      release``, the release batch review, #1232) — on the integration base's
+      own checkout at its tip, with a clean tree: base = the release anchor
+      (``boundary_coverage.release_anchor``), head = ``HEAD`` (``span: release``,
+      ``span_reason`` naming the anchor). ``files_reviewed`` is the subject: the
+      changed files of every release entry no boundary review covered that still
+      differ from the anchor (``boundary_coverage.release_subject``); the rest of
+      the span rides as ``files_context``. Never an edge
+      (``coverage_algebra.review_edges``); the release check credits it through
+      ``coverage_algebra.batch_review_covers``. Refused before any manifest is
+      written, ``{"status": "error", "kind": "release-<code>"}`` (exit 1), off the
+      base or behind/ahead of its tip (``off-base``), on a dirty tree
+      (``dirty-tree``), with no release anchor (``no-anchor``), when the
+      classification cannot be read (``unevaluable``), or when the entries owed a
+      read change nothing that still differs from the anchor (``no-subject``);
+      ``no-review-needed`` (exit 3) when every entry is already covered. ``force``
+      overrides none of these: a release review with no subject would rate nothing.
     - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;
       head is **intent-aware**, because this mode serves two gate targets that
       diverge once the tree is dirty. When content was committed that the prior
@@ -4023,6 +4047,15 @@ def begin_review(
             "reason": (
                 f"unknown mode token {mode_token!r} — expected one of "
                 f"{sorted(MODE_TOKEN_TO_VERBOSE)}"
+            ),
+        }
+    if span_request is not None and (span_request != SPAN_RELEASE or mode_token != "cumulative"):
+        return {
+            "status": "error",
+            "kind": "span-unsupported",
+            "reason": (
+                f"--span {span_request!r} with mode {mode_token!r}: the only span a dispatch "
+                f"may ask for is `{SPAN_RELEASE}`, with mode `cumulative` (the release batch review)"
             ),
         }
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
@@ -4103,7 +4136,9 @@ def begin_review(
     # refuses only what the PR would. A diff it cannot read dispatches with a
     # note: the PR gate still fails closed on it.
     credential_notes: list[str] = []
-    if mode_token == "cumulative":
+    # Not a release batch review: it reads the integration base itself, where
+    # merge-base…HEAD is empty, and no PR follows it.
+    if mode_token == "cumulative" and span_request is None:
         from . import pr_gate  # noqa: PLC0415 — lazy; only this mode reads it
 
         found, unchecked = pr_gate.branch_credential_shapes(project_dir)
@@ -4280,6 +4315,10 @@ def begin_review(
     # The review a `verify-resolutions` pass is anchored to — its recorded
     # chunks are that mode's proposal (ST8), inherited along its chain.
     verify_anchor: "dict | None" = None
+    # A release batch review's subject: the changed files of the release entries
+    # no boundary review covered, still differing from the anchor. `None` for
+    # every other dispatch.
+    release_files: "set[str] | None" = None
 
     def read_store() -> dict:
         if not _store_slot:
@@ -4324,6 +4363,55 @@ def begin_review(
                 f"{start['commit'][:12]}, not at HEAD: nothing judgeable is uncommitted and "
                 f"{merge_base_start_reason(start.get('absent'))}, so the committed "
                 "work is the unreviewed interval."
+            )
+    elif mode_token == "cumulative" and span_request == SPAN_RELEASE:
+        from . import boundary_coverage  # noqa: PLC0415 — lazy; it imports gates and the release readers
+
+        subject = boundary_coverage.release_subject(project_dir, clean=bool(capture["clean"]))
+        if subject.status == boundary_coverage.RELEASE_NO_REVIEW_NEEDED:
+            recorded = _record_no_review_needed(
+                project_dir,
+                "critic-dispatch-release-nothing-owed",
+                {"mode": mode_token, "span": SPAN_RELEASE, "base": subject.base,
+                 "anchor": subject.anchor.commit if subject.anchor else None,
+                 "branch": gitstate.current_branch(project_dir),
+                 "dispatch_commit": dispatch_commit},
+            )
+            return {
+                "status": "no-review-needed",
+                "span": SPAN_RELEASE,
+                "reason": subject.reason,
+                "free_files": [],
+                "anchor": "the release anchor",
+                "notes": notes,
+                "recorded": recorded,
+            }
+        if subject.status != boundary_coverage.RELEASE_OK:
+            return {
+                "status": "error",
+                "kind": f"release-{subject.code}",
+                "reason": f"--span release refused ({subject.code}): {subject.reason}",
+            }
+        anchor = subject.anchor
+        base_commit, base_tree = anchor.commit, anchor.tree
+        head_commit = dispatch_commit
+        head_tree = capture["head_tree"]
+        base_reviewed = base_commit
+        head_anchor = "committed HEAD"
+        span, span_reason = SPAN_RELEASE, anchor.reason
+        release_files = set(subject.files)
+        notes.append(
+            f"this is a release batch review of {subject.base}: it rates the "
+            f"{len(subject.owed)} release entr{'y' if len(subject.owed) == 1 else 'ies'} no boundary "
+            f"review covered ({', '.join(e.label for e in subject.owed)}) from the release anchor "
+            f"{anchor.commit[:12]} to HEAD, and reads the rest of the span as context"
+        )
+        if subject.uncreditable:
+            notes.append(
+                "the release check cannot credit this review for "
+                f"{', '.join(e.label for e in subject.uncreditable)}: "
+                "each sits at or before the release anchor or names no commit, so no review "
+                "from the anchor brackets it"
             )
     elif mode_token == "cumulative":
         from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
@@ -4816,6 +4904,10 @@ def begin_review(
                 "costs another round"
             )
 
+    if release_files is not None:
+        # The release batch review rates only what the release entries owed a
+        # read changed; the rest of the span is context, below.
+        files_reviewed = [f for f in files_changed if f in release_files]
     if files_reviewed is None:
         files_reviewed = list(files_changed)
     # Records govern review SCOPE, not review READING — eligibility is its own
@@ -4847,6 +4939,12 @@ def begin_review(
             }
         files_context = [
             f for f in bundle_files if f not in files_reviewed and f not in files_oracle
+        ]
+    elif span == SPAN_RELEASE:
+        # The merges a boundary review already read, read and not rated, as a
+        # bounded cumulative reads the rest of its bundle.
+        files_context = [
+            f for f in files_changed if f not in files_reviewed and f not in files_oracle
         ]
 
     roster, roster_chosen_by = _derive_roster(

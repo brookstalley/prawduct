@@ -2231,7 +2231,16 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     Usage: critic-begin --mode <chunk|final|cumulative|verify-resolutions>
            [--chosen-by <rationale>] [--chunks <id>[,<id>...]]... [--scope <s>]
-           [--tier <t>] [--session-model <id>] [--force]
+           [--tier <t>] [--session-model <id>] [--span release] [--force]
+
+    `--span release` (with `--mode cumulative` only) is the release batch
+    review (#1232): run on the integration base's own checkout at its tip,
+    with a clean tree, it reviews release anchor → HEAD and rates only the
+    files of the release entries no boundary review covered
+    (`critic_consolidate.begin_review` states the interval). Its refusals exit
+    1 naming the code (`off-base`, `dirty-tree`, `no-anchor`, `unevaluable`,
+    `no-subject`); every entry already covered is exit 3. `--force` overrides
+    none of them.
 
     `--session-model` is the model the dispatcher runs as. The manifest's
     `reviewer_model` is `model_tier.reviewer_model_for` of it, and the
@@ -2294,6 +2303,7 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         "--scope": "scope",
         "--tier": "tier",
         "--session-model": "session_model",
+        "--span": "span_request",
     }
     opts: dict[str, object] = {}
     chunks: list[str] = []
@@ -2412,6 +2422,18 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         for note in result.get("notes") or []:
             print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         return 4
+    if result["status"] == "no-review-needed" and result.get("span") == consolidate.SPAN_RELEASE:
+        # A release batch review with nothing owed: every release entry already
+        # reads covered, so there is no subject to rate. Exit 3, as below; the
+        # interval lines below describe a coverage-gate interval, not this.
+        print(
+            f"PRAWDUCT: no review needed — {result['reason']}.\n"
+            "  Nothing to do: `prawduct-hook check-boundary-coverage` already reads "
+            "every release entry covered."
+        )
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
+        return 3
     if result["status"] == "no-review-needed":
         # Exit 3, not 0: 0 means "dispatched, go review", and the skill would
         # proceed to spawn a reviewer against a manifest that was never

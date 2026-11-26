@@ -29,7 +29,9 @@ behavioral logic here — PR-5K8D — so protection overrides the doc carveout).
 - A ``review`` fact contributes edge ``base_tree → head_tree``, valid iff
   every judgeable file it recorded as changed is in its reviewed set — a
   scoped review that saw less than its diff yields NO edge (stricter, never
-  looser). A malformed body yields no edge for the same reason.
+  looser). A malformed body yields no edge for the same reason, and so does a
+  release batch review (:data:`RELEASE_SPAN`), which only
+  :func:`batch_review_covers` credits.
 - The caller's ``diff_fn`` contributes **free edges**: an interval whose
   entire diff is non-judgeable needs no review (the doc-only allowance,
   computed — never stored). "No judgeable path differs" is equality of a
@@ -79,6 +81,19 @@ _RESOLVING_DISPOSITIONS = frozenset({"fixed", "waived"})
 #: ``evidence.OBSERVATIONAL_KINDS`` (the kinds left out of the verdict memo's
 #: key) to exist at all; the two sets must never overlap.
 VERDICT_INPUT_KINDS = frozenset({"review", "resolution"})
+
+#: The ``span`` a release batch review records (``critic-begin --span
+#: release``): anchor tree → the base's HEAD tree, rating only the files of the
+#: merges no boundary review read. Such a fact is never an edge
+#: (:func:`review_edges`); only :func:`batch_review_covers` credits it.
+RELEASE_SPAN = "release"
+
+
+def is_release_batch(fact: dict) -> bool:
+    """A review fact recorded by a release batch review (its ``span`` is
+    :data:`RELEASE_SPAN`)."""
+    body = fact.get("body") if isinstance(fact, dict) else None
+    return isinstance(body, dict) and body.get("span") == RELEASE_SPAN
 
 
 def is_judgeable_path(path: str) -> bool:
@@ -704,9 +719,10 @@ def reviews_linked_from(reviews: list[dict], root_tree: str) -> list[dict]:
 def review_edges(facts: list[dict]) -> list[dict]:
     """Valid edges from ``review`` facts:
     ``{"src", "dst", "fact"}``. Validity — the fact recorded both trees as
-    full-length git object ids and every judgeable changed file is within its
-    reviewed set; anything less yields no edge (a partial or malformed fact
-    must weaken coverage, never strengthen it).
+    full-length git object ids, every judgeable changed file is within its
+    reviewed set, and it is not a release batch review (:func:`is_release_batch`);
+    anything less yields no edge (a partial or malformed fact must weaken
+    coverage, never strengthen it).
 
     The tree ids are shape-checked here rather than trusted because facts are
     read back from a plain file on disk: a corrupted or hand-edited one can
@@ -739,6 +755,13 @@ def review_edges(facts: list[dict]) -> list[dict]:
         changed = [f for f in files_changed if isinstance(f, str)]
         if any(f not in reviewed for f in judgeable_files(changed)):
             continue  # under-reviewed interval — not an edge
+        if is_release_batch(fact):
+            # A release batch review is never an edge, even when its subject
+            # happens to be every judgeable file: its subject was chosen by the
+            # release classification, not by the interval, and what credits it
+            # is `batch_review_covers`, which is relax-only. Its findings still
+            # stand at its trees (`_unresolved_at_nodes`), so it can block, never cover.
+            continue
         if src == dst:
             # Degenerate interval: contributes nothing to *connectivity* that
             # the node does not already give. It still carries findings, and
@@ -1284,6 +1307,98 @@ def excused_gap_verdict(
     if capped:
         uncovered["capped"] = True
     return uncovered
+
+
+def batch_review_blockers(facts: list[dict], review: dict) -> list[dict]:
+    """The unresolved blocking findings standing at ``review``'s two trees, over
+    every review and resolution fact (``review`` itself included, whether or not
+    ``facts`` holds it). The settlement half of :func:`batch_review_covers`,
+    shared with the release check's batch fix tail, which asks it of a review
+    whose findings the tail fixed: a ``verify-resolutions`` pass's resolution
+    facts are what clear them."""
+    body = review.get("body") if isinstance(review, dict) else None
+    if not isinstance(body, dict):
+        return []
+    facts = [f for f in facts if f.get("kind") in VERDICT_INPUT_KINDS]
+    if not any(f is review or (review.get("id") is not None and f.get("id") == review.get("id"))
+               for f in facts):
+        facts = facts + [review]
+    nodes = {t for t in (body.get("base_tree"), body.get("head_tree")) if isinstance(t, str) and t}
+    return _unresolved_at_nodes(facts, resolution_index(facts), nodes)
+
+
+def batch_review_covers(
+    facts: list[dict],
+    review: dict,
+    entry_files: "list[str] | None",
+    *,
+    brackets: bool,
+) -> dict:
+    """Does one boundary-stage review ``review`` cover one release entry, a
+    commit on the integration base whose changed files are ``entry_files``?
+
+    The question :func:`coverage_verdict` cannot ask (design §3 of
+    ``documentation/issues/1222-1223-design.md``): a release batch review rates
+    only the files of the merges no boundary review read, so it is not an edge
+    (:func:`review_edges`), and composition cannot credit it. This rule credits
+    it for one entry at a time, when all three hold:
+
+    1. ``brackets``: the review's base tree is at or before the entry's first
+       parent on the base's first-parent line, and its head tree at or after the
+       entry. A git question, so the caller answers it.
+    2. Every judgeable file of the entry that still differs across the review's
+       interval (is in its ``files_changed``) is in its ``files_reviewed``. A
+       file the entry changed that is back to the interval's base content needs
+       no reading. A review whose subject is every judgeable file it changed
+       (any valid edge) meets this for every entry, which is wave 1's
+       whole-edge batch rule as the special case.
+    3. No unresolved blocking finding stands at the review's two trees, over
+       every fact (:func:`batch_review_blockers`).
+
+    **Relax-only.** It reads facts and returns an answer about one entry; it adds
+    no edge, and :func:`coverage_verdict` never calls it, so no gate verdict can
+    move because a batch fact exists. Its caller may only turn a not-covered
+    release entry into covered with it, never the reverse.
+
+    The caller passes only boundary-stage reviews: stage is the consolidator's
+    reading of a mode, which this pure module does not import.
+
+    Returns ``{"status": "covered" | "blocked" | "not", "reason": str}``, with
+    ``outside`` (the files the review did not rate) on condition 2's refusal and
+    ``unresolved`` (as :func:`coverage_verdict` lists them) on ``blocked``.
+    """
+    body = review.get("body") if isinstance(review, dict) else None
+    if not isinstance(body, dict) or review.get("kind") != "review":
+        return {"status": "not", "reason": "not a review fact"}
+    changed = body.get("files_changed")
+    reviewed = body.get("files_reviewed")
+    if not (
+        is_object_id(body.get("base_tree"))
+        and is_object_id(body.get("head_tree"))
+        and isinstance(changed, list)
+        and isinstance(reviewed, list)
+    ):
+        return {"status": "not", "reason": "the review's interval or file sets are malformed"}
+    if not brackets:
+        return {"status": "not", "reason": "the review's interval does not bracket the commit "
+                                           "on the base's first-parent line"}
+    if not isinstance(entry_files, list):
+        # Unread is never "changed nothing": that would credit any commit.
+        return {"status": "not", "reason": "the commit's changed files could not be read"}
+    in_interval = {f for f in changed if isinstance(f, str)}
+    rated = {f for f in reviewed if isinstance(f, str)}
+    outside = [f for f in judgeable_files([f for f in entry_files if isinstance(f, str)])
+               if f in in_interval and f not in rated]
+    if outside:
+        return {"status": "not", "outside": outside,
+                "reason": f"the review did not rate {len(outside)} of the commit's judgeable "
+                          f"file(s): {', '.join(outside)}"}
+    unresolved = batch_review_blockers(facts, review)
+    if unresolved:
+        return {"status": "blocked", "unresolved": unresolved,
+                "reason": f"{len(unresolved)} unresolved blocking finding(s) stand at the review's trees"}
+    return {"status": "covered", "reason": "the review rated every judgeable file of the commit "
+                                           "still changed across its interval, with no open blocker"}
 
 
 def _find_path(

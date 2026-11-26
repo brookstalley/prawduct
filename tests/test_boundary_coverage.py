@@ -389,14 +389,33 @@ class TestTheCommitsShape:
         assert _classify(repo, commit).classification == bc.NO_JUDGEABLE
 
     def test_a_squash_merge_reads_direct_and_says_so(self, repo):
+        """The base moved while the branch was open, so the squash commit's trees
+        are not the reviewed ones and nothing on the base brackets it."""
         base = _branch(repo, "f")
         _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
         _review(repo, base, _tree(repo), CUMULATIVE)
         _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
         _git(repo, "merge", "-q", "--squash", "f")
         _git(repo, "commit", "-q", "-m", "squash f")
         entry = _classify(repo, _git(repo, "rev-parse", "HEAD"))
         assert entry.classification == bc.DIRECT and "squash" in entry.reason, entry
+
+    def test_a_squash_merge_onto_the_reviewed_base_is_batch_covered(self, repo):
+        """Renegotiated with #1232 Chunk 03, which asks the batch rule of work
+        committed on the base too (a release batch review rates direct commits).
+        A squash onto an unmoved base lands exactly the reviewed trees: the PR's
+        boundary review brackets the commit on the first-parent line and rated
+        every file, so it reads batch-covered rather than direct. The control
+        above (the base moved) stays direct."""
+        base = _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        review = _review(repo, base, _tree(repo), CUMULATIVE)
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--squash", "f")
+        _git(repo, "commit", "-q", "-m", "squash f")
+        entry = _classify(repo, _git(repo, "rev-parse", "HEAD"))
+        assert entry.classification == bc.BATCH_COVERED and review in entry.reason, entry
 
 
 class TestTheReport:
