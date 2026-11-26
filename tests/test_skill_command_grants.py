@@ -2,10 +2,13 @@
 
 The failure this pins is quiet and consumer-only. A skill's `allowed-tools` is a
 pure-allow list; a command outside it is not something the skill can invoke
-without leaving its grant. In THIS repo the gap is easy to miss, because the
-plugin is in the tree and `python3 plugin/bin/prawduct-hook` resolves. In a
+without leaving its grant. In THIS repo the gap is invisible, because the two
+skills with a broad `Bash(python3 *)` interpreter grant reach
+`python3 plugin/bin/prawduct-hook` — the plugin is in the tree here. In a
 governed product the plugin is installed elsewhere and the bare `prawduct-hook`
 spelling, which is the one every SKILL.md writes, is the only one that works.
+`skills/janitor/SKILL.md` already records exactly this reasoning for granting
+`backlog cache-query` despite its interpreter grant; this test generalises it.
 
 Found by hand while scrubbing the artifact-lifecycle branch: the archival work
 gave doctor, janitor and pr each an `archive-plan` instruction and granted it to
@@ -291,10 +294,6 @@ _NOT_GRANTED: dict[tuple[str, str], str] = {
     # `git-tidy` sweep's to propose. The merge flow runs only `--after-merge`, which
     # is granted explicitly; the sweep's `--apply` is not this flow's to run.
     ("pr", "git-tidy"): "names the sweep as another flow's job; only --after-merge is this skill's, and it is granted",
-    # Deliberate exclusion: archiving ends a plan's life, and the step warns that a
-    # plan picked by eye can be live work. The prompt is the owner's say over which
-    # plan (the must-prompt rail, `test_backlog_skill_metadata.py`).
-    ("pr", "archive-plan"): "the archive prompts in default mode; that prompt is the owner's say over which plan",
     # Cross-reference: doctor explains that `init-product`'s starter corpus wrote
     # a marker, and points at `/prawduct:onboard` for onboarding. Doctor covers
     # already-onboarded repos and must not scaffold one.
@@ -874,8 +873,6 @@ _BUNDLED_NOT_GRANTED: dict[tuple[str, str], str] = {
     ("backlog/migration-scrub.md", "backlog refresh-counts"): "final hand-off step of "
     "the one-time migration; granting a recurring-use prefix for a one-time runbook "
     "would widen every backlog session",
-    ("janitor/themes.md", "archive-plan"): "only the `--dry-run` preview is granted; the "
-    "archive prompts, and that prompt is the owner's say over which plan",
 }
 
 
@@ -980,8 +977,15 @@ _HOOK = SKILLS_DIR.parent / "bin" / "prawduct-hook"
 _HOOK_SPELLINGS = ("prawduct-hook ", "python3 plugin/bin/prawduct-hook ")
 
 #: Grants allowed to reach a write without naming it, each with its reason.
-#: Keyed by (file relative to plugin/, the pattern inside `Bash(...)`). None today.
-_WRITE_REACH_EXEMPT: dict[tuple[str, str], str] = {}
+#: Keyed by (file relative to plugin/, the pattern inside `Bash(...)`).
+_WRITE_REACH_EXEMPT = {
+    ("skills/janitor/SKILL.md", "python3 *"): (
+        "an interpreter grant the janitor needs to drive the product's own "
+        "toolchain; it reaches only the self-hosted spelling, only in a checkout "
+        "carrying the plugin; `allowed-tools` cuts prompts for a competent model and "
+        "is not a security boundary (`.prawduct/owner-rulings.md`, 2026-11-26)"
+    ),
+}
 
 
 @functools.lru_cache(maxsize=1)

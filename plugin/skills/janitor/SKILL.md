@@ -2,33 +2,26 @@
 description: Periodic codebase maintenance — systematic health check across VCS hygiene, code quality, documentation fitness, test coverage, dependencies, controllability, and more
 argument-hint: "[staleness=Nd] [scope=theme,...] [survey-only]"
 user-invocable: true
-# Model-invocable (`.prawduct/owner-rulings.md`, 2026-11-26), so every grant here
-# is judged by what it can reach (`tests/test_backlog_skill_metadata.py`, the
-# must-prompt rail): no interpreter, nothing that runs a command it is handed, and
-# no git write. The product's own toolchain commands fall under the session's
-# permission settings (prompting in default mode).
+# Model-invocable (`.prawduct/owner-rulings.md`, 2026-11-26). The interpreter
+# grants (`Bash(python3 *)`, `Bash(npm *)`) drive whatever toolchain the product
+# uses. `allowed-tools` cuts prompts for a competent model; it is not a security
+# boundary.
 #
-# The git grants are the reads the themes need, space-terminated so a verb's star
-# cannot reach a longer verb (`git diff*` admits `git difftool -x <cmd>`): history
-# and staleness (`log`, `show`, `diff`, `blame`, `rev-parse`, `merge-base`), branch,
-# worktree and stash listing (`for-each-ref`, `branch --list`, `worktree list`,
-# `stash list`, the last bare because its arguments are log options), and ignore
-# hygiene (`status`, `ls-files`, `check-ignore`). Removal is not a read: `git-tidy`
-# is granted only in its dry-run forms, so `--apply` and `--reap` prompt, and that
-# prompt is the owner's yes. `archive-plan` is granted only with `--dry-run`, so
-# the archive itself prompts the same way. Commits in Step 6 go through the build
-# cycle and the session's settings.
-#
-# Every other hook subcommand the body instructs — `backlog cache-query`,
-# `review-stats`, `stats`, `aggregate-stats`, `determinism-scan` — is granted
-# explicitly in BOTH spellings. In a governed product the plugin is installed
-# elsewhere and the bare `prawduct-hook` spelling is the only one that works, so
-# the bare grant is the load-bearing one; the `python3 plugin/bin/` sibling states
-# the self-hosted spelling on the line.
+# Every hook subcommand the body instructs — `backlog cache-query`, `archive-plan`,
+# `review-stats`, `stats`, `aggregate-stats`, `determinism-scan` — is granted explicitly in BOTH spellings, despite that interpreter
+# grant, because the interpreter grant does NOT cover them where it matters:
+# `Bash(python3 *)` only reaches `python3 plugin/bin/prawduct-hook` in a repo that
+# carries the plugin in its own tree. In a governed product the plugin is installed
+# elsewhere and the bare `prawduct-hook` spelling is the only one that works, so the
+# bare grant is the load-bearing one; the `python3 plugin/bin/` sibling states the
+# self-hosted spelling on the line instead of leaving it to ride on an interpreter
+# grant that a later narrowing could take away.
 # Without `cache-query`, Step 2.5's Backlog Health queries prompt — and a prompt a
 # janitor declines looks to it exactly like the unreadable store it is scripted to
 # report, so the block would render "unavailable" and never run. Read-only: no
-# network, no writes.
+# network, no writes. Without `archive-plan`, Past Work's stale-plan cleanup can
+# name the command it is told to run and not run it — and the failure is quiet in
+# the same way: an unarchived plan is indistinguishable from a repo that had none.
 # Without `review-stats`, the Step 1 context read loses the review-cost history and
 # the survey grades maintenance signals it never saw. Without `stats`, it loses the
 # per-plugin-version cost and yield, including Stop-hook blocks per session.
@@ -36,7 +29,7 @@ user-invocable: true
 # It writes nothing; it opens a socket only under `--collector`, a GET of the
 # collector's public bundles, which Step 1 passes only when the person asks.
 disable-model-invocation: false
-allowed-tools: Bash(git status *), Bash(git log *), Bash(git show *), Bash(git diff *), Bash(git blame *), Bash(git rev-parse *), Bash(git merge-base *), Bash(git for-each-ref *), Bash(git branch --list *), Bash(git worktree list *), Bash(git stash list), Bash(git ls-files *), Bash(git check-ignore *), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan * --dry-run), Bash(python3 plugin/bin/prawduct-hook archive-plan * --dry-run), Bash(prawduct-hook git-tidy), Bash(python3 plugin/bin/prawduct-hook git-tidy), Bash(prawduct-hook git-tidy --offline), Bash(python3 plugin/bin/prawduct-hook git-tidy --offline), Bash(prawduct-hook git-tidy --json), Bash(python3 plugin/bin/prawduct-hook git-tidy --json), Bash(prawduct-hook git-tidy --offline --json), Bash(python3 plugin/bin/prawduct-hook git-tidy --offline --json), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Bash(prawduct-hook stats*), Bash(python3 plugin/bin/prawduct-hook stats*), Bash(prawduct-hook aggregate-stats*), Bash(python3 plugin/bin/prawduct-hook aggregate-stats*), Bash(prawduct-hook determinism-scan*), Bash(python3 plugin/bin/prawduct-hook determinism-scan*), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan*), Bash(python3 plugin/bin/prawduct-hook archive-plan*), Bash(prawduct-hook git-tidy*), Bash(python3 plugin/bin/prawduct-hook git-tidy*), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Bash(prawduct-hook stats*), Bash(python3 plugin/bin/prawduct-hook stats*), Bash(prawduct-hook aggregate-stats*), Bash(python3 plugin/bin/prawduct-hook aggregate-stats*), Bash(prawduct-hook determinism-scan*), Bash(python3 plugin/bin/prawduct-hook determinism-scan*), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.

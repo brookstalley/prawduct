@@ -222,8 +222,8 @@ def _units(line: str) -> list[str]:
     """The spans of ``line`` judged one at a time. A frontmatter ``allowed-tools:``
     line holds every grant of its skill on one line, so an adapter grant there
     would put the whole line in adapter context and charge the adapter with a
-    flag belonging to another command's grant (janitor's ``archive-plan *
-    --dry-run`` beside its ``backlog cache-query*``). Each ``Bash(...)`` grant is
+    flag belonging to another command's grant (an ``archive-plan * --dry-run``
+    beside a ``backlog cache-query*``). Each ``Bash(...)`` grant is
     its own unit; any other line is one unit."""
     if line.lstrip().startswith("allowed-tools:"):
         return [f"Bash({g})" for g in _GRANT.findall(line)]
