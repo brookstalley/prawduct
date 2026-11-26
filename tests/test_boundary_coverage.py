@@ -1302,7 +1302,13 @@ class TestReleaseBookkeeping:
         inspected. Until then each of these read `direct` (Critic O-1 and the
         native review's version-shape findings)."""
         reopen = self._reopen(repo, extra)
-        assert _classify(repo, reopen).classification == bc.RELEASE_BOOKKEEPING
+        entry = _classify(repo, reopen)
+        assert entry.classification == bc.RELEASE_BOOKKEEPING
+        # Round-5 W2: the reason the operator reads says what was checked (which
+        # files changed), never that only the version changed.
+        assert "changing only file(s) declared in `release_version_files:` there, whose content " \
+               "is not read: " in entry.reason, entry.reason
+        assert "version" not in entry.reason.replace("release_version_files", ""), entry.reason
 
     def test_an_undeclared_repo_never_reads_release_bookkeeping(self, repo):
         """The fallback layout (`plugin/VERSION`, `pyproject.toml`, ...) is

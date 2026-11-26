@@ -309,6 +309,24 @@ class TestEachConditionFlipsItBack:
         # The per_pr short-plan deferral is unchanged: it still reads this checkout.
         assert _deferral(tmp_path).defers
 
+    def test_a_risk_surface_renamed_away(self, tmp_path):
+        """Native finding 3 (round 5): git's rename detection lists only the new
+        path, so a branch moving a risk surface away read untouched and took the
+        lane. The lane reads the branch with renames off."""
+        _lane_repo(tmp_path, state_extra="risk_surfaces:\n  - src/legacy.py\n")
+        _git(tmp_path, "checkout", "-q", "main")
+        _write(tmp_path, "src/legacy.py", "# the surface\n")
+        _commit(tmp_path, "the surface")
+        _git(tmp_path, "checkout", "-q", "feature/lane")
+        _git(tmp_path, "rebase", "-q", "main")
+        assert _eligibility(tmp_path).eligible  # control: the surface untouched, the lane holds
+        _git(tmp_path, "mv", "src/legacy.py", "src/moved.py")
+        _commit(tmp_path, "feat(lane): move it (Chunk 03)")
+        lane = _eligibility(tmp_path)
+        assert not lane.eligible, lane.reason
+        assert "src/legacy.py matched risk surface src/legacy.py" in lane.reason, lane.reason
+        assert infer_mode(tmp_path, None)[0] == "cumulative"
+
     def test_four_chunks(self, tmp_path):
         _assert_not_lane(
             tmp_path, "the plan has 4 chunks", chunks=4, committed=("01", "02", "03", "04")

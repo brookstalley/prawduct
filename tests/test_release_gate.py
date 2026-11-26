@@ -141,7 +141,8 @@ class TestTheGateExitTable:
     | per_release | covered | 0 | 0 |
     | per_release | no anchor | 3 boundary-unevaluable | 0 |
     | per_release | unevaluable / refused fragment | 3 boundary-unevaluable | 3 / 0 |
-    | per_pr | any | 0 | unchanged |"""
+    | per_pr | answered, whatever it found | 0 | unchanged |
+    | per_pr | unevaluable | 3 boundary-unevaluable | 3 |"""
 
     def test_an_unreviewed_lane_merge_is_exit_1_naming_the_batch_review(self, tmp_path):
         repo = _repo(tmp_path)
@@ -203,9 +204,34 @@ class TestTheGateExitTable:
         assert "the release check fails closed" in proc.stdout, proc.stdout
         line = _refusal(proc.stderr, bc.GATE_UNEVALUABLE)
         assert "could not be evaluated (no integration base resolves" in line, line
-        # Control: the same unresolvable base without the key is per_pr advice.
+        # Control: the same unresolvable base without the key is per_pr, which does
+        # not fail closed on the checkout's declaration. Its report could not be
+        # evaluated all the same, so `--gate` exits 3 there too (round-5 native 5;
+        # it was 0, which read as "every entry covered").
         per_pr = _repo(tmp_path / "per_pr", key=None, base="nowhere")
-        assert _gate(per_pr, tmp_path).returncode == 0
+        proc = _gate(per_pr, tmp_path)
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        assert "the release check fails closed" not in proc.stdout, proc.stdout
+        assert "boundary_review: per_pr" in proc.stdout, proc.stdout
+
+    def test_per_pr_an_unevaluable_report_is_exit_3_not_a_pass(self, tmp_path):
+        """Round-5 native 5: under `per_pr` the gate passes whatever the report
+        FOUND, but a report that could not be evaluated is the bare op's 3, so a
+        script adding `--gate` keeps the could-not-answer signal."""
+        repo = _repo(tmp_path, key=None)
+        _released(repo, "a")
+        assert _gate(repo, tmp_path).returncode == 0  # control: it answered, so per_pr passes
+        proc = _gate_injected(repo, tmp_path, "from lib import evidence as m\n"
+                                              "m.read_facts = boom\n")
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        line = _refusal(proc.stderr, bc.GATE_UNEVALUABLE)
+        assert "the release's boundary coverage could not be evaluated (the classification " \
+               "failed: RuntimeError: injected)" in line, line
+        assert "boundary_review: per_pr (read at main)" in proc.stdout, proc.stdout
+        got = json.loads(_hook(repo, tmp_path, "check-boundary-coverage", "--gate", "--json").stdout)
+        assert got["gate"]["exit"] == 0  # the uninjected --json control
+        bare = _hook(repo, tmp_path, "check-boundary-coverage")
+        assert bare.returncode == 0, bare.stderr
 
     def test_a_fragment_the_pending_set_refused_is_exit_3(self, tmp_path):
         repo = _repo(tmp_path)
@@ -401,6 +427,68 @@ class TestRevertedWork:
         proc, entries = self._entries(repo, tmp_path)
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert entries[merge]["classification"] == bc.REVERTED, entries[merge]
+
+    def _landed_twice(self, tmp_path) -> "tuple[Path, str]":
+        """After a release, branch `a` writes `src/x.py` with an inner review
+        only; the same fix lands first through `pr` (with `src/y.py`, so its
+        cumulative does not compose onto `a`'s tip), whose cumulative covers it.
+        `a`'s merge then brings only its fragment onto the base, so the walk
+        never lists it and only the fragment join names it."""
+        repo = _repo(tmp_path)
+        _cut(repo, "v1.0.0")
+        base = _branch(repo, "a")
+        _commit(repo, {"src/x.py": "x = 1\n", **_fragment("a")}, "a")
+        _review(repo, base, _tree(repo), _CHUNK)
+        base = _branch(repo, "pr")
+        _commit(repo, {"src/x.py": "x = 1\n", "src/y.py": "y = 1\n", **_fragment("pr")}, "pr")
+        _review(repo, base, _tree(repo), bc_cumulative())
+        _merge(repo, "pr")
+        return repo, _merge(repo, "a")
+
+    def test_a_merge_that_brought_nothing_judgeable_passes(self, tmp_path):
+        """Round-5 W1: its first-parent diff was read and holds no judgeable file,
+        so nothing of it ships. It used to stay owed, and the remedy refused
+        `no-subject`, so the release was held for good."""
+        repo, merge = self._landed_twice(tmp_path)
+        proc, entries = self._entries(repo, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert (entries[merge]["classification"], entries[merge]["source"]) == (
+            bc.REVERTED, bc.SOURCE_FRAGMENT), entries[merge]
+        assert "brought no judgeable change onto main" in entries[merge]["reason"], entries[merge]
+
+    def test_a_merge_whose_diff_git_could_not_read_stays_owed(self, tmp_path):
+        """The control: an unread diff is not an empty one."""
+        repo, merge = self._landed_twice(tmp_path)
+        proc = _gate_injected(repo, tmp_path, (
+            "from lib import boundary_coverage as m\n"
+            "_credit = m._Classifier.credit_reverted\n"
+            "def credit(self, entries, anchor):\n"
+            "    self._judgeable = lambda older, newer: None\n"
+            "    return _credit(self, entries, anchor)\n"
+            "m._Classifier.credit_reverted = credit\n"))
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        assert _refusal(proc.stderr, bc.GATE_UNCOVERED)
+        assert "1 inner-only" in proc.stdout and bc.REVERTED not in proc.stdout, proc.stdout
+
+    def test_a_revert_of_work_shipped_after_the_span_start_stays_owed(self, tmp_path):
+        """Round-5 W3: a pruned release withheld `w` (merged before the anchor,
+        still pending), so the span starts at `w`'s first parent. Between there
+        and the anchor a reviewed PR changed `src/app.py`, and it shipped. A
+        direct commit after the anchor puts `src/app.py` back as it was at the
+        span start: that matches the start, not the anchor, so it ships a change
+        no review read and stays owed."""
+        repo = _repo(tmp_path)
+        withheld = _lane(repo, "w")
+        base = _branch(repo, "g")
+        _commit(repo, {"src/app.py": "x = 1\n", **_fragment("g")}, "g")
+        _review(repo, base, _tree(repo), bc_cumulative())
+        _merge(repo, "g")
+        _cut(repo, "v1.0.0", ship=("g",))
+        undo = _commit(repo, {"src/app.py": "x = 0\n"}, "put app.py back")
+        proc, entries = self._entries(repo, tmp_path)
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        assert entries[withheld]["classification"] == bc.INNER_ONLY, entries[withheld]
+        assert entries[undo]["classification"] == bc.DIRECT, entries[undo]
 
 
 def bc_cumulative() -> str:

@@ -71,9 +71,10 @@ Each commit is classified as:
   commit since it (this one, or one before it) can declare a file bookkeeping.
 - ``reverted``: a not-covered commit every judgeable file of whose change (its
   diff against its first parent) is back, at the base's tip, to its content
-  where the release span starts (:func:`_span_start`: the anchor, or the first
-  parent of the oldest entry owed a read when one sits at or before it):
-  nothing of it ships, so no review owes it one. Covered (the owner's
+  both at the release anchor and where the release span starts
+  (:func:`_span_start`: the anchor, or the first parent of the oldest entry owed
+  a read when one sits at or before it), or whose change, read, holds no
+  judgeable file: nothing of it ships, so no review owes it one. Covered (the owner's
   2026-11-26 ruling). Asked after every entry is classified, since where the
   span starts depends on what is owed.
 - ``direct``: any other commit with one parent that changed a judgeable file. That
@@ -419,8 +420,9 @@ class _Classifier:
                              commit, subject)
             if self._release_bookkeeping(commit, parents[0], changed):
                 return Entry("", RELEASE_BOOKKEEPING, "a single-parent commit after the release anchor "
-                                                      "changing only the version in release version "
-                                                      f"file(s) declared there: {', '.join(changed)}",
+                                                      "changing only file(s) declared in "
+                                                      "`release_version_files:` there, whose content is "
+                                                      f"not read: {', '.join(changed)}",
                              commit, subject)
             return Entry("", DIRECT, f"a single-parent commit changing {len(changed)} judgeable file(s): "
                                      "work committed on the base, or a squash merge", commit, subject)
@@ -729,14 +731,24 @@ class _Classifier:
 
     def credit_reverted(self, entries: list, anchor: "Anchor") -> None:
         """Turn each not-covered entry whose judgeable change is all back, at the
-        base's tip, to its content where the release span starts into
-        ``reverted`` (covered): nothing of it ships.
+        base's tip, to its content BOTH where the release span starts and at the
+        release anchor into ``reverted`` (covered): nothing of it ships.
+
+        Both, because the span can start before the anchor (:func:`_span_start`):
+        a file back at the span start's content can still differ from what the
+        anchor holds, when work between that start and the anchor changed it,
+        and then the entry ships a change no review read.
+
+        An entry whose diff against its first parent was read and holds no
+        judgeable file (a merge named only by its fragment, whose branch's
+        changes were already on the base) brought nothing judgeable onto the
+        base, so it reads ``reverted`` too. A diff git could not read stays owed.
 
         The span starts where :func:`release_subject` would start it over what
-        is still owed (:func:`_span_start`), and crediting an entry can move that
-        start nearer the tip, so this repeats until nothing more is credited:
-        every entry it leaves owed then still differs from the start a release
-        batch review would take, so that review has something of it to read."""
+        is still owed, and crediting an entry can move that start nearer the
+        tip, so this repeats until nothing more is credited: every entry it
+        leaves owed then still differs from the start a release batch review
+        would take, or from the anchor."""
         index = self._line_index()
         line = self.first_parent()
         if index is None or not line:
@@ -752,10 +764,15 @@ class _Classifier:
                                  if e.commit and e.parents and e.parents[0] in position])
             if start is None:
                 return
-            differs = self._git("diff", "--name-only", "--no-renames", start[1], tip_tree, "--")
-            if differs is None:
-                return
-            differs = set(differs.splitlines())
+            differs: set = set()
+            for older in dict.fromkeys((start[1], anchor.tree)):
+                out = self._git("diff", "--name-only", "--no-renames", older, tip_tree, "--")
+                if out is None:
+                    return
+                differs.update(out.splitlines())
+            at = (f"{start[0][:12]}, where the release span starts" if start[0] == anchor.commit
+                  else f"{start[0][:12]}, where the release span starts, and at the release anchor "
+                       f"{anchor.commit[:12]}")
             credited = False
             for entry in owed:
                 if not entry.commit or not entry.parents:
@@ -765,13 +782,16 @@ class _Classifier:
                 if entry.commit not in files_of:
                     files_of[entry.commit] = self._judgeable(entry.parents[0], entry.commit)
                 files = files_of[entry.commit]
-                if not files or any(f in differs for f in files):
+                if files is None or any(f in differs for f in files):
                     continue
                 entry.classification = REVERTED
-                entry.reason = (f"every judgeable file it changed ({', '.join(files[:3])}"
-                                f"{' …' if len(files) > 3 else ''}) is back on {self.base}'s tip to its "
-                                f"content at {start[0][:12]}, where the release span starts, so none "
-                                "of it ships")
+                entry.reason = (
+                    f"every judgeable file it changed ({', '.join(files[:3])}"
+                    f"{' …' if len(files) > 3 else ''}) is back on {self.base}'s tip to its content "
+                    f"at {at}, so none of it ships" if files else
+                    f"it brought no judgeable change onto {self.base} (its diff against its first "
+                    "parent changes no judgeable file: what its branch changed was already there), "
+                    "so none of it ships")
                 credited = True
             if not credited:
                 return
@@ -1383,8 +1403,10 @@ def release_gate(report: Report, policy) -> ReleaseGate:
     (``review_lane.release_policy``)? The one answer ``check-boundary-coverage
     --gate`` exits with and ``check-releasability`` refuses on (#1232).
 
-    Under ``per_pr`` it passes whatever the report says: the op stays advice.
-    Under ``per_release`` it fails closed, in this order: a policy whose read
+    Under ``per_pr`` it passes whatever the report found, the op staying advice,
+    but a report that could not be evaluated is exit 3, ``boundary-unevaluable``,
+    as the bare op's is: a pass would read as "every entry covered" off a
+    check that never ran. Under ``per_release`` it fails closed, in this order: a policy whose read
     failed (``policy.read_failed``: the value is this checkout's fallback, so the
     check cannot say which policy the merged PRs were judged under), a report
     that could not be evaluated, a pending fragment the pending set refused (it
@@ -1393,6 +1415,10 @@ def release_gate(report: Report, policy) -> ReleaseGate:
     ``boundary-unevaluable``; any entry not covered is exit 1,
     ``boundary-uncovered``; otherwise exit 0. Each refusal carries its remedy."""
     if not getattr(policy, "per_release", False):
+        if report.status != "ok":
+            return ReleaseGate(3, GATE_UNEVALUABLE, (
+                f"{GATE_UNEVALUABLE}: the release's boundary coverage could not be evaluated "
+                f"({report.reason}): fix what the reason names, then re-run"))
         return ReleaseGate(0, "", "")
     held = "and `boundary_review: per_release` refuses a release its check cannot answer"
     if getattr(policy, "read_failed", False):

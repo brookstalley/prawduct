@@ -4138,7 +4138,8 @@ def _fix_tail_deferral(project_dir, facts, base_tree, tip_tree, merge_base, verd
         if coverage_algebra.unresolved_blocking(fact, resolved):
             return None
 
-    tail = evidence.tree_diff(project_dir, anchor_tree, tip_tree)
+    # Renames off, so a risk surface the tail renamed away is matched by its old path.
+    tail = evidence.tree_diff(project_dir, anchor_tree, tip_tree, renames=False)
     if tail is None:
         return None
     # Risk surfaces as the integration branch held them too (the merge-base,

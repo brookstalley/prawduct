@@ -353,8 +353,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   Classes: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `release-bookkeeping`,
   `reverted`, `inner-only`, `tail-deferred`, `uncovered`, `direct` or `unknown`, each with its reason.
   `reverted` (covered; added 2026-11-26, #1232) is an entry not otherwise covered every judgeable
-  file of whose change is back, at the base's tip, to its content where the release span starts
-  (the anchor, or the first parent of the oldest owed entry at or before it), so nothing of it ships.
+  file of whose change is back, at the base's tip, to its content both at the release anchor and
+  where the release span starts (the anchor, or the first parent of the oldest owed entry at or
+  before it), or whose diff against its first parent, read, changes no judgeable file (a merge whose
+  branch's changes were already on the base), so nothing of it ships. A diff git could not read
+  stays owed.
   `batch-covered` is a commit (merge or single-parent) a boundary review on the base credits by
   `coverage_algebra.batch_review_covers` — it brackets the commit on the first-parent line, rated
   every judgeable file of the commit still changed across its interval, and no unresolved blocker
@@ -383,9 +386,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-releasability` refuses on (`boundary_coverage.release_gate`), under the policy read at
   the integration branch's tip (`review_lane.release_policy`). Under `per_release`: exit 1 when any
   entry is not covered (`boundary-uncovered:` on stderr, with the release batch review as its
-  remedy), 3 when it could not answer — unevaluable, a fragment the pending set refused, no
-  release anchor, or a walk since the anchor git could not run (`boundary-unevaluable:`, with its
-  route) — else 0. Under `per_pr`: exit 0, the
+  remedy), 3 when it could not answer — a failed policy read, unevaluable, a fragment the pending
+  set refused, no release anchor, or a walk since the anchor git could not run
+  (`boundary-unevaluable:`, with its route) — else 0. Under `per_pr`: 3 when the report is
+  unevaluable (`boundary-unevaluable:`, as the bare op's 3), else exit 0 whatever it found, the
   advice unchanged. Either way stdout adds a `boundary_review: <value> (read at <ref>)` line with
   the policy's note, and `--gate --json` adds `policy` (`{value, source, note}`) and `gate`
   (`{exit, code, message}`) to the keys above. The bare op's exits do not change.

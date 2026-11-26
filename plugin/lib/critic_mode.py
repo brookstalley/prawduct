@@ -2561,7 +2561,9 @@ def _lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> 
     if not shape.defers:
         return declined(shape.reason)
     base_branch, _ = _resolve_base_branch(project_dir)
-    paths = risk._review_scope_paths(project_dir, base_branch) if base_branch else None
+    # Renames off, so a risk surface the branch renamed away is matched by its
+    # old path, and a rename counts both files against the bound.
+    paths = risk._review_scope_paths(project_dir, base_branch, renames=False) if base_branch else None
     if paths is None:
         return declined(
             "git could not list the paths this branch changed, so its size is unknown"

@@ -353,17 +353,25 @@ def _git_lines(project_dir: Path, *args: str) -> list[str] | None:
     return [ln for ln in proc.stdout.splitlines() if ln.strip()]
 
 
-def _review_scope_paths(project_dir: Path, base: str | None) -> list[str] | None:
+def _review_scope_paths(
+    project_dir: Path, base: str | None, *, renames: bool = True
+) -> list[str] | None:
     """The paths a final/cumulative review covers: committed names in
     ``merge-base(base)...HEAD`` plus working-tree changed/untracked names.
-    ``None`` when git evaluation fails (the fail-open/closed branch point)."""
+    ``None`` when git evaluation fails (the fail-open/closed branch point).
+
+    ``renames=False`` turns git's rename detection off in both reads, so a
+    renamed file lists its old path as well as its new one: the per-release
+    lane (``critic_mode.lane_eligibility``) asks it that way, because a
+    relaxation must see a risk surface the branch renamed away."""
+    no_renames = [] if renames else ["--no-renames"]
     paths: list[str] = []
     if base is not None:
         merge_base_lines = _git_lines(project_dir, "merge-base", base, "HEAD")
         if not merge_base_lines:
             return None
         committed = _git_lines(
-            project_dir, "diff", "--name-only", f"{merge_base_lines[0]}..HEAD"
+            project_dir, "diff", "--name-only", *no_renames, f"{merge_base_lines[0]}..HEAD"
         )
         if committed is None:
             return None
@@ -372,7 +380,7 @@ def _review_scope_paths(project_dir: Path, base: str | None) -> list[str] | None
     # one "?? dir/" line, hiding the files inside it from glob surfaces
     # (e.g. `lib/gates*` never sees a file under an untracked `lib/`) — a
     # silently missed escalation. Caught by test_uncommitted_work_counts.
-    porcelain = _git_lines(project_dir, "status", "--porcelain", "--untracked-files=all")
+    porcelain = _git_lines(project_dir, "status", "--porcelain", "--untracked-files=all", *no_renames)
     if porcelain is None:
         return None
     for line in porcelain:

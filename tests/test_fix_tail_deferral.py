@@ -234,6 +234,18 @@ class TestThePrGate:
         assert rc == 1 and _NOTE not in err, err
         assert "fix churn" in err  # it IS churn; only the held surface refused it
 
+    def test_a_tail_renaming_a_risk_surface_away_buys_its_verify_round(self, tmp_path, capsys):
+        """Native finding 3 (round 5): with git's rename detection on, the tail's
+        diff lists only the new path, so a surface renamed away read untouched
+        and the tail deferred. The tail is read with renames off."""
+        repo = _repo(tmp_path, state_extra="risk_surfaces:\n  - feature.py\n")
+        _review(repo, files=("feature.py", "feature_impl.py"))
+        _git(repo, "mv", "feature.py", "feature_impl.py")
+        _git(repo, "commit", "-q", "-m", "rename the surface away")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1 and _NOTE not in err, err
+        assert "fix churn" in err  # it IS churn; only the renamed-away surface refused it
+
     def test_a_surface_the_base_tip_added_after_the_fork_refuses(self, tmp_path, capsys):
         repo, _rid = _deferring(tmp_path)
         _git(repo, "checkout", "-q", "main")
