@@ -337,12 +337,16 @@ def _stub_output(kwargs: dict, stream: str, text: str, as_text: bool):
     """What `subprocess.run` hands back for one stream of a stub, and where else it goes: kept
     when captured, written to this process's fd when inherited (as a child's went), else dropped."""
     target = kwargs.get(stream)
+    if target not in (None, subprocess.PIPE, subprocess.DEVNULL, subprocess.STDOUT):
+        # A file or a descriptor: a real child would write there, and the stub has no way to.
+        # Refuse rather than drop the output and hand back a result that looks like a run.
+        raise TypeError(f"a stubbed executable cannot write {stream} to {target!r}; capture it")
     if kwargs.get("capture_output") or target == subprocess.PIPE:
-        return text if as_text else text.encode()
+        return text if as_text else text.encode("utf-8", "surrogateescape")
     if stream == "stderr" and target == subprocess.STDOUT:
         return None
     if target is None and text:
-        os.write(1 if stream == "stdout" else 2, text.encode())
+        os.write(1 if stream == "stdout" else 2, text.encode("utf-8", "surrogateescape"))
     return None
 
 
@@ -361,9 +365,12 @@ def _stubbed_children(stubs: "dict[str, Stub]"):
             return real_run(args, *posargs, **kwargs)
         as_text = bool(kwargs.get("text") or kwargs.get("universal_newlines")
                        or kwargs.get("encoding") or kwargs.get("errors"))
+        if kwargs.get("stdin") not in (None, subprocess.DEVNULL):
+            raise TypeError("a stubbed executable reads only `input=`, not a `stdin=` stream")
         stdin = kwargs.get("input")
         if isinstance(stdin, bytes):
-            stdin = stdin.decode()
+            # A child gets the bytes as they are; surrogateescape keeps every one of them.
+            stdin = stdin.decode("utf-8", "surrogateescape")
         code, out, err = stub(argv, stdin)
         if kwargs.get("stderr") == subprocess.STDOUT:
             out, err = out + err, ""

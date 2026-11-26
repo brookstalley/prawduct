@@ -282,6 +282,27 @@ class TestStubbedExecutables:
         assert (text.returncode, text.stdout, text.stderr) == (0, "out ['a'] in\n", "err\n")
         assert (raw.stdout, raw.stderr) == (b"out ['a'] None\n", b"err\n"), "any path to the name"
 
+    def test_bytes_input_reaches_the_stub_and_comes_back_byte_for_byte(self):
+        """A child gets ``input=`` bytes as they are, so the stub hands them on losslessly."""
+        raw = b"\xff\xfe not utf-8"
+        with _hook_inproc._stubbed_children({"git": lambda argv, stdin: (0, stdin, "")}):
+            echoed = subprocess.run(["git"], input=raw, capture_output=True)
+        assert echoed.stdout == raw
+
+    @pytest.mark.parametrize("kwargs", [
+        {"stdout": "FILE"}, {"stderr": "FILE"}, {"stdout": 1}, {"stdin": "FILE"},
+    ])
+    def test_a_stream_the_stub_cannot_model_is_refused_not_dropped(self, tmp_path, kwargs):
+        """A file or descriptor target: a child would write or read there, and the stub cannot,
+        so it refuses rather than return a result that looks like a run."""
+        with open(tmp_path / "f", "w+") as handle:
+            kwargs = {k: (handle if v == "FILE" else v) for k, v in kwargs.items()}
+            with _hook_inproc._stubbed_children({"git": self._stub}):
+                with pytest.raises(TypeError, match="stubbed executable"):
+                    subprocess.run(["git", "a"], **kwargs)
+            with _hook_inproc._stubbed_children({"gh": self._stub}):  # control: unstubbed git runs
+                assert subprocess.run(["git", "--version"], **{**kwargs, "stdin": None}).returncode == 0
+
     def test_check_raises_on_a_non_zero_answer(self):
         with _hook_inproc._stubbed_children({"git": self._stub}):
             with pytest.raises(subprocess.CalledProcessError) as raised:
@@ -322,8 +343,8 @@ class TestStubbedExecutables:
         run_hook("resolve-base", cwd=tmp_path, stubs={"git": git})
         assert asked, "the hook's git calls never reached the stub"
         asked.clear()
-        run_hook("resolve-base", cwd=tmp_path)
-        assert asked == [], "control: with no stubs the stub is not consulted"
+        run_hook("resolve-base", cwd=tmp_path, stubs={"gh": git})
+        assert asked == [], "control: a stub answers only the executable it is named for"
 
 
 @pytest.mark.uncacheable(

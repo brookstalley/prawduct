@@ -6,8 +6,10 @@ review's id end in a short random token drawn through :func:`token_hex`. The
 token is what keeps two ids minted in the same second distinct, in one process
 and across every clone and worktree that writes the same store, so in a
 consumer's repository it is real entropy (``os.urandom``), as ``uuid4`` was.
-Every direct randomness read left in the plugin is listed with its reason in
-``tests/test_entropy.py``.
+Every direct randomness read left in the plugin, called or passed uncalled, is
+listed with its reason in ``tests/test_entropy.py``. That inventory covers direct
+reads only: a stdlib call that draws on its own, such as ``tempfile``'s name
+generator under an atomic write, is outside it, and a runner may still count it.
 
 :data:`SEED_ENV` replaces it for the test suite, the way ``lib.clock``'s
 ``FROZEN_ENV`` replaces the wall clock: unmistakably a test fixture by name, an
@@ -30,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import threading
 
 #: The environment variable that replaces real entropy with a seeded sequence. Test-only by name.
 SEED_ENV = "PRAWDUCT_TEST_ONLY_ENTROPY_SEED"
@@ -37,8 +40,10 @@ SEED_ENV = "PRAWDUCT_TEST_ONLY_ENTROPY_SEED"
 #: What a seed the suite sets looks like. Anything else is someone else's value and is not obeyed.
 _SEED_FORM = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
-#: Draws made from the seeded sequence in this process. Only a seeded draw moves it.
+#: Draws made from the seeded sequence in this process. Only a seeded draw moves it, under
+#: :data:`_lock`, so two threads never take the same count.
 _drawn = 0
+_lock = threading.Lock()
 
 
 def seed() -> "str | None":
@@ -58,6 +63,8 @@ def token_hex(chars: int = 8) -> str:
     if seeded is None:
         return os.urandom((chars + 1) // 2).hex()[:chars]
     global _drawn
-    _drawn += 1
-    material = f"{seeded}\0{os.getpid()}\0{_drawn}".encode("utf-8", "surrogateescape")
+    with _lock:
+        _drawn += 1
+        drawn = _drawn
+    material = f"{seeded}\0{os.getpid()}\0{drawn}".encode("utf-8", "surrogateescape")
     return hashlib.sha256(material).hexdigest()[:chars]

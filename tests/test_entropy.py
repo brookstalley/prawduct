@@ -180,7 +180,9 @@ _ENTROPY_CALLS = frozenset(
 
 
 def _entropy_reads(source: str) -> int:
-    """Calls of a randomness API in ``source``, through any import spelling, at any depth."""
+    """References to a randomness API in ``source``, called or passed uncalled (a
+    ``default_factory=uuid.uuid4``), through any import spelling, at any depth. A seeded
+    ``random.Random`` counts too: testament counts any draw from one, seeded or not."""
     tree = ast.parse(source)
     aliases: dict[str, str] = {}
     for node in ast.walk(tree):
@@ -192,26 +194,27 @@ def _entropy_reads(source: str) -> int:
                 aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
     count = 0
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not isinstance(node, (ast.Name, ast.Attribute)):
             continue
-        dotted = ast.unparse(node.func)
+        dotted = ast.unparse(node)
         head, _, rest = dotted.partition(".")
         resolved = aliases.get(head, head) + (f".{rest}" if rest else "")
-        if resolved == "random.Random" and (node.args or node.keywords):
-            continue  # seeded: deterministic
         count += resolved in _ENTROPY_CALLS
     return count
 
 
 def test_the_scan_sees_each_spelling():
-    """The scan's own control: each import spelling it must catch, and a seeded Random it must not."""
+    """The scan's own control: each import spelling it must catch, a seeded Random among them,
+    and a randomness API passed uncalled; a name that only looks like one is not counted."""
     source = (
         "import uuid\nimport os as _os\nfrom secrets import token_hex\nimport random\n"
         "def f():\n    import uuid as u\n    return u.uuid4(), uuid.uuid4().hex[:8]\n"
         "a = _os.urandom(4)\nb = token_hex(4)\nc = random.Random()\nd = random.Random(7)\n"
         "e = random.choice([1])\n"
+        "g = dataclasses.field(default_factory=uuid.uuid4)\n"
+        "h = entropy.token_hex(4)\n"
     )
-    assert _entropy_reads(source) == 6
+    assert _entropy_reads(source) == 8
 
 
 def test_every_direct_randomness_read_is_accounted_for():

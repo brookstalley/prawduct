@@ -16,8 +16,7 @@ the one value that legitimately skips — so the pair reads as a complete
 truth-table for the carveout (Tests Are Contracts).
 
 Harness is a subprocess invocation of `bin/prawduct-hook stop` with a mock git
-on PATH (as `test_plugin_runtime.py::TestPluginStopGate`'s was before it moved
-in-process with the mock answered there) — because the
+on PATH, because the
 gate decision is only observable end-to-end (the Type parse, the empirical
 doc-only check, and the findings-freshness check all compose inside `cmd_stop`).
 """

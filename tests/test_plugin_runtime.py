@@ -412,30 +412,34 @@ class TestMockGitParity:
         )
         return proc.returncode, proc.stdout, proc.stderr
 
-    def _sent_by_the_hook(self, tmp_path: Path, mock_bin: Path) -> list[list[str]]:
+    def _sent_by_the_hook(self, project: Path, mock_bin: Path) -> list[list[str]]:
         sent: list[list[str]] = []
         stubs = _mock_stubs(mock_bin, branch="feature/x")
         recorded = {
             name: (lambda argv, stdin, _stub=stub: (sent.append(argv[1:]), _stub(argv, stdin))[1])
             for name, stub in stubs.items()
         }
-        prawduct = tmp_path / ".prawduct"
+        prawduct = project / ".prawduct"
         (prawduct / "artifacts").mkdir(parents=True)
         (prawduct / "artifacts" / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
-        env = _mock_env(tmp_path, mock_bin)
+        env = _mock_env(project, mock_bin)
         for command, stdin in (
             ("clear", ""),
             ("stop", ""),
             ("stop", json.dumps({"background_tasks": [{"id": "w", "type": "workflow", "name": "n"}]})),
         ):
             _make_session_start(prawduct)
-            run_hook(command, cwd=tmp_path.parent, env=env, input=stdin, stubs=recorded)
+            run_hook(command, cwd=project.parent, env=env, input=stdin, stubs=recorded)
         return sent
 
     def test_the_two_fakes_answer_every_argv_alike(self, tmp_path):
-        mock_bin = tmp_path.parent / "_mock_bin"
+        # Both under this test's own tmp_path: the default `<project>.parent / "_mock_bin"` is
+        # shared by every test whose project is its tmp_path.
+        project = tmp_path / "project"
+        project.mkdir()
+        mock_bin = tmp_path / "_mock_bin"
         _write_mock_git(mock_bin, status=" M src/app.py\n?? new.txt\n", branch="feature/x")
-        sent = self._sent_by_the_hook(tmp_path, mock_bin)
+        sent = self._sent_by_the_hook(project, mock_bin)
         assert any(args[:1] == ["status"] for args in sent), "the hook's calls were not recorded"
         stub = _mock_stubs(mock_bin, branch="feature/x")["git"]
         cases = {tuple(args) for args in self._BRANCHES + sent}
