@@ -17,7 +17,7 @@ from conftest import plugin_python_sources
 
 PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
 
-#: The decoder and the parsers built on it. A function that calls one decodes what it reads.
+#: The decoder and the parsers built on it, each reference counting once against a read.
 DECODERS = frozenset({"git_path_lines", "unquote_git_path", "parse_porcelain_line", "diff_header_path"})
 
 #: `<file>::<function>` → why its name-printing git read needs no decoding.
@@ -123,7 +123,7 @@ def scan(source: str, rel: str = "") -> "dict[str, Facts]":
                 kept = any(k.arg == keyword and isinstance(k.value, ast.Constant) and k.value.value is False
                            for k in node.keywords) if keyword else False
                 facts.trimmed = facts.trimmed or not kept
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith("diff --git"):
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and "diff --git" in node.value:
             facts.parses_headers = True
         name = _name(node)
         if name in DECODERS:
@@ -197,6 +197,8 @@ def trimmed(p):
 def header_parser(out):
     return [line for line in out.split("\\n") if line.startswith("diff --git ")]
 
+_HEADER_RE = re.compile(r"^diff --git a/(?:.*) b/(.+)$")
+
 def status_reader(p):
     return gitstate.git_status_output(p).split("\\n")
 
@@ -215,6 +217,7 @@ def unrelated(p):
         "one_of_two_decoded": (2, 1, False, False, False),
         "trimmed": (0, 0, True, False, False),
         "header_parser": (0, 0, False, True, False),
+        "<module>": (0, 0, False, True, False),
         "status_reader": (0, 0, False, False, True),
     }
 
@@ -282,7 +285,10 @@ def _own_nodes(function: ast.AST) -> "list[ast.AST]":
 def test_every_git_call_the_scan_cannot_read_is_accounted_for():
     """The scan reads argument literals. A call whose arguments hold none is a wrapper that
     forwards its caller's arguments (the caller's literals are scanned), or sits in a function
-    that builds its arguments as a literal list (scanned), or is listed."""
+    that builds its arguments as a literal list (scanned), or is listed.
+
+    Its limit: a call that holds one literal but takes a name-printing flag from a variable or
+    a module constant (`run_git(p, "diff", NAME_FLAG)`) is not seen; no plugin call does so."""
     unseen: set[str] = set()
     for path in plugin_python_sources():
         rel = path.relative_to(PLUGIN).as_posix()
