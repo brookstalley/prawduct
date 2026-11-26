@@ -1,9 +1,9 @@
 """The good-faith severity cap reaches every Critic mode, with its floor in the same sentence.
 
 The owner's design stance (2026-11-26): assume good faith by humans and competence by models. A
-finding whose failure needs a person acting in bad faith or a model ignoring its instructions, or
-whose fix needs a list to close an open set, is an observation at most. Accidents and real failure
-modes keep their severity.
+finding whose failure needs someone working the repo's own workflow to act in bad faith later is an
+observation at most. A defect already in the change, accidents, real failure modes and the
+product's own threat model keep their severity. The cap judges the failure, never the fix.
 
 The rule is carried by both severity sections because their readers are disjoint: `chunk` and
 `verify-resolutions` read `goals-1-3.md` and are told not to open `review-protocol.md`. So the
@@ -29,7 +29,8 @@ from test_finding_scope_rule import ALL_MODES, CRITIC, DOCUMENTED  # noqa: E402
 
 RULE_LEAD = "- **Good faith caps severity**"
 CEILING = "is an observation at most, whatever its goal says"
-FLOOR = ("a crash, git error, stale state, untrusted input or competent mistake keeps its severity")
+FLOOR = ("a defect already in the change, a crash, git error, stale state, untrusted input, an actor the "
+         "product's requirements defend against, or a competent mistake keeps its severity")
 
 
 def _severity_section(text: str) -> str:
@@ -99,7 +100,16 @@ def test_both_carriers_state_one_rule() -> None:
 def test_a_floor_in_its_own_sentence_is_caught() -> None:
     # Control: the predicate must fail when the floor is split off into a sentence of its own.
     line = _rule_line(_carrier("cumulative")).replace(
-        "whatever its goal says; a crash", "whatever its goal says. a crash"
+        "whatever its goal says; a defect", "whatever its goal says. a defect"
     )
     assert FLOOR in line
     assert FLOOR not in _sentence_with(line, CEILING)
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_the_cap_judges_the_failure_never_the_fix(mode: str) -> None:
+    # A cap keyed on the remedy ("whose fix needs a list to close an open set") demoted real class
+    # defects whose first fix is a list. Closing a class is the remedy rule's job ("never by a
+    # longer list", review-protocol.md's scope bullet), so the cap names no remedy at all.
+    line = _rule_line(_carrier(mode))
+    assert "open set" not in line and "fix needs" not in line
