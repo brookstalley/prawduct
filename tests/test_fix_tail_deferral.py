@@ -24,6 +24,8 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
+
 from conftest import SHAPED_REFLECTION, scrubbed_env, suite_now
 from lib import boundary_coverage as bc
 from lib import critic_consolidate, critic_mode, gates, pr_gate
@@ -441,6 +443,33 @@ class TestRiskSurfacesAtARevision:
         assert (rc, out) == (0, content), out
         rc, out, _err = evidence.run_git(repo, "show", "HEAD:edges.yaml")
         assert (rc, out) == (0, content.strip()), out
+
+    @pytest.mark.parametrize("state, patterns", [
+        ("base_branch: main\n", None),
+        ("base_branch: main\n", "The contract is `src/api.py`.\n"),
+        ("risk_surfaces:\n  - src/\n", "The contract is `src/api.py`.\n"),
+        ("risk_surfaces: []\n", None),
+        ("risk_surfaces: [src/]\n", None),
+        (None, "The contract is `src/api.py`.\n"),
+    ])
+    def test_a_revision_and_the_working_tree_resolve_one_way(self, tmp_path, state, patterns):
+        """The per_release relaxations read the surfaces at a revision, the PR
+        gate and `classify-diff-risk` read them in the working tree: the same
+        two files must resolve to the same surfaces both ways, or a relaxation
+        disagrees with the tier the gate reports."""
+        from lib import risk
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        files = {".prawduct/project-state.yaml": state,
+                 ".prawduct/artifacts/boundary-patterns.md": patterns, "app.py": "x = 1\n"}
+        for rel, text in files.items():
+            if text is not None:
+                _commit(repo, rel, text, rel)
+        working = risk.resolve_surfaces(repo / ".prawduct")
+        assert working == risk._surfaces_at(repo, "HEAD"), working
+        assert working == risk.resolve_surfaces_from(state, patterns)
 
 
 # ---------------------------------------------------------------------------
