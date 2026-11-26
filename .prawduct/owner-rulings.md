@@ -703,3 +703,6 @@ and janitor; grant-reach rails retired) is merged.
    than walked up to its toplevel; every `--project-dir` refusal exits 1, not 2.
 3. Delete the merged local branches `git-tidy` lists, and dismiss the oversized-build-plan advisory: the plan is
    archived at the next release, which is when its size stops being paid.
+
+**2026-11-26 (evening, later still).** "Yes to your recommendation": PR #1265 (`chore/testament-cache-dogfood` →
+`develop`, one owner for id randomness and the hook's mock-git tests in-process) is merged.
