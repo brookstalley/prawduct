@@ -224,6 +224,20 @@ W9) found M2 to M6 recorded only in docstrings.
 - **M8, the release op accepts a recorded transfer grant from either gate,** the PR gate or the
   Stop gate, but only for exactly the merged span. *Why:* when both gates granted the same span,
   the Stop gate's record is the only one.
+- **M9, a failed policy read refuses the release as unevaluable**, even when every entry reads
+  covered. *Why:* an answer reached under a guessed policy is not an answer.
+- **M10, prerelease tags (`-rc.N`, `-dev.N`) are never a release anchor**; only a release file the
+  cut wrote anchors one. *Why:* the work between the last release and an rc tag would go unwalked.
+- **M11, a plain `/prawduct:critic cumulative` on the integration base at its tip is the release
+  batch review** (`critic-begin` derives `--span release`), under either policy. *Why:* that is the
+  one state where a plain cumulative reviews nothing; no model has to choose the flag.
+- **M12, a merged branch's unresolved blocker is cleared on the base:** under `per_release`, a
+  `verify-resolutions` pass on the base's own branch names the blockers standing on the trees of
+  the entries the release check holds, at the tip or ahead of the remote. *Why:* BLOCKING findings
+  clear only through `verify-resolutions`, and the branch that owned this one has merged.
+- **M13, the lane's reading is memoised for one inference only**, and a crash in the lane predicate
+  is noted even under `per_pr`. *Why:* inference writes nothing to the tree; the crash happens
+  while the policy is being read, before anything knows which policy applies.
 
 **Level:** Medium. The mechanism is clear and every piece has a precedent in the code (the short-plan
 deferral, the bounded cumulative, the fix-churn diagnosis, `excused_gap_verdict`). Two things would
