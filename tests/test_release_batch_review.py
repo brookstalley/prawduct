@@ -518,6 +518,35 @@ class TestNoGateMoves:
         _review(repo, _tree(repo, "main~1"), tip, CUMULATIVE, blocking=True)  # the control
         assert gates.branch_coverage_verdict(repo)["status"] == "blocked"
 
+    @pytest.mark.parametrize("anchored", ["release", "plain"])
+    def test_a_verify_pass_on_the_base_verifying_the_batch_does_not_hold_a_fork(
+            self, repo, tmp_path, anchored):
+        """The same property for the verify pass on the base that verifies a
+        release batch review (the batch fix tail, and the route that clears a
+        merged branch's blocker): its BLOCKING finding says the base is not fit
+        to release, so a branch forked at its head tree is not held by it, and
+        the release check still counts it. Control (`plain`): the same pass
+        verifying an ordinary review holds the fork."""
+        _cut(repo, "v1.0.0")
+        t1 = _tree(repo)
+        verified = _review(repo, _tree(repo, "main~1"), t1, CUMULATIVE,
+                           extra={"span": "release"} if anchored == "release" else None)
+        _commit(repo, {"src/app.py": "x = 1\n"}, "a fix on the base")
+        t2 = _tree(repo)
+        verify = _review(repo, t1, t2, VERIFY, blocking=True,
+                         extra={coverage_algebra.VERIFIES_KEY: verified})
+        _branch(repo, "feature")
+        _commit(repo, {"src/feature.py": "f = 1\n"}, "unrelated work")
+        _review(repo, t2, _tree(repo), CHUNK)
+        status = gates.branch_coverage_verdict(repo)["status"]
+        assert status == ("covered" if anchored == "release" else "blocked"), status
+        facts = evidence.read_facts(repo)["facts"]
+        # The release check's settlements, and the base at that tree, still count it.
+        assert [b["review_id"] for b in coverage_algebra.entry_blockers(facts, [t2])] == [verify]
+        verdict = coverage_algebra.coverage_verdict(
+            facts, t2, t2, lambda a, b: evidence.tree_diff(repo, a, b))
+        assert verdict["status"] == "blocked", verdict
+
 
 # ---------------------------------------------------------------------------
 # Every refusal, named
