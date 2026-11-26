@@ -195,8 +195,8 @@ behalf and is the owner's to veto. The Chunk 06 boundary cumulative (rev-2026112
 W9) found M2 to M6 recorded only in docstrings.
 
 - **M1, release-span blockers (2026-11-26; reverses Chunk 03's inference).** A release batch
-  review's BLOCKING finding gates the release check and any span ending at the tree it reviewed.
-  It does not gate a feature branch forked from that tree. *Why:* under Chunk 03's reading, every
+  review's BLOCKING finding gates the release check and any span ending at or passing through the
+  tree it reviewed. It is excused only on a span that starts there: a feature branch forked from that tree (M17). *Why:* under Chunk 03's reading, every
   branch cut from the base tip read `blocked` for code it never touched (native review finding),
   and the verify pass that clears the blocker composes to that same tree, so narrowing the reading
   hides nothing from it. Lives in `coverage_algebra._counts_at`.
@@ -266,6 +266,25 @@ W9) found M2 to M6 recorded only in docstrings.
 - **M16, the batch fix tail asks only boundary reviews at or after the span start.** A verify-only
   tail from an older review no longer credits a later commit; it reads `direct` and the release
   batch review reads it, the safe direction. Veto-able.
+
+Round 6's fix round added these inferred calls (all veto-able):
+- **M17:** a release-scoped blocker is excused only on a span starting at its review's head tree, not
+  "head on the base's first-parent line": it keeps `coverage_algebra` free of I/O, and a branch
+  stacked on that tree still counts the blocker through the branch carrying it.
+- **M18:** under `per_pr` the release still refuses `tail-deferred` entries (they merged only under
+  `per_release`). A plain `cumulative` at the base tip derives the release span while a tail is held,
+  and the subject is not narrowed by policy. `check-releasability` with nothing pending classifies
+  only when `per_release` was declared since the anchor; a classification fault there stays a NOTE.
+- **M19:** the policy and held risk surfaces are read at the repo's integration branch
+  (`review_lane.integration_revs`), never a plan's `base:`, so a stacked branch cannot opt in (owner:
+  opt out, never in). The lane's size and risk-path list still measure from the unit's own base.
+  The merged reading also reads the merge's first parent.
+- **M20:** the release span reads `files_changed` with renames off, rather than dropping paths absent
+  at HEAD, which would hide a deletion of shipped work. Every release path list reads raw names (`-z`,
+  `core.quotepath=false`).
+- **M21:** a release batch review's refusals, roster and size judge its subject (interval plus files
+  owed only against the anchor). The "rate against the anchor" instruction rides the `signals` line
+  from manifest-only keys. `Entry.brought` is filled by the classifier for every entry naming a commit.
 
 **Level:** Medium. The mechanism is clear and every piece has a precedent in the code (the short-plan
 deferral, the bounded cumulative, the fix-churn diagnosis, `excused_gap_verdict`). Two things would

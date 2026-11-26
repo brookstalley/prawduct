@@ -177,8 +177,9 @@ same set in executable running order, and is the document to work from when actu
    Grants and suite runs stay in the clone that recorded them, so a release cut from another clone
    can read such a merge as `uncovered`; its reason says so. The reopen commit that bumps only the
    declared version files reads `release-bookkeeping`, also covered. Here, under `boundary_review:
-   per_pr` (the default), those lines are advice and never change its exit. Read each NOTE as work
-   no boundary review read, before it ships. A repo that declares `boundary_review: per_release`
+   per_pr` (the default), those lines are advice, with one exception: a fix tail merged unreviewed
+   while the integration branch declared `per_release` (`tail-deferred`) still refuses, since no
+   PR review read it. Read each NOTE as work no boundary review read, before it ships. A repo that declares `boundary_review: per_release`
    (this one does not) gets a refusal instead: `boundary-uncovered:` until a release batch review
    (`/prawduct:critic cumulative` on the integration branch's own checkout at its tip with a clean
    tree, where `critic-begin --mode cumulative` derives the release span; `--span release` is the

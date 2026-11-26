@@ -340,10 +340,15 @@ def paths_touch_risk_surface(prawduct_dir: Path, paths: "list[str]") -> tuple[bo
 
 def _git_lines(project_dir: Path, *args: str) -> list[str] | None:
     """Lines of one git read; ``None`` on any failure (callers decide whether
-    that fails open or closed — see module docstring)."""
+    that fails open or closed — see module docstring).
+
+    ``core.quotepath=false`` returns non-ASCII names raw: under git's default,
+    ``skills/café.md`` comes back C-quoted and matches no surface, so a
+    risk-surface change would read ``standard`` and could be granted the
+    per-release lane (fail-open)."""
     try:
         proc = subprocess.run(
-            ["git", *args],
+            ["git", "-c", "core.quotepath=false", *args],
             cwd=str(project_dir), capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=30,
         )
     except Exception:  # prawduct:allow prawduct/broad-except -- verdict degrades per the declared fail-open/closed rule, never crashes
