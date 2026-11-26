@@ -184,8 +184,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `no-subject` (what is owed changes nothing that still differs from the start); exit 3 when every
   release entry is already covered. `--force` overrides none of them, and the review round budget
   never charges it. A plain `--mode cumulative` on the integration base's own branch with HEAD at
-  its tip derives `--span release` itself (added 2026-11-26, #1232, `boundary_coverage.integration_base_tip`)
-  and says so in a note; a derived span that refuses reads `the release batch review refused
+  its tip derives `--span release` itself when the release check's policy is `boundary_review:
+  per_release` (added 2026-11-26, #1232, `boundary_coverage.integration_base_tip`,
+  `review_lane.release_policy`; under `per_pr` it stays the plain `cumulative` it was) and says so in a note; a derived span that refuses reads `the release batch review refused
   (<code>)`. Any other `--span` value, or `--span` with another mode, is exit 1),
   `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it

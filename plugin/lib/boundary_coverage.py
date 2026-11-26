@@ -1154,8 +1154,8 @@ def integration_base_tip(project_dir: Path) -> BaseTip:
     one place a release batch review can be taken and its head be a commit the
     release check walks. Two readers ask it: :func:`release_subject` refuses
     off it, and ``critic_consolidate.begin_review`` derives the release span on
-    it for a plain ``cumulative``, so the two cannot disagree about where the
-    release review runs.
+    it for a plain ``cumulative`` (under ``per_release`` only), so the two
+    cannot disagree about where the release review runs.
 
     The base is ``coverage.repo_base_branch``'s; a remote-tracking base
     (``origin/main``) is checked out as its local name, and ``HEAD`` must be

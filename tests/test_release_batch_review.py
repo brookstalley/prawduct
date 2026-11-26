@@ -647,8 +647,13 @@ class TestTheSpanIsDerivedAtTheBaseTip:
     """No model chooses the release span: `critic-begin --mode cumulative` on the
     integration base's own checkout at its tip is the release batch review, the
     one place a plain `cumulative` would review nothing (merge-base…HEAD is
-    empty) while the release check holds the release. Everywhere else a plain
-    `cumulative` is the branch's, exactly as before."""
+    empty) while the release check holds the release. Only under
+    `boundary_review: per_release`, the one policy whose release check reads it.
+    Everywhere else a plain `cumulative` is the branch's, exactly as before."""
+
+    @pytest.fixture(autouse=True)
+    def _per_release(self, repo):
+        _commit(repo, {".prawduct/project-state.yaml": "boundary_review: per_release\n"}, "per_release")
 
     @staticmethod
     def _plain(repo: Path, tmp_path: Path) -> subprocess.CompletedProcess:
@@ -666,6 +671,20 @@ class TestTheSpanIsDerivedAtTheBaseTip:
         assert m["span"] == "release", m["span"]
         assert sorted(m["files_reviewed"]) == ["src/a.py", "src/b.py", "src/direct.py"]
         assert cc.RELEASE_SPAN_DERIVED_NOTE in self._flat(proc.stderr), proc.stderr
+
+    def test_under_per_pr_it_stays_the_plain_cumulative(self, repo, tmp_path):
+        """No gate reads a release batch review under `per_pr`, so at the base's
+        tip a plain `cumulative` answers as it did before the release span
+        existed: merge-base…HEAD is empty, so it has nothing to review. No
+        release refusal, no manifest, no derived note."""
+        _commit(repo, {".prawduct/project-state.yaml": "boundary_review: per_pr\n"}, "per_pr")
+        _released(repo)
+        proc = self._plain(repo, tmp_path)
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        assert "empty diff for mode 'cumulative'" in proc.stderr, proc.stderr
+        assert "release batch review refused" not in proc.stderr
+        assert not _manifest_written(repo)
+        assert cc.RELEASE_SPAN_DERIVED_NOTE not in self._flat(proc.stdout + proc.stderr)
 
     def test_on_a_feature_branch_it_stays_the_branch_s_cumulative(self, repo, tmp_path):
         _released(repo)

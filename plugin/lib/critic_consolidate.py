@@ -127,7 +127,8 @@ STAGE_VALUES = frozenset({STAGE_INNER, STAGE_BOUNDARY})
 #: A ``cumulative``'s span: the delta since the last boundary review, or the
 #: whole bundle (``begin_review``; ``gates.boundary_frontier`` decides), or a
 #: release batch on the integration base (``critic-begin --mode cumulative`` at
-#: that base's tip derives it, as ``--span release`` asks for it: release
+#: that base's tip under ``boundary_review: per_release`` derives it, as
+#: ``--span release`` asks for it: release
 #: anchor → HEAD, or from an older owed entry's first parent, rating only the
 #: merges no boundary review read).
 SPAN_BOUNDED = "bounded"
@@ -136,8 +137,9 @@ SPAN_RELEASE = coverage_algebra.RELEASE_SPAN
 SPAN_VALUES = frozenset({SPAN_BOUNDED, SPAN_FULL, SPAN_RELEASE})
 #: Said on every dispatch whose release span was derived rather than asked for.
 RELEASE_SPAN_DERIVED_NOTE = (
-    "this checkout is the integration base at its tip, where a `cumulative` is the "
-    "release batch review (`--span release` is derived here, not needed)"
+    "this checkout is the integration base at its tip under `boundary_review: per_release`, "
+    "where a `cumulative` is the release batch review (`--span release` is derived here, "
+    "not needed)"
 )
 STAGE_OF_MODE = {
     "chunk": STAGE_INNER,
@@ -4091,7 +4093,8 @@ def begin_review(
       ``full`` token) asks for the whole bundle.
     - ``cumulative`` with ``span_request == "release"`` (``critic-begin --span
       release``, the release batch review, #1232; a ``cumulative`` asked with no
-      span derives it where ``boundary_coverage.integration_base_tip`` holds) — on the integration base's
+      span derives it where ``boundary_coverage.integration_base_tip`` holds and
+      ``review_lane.release_policy`` is ``per_release``) — on the integration base's
       own checkout at its tip, with a clean tree: base = the release anchor
       (``boundary_coverage.release_anchor``), or the first parent of the oldest
       owed entry when one sits at or before it, head = ``HEAD`` (``span: release``,
@@ -4142,16 +4145,21 @@ def begin_review(
         }
     # Derived, never chosen: a plain `cumulative` on the integration base's own
     # checkout at its tip IS the release batch review. There merge-base…HEAD is
-    # empty, so a plain one would answer exit 3 ("no review needed") while the
-    # release check still holds the release; no model has to know to pass
-    # `--span release` for the remedy that check names to reach it.
-    # The base-tip test is boundary_coverage's, the one the release subject
-    # refuses off, so the two cannot disagree about where the release review runs.
-    from . import boundary_coverage  # noqa: PLC0415 — lazy; it imports gates and the release readers
+    # empty, so a plain one reviews nothing (an empty diff, or no review needed
+    # when the last review covers HEAD) while the release check still holds the
+    # release; no model has to know to pass `--span release` for the remedy that
+    # check names to reach it. The base-tip test is boundary_coverage's, the one
+    # the release subject refuses off, so the two cannot disagree about where
+    # the release review runs. Only under `per_release` (the release check's own
+    # policy reader): under `per_pr` no gate reads a release batch review, so a
+    # derived one would be a refusal or a full review nothing uses, and the
+    # plain `cumulative` answers as it always did.
+    from . import boundary_coverage, review_lane  # noqa: PLC0415 — lazy; they import gates and the release readers
 
     span_derived = (
         mode_token == "cumulative" and span_request is None
         and boundary_coverage.integration_base_tip(project_dir).at_tip
+        and review_lane.release_policy(project_dir).per_release
     )
     if span_derived:
         span_request = SPAN_RELEASE

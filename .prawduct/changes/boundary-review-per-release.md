@@ -54,8 +54,8 @@ advice, and `check-releasability`'s exit is unchanged.
 ### Chunk 03: the release batch review, and the relax-only rule that credits it
 A release that defers boundary reviews needs a review that reads what was deferred, and a rule
 that credits it without loosening any PR gate. `/prawduct:critic cumulative` dispatches that review
-on the integration base's own checkout, at its tip, with a clean tree, where `critic-begin --mode
-cumulative` derives the release span (`--span release` is the explicit form). Its
+on the integration base's own checkout, at its tip, with a clean tree, where under `per_release`
+`critic-begin --mode cumulative` derives the release span (`--span release` is the explicit form). Its
 interval is the release anchor to HEAD (Chunk 06: or from the first parent of an owed entry
 older than the anchor). It rates the changed files of every release entry no
 boundary review covered and reads the rest of the span as `files_context`. The manifest records
