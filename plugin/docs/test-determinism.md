@@ -40,7 +40,8 @@ a test says so in the runner's configuration instead, by its id or by the shared
 with the reason; the runner then stops reporting it as a cause (testament, for one, takes an
 `[[uncacheable]]` entry with a `why` in `.testament.toml`). Declare only a read that is the test's
 subject: a test that merely starts a tool in the checkout while aiming it at a temporary repository
-is a fixture to fix (P10), not a read to decline.
+is a fixture to fix (P10), not a read to decline. Likewise a file read outside the tree and the
+test's temporary directory that is not the test's subject is fixed by reading it from one of those.
 
 ## What the review detects, and what a reviewer judges
 

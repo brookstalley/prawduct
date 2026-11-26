@@ -2,9 +2,10 @@
 
 The snapshot shape is the one testament ships (``cache_advice.write``): one file
 per project and suite, ``<project>.<suite>.json``, holding the coordinator's row as
-``row``, the project being the manifest's ``name``. Synthetic fixtures are written
-in that shape, and ``fixtures/testament_cacheability_snapshot.json`` is a real
-snapshot of this repo's, trimmed to four causes.
+``row``, the project being the manifest's ``name``, the ``tree`` the run shipped and
+a synthetic ``commit`` from testament's own store. Synthetic fixtures are written in
+that shape, and ``fixtures/testament_cacheability_snapshot.json`` is a real snapshot
+of this repo's, trimmed to four causes.
 """
 
 from __future__ import annotations
@@ -17,7 +18,13 @@ from pathlib import Path
 import pytest
 
 from lib import evidence, probe_families, testament_cache_probes as tcp
-from lib.advisory_store import ProjectState, clear_registry, compute_id, make_codebase
+from lib.advisory_store import (
+    CouldNotLook,
+    ProjectState,
+    clear_registry,
+    compute_id,
+    make_codebase,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -56,8 +63,8 @@ def cause(kind="clock_read", site="tests/conftest.py:write_scope_record", scope=
 def snapshot(repo: Path, causes: list, *, name="prawduct.unit.json", **envelope):
     body = {
         "v": 1, "project": "prawduct", "suite": "unit",
-        "generated_at": "2026-10-26T00:00:00Z", "tree": "0" * 40,
-        "commit": git(repo, "rev-parse", "HEAD"), "selection": "full",
+        "generated_at": "2026-10-26T00:00:00Z", "tree": head_tree(repo),
+        "commit": "c" * 40, "selection": "full",
         "row": {"project": "prawduct", "suite": "unit",
                 "counts": {"items": 10, "cacheable": 5, "uncacheable": 5, "declared": 0},
                 "causes": causes, "declared": [{"kind": "site", "match": "x:y",
@@ -66,6 +73,19 @@ def snapshot(repo: Path, causes: list, *, name="prawduct.unit.json", **envelope)
     }
     body.update(envelope)
     write_snapshot(body, name)
+
+
+def head_tree(repo: Path) -> str:
+    return git(repo, "rev-parse", "HEAD^{tree}")
+
+
+def dirty_tree(repo: Path) -> str:
+    """The tree a run of ``repo`` with an uncommitted edit ships: no commit's."""
+    (repo / "a.txt").write_text("uncommitted")
+    git(repo, "add", "a.txt")
+    tree = git(repo, "write-tree")
+    git(repo, "reset", "-q", "--hard")
+    return tree
 
 
 def write_snapshot(body: dict, name: str) -> None:
@@ -78,9 +98,11 @@ REAL = Path(__file__).parent / "fixtures" / "testament_cacheability_snapshot.jso
 
 
 def real_snapshot(repo: Path, **envelope) -> dict:
-    """The real snapshot, dated to ``repo``'s HEAD unless ``envelope`` says otherwise."""
+    """The real snapshot, of ``repo``'s HEAD tree unless ``envelope`` says otherwise.
+    Its ``commit`` stays the synthetic one testament wrote, which is no commit of
+    ``repo``'s, as in every real snapshot."""
     body = json.loads(REAL.read_text(encoding="utf-8"))
-    body["commit"] = git(repo, "rev-parse", "HEAD")
+    body["tree"] = head_tree(repo)
     body.update(envelope)
     write_snapshot(body, f"{body['project']}.{body['suite']}.json")
     return body
@@ -171,6 +193,15 @@ def test_a_manifest_naming_no_project_could_not_look(repo, manifest, capsys):
     assert ".testament.toml" in capsys.readouterr().err
 
 
+def test_a_manifest_without_a_name_says_testament_requires_one(repo, capsys):
+    """testament has no fallback project name (its manifest loader refuses a
+    manifest without ``name``), so the NOTE says the manifest is the problem."""
+    (repo / ".testament.toml").write_text("manifest_version = 2\n")
+    tcp.snapshot_dir().mkdir(parents=True)
+    assert run(repo) is None
+    assert "testament refuses a manifest without a name" in capsys.readouterr().err
+
+
 def test_an_envelope_without_a_row_could_not_look(repo, capsys):
     """The provisional #287 shape (``rows``, a list) never shipped; a file holding
     it is not a snapshot, and says so rather than reading as nothing to report."""
@@ -187,10 +218,11 @@ def test_a_directory_with_no_snapshot_of_this_project_is_silent(repo):
 @pytest.mark.parametrize("envelope", [
     {"selection": "narrowed"},
     {"v": 2},
-    {"commit": "f" * 40},
+    {"tree": "f" * 40},
+    {"tree": None},
 ])
 def test_a_snapshot_not_about_this_checkout_could_not_look(repo, envelope, capsys):
-    """Narrowed only, an unknown version, or a commit outside this branch: the
+    """Narrowed only, an unknown version, or a tree outside this branch: the
     probe could not look (None), so an open advisory stays open rather than
     resolving on data that is not this checkout's — and says why, or the owner
     reads silence as "nothing uncacheable"."""
@@ -308,7 +340,7 @@ def test_a_current_full_real_snapshot_fires_with_its_remedies(repo):
     ))
     assert len(candidate.evidence) == 4
     assert candidate.trigger_summary.startswith(
-        "testament cannot cache some of suite `default`'s results, and 4 cause(s)"
+        "testament cannot cache some of suite `default`'s results, and fixing 4 cause(s)"
     )
     action = candidate.owner_action
     for kind in ("subprocess", "entropy", "file", "clock"):
@@ -322,10 +354,125 @@ def test_a_narrowed_real_snapshot_does_not_fire(repo, capsys):
     assert "only a narrowed run" in capsys.readouterr().err
 
 
-def test_a_real_snapshot_of_a_commit_outside_this_history_does_not_fire(repo, capsys):
-    real_snapshot(repo, commit=json.loads(REAL.read_text(encoding="utf-8"))["commit"])
+def test_a_real_snapshot_of_a_tree_outside_this_history_does_not_fire(repo, capsys):
+    real_snapshot(repo, tree=json.loads(REAL.read_text(encoding="utf-8"))["tree"])
     assert run(repo) is None
-    assert "is not in this branch's history" in capsys.readouterr().err
+    assert "no commit of this branch's recent history" in capsys.readouterr().err
+
+
+def test_a_real_snapshots_commit_is_testaments_not_this_repos(repo):
+    """The shipped ``commit`` is a synthetic commit in testament's store, never an
+    object of this repo, so freshness cannot ride on it: the real snapshot, with
+    its own commit untouched, fires on its tree alone."""
+    body = real_snapshot(repo)
+    rc, _out, _err = evidence.run_git(repo, "cat-file", "-e", body["commit"])
+    assert rc != 0
+    assert len(run(repo)) == 1
+
+
+# -- Freshness: the tree, not the commit ----------------------------------------
+
+
+def test_a_dirty_tree_run_at_an_ancestor_commit_does_not_count(repo, capsys):
+    """A sibling worktree at this branch's base, with work in progress, writes a
+    snapshot whose tree is no commit's. It fires nothing and resolves nothing."""
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "b.txt").write_text("b")
+    git(repo, "add", "b.txt")
+    git(repo, "commit", "-q", "-m", "b")
+    git(repo, "checkout", "-q", base)
+    tree = dirty_tree(repo)
+    git(repo, "checkout", "-q", "-")
+    snapshot(repo, [cause()], tree=tree)
+    assert run(repo) is None
+    assert f"of tree {tree[:12]!r}" in capsys.readouterr().err
+
+
+def test_a_clean_run_at_an_ancestor_commit_counts(repo):
+    """The stated limit: a clean run of an older commit of this branch reports the
+    causes as they were there."""
+    old = head_tree(repo)
+    (repo / "b.txt").write_text("b")
+    git(repo, "add", "b.txt")
+    git(repo, "commit", "-q", "-m", "b")
+    snapshot(repo, [cause()], tree=old)
+    assert len(run(repo)) == 1
+
+
+def test_one_off_branch_suite_leaves_the_current_one_reporting(repo, capsys):
+    """Each envelope is judged alone. The current suite still reports, marked
+    could-not-look so the skipped suite's open advisory does not resolve."""
+    snapshot(repo, [cause()], name="prawduct.unit.json")
+    snapshot(repo, [cause(site="tests/slow.py:f")], name="prawduct.slow.json",
+             suite="slow", tree=dirty_tree(repo))
+    result = run(repo)
+    assert isinstance(result, CouldNotLook)
+    (candidate,) = result
+    assert candidate.evidence == ("unit clock_read tests/conftest.py:write_scope_record process",)
+    assert "suite `slow`" in capsys.readouterr().err
+
+
+def test_with_every_envelope_usable_the_answer_is_a_plain_list(repo):
+    snapshot(repo, [cause()], name="prawduct.unit.json")
+    snapshot(repo, [cause(site="tests/slow.py:f")], name="prawduct.slow.json", suite="slow")
+    result = run(repo)
+    assert not isinstance(result, CouldNotLook)
+    assert len(result) == 2
+
+
+# -- Which files are this project's -------------------------------------------
+
+
+def test_another_projects_malformed_file_never_disables_this_one(repo, capsys):
+    """``prawduct.x``'s file matches ``prawduct``'s name prefix; whatever its
+    shape, its ``project`` says it is not this one's."""
+    snapshot(repo, [cause()])
+    write_snapshot({"v": 9, "project": "prawduct.x", "suite": "unit"}, "prawduct.x.unit.json")
+    result = run(repo)
+    assert not isinstance(result, CouldNotLook)
+    assert len(result) == 1
+    assert "prawduct.x" not in capsys.readouterr().err
+
+
+def test_this_projects_unknown_version_says_version_not_shape(repo, capsys):
+    write_snapshot({"v": 2, "project": "prawduct", "suite": "unit"}, "prawduct.unit.json")
+    assert run(repo) is None
+    err = capsys.readouterr().err
+    assert "snapshot version 2 is not one this reader knows" in err
+    assert "not a cacheability snapshot" not in err
+
+
+def test_a_snapshot_is_found_by_its_content_not_its_filename(repo):
+    snapshot(repo, [cause()], name="My App.unit.json")
+    assert len(run(repo)) == 1
+
+
+# -- Ranking: what fixing a cause frees ------------------------------------------
+
+
+def test_the_summary_ranks_by_frees_not_alone(repo):
+    """``alone`` and ``frees`` disagree here: ranked by ``alone`` the summary would
+    lead with the pool cause and drop the joint one. Ranked by ``frees`` it leads
+    with the clock, keeps the joint cause whose ``alone`` is 0, and drops the one
+    whose fix, after the others, frees nothing."""
+    snapshot(repo, [
+        cause(kind="subprocess", site="tests/pool.py:run", scope="test", alone=20, frees=20),
+        cause(kind="clock", site="lib/host.py:scan", scope="test", alone=5, frees=33),
+        cause(kind="entropy", site="lib/ids.py:mint", scope="test", alone=0, frees=12),
+        cause(kind="file", site="lib/core.py:read", scope="test", alone=9, frees=0),
+    ])
+    (candidate,) = run(repo)
+    summary = candidate.trigger_summary
+    assert summary.index("clock at lib/host.py:scan") < summary.index("subprocess at")
+    assert summary.index("subprocess at") < summary.index("entropy at lib/ids.py:mint")
+    assert "fixing it frees 33 test(s)" in summary
+    assert "lib/core.py:read" not in summary
+    assert candidate.evidence == (
+        "unit clock lib/host.py:scan test",
+        "unit entropy lib/ids.py:mint test",
+        "unit subprocess tests/pool.py:run test",
+    )
+    assert candidate.owner_action.index("clock (") < candidate.owner_action.index("subprocess (")
 
 
 def test_a_real_snapshot_of_an_unknown_version_could_not_be_read(repo, capsys):

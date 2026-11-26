@@ -23,18 +23,35 @@ derives the pattern rows from the patterns section and pins the count the prose 
 
 ### The advisory
 `plugin/lib/testament_cache_probes.py` maps each cause kind testament reports to its pattern and a
-one-line remedy (`REMEDIES`), in `owner_action`. It also says to fix the cause that frees the most
-tests first. A kind not in the map gets a pointer to the page and no guess. The evidence and
-`PROBE_VERSION` are unchanged, so the advisory's id is unchanged and a dismissal still holds.
+one-line remedy (`REMEDIES`), in `owner_action`. A kind not in the map gets a pointer to the page
+and no guess. The `file` kind, a read outside the tree and temp, points at the page's "Declaring a
+test uncacheable on purpose" section, which now says to read such a file from the tree or the
+test's temporary directory when it is not the test's subject.
+
+The advisory says to fix first the cause that frees the most tests, and the summary now leads with
+it. Causes are ranked by testament's `frees` (what fixing a cause frees once the causes ranked
+before it are fixed), or by `alone` from a coordinator that sends no `frees`. A cause is raised
+when that count is above 0, so a cause that never blocks a test alone but frees some once others
+are fixed is raised now too. The evidence format and `PROBE_VERSION` are unchanged. The advisory
+never fired before this change (below), so no dismissal exists to reset.
 
 **Before this change the advisory never fired.** The probe read a provisional envelope (`root`,
 a `rows` list) that testament never shipped. testament writes `<project>.<suite>.json` with a
 single `row` and no `root`, so every real snapshot read as nothing to report. The probe now reads
-the shipped shape. It takes the project from `.testament.toml`'s `name`, decides an envelope is
-this branch's by its `commit` being an ancestor of HEAD, and treats a file without a `row` as
-unreadable rather than as empty. The provisional reader is gone. One test fixture,
+the shipped shape. It takes the project from `.testament.toml`'s `name`, which testament requires,
+and finds this project's snapshots by the `project` each file names, not by its filename.
+
+**A snapshot counts only when its `tree` is the tree of one of HEAD's last 500 commits.** The
+envelope's `commit` is a synthetic commit in testament's own store, never one of the repo's, so it
+cannot place a run on a branch. The `tree` is the worktree content the run shipped. It equals a
+commit's tree only when the run was of that commit with nothing uncommitted, so a dirty-tree run,
+perhaps a sibling worktree's work in progress, is skipped. Each snapshot is judged alone. One that
+is skipped (narrowed only, an unknown version, unreadable, or not of this branch) is named on
+stderr. The other suites' current snapshots keep reporting, but no open advisory resolves on that
+sync. The probe reports "could not look" only when none of the project's snapshots is usable. Another
+project's file, whatever its shape, never affects this one. One test fixture,
 `tests/fixtures/testament_cacheability_snapshot.json`, is a real snapshot of this repo trimmed to
-four causes, and it drives the advisory end to end.
+four causes, and it drives the advisory end to end with its own synthetic commit.
 
 ## Consumer note
 If your repo runs its tests through testament, the uncacheable-tests advisory now actually
@@ -43,3 +60,8 @@ wrote. For each cause it gives the remedy pattern in prawduct's `docs/test-deter
 page now has three more patterns (P9 to P11: run your own CLI in-process in the heavy tests, start
 tool children through one isolating and dating helper, give the clock and randomness one
 replaceable owner) and a section on declaring a test uncacheable on purpose.
+
+The advisory reads only a snapshot of a clean run of a commit on your branch. After a run with
+uncommitted changes, it skips that suite until the suite runs on a clean commit, and it says so at
+session start. A clean run of an older commit on your branch still counts, and it reports the causes
+as they were at that commit, not as they are at HEAD.
