@@ -660,3 +660,6 @@ and a confirmation before an irreversible, outward-facing act the person asked f
 3. An issue on testament proposes a `testament guide cacheable` page, its exact text shown to the owner before it
    is posted.
    **2026-11-26, later:** "yes post" — filed as brookstalley/testament#1013.
+
+**2026-11-26 (later).** "yes PR and merge" — PR #1255 (`fix/critic-good-faith-severity` → `develop`, the Critic's good-faith
+severity cap) is merged.
