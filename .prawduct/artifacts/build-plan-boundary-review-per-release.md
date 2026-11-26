@@ -143,11 +143,10 @@ the composition over all facts also `covered`, with wave 1's three inferences
   base branch with a new `critic-begin --span release` interval: release anchor tree → HEAD tree,
   subject = the judgeable files of every not-covered entry, context = the rest of the span
   (`files_context`, the bounded-cumulative mechanism). Its fact is never a `review_edges` edge
-  (its subject is partial), so it cannot turn any PR gate verdict toward covered. *Inferred at
-  Chunk 03 (2026-11-26):* its blocking findings still stand at the two trees it read, as every
-  review's do, so a branch standing on those trees reads `blocked` until a resolution (recorded
-  anywhere) clears them. Hiding release-span facts from every gate instead would also hide the
-  blocker from the verify-resolutions pass that fixes it on the base.
+  (its subject is partial), so it cannot turn any PR gate verdict toward covered. Its blocking
+  findings gate the release check, and any span that ends at the tree it reviewed, which is the
+  base there and the verify pass that fixes them. They do not gate a feature branch that merely
+  forked from that tree (decision M1 below).
 - *Inferred:* the relax-only batch rule (design §3): a not-covered merge `M` reads `batch-covered`
   when a boundary-stage review `B` brackets it on the first-parent line, `M`'s judgeable files that
   still differ from the anchor are within `B.files_reviewed`, and composition over all facts at
@@ -180,8 +179,9 @@ The default (`per_pr`) changes no verdict, exit or inference anywhere: every chu
 a control test on a repo without the key.
 
 **Tradeoffs accepted:**
-- A squash-merging repo reads every merge `direct`, so under per_release it would need a batch
-  review every release. Revisit if a squashing consumer opts in; `/prawduct:doctor` could warn.
+- A squash merge reads `direct`, so under per_release it is owed to the release batch review
+  unless its PR review spans exactly the trees it landed (decision M6). Revisit if a squashing
+  consumer opts in; `/prawduct:doctor` could warn.
 - The deferral is file-level evidence (`diagnose_fix_churn`'s stated bound): it cannot tell a fix
   from new work written into a named file. It is a deferral, so a reviewer still reads the tail at
   the release; that is what makes the file-level bound acceptable here when it was refused as a grant.
@@ -189,7 +189,41 @@ a control test on a repo without the key.
   the walk (the safe direction), but under a gate a wide walk can hold a release for old work.
   Nearest-wins keeps A ahead of B here.
 
-**Decisions made mid-build:** *(appended while building)*
+**Decisions made mid-build:** *(appended while building)* Each one is inferred on the owner's
+behalf and is the owner's to veto. The Chunk 06 boundary cumulative (rev-20261126T024337Z-72d8857e,
+W9) found M2 to M6 recorded only in docstrings.
+
+- **M1, release-span blockers (2026-11-26; reverses Chunk 03's inference).** A release batch
+  review's BLOCKING finding gates the release check and any span ending at the tree it reviewed.
+  It does not gate a feature branch forked from that tree. *Why:* under Chunk 03's reading, every
+  branch cut from the base tip read `blocked` for code it never touched (native review finding),
+  and the verify pass that clears the blocker composes to that same tree, so narrowing the reading
+  hides nothing from it. Lives in `coverage_algebra._counts_at`.
+- **M2, the round budget never charges a release batch review** (`critic_consolidate._cadence_round_ids`).
+  *Why:* it is the release's own step, not a round on any scope. Charging it would leave `--force`
+  as the only route to a held per_release release. **This widens the owner's 2026-11-23 ruling
+  (item 2) and needs the owner's word.** Until then, the `review_round_budget` key doc is left saying
+  what that ruling says.
+- **M3, the release policy falls back to the checkout's declaration.** The checkout's `per_release`
+  stands when the integration tip cannot be read, or when the read fails. A failed read then
+  refuses as unevaluable rather than passing. *Why:* for a release check `per_release` is the
+  stricter reading. The architecture disposition's "unreadable reads per_pr" is the PR side's rule.
+- **M4, the release span can start before the anchor,** at the first parent of the oldest owed entry
+  when one sits at or before the anchor (a scope that a pruned release withheld). *Why:* a review
+  starting at the anchor could never bracket that entry, so the release would be held forever.
+- **M5, the batch rule credits every `unknown` merge that names a parent,** octopus merges,
+  unrelated-history merges and undiffable merges included. *Why:* what the merge brought onto the
+  base is what the release review rates. Without this, the gate's remedy never terminates (W1).
+- **M6, a squash merge reads `batch-covered`** when its PR review spans exactly the trees it landed.
+  *Why:* that review read everything the squash brought. This supersedes the original tradeoff,
+  which said every squash would need a release batch review.
+- **M7, a branch may opt OUT of per_release at its tip, never in.** A merged branch is judged
+  per_release only if both its merge-base and its tip declare it
+  (`review_lane.boundary_review_policy_of_merge`). *Why:* a governance change cannot supply its own
+  authority, but tightening needs none.
+- **M8, the release op accepts a recorded transfer grant from either gate,** the PR gate or the
+  Stop gate, but only for exactly the merged span. *Why:* when both gates granted the same span,
+  the Stop gate's record is the only one.
 
 **Level:** Medium. The mechanism is clear and every piece has a precedent in the code (the short-plan
 deferral, the bounded cumulative, the fix-churn diagnosis, `excused_gap_verdict`). Two things would
