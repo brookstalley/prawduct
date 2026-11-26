@@ -39,14 +39,14 @@ classification, **and unmarked prose recording a decision** bind; descriptions t
 syncing it to code silently unmake a decision?). Departure, unruled edge-work, normative change (even
 doc-only), or norm birth without a recorded vetoable decision → Goal 3 **BLOCKING** where the
 product has adopted norms (any `## Direction` section, preferences norm row, or recorded
-classification); with none, an observation naming the capture path. Tell: amending a norm to match your own code. Correctness shapes the recommendation, never the need. Stale registry → an observation:
+classification); with none, an observation naming the capture path. Tell: amending a norm to match your own code; never fix a divergence by editing the artifact. Correctness shapes the recommendation, never the need. Stale registry → an observation:
 `/prawduct:doctor`; never a downgrade.
 
 **The manifest's `prior_dispositions` lists findings already accepted or filed in these files, with
 reasons. Do not re-raise one absent material change in its cited files.** `truncated`
 = older answers dropped; `unavailable` = the join failed, so you know nothing.
 
-**Record checks are already answered and recorded** — `critic-consolidate` records every result of
+**Record checks are already answered and recorded**, chunk deliverables included — `critic-consolidate` records every result of
 the manifest's `record_lint` in the review at its own severity for this stage. Never raise, restate,
 re-derive or recount one. `chunk_graded`/`plan_graded` name the subject; `null` there, or in any
 `counts` entry, means **no answer** — not a zero.
@@ -71,7 +71,6 @@ re-derive or recount one. `chunk_graded`/`plan_graded` name the subject; `null` 
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
 - **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
 - **Goals present** (`methodology/planning.md`; older plans: Requirements Confidence) — response taken, inferences marked, a Level. Missing, or Medium/Low without what would raise it → **WARNING**.
-- Record checks, chunk deliverables included, come from `record_lint` above.
 - **Behavioral choices**: workflow features configurable via `project-preferences.md` (safe default); hardcoded when two paths reasonable → **WARNING**.
 - For user-visible changes: product verified beyond tests → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.
@@ -86,7 +85,6 @@ re-derive or recount one. `chunk_graded`/`plan_graded` name the subject; `null` 
 
 - No unlisted dependencies → **BLOCKING**.
 - No undocumented architectural decisions → **BLOCKING**.
-- Norm departures → **BLOCKING** per Normative authority above; never fix divergence by editing the artifact.
 - No extra functionality beyond what was planned → **WARNING**.
 - No broad exception handling without logging/re-raising → **WARNING**. Waiver pragmas (`prawduct:allow <scope>/<rule-id> -- reason`, legacy `prawduct:ok-broad-except`) are reviewed-but-verifiable: the reason must be present and genuine — for `broad-except`, the catch logs with context at a real boundary. "Intentional," not "exempt"; a reason-less or defect-masking waiver is a finding.
 - **Rationale-vs-diff fit (`Type: trivial` only)**: compare the `**Trivial because:**` claim against the diff. Mismatch (claim "rename", diff adds defs) → **BLOCKING**. Missing or low-information rationale ("small change") → **WARNING**.
@@ -95,7 +93,8 @@ re-derive or recount one. `chunk_graded`/`plan_graded` name the subject; `null` 
 
 - **BLOCKING** — must fix before proceeding.
 - **WARNING** — true *and* worth the builder's time. Name the consequence: *who does what wrong because of this?* No answer → an observation. Confidence is not importance.
-- **Observation** — never a finding, at any stage, and owed no disposition: genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is an observation unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly. That covers comment, docstring and doc wording inside a subject file, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
+- **Observation** — never a finding, at any stage, and owed no disposition: genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is an observation unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly. That covers comment, docstring and doc wording inside a subject file, counts and phrasing alike. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
+- **Good faith caps severity**: a finding whose failure needs a person acting in bad faith (hiding work past a gate, rewriting a version file into a command) or a model ignoring its instructions (invoking a skill unasked), or whose fix needs a list to close an open set (every spelling a prefix grant reaches), is an observation at most, whatever its goal says; a crash, git error, stale state, untrusted input or competent mistake keeps its severity — a careful person's misread ambiguous step, forgotten step, or wrong input the code took silently.
 - **A finding's subject is never another finding** — restating one or naming its consequence folds in or is dropped. Test on your own partial: is a finding its subject?
 - **Prose remedies** — stale prose gets one of three: delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 
