@@ -625,3 +625,11 @@ command. Janitor's `disable-model-invocation: true` (85753fda) is lifted by remo
 necessary (an interpreter pre-approved for a model-invoked skill reaches every op an allow-list withholds), not by
 exempting it; doctor runs the repairs it offers on the owner's yes instead of handing the command to the owner.
 Owner judgments (norm ratification, which plans are done, delegation policy) stay the owner's.
+
+**2026-11-26 (design stance).** "trying to close an open set makes no sense. Don't do that. We have to assume good faith
+by humans and competence by models." Defenses whose premise is a human acting in bad faith (bypassing a gate to hide
+work, rewriting a version file into a command) or a model ignoring its instructions (self-invoking a skill to reach an
+op it was not asked to run) are not built, and an enumerated list is never extended toward completeness of an open set
+(every spelling a prefix grant can reach). `allowed-tools` exists to cut prompts for a competent model; it is not a
+security boundary. What stays: guards against accidents and real failure modes (crashes, git errors, stale state),
+and a confirmation before an irreversible, outward-facing act the person asked for.
