@@ -641,3 +641,6 @@ tag, detached, rather than onto `develop`.
    as a recorded reach exemption (`_REACH_EXEMPT` in `tests/test_backlog_skill_metadata.py`, branch
    `fix/agent-runnable-doctor-janitor`): the agent is dispatched only by the Critic under a no-execution contract,
    and narrowing it means redesigning the `git -C <dir>` form its own tests require.
+
+**2026-11-26 (later).** "yes to all recs" — PR #1254 (`fix/agent-runnable-doctor-janitor` → `develop`, agents can run doctor
+and janitor; grant-reach rails retired) is merged.
