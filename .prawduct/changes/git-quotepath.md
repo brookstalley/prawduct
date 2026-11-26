@@ -47,9 +47,10 @@ spellings, `--porcelain`). It holds four rules:
 - A function makes no more such reads without `-z` than it uses decoders, or it is listed with the
   reason its reads use no name: an emptiness or exit-code check, a fixed ASCII pathspec, or git
   printing the name raw.
-- No name read, and no diff read for its headers, goes through a runner that trims git's output:
-  `evidence.run_git` without `strip=False`, `gitstate._git_text`, or a module's own wrapper around
-  one, which the lint finds from the code rather than from a list. Trimming takes the status
+- No name read, and no diff read that pins `--dst-prefix=` for its headers, goes through a runner
+  that trims git's output: `evidence.run_git` without `strip=False`, `gitstate._git_text`, or a
+  module's own wrapper that forwards to one, which the lint finds from the code (one level of
+  wrapping) rather than from a list. Trimming takes the status
   column's leading space off the first porcelain line, and a leading space off a first name.
 - Every function that parses `diff --git` headers reads them through `gitstate.diff_header_path`.
 - Every reader of `gitstate.git_status_output`'s text decodes, or is listed with why it needs no
