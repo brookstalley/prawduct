@@ -304,6 +304,8 @@ def diagnose_fix_churn(
     base_tree: str,
     merge_base: str,
     verdict_fn,
+    *,
+    tip: str = "HEAD",
 ) -> "dict | None":
     """Detect the gap a builder dug for themselves: **the whole uncovered span**
     is a review of this branch, plus edits confined to files that review's own
@@ -375,7 +377,14 @@ def diagnose_fix_churn(
     manufactures the false success it was meant to prevent."* ``None`` means
     the diagnosis ran and this is not churn; ``unavailable`` means it could not
     run, which the caller says out loud so a control that never fires can be
-    told apart from one that never ran. Never raises — *given* its arguments:
+    told apart from one that never ran.
+
+    ``tip`` is the commit the span ends at, ``HEAD`` for a gate. The release's
+    boundary-coverage op asks about a branch already merged, whose tip is the
+    merge's second parent (``gates.fix_tail_deferral``): the lineage filters
+    then place the anchor on THAT branch, between the merge-base and its tip.
+
+    Never raises — *given* its arguments:
     ``verdict_fn`` is required, deliberately, so that omitting it is a
     ``TypeError`` at the call site rather than the silent slow path this
     diagnosis cannot afford (see the comment at its call).
@@ -401,7 +410,7 @@ def diagnose_fix_churn(
         if not fact_head_tree or not head_commit or fact_head_tree == head_tree:
             continue
         anc_rc, _, anc_err = evidence.run_git(
-            project_dir, "merge-base", "--is-ancestor", head_commit, "HEAD"
+            project_dir, "merge-base", "--is-ancestor", head_commit, tip
         )
         if anc_rc not in (0, 1):
             # rc 1 is a clean "not an ancestor" — another branch's fact, and
@@ -422,7 +431,7 @@ def diagnose_fix_churn(
         if mb_rc == 1 or head_commit.startswith(merge_base) or merge_base.startswith(head_commit):
             continue
         rc, distance, err = evidence.run_git(
-            project_dir, "rev-list", "--count", f"{head_commit}..HEAD"
+            project_dir, "rev-list", "--count", f"{head_commit}..{tip}"
         )
         if rc != 0 or not distance.isdigit():
             degraded = degraded or f"distance to HEAD unresolvable ({err.strip()[:80]})"

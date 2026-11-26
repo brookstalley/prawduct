@@ -624,7 +624,10 @@ def _fresh_cumulative_covers_head(prawduct_dir: Path, project_dir: Path) -> bool
 def _branch_already_covered(project_dir: Path, read: "dict | None") -> bool:
     """True when the PR gate's own answer (:func:`gates.branch_coverage_verdict`)
     is ``covered`` or ``transferred`` — so naming a ``cumulative`` would buy a
-    review the gate does not need.
+    review the gate does not need. ``deferred`` (a fix tail owed to the release
+    check under ``per_release``, :func:`gates.fix_tail_deferral`) counts too: it
+    is not coverage, but the gate passes, and the review the tail owes is the
+    release batch review, not a ``cumulative`` here.
 
     The findings cache cannot answer this: it holds one review, so after a
     cumulative and a clean verify pass it holds the verify, and a clone whose
@@ -635,7 +638,7 @@ def _branch_already_covered(project_dir: Path, read: "dict | None") -> bool:
     from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
     answer = gates.branch_coverage_verdict(project_dir, read=read)
-    return answer.get("status") in ("covered", "transferred")
+    return answer.get("status") in ("covered", "transferred", "deferred")
 
 
 class PlanProgress(NamedTuple):

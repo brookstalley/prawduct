@@ -3010,6 +3010,43 @@ def session_uncovered_cause(project_dir: Path) -> str:
     return coverage.format_uncovered_cause(explained, gate="stop")
 
 
+def session_fix_tail_deferral(
+    project_dir: Path, why: "list[str] | None" = None
+) -> "dict | None":
+    """:func:`fix_tail_deferral` asked for the Stop gate: the span is the PR
+    gate's with the working tree in place of HEAD's tree, as
+    :func:`_merge_base_verdict`'s is, so a tail the PR gate would defer does not
+    block session end, and uncommitted work outside the named files does.
+
+    Asked only once :func:`session_review_verdict` reads ``uncovered``, never
+    inside it: the session-start briefing reads that verdict too. None when it
+    does not defer or anything could not be read; ``why`` gets the predicate's
+    could-not-evaluate sentence (:func:`fix_tail_deferral`)."""
+    read = evidence.read_facts(project_dir)
+    if _store_precheck(read) is not None:
+        return None
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return None
+    capture = evidence.capture_tree(project_dir)
+    if capture.get("status") != "ok" or not capture.get("tree"):
+        return None
+    diff_fn, key_fn = _cached_diff_fn(project_dir), _tree_key_fn(project_dir)
+
+    def verdict_fn(f: list[dict], base: str, tgt: str) -> dict:
+        return coverage_algebra.coverage_verdict(f, base, tgt, diff_fn, key_fn)
+
+    facts = read.get("facts", [])
+    # The span must not compose, or there is nothing to defer: the session gate
+    # can read uncovered over a span the merge-base span covers or blocks.
+    if verdict_fn(facts, resolved["tree"], capture["tree"])["status"] != "uncovered":
+        return None
+    return fix_tail_deferral(
+        project_dir, facts, resolved["tree"], capture["tree"], resolved["merge_base"], verdict_fn,
+        why=why,
+    )
+
+
 def _merge_base_verdict(
     project_dir: Path,
     facts: list[dict],
@@ -3952,6 +3989,13 @@ def check_cumulative_critic(project_dir: Path) -> int:
     Any unverifiable → no transfer and the remedy above stands unchanged,
     because authority fails closed.
 
+    A second, after the transfer and only under ``boundary_review: per_release``:
+    a blocker-free fix tail is **deferred** to the release check
+    (:func:`fix_tail_deferral`) → exit 0, ``satisfied (fix tail deferred to the
+    release)`` on stdout and a ``NOTE:`` on stderr naming the review, the tail's
+    files and the release check that owes them a read. Never for a BLOCKING
+    finding, and never coverage.
+
     Composed verdicts are memoized across calls (:mod:`verdict_cache`), because
     the gate is polled several times a session and a cold verdict pays for its
     composition and for every tree key the clone has not memoized yet. The wrapper exists to make the flush unconditional: the body has
@@ -3984,6 +4028,142 @@ def check_cumulative_critic(project_dir: Path) -> int:
                 "the next call. The verdict itself is unaffected.",
                 file=sys.stderr,
             )
+
+
+def fix_tail_deferral(
+    project_dir: Path,
+    facts: "list[dict]",
+    base_tree: str,
+    tip_tree: str,
+    merge_base: str,
+    verdict_fn,
+    *,
+    tip: str = "HEAD",
+    why: "list[str] | None" = None,
+) -> "dict | None":
+    """May the uncovered span ``base_tree`` → ``tip_tree`` merge now, its fix
+    tail owed to the release check rather than to a verify round? (#1222, #1232
+    decisions 1 and 5.) The one predicate: the PR gate (:func:`_branch_coverage`)
+    and the Stop gate ask it of a live branch (``tip`` is ``HEAD``; the Stop
+    gate's ``tip_tree`` is the working tree), and the release's
+    boundary-coverage op asks it of a merged branch (``tip`` is the merge's
+    second parent), so all three read one span one way.
+
+    A DEFERRAL, never coverage: nothing composes over the tail, and the release
+    check reads it not covered (``tail-deferred``) until a release batch review
+    has read it. Every condition must hold, and each is asked here:
+
+    1. **The policy is ``per_release``**, read where a governance change cannot
+       supply its own authority: for a live branch
+       :func:`review_lane.boundary_review_policy` (the merge-base and the
+       working tree); for a merged one, both the merge-base and the tip.
+    2. **The tail is fix churn** by :func:`coverage.diagnose_fix_churn`: an
+       anchor review taken on this branch after the merge-base, coverage
+       composing base → anchor with no blocker, and every judgeable file of the
+       tail named by that review's findings (file-level evidence, which is why
+       this defers and never grants).
+    3. **No BLOCKING finding stands on the branch.** No review whose head tree
+       is a tree of the branch (merge-base..tip, or ``tip_tree``) carries an
+       unresolved blocker. Condition 2 already refuses a blocked anchor or a
+       blocked prefix; this one also refuses a blocker recorded by a review the
+       composition never walked (one at the tip itself, say), because a
+       BLOCKING finding never defers.
+    4. **No tail path is a risk surface** (:func:`risk.paths_touch_risk_surface`,
+       every path the tail changes, judgeable or not): a tail on a risk surface
+       still buys its verify round.
+
+    Returns None when it does not defer, including whenever something could not
+    be read (a relaxation that cannot be evaluated relaxes nothing). Otherwise
+    ``{"fact_id", "files" (the tail's judgeable files), "path" (the review ids
+    composing base → anchor, with the anchor), "warning", "note"}``.
+
+    Never raises: it sits on the PR gate's and inference's path, which must
+    answer when a relaxation cannot be evaluated. A crash is None, and a caller
+    that passes ``why`` gets one sentence saying so, so it can say the deferral
+    never got a look rather than read as "not a fix tail".
+    """
+    try:
+        return _fix_tail_deferral(
+            project_dir, facts, base_tree, tip_tree, merge_base, verdict_fn, tip
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a relaxation that cannot be evaluated relaxes nothing
+        if why is not None:
+            why.append(f"the fix-tail deferral could not be evaluated ({type(exc).__name__}: {exc})")
+        return None
+
+
+def _fix_tail_deferral(project_dir, facts, base_tree, tip_tree, merge_base, verdict_fn, tip):
+    """:func:`fix_tail_deferral`'s body, which may raise; see it for the contract."""
+    from . import review_lane, risk  # noqa: PLC0415 — lazy: only a per_release repo reaches past condition 1
+
+    if tip == "HEAD":
+        if not review_lane.boundary_review_policy(project_dir).per_release:
+            return None
+    elif not (
+        review_lane.boundary_review_policy_at(project_dir, merge_base).per_release
+        and review_lane.boundary_review_policy_at(project_dir, tip).per_release
+    ):
+        return None
+
+    churn = coverage.diagnose_fix_churn(
+        project_dir, facts, tip_tree, base_tree, merge_base, verdict_fn, tip=tip
+    )
+    if churn is None or churn.get("status") != "churn":
+        return None
+    anchor = next(
+        (f for f in facts if f.get("kind") == "review" and f.get("id") == churn["fact_id"]),
+        None,
+    )
+    anchor_tree = ((anchor or {}).get("body") or {}).get("head_tree")
+    if not anchor_tree:
+        return None
+
+    rc, trees, _err = evidence.run_git(project_dir, "log", "--format=%T", f"{merge_base}..{tip}")
+    if rc != 0:
+        return None
+    branch_trees = set(trees.split()) | {tip_tree}
+    resolved = coverage_algebra.resolution_index(facts)
+    for fact in facts:
+        if fact.get("kind") != "review":
+            continue
+        if ((fact.get("body") or {}).get("head_tree")) not in branch_trees:
+            continue
+        if coverage_algebra.unresolved_blocking(fact, resolved):
+            return None
+
+    tail = evidence.tree_diff(project_dir, anchor_tree, tip_tree)
+    if tail is None:
+        return None
+    touched, _why = risk.paths_touch_risk_surface(gitstate.get_prawduct_dir(project_dir), tail)
+    if touched:
+        return None
+
+    upstream = verdict_fn(facts, base_tree, anchor_tree)
+    path = [s["id"] for s in upstream.get("path") or [] if s.get("kind") == "review"]
+    return {
+        "fact_id": churn["fact_id"],
+        "files": churn["delta_files"],
+        "path": path + ([churn["fact_id"]] if churn["fact_id"] not in path else []),
+        "warning": churn["warning"],
+        "note": churn["note"],
+    }
+
+
+def fix_tail_deferral_note(deferral: dict) -> str:
+    """The sentence both gates print when :func:`fix_tail_deferral` defers: the
+    review, the tail's files, and the release check that now owes them a read.
+    One home, so the PR gate and the Stop gate cannot describe one deferral two
+    ways."""
+    files = deferral["files"]
+    shown = ", ".join(files[:4]) + (f" (+{len(files) - 4} more)" if len(files) > 4 else "")
+    return (
+        f"boundary_review is per_release, so this fix tail is DEFERRED to the "
+        f"release, not covered: no review has read {shown} since review "
+        f"{deferral['fact_id']} ({deferral['warning']} warning + {deferral['note']} "
+        f"note finding(s), 0 unresolved BLOCKING). The release check "
+        f"(`prawduct-hook check-boundary-coverage`) reads it `tail-deferred` "
+        f"until a release batch review (`critic-begin --span release`) has read it."
+    )
 
 
 def branch_coverage_verdict(
@@ -4047,8 +4227,15 @@ def _branch_coverage(
     - ``blocked`` — a path composes but carries unresolved BLOCKING findings.
     - ``transferred`` — uncovered by composition, granted by the base-advance
       transfer; ``transfer`` and ``tests_reason`` say what vouched.
-    - ``uncovered`` — nothing composes and no transfer holds. ``transfer_stale``
-      is the near-miss reason when byte identity held and the suite did not.
+    - ``deferred`` — uncovered by composition, no transfer, and the fix tail
+      after a blocker-free review is deferred to the release check
+      (:func:`fix_tail_deferral`, per_release only). Not coverage: the gate
+      passes, and ``deferral`` names the review and the tail's files a release
+      batch review owes a read. A reader that does not know this status must
+      not read it as covered.
+    - ``uncovered`` — nothing composes, no transfer holds and nothing defers.
+      ``transfer_stale`` is the near-miss reason when byte identity held and
+      the suite did not.
 
     Keys prefixed ``_`` are the rendering context: the verdict closure built
     over this invocation's diff/key memos. They are returned rather than
@@ -4128,10 +4315,28 @@ def _branch_coverage(
             "tests_reason": tests_reason,
             **common,
         }
+    # The transfer failed: a blocker-free fix tail may still merge, owed to the
+    # release check (per_release only). Asked after the transfer, the order the
+    # release op reads a merged span in too.
+    why: list[str] = []
+    deferral = fix_tail_deferral(
+        project_dir,
+        read.get("facts", []),
+        base_tree,
+        head_tree,
+        resolved.get("merge_base", ""),
+        verdict_fn,
+        why=why,
+    )
+    if deferral is not None:
+        return {"status": "deferred", "verdict": verdict, "deferral": deferral, **common}
     return {
         "status": "uncovered",
         "verdict": verdict,
         "transfer": transfer,
+        # Said by the printer, so a deferral that never got a look does not read
+        # as one that looked and found no fix tail.
+        "deferral_unavailable": why[0] if why else None,
         # The near miss: byte identity held and the suite had not met the tree.
         "transfer_stale": tests_reason if decided["decision"] == TRANSFER_SUITE_STALE else None,
         **common,
@@ -4233,6 +4438,17 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         )
         return 0
 
+    if status == "deferred":
+        deferral = answer["deferral"]
+        print(
+            f"satisfied (fix tail deferred to the release): coverage composes "
+            f"{base_tree[:12]}..review {deferral['fact_id']} with 0 unresolved "
+            f"blocking, and the {len(deferral['files'])} judgeable file(s) changed "
+            "since it are all files its findings named."
+        )
+        print(f"NOTE: {fix_tail_deferral_note(deferral)}", file=sys.stderr)
+        return 0
+
     transfer_stale = answer.get("transfer_stale")
 
     print(
@@ -4241,6 +4457,8 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         f"({verdict.get('reason', 'no path')}).",
         file=sys.stderr,
     )
+    if answer.get("deferral_unavailable"):
+        print(f"NOTE: {answer['deferral_unavailable']} — the gate is applied in full.", file=sys.stderr)
     # Everything else in this block is a pure function of the current tree, so
     # without this line round five reads exactly like round one — the measured
     # complaint from a six-round branch was that block #6 was indistinguishable

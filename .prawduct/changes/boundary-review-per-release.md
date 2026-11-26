@@ -75,8 +75,7 @@ now applies to work committed on the base as well as to merges. A squash merge w
 spans exactly the trees it landed reads `batch-covered`, where it read `direct`. A fix committed on
 the base after such a review is `batch-covered` when `verify-resolutions` and free edges alone
 compose the review's tree to it and the review's blockers are resolved. A new not-covered class,
-`tail-deferred`, names a fix tail the PR gate deferred to the release. The PR gate's deferral that
-produces it is a later chunk of this scope.
+`tail-deferred`, names a fix tail the PR gate deferred to the release; Chunk 05 produces it.
 
 ### Chunk 04: inference answers chunk at an eligible last chunk
 Under `per_release`, a branch the lane takes no longer infers the boundary `cumulative` at its
@@ -95,11 +94,31 @@ has finished the plan nothing owes a `cumulative`, so a fix after it takes a ver
 `chunk`. An explicit `/prawduct:critic cumulative` still runs the per-PR boundary review. With the
 key absent every answer and message is unchanged.
 
+### Chunk 05: a blocker-free fix tail is deferred to the release
+A fix for a non-blocking finding no longer buys its own verify round under `per_release` (#1222).
+One predicate, `gates.fix_tail_deferral`, decides, for any PR in such a repo, lane or not: the
+policy is `per_release`; the branch's coverage composes from the merge-base to a review taken on
+the branch with no unresolved blocker; every judgeable file changed since that review is one its
+findings named (`coverage.diagnose_fix_churn`'s conditions, file-level evidence); no review of any
+tree of the branch carries an unresolved BLOCKING finding; and no path the tail changes is a risk
+surface. Asked after the base-advance transfer fails, it gives `check-cumulative-critic` a new
+status, `deferred`: exit 0, `satisfied (fix tail deferred to the release)`, and a `NOTE:` naming
+the review, the tail's files and the release check that owes them a read. It is a deferral, never
+coverage: the Stop gate passes the same tail with that note instead of blocking, and
+`check-boundary-coverage` asks the same predicate of a merged branch (its tip, not HEAD) and reads
+the merge `tail-deferred`, not covered, until a release batch review has read it. Every reader of
+the gate's status handles `deferred`: inference does not name a `cumulative` for it, the clean
+verify close says the branch is not covered but passes, and `check-pr-hygiene` lists the reviews
+it stands on. A tail on a risk surface, a file the review did not name, an open blocker, or an
+anchor review from before the merge-base still buys the verify round, and `per_pr` is unchanged.
+
 ## Consumer note
 A new opt-in key, `boundary_review:` in `.prawduct/project-state.yaml` (see
 `/prawduct:methodology project-state`). `per_release` already changes which review inference asks
-for at an eligible branch's last chunk, but the release check that the moved boundary review is
-owed to does not block yet; leave it unset. Nothing changes for a repo that does not set it.
+for at an eligible branch's last chunk, and lets a blocker-free fix tail pass
+`check-cumulative-critic` (exit 0, `satisfied (fix tail deferred to the release)`) and the Stop
+gate unreviewed, but the release check that the moved review and the deferred tail are owed to
+does not block yet; leave it unset. Nothing changes for a repo that does not set it.
 
 `check-boundary-coverage` (and the count line `check-releasability` prints) now also lists every
 judgeable commit since your last release, including work committed on the integration branch
@@ -107,7 +126,8 @@ without a change fragment, so expect more entries and a count line that names th
 `--json` adds `anchor`, `no_anchor_reason` and each entry's `source` (`fragment`, `walk` or
 `both`; `walk-failed` when git could not list the commits since the anchor), and a new covered
 class, `release-bookkeeping`, for a commit that changes only the files `release_version_files:`
-declared at your last release. Neither command's exit code changes.
+declared at your last release. A merge whose fix tail the PR gate deferred reads `tail-deferred`,
+not covered. Neither command's exit code changes.
 
 `critic-begin --mode cumulative --span release`, run on your integration branch, reviews everything
 since your last release that no boundary review read, and `check-boundary-coverage` then reads that

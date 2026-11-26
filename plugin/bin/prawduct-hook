@@ -183,6 +183,21 @@ def _wrap_gate_prose(text: str) -> str:
     )
 
 
+def _fix_tail_deferral(project_dir: Path):
+    """The Stop gate's read of the fix-tail deferral (``gates.fix_tail_deferral``
+    via ``gates.session_fix_tail_deferral``), or ``None``. A crash is ``None``
+    and says so, as :func:`_short_plan_deferral`'s does: a relaxation that could
+    not be evaluated relaxes nothing."""
+    why: list = []
+    try:
+        deferral = _gates().session_fix_tail_deferral(project_dir, why)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a gate relaxation that cannot be evaluated must not relax the gate
+        deferral, why = None, [f"the fix-tail deferral could not be evaluated ({type(exc).__name__}: {exc})"]
+    if why:
+        print(f"\nNOTE: {why[0]} — the Critic gate is applied in full below.", file=sys.stderr)
+    return deferral
+
+
 def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, binding):
     """The Stop gate's read of the short-plan deferral (#292), or ``None``.
 
@@ -4215,18 +4230,32 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             # what the boundary review is. `None` from the predicate is "does
             # not defer": a relaxation that could not be evaluated does not
             # relax anything.
+            # A blocker-free fix tail under `boundary_review: per_release` is
+            # deferred to the release check, as the PR gate defers it
+            # (`gates.fix_tail_deferral`, the one predicate). Asked first: when it
+            # holds, the PR gate passes and no review is owed before the release.
+            tail_deferral = (
+                _fix_tail_deferral(project_dir) if verdict_status == "uncovered" else None
+            )
             deferral = (
                 _short_plan_deferral(project_dir, prawduct_dir, binding)
-                if verdict_status == "uncovered"
+                if verdict_status == "uncovered" and tail_deferral is None
                 else None
             )
             extension = (
                 _extension_deferral(project_dir, prawduct_dir, binding)
                 if verdict_status == "uncovered"
+                and tail_deferral is None
                 and not (deferral is not None and deferral.defers)
                 else None
             )
-            if extension is not None:
+            if tail_deferral is not None:
+                stop_advisories.append(_LogOnlyAdvisory(_attributed("critic",
+                    f"NOTE: no review covers this session's changes{span}, and none is\n"
+                    "  owed before the release.\n"
+                    + _wrap_gate_prose(_gates().fix_tail_deferral_note(tail_deferral))
+                )))
+            elif extension is not None:
                 stop_advisories.append(_LogOnlyAdvisory(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span} yet, and none is owed now — {extension}.\n"

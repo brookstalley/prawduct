@@ -55,9 +55,10 @@ Each commit is classified as:
 - ``inner-only``: coverage composes, but only through inner-stage reviews.
 - ``tail-deferred``: the PR gate let the branch merge with a blocker-free fix
   tail no review read, deferred to this release check (per_release only). Not
-  covered: the release batch review owes it a read. Its producer is the PR
-  gate's tail-deferral predicate (#1232 Chunk 05); this module only names it,
-  so a release reader can tell "deferred" from "nothing reviewed this".
+  covered: the release batch review owes it a read. Asked of the merged span
+  after the transfer fails, by the PR gate's own predicate
+  (``gates.fix_tail_deferral``), so a release reader can tell "deferred" from
+  "nothing reviewed this".
 - ``uncovered``: nothing composes, or an open blocker stands on the path. When
   only the transfer's suite condition failed, the reason says so.
 - ``release-bookkeeping``: a commit with one parent, after the release anchor,
@@ -79,7 +80,8 @@ its boundary review to the release.
 
 Composition is :func:`coverage_algebra.coverage_verdict`'s, stage is
 :func:`critic_consolidate.stage_of_manifest`'s, the base-advance transfer is
-:func:`gates.base_advance_transfer`'s, and the pending set is
+:func:`gates.base_advance_transfer`'s, the fix-tail deferral is
+:func:`gates.fix_tail_deferral`'s, and the pending set is
 ``release_readiness``'s. This module owns only the classification.
 """
 
@@ -411,6 +413,23 @@ class _Classifier:
             return Entry("", UNCOVERED, "an unresolved blocking finding stands on the branch's coverage",
                          commit, subject)
         transferred = self._transferred(merge_base, tip, span_base, span_head)
+        if transferred is not None and transferred[0] != UNCOVERED:
+            classification, reason = transferred
+            return Entry("", classification, reason, commit, subject)
+        # The transfer failed, so ask what the PR gate asked next: was the
+        # branch's blocker-free fix tail deferred to this release? The one
+        # predicate, asked of the merged span (its tip is the merge's second
+        # parent). Not covered either way: it names WHY the merge is owed a read.
+        deferral = self._gates.fix_tail_deferral(
+            self.project_dir, self.facts, span_base, span_head, merge_base,
+            self._full_verdict, tip=tip,
+        )
+        if deferral is not None:
+            return Entry("", TAIL_DEFERRED, (
+                f"the PR gate deferred the fix tail after review {deferral['fact_id']} to the release: "
+                f"{len(deferral['files'])} judgeable file(s) its findings named, unread since "
+                f"({', '.join(deferral['files'][:3])}{' …' if len(deferral['files']) > 3 else ''})"
+            ), commit, subject)
         if transferred is not None:
             classification, reason = transferred
             return Entry("", classification, reason, commit, subject)

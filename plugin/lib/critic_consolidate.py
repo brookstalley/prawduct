@@ -477,7 +477,7 @@ def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
     the ``NEXT-ACTION:`` line, not a second signal competing with it.
     """
     status = (answer or {}).get("status")
-    if status not in ("covered", "transferred", "blocked", "uncovered"):
+    if status not in ("covered", "transferred", "deferred", "blocked", "uncovered"):
         return _COVERAGE_IS_A_SEPARATE_QUESTION
 
     base = ((answer or {}).get("resolved") or {}).get("base_branch") or "the base"
@@ -524,6 +524,21 @@ def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
             " outstanding — work you had not committed yet is not in that span."
             " Re-derive with `prawduct-hook check-cumulative-critic` if the"
             " branch has moved since."
+            + _WORK_CYCLE_STILL_OWES
+        )
+
+    if status == "deferred":
+        # Not the covered arm: a deferred tail is unreviewed work the release
+        # check still holds, so "the branch was covered" would be the misread
+        # this clause exists to stop.
+        files = len(((answer or {}).get("deferral") or {}).get("files") or [])
+        return (
+            " This verdict covers this delta only. The branch is not covered, but"
+            f" its PR gate passes: evidence spans {width} up to an earlier"
+            f" blocker-free review, and the {files} file(s) changed since it are"
+            " a fix tail deferred to the release check (`boundary_review:"
+            " per_release`), which holds the release until a release batch review"
+            " has read them. Re-derive with `prawduct-hook check-cumulative-critic`."
             + _WORK_CYCLE_STILL_OWES
         )
 
