@@ -8,7 +8,7 @@ allowed-tools: Bash(gh pr *), Bash(gh repo view *), Bash(gh issue view *), Bash(
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
 
-The PR boundary has one reviewer, the cumulative Critic, and this skill dispatches no agent. A PR opens only when composed review coverage spans the branch (Step 2), the hygiene check refuses nothing (Step 3), and the description follows the repo's PR template (Step 5) — each answered by a command, so none of them can be forgotten.
+The PR boundary has one reviewer, the cumulative Critic (under `boundary_review: per_release`, an eligible branch's whole-branch `chunk`; the boundary review moves to the release), and this skill dispatches no agent. A PR opens only when composed review coverage spans the branch (Step 2), the hygiene check refuses nothing (Step 3), and the description follows the repo's PR template (Step 5) — each answered by a command, so none of them can be forgotten.
 
 ## Context Detection
 
@@ -179,7 +179,7 @@ A PR's review evidence is the review facts in the shared evidence store, which `
 
 ## Important
 
-- This skill dispatches no agent. The cumulative Critic (`/prawduct:critic`) is the PR boundary's one reviewer, and Step 2's gate is how this flow reads it.
+- This skill dispatches no agent. The cumulative Critic (`/prawduct:critic`; the per-release lane's `chunk` where that lane holds) is the PR boundary's one reviewer, and Step 2's gate is how this flow reads it.
 - The suite and its evidence belong to Step 1 — it owns the freshness check, the one command that runs and records together, and what doing those separately costs.
 - **The doc-only fast-path (Step 1b) is the only review-gate skip.** It fails closed, and there is no code-side trivial fast-path (rationale in Step 1b's note).
 - **The cumulative-Critic gate (Step 2), the operator-verification gate (Step 2b), the hygiene check (Step 3) and the template check (Step 5) are mandatory** — never open a PR without a blocking-free record vouching for HEAD, with pending verification entries, on a hygiene refusal, or with a description its template check refuses (full mechanics in those steps).
