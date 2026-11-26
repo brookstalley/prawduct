@@ -1816,7 +1816,8 @@ def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
     )
     if proc.returncode != 0:
         raise RuntimeError(f"git diff failed: {proc.stderr.strip()}")
-    files = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+    from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+    files = set(gitstate.git_path_lines(proc.stdout))
 
     proc2 = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],
@@ -1827,7 +1828,7 @@ def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
         timeout=30,
     )
     if proc2.returncode == 0:
-        files.update(line.strip() for line in proc2.stdout.splitlines() if line.strip())
+        files.update(gitstate.git_path_lines(proc2.stdout))
     return sorted(files)
 
 
@@ -1870,7 +1871,8 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     if proc.returncode != 0:
         return False, f"git-failed: git diff {base}...HEAD failed: {proc.stderr.strip()}"
 
-    files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+    files = gitstate.git_path_lines(proc.stdout)
     if not files:
         return False, f"empty-diff: no files changed in {base}...HEAD"
 
@@ -2249,7 +2251,8 @@ def check_change_log_entry(project_dir: Path) -> int:
         )
         return 1
 
-    files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+    files = gitstate.git_path_lines(proc.stdout)
     # THE predicate, shared with `check-pr-doc-only` (CRT-5D8Q). This used to be
     # an inline `not f.endswith(".md")`, which is a FOURTH classifier that the
     # CRT-5D8Q consolidation never folded in — so the two gates at the same PR

@@ -1755,13 +1755,13 @@ def _log_commits(repo_dir: Path, *revs: str) -> "list[_Commit] | str":
         detail = (err or "").strip().splitlines()
         return f"`git log {' '.join(revs)}` failed ({detail[0] if detail else f'exit {rc}'})"
     parsed: list[tuple[str, str, tuple[str, ...], str, set[str]]] = []
-    for line in out.splitlines():
+    for line in out.split("\n"):
         if line.startswith(_COMMIT_MARK):
             ids, _sep, subject = line[len(_COMMIT_MARK):].partition(_FIELD_SEP)
             sha, tree, *parents = ids.split()
             parsed.append((sha, tree, tuple(parents), subject, set()))
-        elif line.strip() and parsed:
-            parsed[-1][4].add(line.strip())
+        elif line and parsed:
+            parsed[-1][4].add(gitstate.unquote_git_path(line))
     return [_Commit(s, t, p, subj, frozenset(f)) for s, t, p, subj, f in parsed]
 
 

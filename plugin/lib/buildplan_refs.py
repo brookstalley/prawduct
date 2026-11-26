@@ -345,8 +345,8 @@ def _changed_on_branch(project_dir: Path, pathspec: Path) -> "set[Path] | None":
         return None
     if diff.returncode != 0 or untracked.returncode != 0:
         return None
-    names = diff.stdout.splitlines() + untracked.stdout.splitlines()
-    return {(project_dir / n).resolve() for n in names if n.strip()}
+    names = gitstate.git_path_lines(diff.stdout) + gitstate.git_path_lines(untracked.stdout)
+    return {(project_dir / n).resolve() for n in names}
 
 
 def unresolved_scope_cause(

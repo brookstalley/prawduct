@@ -934,37 +934,87 @@ def _is_metadata_path(filepath: str) -> bool:
     return any(filepath.startswith(p) for p in METADATA_PREFIXES)
 
 
+#: git's C-quoting escapes (``quote.c``): the letter after a backslash, and the byte it stands for.
+_C_ESCAPES = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+
+
+def _read_quoted(text: str, start: int) -> "tuple[str, int] | None":
+    """The name a C-quoted token at ``text[start]`` (a ``"``) stands for, and the index after
+    its closing quote; ``None`` when the token is not well-formed git quoting."""
+    out = bytearray()
+    i = start + 1
+    while i < len(text):
+        char = text[i]
+        if char == '"':
+            return out.decode("utf-8", "surrogateescape"), i + 1
+        if char != "\\":
+            out += char.encode("utf-8", "surrogateescape")
+            i += 1
+            continue
+        escape = text[i + 1:i + 2]
+        if escape in _C_ESCAPES:
+            out.append(_C_ESCAPES[escape])
+            i += 2
+            continue
+        digits = text[i + 1:i + 4]
+        if len(digits) == 3 and all(d in "01234567" for d in digits) and int(digits, 8) < 256:
+            out.append(int(digits, 8))
+            i += 4
+            continue
+        return None
+    return None
+
+
+def unquote_git_path(text: str) -> str:
+    """A path name as git prints it, decoded to the name on disk.
+
+    git C-quotes a name holding a non-ASCII byte, a double quote, a backslash or a control
+    character (``core.quotepath``, on by default): ``skills/café.md`` prints as
+    ``"skills/caf\\303\\251.md"``. A reader that compares the printed text with names on disk
+    misses the file, and a governance reader that misses a file fails open. This is the one
+    decoder of that quoting, and its inverse is exact: escapes become their bytes, and the
+    bytes are UTF-8 with ``surrogateescape``, as ``os.fsdecode`` reads a name. Text that is not
+    one whole well-formed quoted token is returned unchanged, so a reader sees at worst what
+    git printed. ``-z`` output is never quoted and needs none of this."""
+    if len(text) >= 2 and text[0] == '"':
+        read = _read_quoted(text, 0)
+        if read is not None and read[1] == len(text):
+            return read[0]
+    return text
+
+
+def git_path_lines(stdout: str) -> list[str]:
+    """One decoded name per line of a git command that prints a name per line (``diff
+    --name-only``, ``ls-files``, ``ls-tree --name-only``, ``log --name-only``, ``grep -l``).
+    Split on git's newline only: a quoted name never holds one, and an unquoted name may hold a
+    character ``str.splitlines`` also splits on. Blank lines are dropped."""
+    return [unquote_git_path(line) for line in stdout.split("\n") if line]
+
+
 def parse_porcelain_line(line: str) -> tuple[str, str | None, str] | None:
     """Parse one ``git status --porcelain`` line into ``(status, src_path, path)``.
 
-    Git QUOTES paths containing spaces or special characters (`` M "my doc.md"``)
-    and renders renames as ``R  old -> new`` — a naive ``line.split()[-1]`` returns
-    ``doc.md"`` for the quoted form, which made the doc-only classification fail on
-    the trailing quote and falsely block doc-only sessions at the Critic/reflection
-    gates (review-fixes Chunk 1). ``src_path`` is the rename source (None for
-    non-renames); ``path`` is the current/destination path, quote-stripped.
-    Returns None for blank or malformed lines. Two accepted caveats, both
-    classification-only impact: octal escapes inside quoted paths (non-ASCII
-    filenames) are left as-is — quote-stripping is sufficient for path
-    *classification* by prefix/suffix, which is all the callers do; and a
-    quoted rename SOURCE itself containing ``" -> "`` mis-splits at the first
-    arrow (vanishingly rare, still strictly better than the ``split()[-1]``
-    parse this replaced).
+    Each name is decoded by :func:`unquote_git_path`, so it is the name on disk. A rename
+    (``R`` or ``C`` in either status column) prints ``old -> new``; ``src_path`` is the old
+    name, ``None`` otherwise. Only a rename is split on `` -> ``, because git does not quote
+    that text and an ordinary name may hold it; a quoted rename source ends at its closing
+    quote, so its own `` -> `` never splits it. An unquoted rename source holding `` -> ``
+    is the one ambiguous form git prints, and it splits at the first arrow. Returns ``None``
+    for a blank or malformed line.
     """
     if len(line) < 4:
         return None
     status = line[:2]
-    raw = line[3:].strip()
+    rest = line[3:].rstrip("\n")
     src_path: str | None = None
-    if " -> " in raw:
-        src_raw, dst_raw = raw.split(" -> ", 1)
-        src_path = src_raw.strip()
-        if src_path.startswith('"') and src_path.endswith('"'):
-            src_path = src_path[1:-1]
-        raw = dst_raw.strip()
-    path = raw
-    if path.startswith('"') and path.endswith('"'):
-        path = path[1:-1]
+    if "R" in status or "C" in status:
+        if rest.startswith('"'):
+            read = _read_quoted(rest, 0)
+            if read is not None and rest[read[1]:read[1] + 4] == " -> ":
+                src_path, rest = read[0], rest[read[1] + 4:]
+        elif " -> " in rest:
+            src_path, rest = rest.split(" -> ", 1)
+    path = unquote_git_path(rest)
     if not path:
         return None
     return status, src_path, path

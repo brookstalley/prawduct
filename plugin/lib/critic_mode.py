@@ -2282,19 +2282,15 @@ def _paths_since_tree(tree: object, project_dir: Path) -> "set[str] | None":
     """
     if not gitstate.is_object_id(tree):
         return None
-    rc, changed, _err = gitstate._git_text(project_dir, "diff", "--name-only", str(tree), "--")
+    rc, changed = gitstate._run_git_text(project_dir, "diff", "--name-only", str(tree), "--")
     if rc != 0:
         return None
-    rc, untracked, _err = gitstate._git_text(
+    rc, untracked = gitstate._run_git_text(
         project_dir, "ls-files", "--others", "--exclude-standard"
     )
     if rc != 0:
         return None
-    return {
-        line.strip()
-        for line in (changed + "\n" + untracked).splitlines()
-        if line.strip()
-    }
+    return set(gitstate.git_path_lines(changed)) | set(gitstate.git_path_lines(untracked))
 
 
 def _declared_chunk_modes(
@@ -2808,7 +2804,7 @@ def _committed_files_since(project_dir: Path, sha: str) -> set[str]:
     )
     if proc.returncode != 0:
         return set()
-    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+    return set(gitstate.git_path_lines(proc.stdout))
 
 
 def _commit_resolves(project_dir: Path, sha: str) -> bool:

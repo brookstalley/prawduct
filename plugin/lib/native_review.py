@@ -542,7 +542,9 @@ def _tree_moved(project_dir: Path, sidecar: dict) -> "bool | None":
     rc_b, moved, _ = evidence.run_git(project_dir, "diff", "--name-only", head, capture["tree"])
     if rc_a != 0 or rc_b != 0:
         return None
-    both = (set(reviewed.split("\n")) & set(moved.split("\n"))) - {""}
+    from . import gitstate  # noqa: PLC0415 — lazy; one reader here decodes git's names
+
+    both = set(gitstate.git_path_lines(reviewed)) & set(gitstate.git_path_lines(moved))
     return any(not path.startswith(".prawduct/") for path in both)
 
 
