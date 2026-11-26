@@ -1,4 +1,4 @@
-# Run the suite — on every push, and on every pull request.
+# Run the suite — on every push, and on every pull request that is not a repeat of one.
 #
 # Until this file existed, `tests/` ran only when someone remembered to run it.
 # Every release this repo ever cut shipped that way. The gap is independent of any
@@ -22,7 +22,8 @@
 #
 # **The suite runs on testament's pool when the workflow can use it, and on
 # GitHub's runner when it cannot.** `tools/ci-suite.py` decides, in two stages that
-# are the two jobs below, and its docstring holds the table. The `pool` job sends the
+# are the `pool` and `pytest` jobs below (a third stage, the `plan` job, first decides
+# whether a pull request needs either), and its docstring holds the table. The `pool` job sends the
 # tree to the pool: the same image and selection a developer's `testament run` uses,
 # so a CI verdict and a developer's are the same kind of fact. The `pytest` job then
 # runs the tests `.testament.toml` selects out (they read git history or a clone's
@@ -68,12 +69,28 @@ on:
   # Unfiltered by branch as well as by path. A branch that never opens a PR is
   # precisely the branch nobody is watching.
   #
-  # Weighed and kept: pairing these double-runs the matrix for any branch with an
-  # open PR, and the concurrency group below cannot collapse the pair because the
-  # two events carry different refs (`refs/heads/<branch>` vs `refs/pull/N/merge`).
-  # They test different trees — the branch tip, and the merge result — so the
-  # duplication buys a real second answer. What it spends is pool slots for a
-  # second run of about a minute; on a public repo the Actions minutes are free.
+  # Weighed, kept, then narrowed: pairing these runs the suite twice for any branch
+  # with an open PR, and the concurrency group below cannot collapse the pair because
+  # the two events carry different refs (`refs/heads/<branch>` vs
+  # `refs/pull/N/merge`). The pair was kept for the second answer it can give: the push
+  # tests the branch tip, the pull request tests the merge result. But the PR flow
+  # merges the base into the branch before it opens the PR, and then the merge result
+  # and the tip are one tree, so the second run only repeated the first.
+  #
+  # So the `plan` job asks, for every pull request from a branch of this repository,
+  # whether the two trees are the same and whether GitHub lists a push run of the head
+  # that is running or finished green or red, and when both hold every job of the pull
+  # request's run is skipped: the push run on the same commit shows its result on the
+  # PR. The run still happens when the base moved and was not merged in (it is then
+  # the only run that tests the merge result), when no such push run exists (a commit
+  # pushed with a workflow's own token starts none, and a run can be cancelled), and
+  # whenever anything about the question is in doubt. A fork's pull request is not
+  # skipped by this file as it stands: no push run happens here for it, its run is the
+  # one that must give the tree a verdict, and `plan` is not created for it. A
+  # pull request's workflow file is the merge commit's, so a fork that edits this file
+  # decides its own run; the diff of the pull request shows it.
+  # Nothing requires these checks (no branch protection or ruleset names one), and a
+  # skipped job reports as skipped, which a requirement would accept as well.
   push:
   pull_request:
 
@@ -86,11 +103,53 @@ permissions:
   contents: read
 
 jobs:
+  plan:
+    # Whether this pull request's run repeats the push run of its head. The `if` is
+    # GitHub's own reading of the event: with this file as it stands, a fork's pull
+    # request has no such job, so its copy of `tools/ci-suite.py` is never asked.
+    # The job holds no pool key, installs nothing and runs no test. Its token is the
+    # workflow's own, with `actions: read` added so that the stage can list the push
+    # runs of the head, and only the step that asks has it in its environment. The
+    # runner's docstring has the table of what it decides, and every doubt in it runs
+    # the suite. The jobs below run unless this one says `true`, and
+    # `continue-on-error` keeps a failure of this job (a checkout, a runner, the time
+    # limit) from failing the run: it then says nothing, and they run. So it can only
+    # ever save a run.
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.plan.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The merge commit and both of its parents are the whole question.
+          fetch-depth: 2
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Compare the merge result with the head the push run tests
+        id: plan
+        # Values from the event travel as environment values, never spliced into a command.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_SUITE_PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          CI_SUITE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python tools/ci-suite.py plan
+
   pool:
     # The only job given the key. It checks out the tree, installs the pool's own CLI
     # build, and waits on the pool. Nothing here comes from a package index and no
     # test runs here; `needs.pool.outputs.suite` tells the `pytest` job whether the
     # pool ran the suite ("pool") or left it to that job ("job").
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     # The runner gives the pool ten minutes over both of its attempts
     # (`POOL_WAIT_SECONDS`); the rest is checkout, the download and the install.
@@ -127,9 +186,9 @@ jobs:
   pytest:
     # After `pool`, whatever its result: a failed pool run still owes the tests the
     # pool leaves out, and a refused key still owes the tree a verdict. Skipped only
-    # when the run is cancelled.
-    needs: pool
-    if: ${{ !cancelled() }}
+    # when the run is cancelled, or `plan` found the push run already covers this tree.
+    needs: [plan, pool]
+    if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -198,6 +257,10 @@ jobs:
         run: python tools/ci-suite.py tests
 
   collector:
+    # Skipped with the rest when `plan` finds the push run covers this tree: the same
+    # tree is the same answer here as for the suite above.
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
     # The stats collector (`collector/`) is a Cloudflare Worker with no
     # dependencies; its suite runs on node's built-in test runner, each file in
     # its own process. Pinned to the Active LTS; the suite was verified on 22,

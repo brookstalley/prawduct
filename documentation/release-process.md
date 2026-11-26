@@ -173,8 +173,10 @@ same set in executable running order, and is the document to work from when actu
    last release (the commit adding its release file) that the op does not count as covered
    (`prawduct-hook check-boundary-coverage` lists every entry with its reason). A merge the PR gate
    passed by its base-advance transfer counts as covered and is named `pr-transferred` in the count
-   line; the reopen commit that bumps only the declared version files reads `release-bookkeeping`,
-   also covered. Those lines are
+   line. The op reads the grant the PR gate recorded, or re-decides from the branch's suite runs.
+   Grants and suite runs stay in the clone that recorded them, so a release cut from another clone
+   can read such a merge as `uncovered`; its reason says so. The reopen commit that bumps only the
+   declared version files reads `release-bookkeeping`, also covered. Those lines are
    advice and never change its exit. Read each NOTE as work no boundary review read, before it ships. Full branch-by-branch
    handling is Phase 0 of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.
 1. **Merge `develop` → `main`.**

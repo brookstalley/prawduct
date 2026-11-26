@@ -964,6 +964,68 @@ def suite_vouches_for_tree(
     return False, why_not + (f"; {stored_reason}" if stored_reason else "")
 
 
+def branch_run_vouching(
+    project_dir: Path, target_tree: str, commits: "frozenset[str]"
+) -> "tuple[bool, str]":
+    """Did a suite run recorded for a BRANCH meet its tip ``target_tree``?
+
+    :func:`suite_vouches_for_tree` asks on behalf of a checkout: this
+    worktree's own record answers first, and a void one (a record attempt in
+    flight, or one that died) denies every tree, by design, because it is the
+    checkout's newest word. A reader asking about a branch that already merged
+    (the release's boundary-coverage op) is not asking about its checkout, so
+    that record must neither answer nor deny here.
+
+    The candidates are the store's ``test-run`` facts recorded at one of the
+    branch's ``commits`` or on ``target_tree`` itself, newest first, and each is
+    asked :func:`_tree_met`, the tolerance the PR gate's own check gives: a run
+    whose tree differs from the tip only in paths that cannot change a test
+    outcome (a records-only commit after the run) met it. The first that met
+    decides, as in :func:`_store_run_vouching`: green vouches, anything
+    :func:`run_refusal` refuses denies, and "cannot tell" denies a refused run
+    and proves nothing for a green one. Runs are clone-local (``test-run`` is
+    not a transported kind), so a denial may mean the run was recorded in
+    another clone. Returns ``(vouches, reason)``."""
+    read = evidence.read_facts(project_dir)
+    if read.get("status") == "empty":
+        return False, "this clone's evidence store records no suite run"
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        return False, f"evidence store not consulted: {precheck[1]}"
+    candidates = []
+    for fact in evidence.facts_of_kind(read, "test-run"):
+        body = fact.get("body")
+        if not isinstance(body, dict) or body.get("narrowed") is True:
+            continue  # attribution only, as in _store_run_vouching
+        tree, head = body.get("tree"), body.get("head")
+        if not isinstance(tree, str) or not tree:
+            continue
+        if tree == target_tree or (isinstance(head, str) and head in commits):
+            candidates.append(fact)
+    candidates.sort(key=lambda f: f.get("ts") if isinstance(f.get("ts"), str) else "", reverse=True)
+    seen: set = set()
+    base: "coverage.IntegrationBase | None" = None
+    for fact in candidates:
+        body = fact["body"]
+        if body["tree"] in seen:
+            continue
+        seen.add(body["tree"])
+        if base is None:
+            base = coverage.integration_base(project_dir)
+        met, why = _tree_met(project_dir, body["tree"], target_tree, base=base)
+        refusal = run_refusal(body)
+        if met is None:
+            met = bool(refusal)
+        if not met:
+            continue
+        actor = fact.get("actor") if isinstance(fact.get("actor"), dict) else {}
+        where = f"on {actor['branch']}" if isinstance(actor.get("branch"), str) else "for the branch"
+        if refusal:
+            return False, f"the newest run recorded {where} that met its tip is refused: {refusal}"
+        return True, f"a run recorded {where} at {fact.get('ts') or '(unknown)'} (evidence store): {why}"
+    return False, "no suite run recorded for the branch in this clone's evidence store met its tip"
+
+
 #: :func:`base_advance_transfer`'s decisions. Only ``granted`` grants.
 TRANSFER_GRANTED = "granted"
 #: The diagnosis matched (conditions 1 and 2) and no suite run met the tree.
@@ -982,26 +1044,33 @@ def base_advance_transfer(
     verdict_fn,
     *,
     suite_tree: "str | None",
+    suite_branch: "frozenset[str] | None" = None,
 ) -> dict:
     """Does the span ``base_tree`` → ``head_tree``, uncovered by composition,
-    transfer across a base advance? The ONE decision every reader of the
-    transfer asks: the PR gate (:func:`_branch_coverage`), the Stop gate
-    (:func:`_merge_base_verdict`) and the release's boundary-coverage op
-    (``boundary_coverage``), so a branch the PR gate passed by transfer cannot
-    read as unreviewed at the release (#1250).
+    transfer across a base advance? The one decision function every reader of
+    the transfer calls: the PR gate (:func:`_branch_coverage`), the Stop gate
+    (:func:`_merge_base_verdict`), and the release's boundary-coverage op,
+    which calls it only when it finds no grant the PR gate recorded for the
+    merged span (:func:`recorded_transfer_grant`). A later re-decision can still
+    differ from the gate's: its evidence is this clone's store, and grants and
+    suite runs are clone-local.
 
     Conditions 1 and 2 are :func:`coverage.diagnose_base_advance_transfer`'s,
-    read through :func:`coverage.classify_transfer`; condition 3 is
-    :func:`suite_vouches_for_tree` asked about ``suite_tree``, the tree the
-    caller vouches for (``None`` is the working tree, the Stop gate's target).
-    It is keyword-only with no default for the reason that function states: the
-    callers do not agree on the tree, and a default would silently pick one.
+    read through :func:`coverage.classify_transfer`. Condition 3 is asked about
+    ``suite_tree``, the tree the caller vouches for. A gate asks
+    :func:`suite_vouches_for_tree` on behalf of its checkout (``None`` is the
+    working tree, the Stop gate's target); ``suite_tree`` is keyword-only with
+    no default for the reason that function states, that the callers do not
+    agree on the tree. A reader asking about a merged branch also passes the
+    branch's commits as ``suite_branch``, and condition 3 is then
+    :func:`branch_run_vouching`, which never reads the caller's own record.
 
     Records nothing: a caller that is an authority records the grant
     (:func:`record_transfer_grant`), and advice does not. Returns ``decision``
-    (``TRANSFER_*``), ``kind`` (the classification), ``transfer`` (the
-    diagnosis, ``None`` when no prior span exists) and ``tests_reason`` (the
-    suite's answer, ``None`` when the diagnosis did not match).
+    (``TRANSFER_GRANTED`` / ``TRANSFER_SUITE_STALE`` / ``TRANSFER_DENIED``),
+    ``kind`` (the classification), ``transfer`` (the diagnosis, ``None`` when
+    no prior span exists) and ``tests_reason`` (the suite's answer, ``None``
+    when the diagnosis did not match).
     """
     transfer = coverage.diagnose_base_advance_transfer(
         project_dir, facts, base_tree, head_tree, diff_fn, verdict_fn
@@ -1011,7 +1080,10 @@ def base_advance_transfer(
     kind = coverage.classify_transfer(transfer)
     if kind != "match":
         return {"decision": TRANSFER_DENIED, "kind": kind, "transfer": transfer, "tests_reason": None}
-    tests_ok, tests_reason = suite_vouches_for_tree(project_dir, suite_tree)
+    if suite_branch is not None and suite_tree is not None:
+        tests_ok, tests_reason = branch_run_vouching(project_dir, suite_tree, suite_branch)
+    else:
+        tests_ok, tests_reason = suite_vouches_for_tree(project_dir, suite_tree)
     return {
         "decision": TRANSFER_GRANTED if tests_ok else TRANSFER_SUITE_STALE,
         "kind": kind,
@@ -2262,6 +2334,61 @@ def record_transfer_grant(
             file=sys.stderr,
         )
     return recorded
+
+
+#: The gate whose recorded grant decides a merge's transfer at the release: the
+#: PR gate, the authority over what merged. (The Stop gate's grant vouches for a
+#: session's working tree, not for the branch a PR merged.)
+_PR_GATE = "check-cumulative-critic"
+
+
+def recorded_transfer_grant(
+    facts: "list[dict]", base_tree: str, head_tree: str
+) -> "dict | None":
+    """The PR gate's recorded base-advance transfer grant for exactly the span
+    ``base_tree`` → ``head_tree``, or None. The reader of
+    :func:`record_transfer_grant`'s facts, beside it so the shape has one home.
+
+    A later reader of a merged branch (the release's boundary-coverage op) asks
+    this FIRST: the authority already decided, against the tree it vouched for,
+    and re-deciding later from another checkout asks the suite question of
+    different evidence. Both endpoints must match: the base is the merge-base
+    tree the PR gate saw, which a merge leaves in place, and the head is the
+    tree it passed. A branch that moved after the grant (a records-only commit,
+    say) has no grant for its tip, and the reader re-decides.
+
+    Returns the grant in :func:`coverage.diagnose_base_advance_transfer`'s
+    ``match`` shape (``prior_base``, ``prior_head``, ``prior_fact_id``,
+    ``prior_reviews``, ``files``, ``advance_files``) plus ``grant_id``, so a
+    reader can treat both alike. Grants are clone-local: ``guard-refusal`` is
+    not a transported kind (``evidence.TRANSPORTED_KINDS``), so None also means
+    "granted in another clone, perhaps"."""
+    for fact in reversed(facts):
+        if fact.get("kind") != "guard-refusal":
+            continue
+        body = fact.get("body")
+        if not isinstance(body, dict) or body.get("guard") != _TRANSFER_GUARD:
+            continue
+        if body.get("gate") != _PR_GATE:
+            continue
+        interval, prior = body.get("interval"), body.get("prior_interval")
+        if not isinstance(interval, dict) or not isinstance(prior, dict):
+            continue
+        if (interval.get("base_tree"), interval.get("head_tree")) != (base_tree, head_tree):
+            continue
+        prior_base, prior_head = prior.get("base_tree"), prior.get("head_tree")
+        if not (isinstance(prior_base, str) and prior_base and isinstance(prior_head, str) and prior_head):
+            continue
+        return {
+            "grant_id": fact.get("id"),
+            "prior_base": prior_base,
+            "prior_head": prior_head,
+            "prior_fact_id": body.get("prior_fact_id"),
+            "prior_reviews": body.get("prior_reviews"),
+            "files": list(body.get("files") or []),
+            "advance_files": body.get("advance_files"),
+        }
+    return None
 
 
 def commit_coverage(project_dir: Path) -> dict:

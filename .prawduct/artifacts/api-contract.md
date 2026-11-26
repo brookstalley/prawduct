@@ -329,9 +329,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   contains still anchors); with neither, no commit is walked and the report says so.
   Classes: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `release-bookkeeping`,
   `inner-only`, `uncovered`, `direct` or `unknown`, each with its reason. `pr-transferred` is a branch that synced
-  its base after its PR's boundary review and that the PR gate passed by its base-advance transfer
-  (`gates.base_advance_transfer`, the one decision both read); it counts as covered and is named in
-  the count line. `release-bookkeeping` (covered) is a single-parent commit whose judgeable changes
+  its base after its PR's boundary review and that the PR gate passed by its base-advance transfer:
+  the op reads the grant the PR gate recorded (`gates.recorded_transfer_grant`), or, with none,
+  re-decides with the gate's own function (`gates.base_advance_transfer`) over the branch's suite
+  runs. It counts as covered and is named in the count line. Grants and suite runs are clone-local
+  (not in `evidence.TRANSPORTED_KINDS`), so in another clone the same merge can read `uncovered`,
+  with a reason saying so. `release-bookkeeping` (covered) is a single-parent commit whose judgeable changes
   are all paths `release_version_files:` declares at its parent; the undeclared fallback never
   qualifies. The human form marks each entry not counted as covered
   `[not covered]`, names the anchor, and ends with a count line naming its denominator and the anchor. Exit 0

@@ -365,29 +365,46 @@ class _Classifier:
                      span_head: str) -> "tuple[str, str] | None":
         """The PR gate's base-advance transfer, asked of the merged span: a branch
         that synced its base after review composes from no fact, and the gate
-        passed it by transfer. The decision is the gate's own
-        (``gates.base_advance_transfer``), never a copy, with the suite asked
-        about the branch tip, the tree the PR gate vouched for. Asked only of an
-        ``uncovered`` span, as the gate asks it.
+        passed it by transfer. Asked only of an ``uncovered`` span, as the gate
+        asks it.
+
+        The gate's recorded grant for exactly this span answers first
+        (``gates.recorded_transfer_grant``): the authority decided, and nothing
+        is re-checked. Only without one is the transfer re-decided, by the
+        gate's own function (``gates.base_advance_transfer``), with the suite
+        asked about the branch (its commits and tip), never this checkout.
 
         A grant moves the boundary question to the span the coverage came from,
         and that span must pass the same split ``pr-covered`` requires there.
-        Returns ``(classification, reason)``, or None when the transfer did not
-        match, leaving the plain ``uncovered`` reading."""
-        decided = self._gates.base_advance_transfer(
-            self.project_dir, self.facts, span_base, span_head, self._diff_fn,
-            self._full_verdict, suite_tree=span_head,
-        )
-        transfer = decided["transfer"]
-        if decided["decision"] == self._gates.TRANSFER_SUITE_STALE:
-            return UNCOVERED, ("the PR gate's base-advance transfer matched (branch diff byte-identical "
-                               "across the advance), but no saved suite run met the branch tip: "
-                               f"{decided['tests_reason']}")
-        if decided["decision"] != self._gates.TRANSFER_GRANTED:
-            return None
+        Returns ``(classification, reason)``, or None when no transfer was
+        found, leaving the plain ``uncovered`` reading."""
+        grant = self._gates.recorded_transfer_grant(self.facts, span_base, span_head)
+        if grant is not None and self._verdict(self.facts, grant["prior_base"],
+                                               grant["prior_head"]) == "covered":
+            transfer = grant
+            carried = (f"the PR gate recorded its base-advance transfer grant {grant['grant_id']}, "
+                       f"{grant['prior_base'][:12]}→{span_base[:12]}")
+        else:
+            commits = self._git("rev-list", f"{merge_base}..{tip}")
+            decided = self._gates.base_advance_transfer(
+                self.project_dir, self.facts, span_base, span_head, self._diff_fn,
+                self._full_verdict, suite_tree=span_head,
+                suite_branch=frozenset((commits or "").split()),
+            )
+            transfer = decided["transfer"]
+            if decided["kind"] == "unavailable":
+                return UNCOVERED, ("no review evidence composes over the branch, and the base-advance "
+                                   f"transfer check could not run ({transfer.get('reason')})")
+            if decided["decision"] == self._gates.TRANSFER_SUITE_STALE:
+                return UNCOVERED, ("the branch's diff is byte-identical across its base advance, but no "
+                                   "PR-gate transfer grant is recorded for the merged span and no suite run "
+                                   f"met the branch tip ({decided['tests_reason']}); grants and suite runs "
+                                   "stay in the clone that recorded them, so they may exist in another clone")
+            if decided["decision"] != self._gates.TRANSFER_GRANTED:
+                return None
+            carried = (f"transferred across base advance {transfer['prior_base'][:12]}→{span_base[:12]}; "
+                       f"branch diff byte-identical; {decided['tests_reason']}")
         prior_base, prior_head = transfer["prior_base"], transfer["prior_head"]
-        carried = (f"transferred across base advance {prior_base[:12]}→{span_base[:12]}; branch "
-                   f"diff byte-identical; {decided['tests_reason']}")
         if self._boundary_split(merge_base, tip, prior_base, prior_head):
             return PR_TRANSFERRED, (f"a boundary review covered the branch at its PR before it synced "
                                     f"its base, and only fix verification followed it ({carried})")

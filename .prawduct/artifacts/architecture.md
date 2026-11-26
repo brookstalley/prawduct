@@ -222,9 +222,11 @@ CRT-8L3Q.
   makes governance survive normal git workflows instead of fighting them. Both review gates close one
   case of that gap by a separate *computed* route rather than by composition — a base advance (merge
   or rebase) that leaves the branch's own diff byte-identical transfers its coverage, subject to a
-  suite run that has met the tree that gate vouches for
-  (`coverage.diagnose_base_advance_transfer`). Only the authority paths record a grant; the
-  session-start briefing reads the same verdict as advice and writes nothing.
+  suite run that has met the tree that gate vouches for (decided by `gates.base_advance_transfer`
+  over `coverage.diagnose_base_advance_transfer`). Only the authority paths record a grant; the
+  session-start briefing reads the same verdict as advice and writes nothing. The release's
+  boundary-coverage op reads the PR gate's recorded grant (`gates.recorded_transfer_grant`) and
+  re-decides only when none is recorded in its clone.
 - **The evidence store is shared across all worktrees of a clone**, because it lives inside the
   shared `.git` common dir. Every worktree appends to and reads the same log, so review coverage
   composes across worktrees. The store itself never leaves its clone; its verdict-bearing kinds
