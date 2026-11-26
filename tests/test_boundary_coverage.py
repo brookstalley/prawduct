@@ -513,17 +513,41 @@ class TestThisRepositorysHistory:
         assert entry.classification == bc.PR_COVERED, entry
 
     @pytest.mark.requires_local_cache
-    def test_the_v3_10_0_branch_that_synced_develop_after_review_is_pr_transferred(self):
+    def test_the_v3_10_0_branch_that_synced_develop_after_review_is_pr_transferred(
+        self, monkeypatch
+    ):
         """#1250's own repro: #1249 was reviewed, synced develop (#1248), took a
         records-only commit, and the PR gate passed it by transfer. Present-ness is
-        read from the store file, as above."""
+        read from the store file, as above.
+
+        The suite condition is answered from the store's #1249 run alone. The real
+        `gates.suite_vouches_for_tree` reads this checkout's own
+        `.test-evidence.json` first, and `test-evidence record` voids it with no
+        tree while it runs (the suite this test runs in), which denies every tree
+        by design: so the answer here would depend on who is running the suite.
+        The stub keeps what this test pins: the op must apply the transfer, over
+        the real store and history, and ask the suite about #1249's tip. The
+        suite condition's own reading is pinned on fixtures above."""
+        from lib import gates  # noqa: PLC0415
+
         path = evidence.store_path(ROOT)
         text = path.read_text(encoding="utf-8") if path is not None and path.is_file() else ""
         missing = [rid for rid in (*_PR_1249_REVIEWS, _PR_1249_RUN) if rid not in text]
         if missing:
             pytest.skip(f"this clone's evidence store lacks #1249's evidence {missing}")
+        (run,) = [f for f in evidence.facts_of_kind(evidence.read_facts(ROOT), "test-run")
+                  if f.get("id") == _PR_1249_RUN]
+        asked: list = []
+
+        def store_run_met(project_dir, target_tree=None):
+            asked.append(target_tree)
+            met = target_tree == run["body"]["tree"] and run["body"].get("failed") == 0
+            return met, "#1249's recorded run met this exact tree" if met else "not #1249's tip"
+
+        monkeypatch.setattr(gates, "suite_vouches_for_tree", store_run_met)
         entry = bc.classify_merge(ROOT, _PR_1249_MERGE)
         assert entry.classification == bc.PR_TRANSFERRED, entry
+        assert asked == [_git(ROOT, "rev-parse", f"{_PR_1249_MERGE}^2^{{tree}}")], asked
 
 
 class TestTheBoundaryReviewsFixes:
