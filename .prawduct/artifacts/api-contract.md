@@ -175,13 +175,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   review: run on the integration base's own checkout at its tip with a clean tree, its interval is
   the release anchor → HEAD (from the oldest owed entry's first parent instead when one sits at or
   before the anchor, 2026-11-26), `files_reviewed` is the changed files of every release entry
-  `check-boundary-coverage` reads not covered that still differ from that start, and the rest of
+  `check-boundary-coverage` reads not covered that still differ at HEAD from that start or from the
+  release anchor (one differing only from the anchor is rated against it), and the rest of
   the span is `files_context`; the manifest and fact record `span: release` and a `span_reason`
   naming the anchor, and the fact is never a coverage edge (only the release check's
   `batch_review_covers` credits it). Refused with exit 1 and `--span release refused (<code>)`
   on stderr, before anything is written: `off-base` (not the base's checkout, or HEAD is not the
   base's tip), `dirty-tree`, `no-anchor`, `unevaluable` (the classification could not run),
-  `no-subject` (what is owed changes nothing that still differs from the start); exit 3 when every
+  `no-subject` (what is owed changes nothing that still differs from the start or the anchor); exit 3 when every
   release entry is already covered. `--force` overrides none of them, and the review round budget
   never charges it. A plain `--mode cumulative` on the integration base's own branch with HEAD at
   its tip derives `--span release` itself when the release check's policy is `boundary_review:
@@ -360,8 +361,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   stays owed.
   `batch-covered` is a commit (merge or single-parent) a boundary review on the base credits by
   `coverage_algebra.batch_review_covers` — it brackets the commit on the first-parent line, rated
-  every judgeable file of the commit still changed across its interval, and no unresolved blocker
-  stands at its trees — or a single-parent fix after such a review that `verify-resolutions` and
+  every judgeable file of the commit still changed across its interval or, at its head, from the
+  release anchor's tree, and no unresolved blocker stands at its trees — or a single-parent fix after such a review that `verify-resolutions` and
   free edges compose to; a `critic-begin --span release` review is credited only this way.
   `tail-deferred` (not covered) is a fix tail the PR gate deferred to the release. `pr-transferred` is a branch that synced
   its base after its PR's boundary review and that the PR gate passed by its base-advance transfer:

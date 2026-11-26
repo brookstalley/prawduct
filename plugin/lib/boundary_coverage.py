@@ -44,7 +44,8 @@ Each commit is classified as:
   the relax-only batch rule: the review brackets the commit on the base's
   first-parent line (its base tree at or before the commit's first parent, its
   head tree at or after the commit), it rated every judgeable file of the commit
-  still changed across its interval, and no unresolved blocker stands at its
+  still changed across its interval or, at its head, from the release anchor
+  (:func:`_changed_since_either`, M15), and no unresolved blocker stands at its
   trees. A blocker on a merged branch's own trees is not asked: merging over
   it was the owner's call at the PR (owner ruling 2026-11-26). A release
   batch review (``/prawduct:critic cumulative`` at the base's tip, ``span:
@@ -278,6 +279,23 @@ class _Classifier:
         self._first_parent: "list[tuple[str, str]] | None" = None
         self._declared: dict = {}
         self._index: "tuple[dict, dict] | None" = None
+        #: Per review head tree, what differs there from the release anchor's
+        #: tree (:meth:`_shipping_at`); ``False`` until the anchor's tree is read.
+        self._anchor_tree: "str | None | bool" = False
+        self._shipping: dict = {}
+
+    def _shipping_at(self, head_tree: str) -> "set | None":
+        """The paths that differ at ``head_tree`` from the release anchor's tree:
+        what a release cut there would ship beyond the last one. Empty with no
+        anchor; None when git could not answer (the batch rule then credits
+        nothing from that review)."""
+        if self._anchor_tree is False:
+            self._anchor_tree = self._git("rev-parse", f"{self.anchor}^{{tree}}") if self.anchor else None
+        if not self._anchor_tree:
+            return None if self.anchor else set()
+        if head_tree not in self._shipping:
+            self._shipping[head_tree] = _changed_since_either(self._git, (self._anchor_tree,), head_tree)
+        return self._shipping[head_tree]
 
     def _git(self, *args: str) -> "str | None":
         rc, out, _err = evidence.run_git(self.project_dir, *args)
@@ -677,7 +695,13 @@ class _Classifier:
             # The review's base at or before the commit's first parent; its head
             # at or after the commit.
             brackets = any(i >= before for i in older) and any(i <= at_commit for i in newer)
-            verdict = coverage_algebra.batch_review_covers(self.settled, fact, files, brackets=brackets)
+            # A file back at the review's base still ships when it differs from
+            # what the last release shipped (M15), so it still needs the read.
+            ships = self._shipping_at(body["head_tree"]) if brackets else set()
+            if ships is None:
+                continue
+            verdict = coverage_algebra.batch_review_covers(self.settled, fact, files, brackets=brackets,
+                                                           ships=ships)
             if verdict["status"] == "covered":
                 return "covered", str(fact.get("id")), verdict["reason"]
             if verdict["status"] == "blocked" and blocked is None:
@@ -764,12 +788,9 @@ class _Classifier:
                                  if e.commit and e.parents and e.parents[0] in position])
             if start is None:
                 return
-            differs: set = set()
-            for older in dict.fromkeys((start[1], anchor.tree)):
-                out = self._git("diff", "--name-only", "--no-renames", older, tip_tree, "--")
-                if out is None:
-                    return
-                differs.update(out.splitlines())
+            differs = _changed_since_either(self._git, (start[1], anchor.tree), tip_tree)
+            if differs is None:
+                return
             at = (f"{start[0][:12]}, where the release span starts" if start[0] == anchor.commit
                   else f"{start[0][:12]}, where the release span starts, and at the release anchor "
                        f"{anchor.commit[:12]}")
@@ -795,6 +816,25 @@ class _Classifier:
                 credited = True
             if not credited:
                 return
+
+
+def _changed_since_either(git, olders, newer: str) -> "set | None":
+    """Every path that differs at ``newer`` from any of ``olders`` (trees or
+    commits); None when git could not answer one of the diffs.
+
+    The one reading of "nothing of it ships" (M15, owner ruling 2026-11-26,
+    R-4): a file back at a span's start ships nothing only when it also matches
+    the release anchor's tree, because the span can start before the anchor and
+    work between that start and the anchor shipped. :meth:`_Classifier.credit_reverted`
+    (``reverted``), :func:`release_subject` (the release batch review's subject)
+    and :meth:`_Classifier._batch` (the batch rule's condition 2) all ask it."""
+    changed: set = set()
+    for older in dict.fromkeys(o for o in olders if o):
+        out = git("diff", "--name-only", "--no-renames", older, newer, "--")
+        if out is None:
+            return None
+        changed.update(p for p in out.splitlines() if p)
+    return changed
 
 
 def _span_start(anchor: "Anchor", position: dict, tree_of, owed: list) -> "tuple | None":
@@ -1247,7 +1287,10 @@ class ReleaseSubject:
     anchor: "Anchor | None" = None
     #: The release entries no boundary review covered.
     owed: list = field(default_factory=list)
-    #: Their changed files that still differ from :attr:`start`: the review's subject.
+    #: Their changed files that still differ at HEAD from :attr:`start` or from
+    #: the release anchor's tree (:func:`_changed_since_either`): the review's
+    #: subject. One that differs only from the anchor shows no change across the
+    #: interval, and the dispatch says so.
     files: list = field(default_factory=list)
     #: Owed entries no review can credit: they name no commit (a fragment no
     #: commit on the base added, or a walk git could not run).
@@ -1270,7 +1313,7 @@ def release_subject(project_dir: Path, *, clean: bool) -> ReleaseSubject:
     ``HEAD``), the classification cannot be read (``unevaluable``), there is no
     release anchor (``no-anchor``: nothing to start the span from), or the owed
     entries change no judgeable file that still differs from where the span
-    starts (``no-subject``). The span starts at the anchor, or at the first
+    starts or from the release anchor (``no-subject``). The span starts at the anchor, or at the first
     parent of the oldest owed entry when one sits at or before it. Every entry covered is ``no-review-needed``
     (``nothing-owed``). Never raises: a fault is ``unevaluable``."""
     try:
@@ -1330,11 +1373,14 @@ def _release_subject(project_dir: Path, clean: bool) -> ReleaseSubject:
     if start is None:
         return refused(RELEASE_UNEVALUABLE, "git could not read the tree where the span would start",
                        base=base, anchor=anchor)
-    span = git("diff", "--name-only", "--no-renames", start[1], "HEAD", "--")
-    if span is None:
-        return refused(RELEASE_UNEVALUABLE, f"git could not diff {start[0][:12]} to HEAD",
+    # What still ships: a file back at the span start's content still differs
+    # from what the last release shipped when work between that start and the
+    # anchor changed it, so it is owed a read too (M15).
+    in_span = _changed_since_either(git, (start[1], anchor.tree), "HEAD")
+    if in_span is None:
+        return refused(RELEASE_UNEVALUABLE, f"git could not diff {start[0][:12]} or the release "
+                                            f"anchor {anchor.commit[:12]} to HEAD",
                        base=base, anchor=anchor)
-    in_span = set(span.splitlines())
     files: list = []
     for entry, parent in creditable:
         # What the commit brought onto the base: its diff against its first parent.
@@ -1347,7 +1393,8 @@ def _release_subject(project_dir: Path, clean: bool) -> ReleaseSubject:
         return refused(RELEASE_NO_SUBJECT, f"{len(owed)} release entr{'y' if len(owed) == 1 else 'ies'} "
                                            f"no boundary review covered ({', '.join(e.label for e in owed)}) "
                                            "change no judgeable file that still differs from "
-                                           f"{start[0][:12]}, where the span would start, so a batch "
+                                           f"{start[0][:12]}, where the span would start, or from the "
+                                           f"release anchor {anchor.commit[:12]}, so a batch "
                                            "review would rate nothing", base=base, anchor=anchor,
                        owed=owed, uncreditable=uncreditable, start=start)
     return ReleaseSubject(RELEASE_OK, "", f"{len(files)} file(s) owed a read since {start[0][:12]}",

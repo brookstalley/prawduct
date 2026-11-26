@@ -4070,7 +4070,9 @@ def begin_review(
       owed entry when one sits at or before it, head = ``HEAD`` (``span: release``,
       ``span_reason`` naming the anchor). ``files_reviewed`` is the subject: the
       changed files of every release entry no boundary review covered that still
-      differ from that start (``boundary_coverage.release_subject``); the rest of
+      differ at HEAD from that start or from the release anchor
+      (``boundary_coverage.release_subject``; one that differs only from the
+      anchor is rated against it, and a note says so); the rest of
       the span rides as ``files_context``. Never an edge
       (``coverage_algebra.review_edges``); the release check credits it through
       ``coverage_algebra.batch_review_covers``. Refused before any manifest is
@@ -4078,7 +4080,7 @@ def begin_review(
       base or behind/ahead of its tip (``off-base``), on a dirty tree
       (``dirty-tree``), with no release anchor (``no-anchor``), when the
       classification cannot be read (``unevaluable``), or when the entries owed a
-      read change nothing that still differs from the start (``no-subject``);
+      read change nothing that still differs from the start or the anchor (``no-subject``);
       ``no-review-needed`` (exit 3) when every entry is already covered. ``force``
       overrides none of these: a release review with no subject would rate nothing.
     - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;
@@ -4393,9 +4395,10 @@ def begin_review(
     # chunks are that mode's proposal (ST8), inherited along its chain.
     verify_anchor: "dict | None" = None
     # A release batch review's subject: the changed files of the release entries
-    # no boundary review covered, still differing from the anchor. `None` for
-    # every other dispatch.
-    release_files: "set[str] | None" = None
+    # no boundary review covered, still differing at HEAD from the span's start
+    # or from the release anchor (`boundary_coverage.release_subject`), in its
+    # order. `None` for every other dispatch.
+    release_files: "list[str] | None" = None
 
     def read_store() -> dict:
         if not _store_slot:
@@ -4477,7 +4480,7 @@ def begin_review(
         base_reviewed = base_commit
         head_anchor = "committed HEAD"
         span = SPAN_RELEASE
-        release_files = set(subject.files)
+        release_files = list(subject.files)
         notes.append(
             f"this is a release batch review of {subject.base}: it rates the "
             f"{len(subject.owed)} release entr{'y' if len(subject.owed) == 1 else 'ies'} no boundary "
@@ -4986,8 +4989,20 @@ def begin_review(
 
     if release_files is not None:
         # The release batch review rates only what the release entries owed a
-        # read changed; the rest of the span is context, below.
+        # read changed; the rest of the span is context, below. A subject file
+        # back at the span start's content, which still differs from the release
+        # anchor (M15), shows no change across the interval: it is rated all the
+        # same, against the anchor, and the note says so.
         files_reviewed = [f for f in files_changed if f in release_files]
+        since_anchor = [f for f in release_files if f not in files_changed]
+        if since_anchor:
+            files_reviewed += since_anchor
+            notes.append(
+                f"{len(since_anchor)} subject file(s) ({', '.join(since_anchor)}) are back at "
+                f"{base_commit[:12]}'s content but differ from what the last release shipped: rate "
+                f"each against the release anchor (`git diff {subject.anchor.commit[:12]} HEAD -- "
+                f"{' '.join(since_anchor)}`)"
+            )
     if files_reviewed is None:
         files_reviewed = list(files_changed)
     # Records govern review SCOPE, not review READING — eligibility is its own

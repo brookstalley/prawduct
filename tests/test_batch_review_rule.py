@@ -72,6 +72,18 @@ class TestTheRule:
         got = ca.batch_review_covers([batch], batch, ["src/a.py", "src/gone.py"], brackets=True)
         assert got["status"] == "covered", got
 
+    def test_a_file_back_at_the_base_that_still_ships_needs_reading(self):
+        """M15 (round 5): back at the interval's base content, but differing from
+        what the last release shipped (``ships``), so it still needs the read."""
+        batch = _batch(["src/a.py"])
+        got = ca.batch_review_covers([batch], batch, ["src/a.py", "src/gone.py"], brackets=True,
+                                     ships=["src/gone.py"])
+        assert (got["status"], got["outside"]) == ("not", ["src/gone.py"]), got
+        rated = _batch(["src/a.py", "src/gone.py"])
+        got = ca.batch_review_covers([rated], rated, ["src/a.py", "src/gone.py"], brackets=True,
+                                     ships=["src/gone.py"])
+        assert got["status"] == "covered" and "or since the release anchor" in got["reason"], got
+
     def test_a_non_judgeable_file_outside_the_subject_does_not_refuse(self):
         batch = _batch(["src/a.py"])
         got = ca.batch_review_covers([batch], batch, ["src/a.py", ".prawduct/artifacts/plan.md"],

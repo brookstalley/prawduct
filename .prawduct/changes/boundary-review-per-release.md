@@ -67,7 +67,9 @@ boundary review covered and reads the rest of the span as `files_context`. The m
 `span: release` with a `span_reason` naming the anchor. It refuses, naming the code and writing
 nothing, off the base or off its tip (`off-base`), on a dirty tree (`dirty-tree`), with no anchor
 (`no-anchor`), when the classification cannot run (`unevaluable`), or when the entries owed a read
-change nothing that still differs from where the span starts (`no-subject`). It exits 3 when every entry is
+change nothing that still differs from where the span starts or from the release anchor
+(`no-subject`). A file back at the span start's content that still differs from what the last
+release shipped stays in the subject, rated against the anchor. It exits 3 when every entry is
 already covered. `--force` overrides none of these.
 
 A release-span fact is never a coverage edge, even when it rated every file, so no PR gate verdict
@@ -75,7 +77,8 @@ can turn covered because it exists. Its blocking findings still stand at the tre
 review's do, so it can block a span standing on those trees, never cover one. The release
 check credits it through a new pure rule, `coverage_algebra.batch_review_covers`: an entry is
 `batch-covered` when a boundary review on the base brackets it on the first-parent line, rated every
-judgeable file of the entry still changed across its interval, and no unresolved blocker stands at
+judgeable file of the entry still changed across its interval or since the release anchor, and no
+unresolved blocker stands at
 its two trees. Wave 1's batch rule is the special case of a review that rated every file. The rule
 now applies to work committed on the base as well as to merges. A squash merge whose PR review
 spans exactly the trees it landed reads `batch-covered`, where it read `direct`. A fix committed on

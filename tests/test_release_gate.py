@@ -477,6 +477,15 @@ class TestRevertedWork:
         direct commit after the anchor puts `src/app.py` back as it was at the
         span start: that matches the start, not the anchor, so it ships a change
         no review read and stays owed."""
+        repo, withheld, undo = self._shipped_then_reverted(tmp_path)
+        proc, entries = self._entries(repo, tmp_path)
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        assert entries[withheld]["classification"] == bc.INNER_ONLY, entries[withheld]
+        assert entries[undo]["classification"] == bc.DIRECT, entries[undo]
+
+    @staticmethod
+    def _shipped_then_reverted(tmp_path) -> "tuple[Path, str, str]":
+        """The W3 fixture: ``(repo, the withheld merge, the revert)``."""
         repo = _repo(tmp_path)
         withheld = _lane(repo, "w")
         base = _branch(repo, "g")
@@ -485,9 +494,36 @@ class TestRevertedWork:
         _merge(repo, "g")
         _cut(repo, "v1.0.0", ship=("g",))
         undo = _commit(repo, {"src/app.py": "x = 0\n"}, "put app.py back")
+        return repo, withheld, undo
+
+    def test_the_release_batch_review_rates_the_revert_and_only_that_credits_it(self, tmp_path):
+        """M15, round 5: the release batch review's span starts at `w`'s first
+        parent, where `src/app.py` holds what the revert put back. It still
+        differs from what the last release shipped, so it is in the subject,
+        rated against the anchor, and the batch rule credits the revert because
+        the review rated it."""
+        repo, withheld, undo = self._shipped_then_reverted(tmp_path)
+        assert _begin_release(repo, tmp_path).returncode == 0
+        manifest = _manifest(repo)
+        assert "src/app.py" in manifest["files_reviewed"], manifest["files_reviewed"]
+        assert "src/app.py" not in manifest["files_changed"], manifest["files_changed"]
+        _consolidate(repo, tmp_path)
+        proc, entries = self._entries(repo, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert {c: entries[c]["classification"] for c in (withheld, undo)} == {
+            withheld: bc.BATCH_COVERED, undo: bc.BATCH_COVERED}, entries
+
+    def test_a_batch_review_that_did_not_rate_the_revert_does_not_credit_it(self, tmp_path):
+        """The control: the old route, a review over the same span whose subject
+        leaves `src/app.py` out (as the start-only subject did), credits `w`
+        and not the revert."""
+        repo, withheld, undo = self._shipped_then_reverted(tmp_path)
+        start = _git(repo, "rev-parse", f"{withheld}^1")
+        _review(repo, _tree(repo, start), _tree(repo), bc_cumulative(), reviewed=["src/w.py"],
+                extra={"span": "release"})
         proc, entries = self._entries(repo, tmp_path)
         assert proc.returncode == 1, proc.stdout + proc.stderr
-        assert entries[withheld]["classification"] == bc.INNER_ONLY, entries[withheld]
+        assert entries[withheld]["classification"] == bc.BATCH_COVERED, entries[withheld]
         assert entries[undo]["classification"] == bc.DIRECT, entries[undo]
 
 

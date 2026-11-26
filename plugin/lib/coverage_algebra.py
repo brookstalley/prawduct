@@ -1440,9 +1440,14 @@ def batch_review_covers(
     entry_files: "list[str] | None",
     *,
     brackets: bool,
+    ships: "Iterable[str] | None" = None,
 ) -> dict:
     """Does one boundary-stage review ``review`` cover one release entry, a
     commit on the integration base whose changed files are ``entry_files``?
+
+    ``ships`` is the paths that differ, at the review's head, from what the last
+    release shipped (the release anchor's tree), as the caller reads them from
+    git; ``None`` asks nothing more than the interval.
 
     The question :func:`coverage_verdict` cannot ask (design §3 of
     ``documentation/issues/1222-1223-design.md``): a release batch review rates
@@ -1454,9 +1459,12 @@ def batch_review_covers(
        parent on the base's first-parent line, and its head tree at or after the
        entry. A git question, so the caller answers it.
     2. Every judgeable file of the entry that still differs across the review's
-       interval (is in its ``files_changed``) is in its ``files_reviewed``. A
-       file the entry changed that is back to the interval's base content needs
-       no reading. A review whose subject is every judgeable file it changed
+       interval (is in its ``files_changed``), or in ``ships``, is in its
+       ``files_reviewed``. A file the entry changed that is back to the
+       interval's base content needs no reading unless it is in ``ships``: an
+       interval starting before the release anchor can end back at its start on
+       a file the last release shipped changed, and then the entry ships a
+       change (M15, owner ruling 2026-11-26, R-4). A review whose subject is every judgeable file it changed
        (any valid edge) meets this for every entry, which is wave 1's
        whole-edge batch rule as the special case.
     3. No unresolved blocking finding stands at the review's two trees, over
@@ -1492,7 +1500,7 @@ def batch_review_covers(
     if not isinstance(entry_files, list):
         # Unread is never "changed nothing": that would credit any commit.
         return {"status": "not", "reason": "the commit's changed files could not be read"}
-    in_interval = {f for f in changed if isinstance(f, str)}
+    in_interval = {f for f in changed if isinstance(f, str)} | set(ships or ())
     rated = {f for f in reviewed if isinstance(f, str)}
     outside = [f for f in judgeable_files([f for f in entry_files if isinstance(f, str)])
                if f in in_interval and f not in rated]
@@ -1507,7 +1515,9 @@ def batch_review_covers(
                 "reason": f"{len(unresolved)} unresolved blocking finding(s) stand at the review's "
                           f"trees ({named}{' …' if len(unresolved) > 3 else ''})"}
     return {"status": "covered", "reason": "the review rated every judgeable file of the commit "
-                                           "still changed across its interval, with no open blocker"}
+                                           "still changed across its interval"
+                                           + (" or since the release anchor" if ships else "")
+                                           + ", with no open blocker"}
 
 
 def _find_path(

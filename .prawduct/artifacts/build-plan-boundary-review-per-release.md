@@ -254,9 +254,15 @@ W9) found M2 to M6 recorded only in docstrings.
   whose first-parent diff was read and holds no judgeable file (a merge named only by its fragment,
   whose branch's changes were already on the base) is `reverted` too; an unread diff stays owed
   (round-5 W1). Recorded beneath the NFR's 2026-11-25 amendment ("Clarified: 2026-11-26").
-  Open (round 5): the batch rule's condition 2 still reads against the review's own interval, so a
-  release batch review starting before the anchor credits such a revert `batch-covered` without its
-  file in the subject. Veto-able.
+  The same rule holds wherever "back at the start, so it does not ship" is read, through one helper
+  (`boundary_coverage._changed_since_either`): a file ships nothing only when it matches, at HEAD,
+  both the span start and the anchor tree. So the release batch review's subject takes a file that
+  differs from either, and one that differs only from the anchor is rated against it (the dispatch
+  note names the diff); the batch rule's condition 2 also asks the review to have rated a file that
+  differs from the anchor tree at the review's head. *Why:* under R-4's "nothing of it ships", a
+  revert of shipped work does ship. A start-only reading in the subject and in condition 2 let a
+  release batch review that never read the file credit that revert `batch-covered`, which is the
+  hole `reverted` was narrowed to close (round 5, coordinator's call). Veto-able.
 - **M16, the batch fix tail asks only boundary reviews at or after the span start.** A verify-only
   tail from an older review no longer credits a later commit; it reads `direct` and the release
   batch review reads it, the safe direction. Veto-able.
