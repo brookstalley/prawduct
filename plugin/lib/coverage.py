@@ -514,9 +514,10 @@ def classify_transfer(transfer: "dict | None") -> str:
     or ``"unknown"`` (any other status).
 
     One function rather than a comparison at each call site because the
-    decision has several readers — the Stop gate, the PR gate's verdict and the
-    PR gate's rendered remedy — and a new status must land on the DENY side at
-    every one of them. ``"unknown"`` is that side: it neither grants nor renders
+    decision has several readers — :func:`gates.base_advance_transfer`, the one
+    decision function the PR gate, the Stop gate and the release's
+    boundary-coverage op call, and the PR gate's rendered remedy — and a new
+    status must land on the DENY side at every one of them. ``"unknown"`` is that side: it neither grants nor renders
     a remedy, because :func:`gates.transfer_remedy` reads fields only a
     ``match`` or an ``unavailable`` carries, and an unmeasured status is not a
     near miss a suite run fixes.

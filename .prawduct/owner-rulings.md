@@ -603,3 +603,18 @@ tag, detached, rather than onto `develop`.
    `per_release` eligibility stays fixed at three chunks independent of `chunk_review`; #1247's ask 3 gets no
    new mechanism (test-impact reuse is #1096/#1088; #367 stands). #1247 stays open at stage design (effort
    M, impact S), built after #1232's Chunk 04.
+
+**2026-11-26.** "Yes to all recommendations" — answering four asks:
+1. #1232 Chunks 03-06 of `build-plan-boundary-review-per-release.md` are built (go). The pay test ran read-only on
+   `~/source/discodon`'s ledger and git history (2026-10-23 on: 67 releases, 281 PR merges into develop, 110
+   `cumulative` rounds / 17.0 h, 154 `verify-resolutions` / 11.3 h; re-derive with
+   `documentation/issues/1247-measure/measure.py` and `git for-each-ref refs/tags`), not by running the op there.
+2. Decision 2's tag candidate (B) of that plan changes: the anchor's tag candidate is the oldest first-parent commit of
+   the base containing the merge-base of the base and the newest version tag, so a release tagged on a merge commit the
+   base never sees (discodon: `v2.22.0` on `main`) anchors on the develop commit it released. Where the tag is reachable
+   from the base, the answer is unchanged. Candidate (A) and "the nearer to the tip wins" stand.
+3. PR #1251 (`fix/ci-pr-dedupe` → `develop`) is merged.
+4. #1250: a merge the PR gate passed by base-advance transfer counts as covered at the release, as its own class
+   `pr-transferred`. This extends the 2026-11-24 "covered" definition, whose text stands: the transfer requires the
+   branch's diff byte-identical to the reviewed span, a base advance touching none of its files, and a suite run that met
+   the merged tree, and the release op reads the PR gate's recorded grant before re-deciding.
