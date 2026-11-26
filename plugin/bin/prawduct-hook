@@ -207,9 +207,13 @@ def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, binding):
         # `read_built`: committed chunks (`plan_status.built_chunks`) may ARM the
         # last-chunk block on a box-free plan; `short_plan_deferral` lets `built`
         # only turn "warn" into "block", never the reverse.
-        return cm.short_plan_deferral(
+        deferral = cm.short_plan_deferral(
             project_dir, prawduct_dir, binding, progress, read_built=True
         )
+        # Whether the per-release lane holds, so the messages below name the
+        # review inference will ask for (`critic_mode.with_lane`). It changes
+        # wording only, never whether the gate warns or blocks.
+        return cm.with_lane(project_dir, prawduct_dir, binding, progress, deferral)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a gate relaxation that cannot be evaluated must not relax the gate
         # Fail closed AND say so: a crashed predicate otherwise reads exactly
         # like an ineligible plan, and the builder runs the round the owner
@@ -4208,20 +4212,45 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     "  state, so this work is covered then without a round of its own.\n"
                 )))
             elif deferral is not None and deferral.defers and not deferral.last_chunk:
+                # Under the per-release lane (`deferral.lane`) the review deferred
+                # to is the lane's, not the boundary: its name and where the
+                # boundary went come from `critic_mode`, the wording inference
+                # prints too. Per-PR text is unchanged.
+                cm = _critic_mode()
+                deferred_to = (
+                    _wrap_gate_prose(f"This chunk's review is deferred to {cm.LANE_REVIEW_NAME}. Next:")
+                    if deferral.lane
+                    else "  This chunk's review is deferred to the boundary. Next:\n"
+                )
+                evidence_is = (
+                    _wrap_gate_prose(
+                        f"{cm.LANE_REVIEW_NAME[0].upper()}{cm.LANE_REVIEW_NAME[1:]} is the PR "
+                        f"gate's evidence, and {cm.LANE_BOUNDARY_MOVED}."
+                    ) + "  To review this chunk anyway, run\n"
+                    if deferral.lane
+                    else "  The boundary review is the PR gate's evidence. To review this chunk anyway, run\n"
+                )
                 stop_advisories.append(_LogOnlyAdvisory(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span}, and none is owed yet — {deferral.reason}.\n"
-                    "  This chunk's review is deferred to the boundary. Next:\n"
-                    + _wrap_gate_prose(_critic_mode().short_plan_next_step(deferral) + ".")
-                    + _wrap_gate_prose(_critic_mode().SHORT_PLAN_OWN_PR_NOTE + ".")
-                    + "  The boundary review is the PR gate's evidence. To review this chunk anyway, run\n"
-                    "  `/prawduct:critic chunk`, or declare `Critic mode:` on any chunk of\n"
+                    + deferred_to
+                    + _wrap_gate_prose(cm.short_plan_next_step(deferral) + ".")
+                    + _wrap_gate_prose(cm.SHORT_PLAN_OWN_PR_NOTE + ".")
+                    + evidence_is
+                    + "  `/prawduct:critic chunk`, or declare `Critic mode:` on any chunk of\n"
                     "  the plan to restore per-chunk review for the whole plan.\n"
                 )))
             else:
                 last_chunk_note = (
-                    "  This plan is short and its per-chunk reviews were deferred to this\n"
-                    f"  boundary review ({deferral.reason}):\n"
+                    (
+                        _wrap_gate_prose(
+                            "This plan is short and its per-chunk reviews were deferred to "
+                            f"{_critic_mode().LANE_REVIEW_NAME} ({deferral.reason}):"
+                        )
+                        if deferral.lane
+                        else "  This plan is short and its per-chunk reviews were deferred to this\n"
+                        f"  boundary review ({deferral.reason}):\n"
+                    )
                     + _wrap_gate_prose(_critic_mode().short_plan_next_step(deferral) + ".")
                     if deferral is not None and deferral.defers and deferral.last_chunk
                     else ""

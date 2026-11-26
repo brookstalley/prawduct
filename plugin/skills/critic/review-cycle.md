@@ -11,7 +11,7 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | **Trivial** (typo, config) | None — waive via `.gates-waived` if the stop hook prompts. |
 | **Small** (bug fix, minor feature) | One inner-stage review, optional — inference answers `chunk`; `final` only by declaration. |
 | **Medium** (new feature, refactor) — non-chunked | One `final` review, mandatory after completion. |
-| **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). **A short plan** — at most 3 chunks, no `Critic mode:` declared on any chunk, nothing the branch changed a risk surface — owes no per-chunk review at all: the one `cumulative` at its last chunk is every chunk's review. Inference answers `deferred` mid-chunk (dispatch nothing), and the Stop gate WARNS instead of blocking on a non-final chunk, naming that boundary review; on the last chunk it blocks as ever. |
+| **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). **A short plan** — at most 3 chunks, no `Critic mode:` declared on any chunk, nothing the branch changed a risk surface — owes no per-chunk review at all: the one `cumulative` at its last chunk (per-release lane: `chunk`, below) is every chunk's review. Inference answers `deferred` mid-chunk (dispatch nothing), and the Stop gate WARNS instead of blocking on a non-final chunk, naming that boundary review; on the last chunk it blocks as ever. |
 | **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (on a `cumulative-final` plan it doubles as the last chunk's review, not a second pass). |
 | **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Demotes to the mode its refusal names when the anchor is unusable or scope widens past the demotion threshold. |
 
@@ -25,7 +25,7 @@ Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical 
 
 1. **Per-invocation override** — an explicit mode argument (`/prawduct:critic chunk` etc.). `cumulative full` (or `full`) answers `cumulative` with rationale `explicit-args full`, which `critic-begin` reads as a request for the whole bundle. Rationale: `"explicit-args"` — except a named `chunk`/`final` on a clean tree, whose interval is provably empty: the helper answers `cumulative`, rationale `explicit-args <token> redirected: …` — the operator's word survives into `mode_chosen_by`. Not mid-plan (below): there the token stands.
 2. **Plan-level override** — the active build plan's current chunk's `Critic mode:` field (the current chunk is the plan's first open chunk). A valid value wins over inference with rationale `plan-override: <mode>`; an absent, blank, or unrecognized value is ignored.
-3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`), with the short-plan deferral between the second and third: an eligible plan with code in flight answers `deferred` (rationale `short-plan deferral: …`), which dispatches nothing; a fix-in-progress still gets rule 1's review, and a committed bundle rule 2's at the boundary. **Mid-plan** (2+ open chunks of the branch's own plan), a clean tree answers `chunk` over the unreviewed interval, or `deferred` (nothing unreviewed, or a short plan).
+3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`), with the short-plan deferral between the second and third: an eligible plan with code in flight answers `deferred` (rationale `short-plan deferral: …`), which dispatches nothing; a fix-in-progress still gets rule 1's review, and a committed bundle rule 2's at the boundary. **Under `boundary_review: per_release`** an eligible branch (`docs/project-state-keys.md`) answers `chunk` wherever a clean tree would infer or redirect to `cumulative`; its `per-release lane` rationale names the `--chunks` to pass, and the boundary review moves to the release check. **Mid-plan** (2+ open chunks of the branch's own plan), a clean tree answers `chunk` over the unreviewed interval, or `deferred` (nothing unreviewed, or a short plan).
 
 Authoring heuristic (what inference picks per plan shape, when an explicit declaration earns the override): `methodology/planning.md` "Critic Mode Per Chunk".
 
@@ -62,15 +62,14 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 **Risk surface** = a changed path matching this repo's `risk_surfaces:` in `project-state.yaml` — the
 same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo that declares none runs
 the same two escalators — the derived defaults (`lib/risk.py`) and volume at 12 non-static
-judgeable files (`docs/project-state-keys.md`) — and no file-count fallback
-beneath them (the roster config block in `lib/critic_consolidate.py` carries the measurement that
-retired it). What declaring buys is the paths it names.
+judgeable files (`docs/project-state-keys.md`, which also says what replaced the file-count
+fallback). What declaring buys is the paths it names.
 
 **Two-form rule for the `mode` value:**
 - **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument, `critic-begin --mode`): the short token — `chunk`, `final`, `cumulative`, or `verify-resolutions`.
 - **Persisted-side** (the manifest, review facts, `.prawduct/.critic-findings.json`, session briefings, gate WARNINGs): the verbose string — exactly `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, `"cumulative (bundle review, ready for merge)"`, or `"verify-resolutions (delta review, prior findings only)"`.
 
-Read short, write verbose — the persisted JSON stays self-documenting in briefings. The conversion happens in code (`critic-begin`); the manifest validator rejects bare short tokens.
+Read short, write verbose — the persisted JSON stays self-documenting in briefings.
 
 ### Severity is stage-keyed
 
@@ -110,7 +109,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 `uncovered` caused only by the **base advancing** transfers instead of buying a round, at BOTH gates: `gates.base_advance_transfer` grants it when the branch's own diff is byte-identical across both spans and a suite run has met the tree that gate vouches for. A denial on that condition alone says so: the remedy is a run, not a review.
 
-**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `.claude/rules/learnings/` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review lands, tell the user what you are waiting on. Prep that changes a repo file other than prawduct's session files (a learnings rule, a new draft) makes consolidation refuse until you attest: `critic-consolidate --tree-changed-by-builder "<why>"` records the paths and reason in the review fact. Keep drafts in your scratchpad.
+**Prep work before invoking cumulative.** Before invoking it, complete prep that doesn't depend on its findings (`/prawduct:pr` Step 2 lists it), so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review lands, tell the user what you are waiting on. Prep that changes a repo file other than prawduct's session files (a learnings rule, a new draft) makes consolidation refuse until you attest: `critic-consolidate --tree-changed-by-builder "<why>"` records the paths and reason in the review fact. Keep drafts in your scratchpad.
 
 ### Verify-resolutions anchoring and demotion
 

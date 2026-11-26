@@ -44,10 +44,28 @@ merge whose branch changed nothing judgeable but whose merge commit edits a judg
 anchor and how many commits the walk found. It is still advice, and `check-releasability`'s exit is
 unchanged.
 
+### Chunk 04: inference answers chunk at an eligible last chunk
+Under `per_release`, a branch the lane takes no longer infers the boundary `cumulative` at its
+plan's last chunk. One predicate, `critic_mode.lane_eligibility`, decides: the policy in force is
+`per_release`, the plan has at most three chunks (the lane's own bound, kept at three even if a
+later cadence key widens the short-plan deferral), its last chunk is not `Type: cumulative-final`,
+the short-plan shape holds (no `Critic mode:`, not on the base, no risk surface), and the branch
+changes at most 10 judgeable files. Anything it cannot read, or a crash, is not eligible. Where
+rule 2, rule 4's clean-tree redirect, or an explicit `chunk`/`final` on a clean tree would have
+named `cumulative`, inference answers `chunk` over the unreviewed interval with a `per-release
+lane` rationale that names the `--chunks` the boundary review would have named, so the dispatch
+is not refused as ambiguous; a `chunk` that could not reach the unreviewed commits keeps the
+`cumulative`. The short-plan deferral, the Stop gate's warning and block, and the extension
+deferral name the lane's review instead of the boundary `cumulative`, and once the lane's review
+has finished the plan nothing owes a `cumulative`, so a fix after it takes a verify pass or a lane
+`chunk`. An explicit `/prawduct:critic cumulative` still runs the per-PR boundary review. With the
+key absent every answer and message is unchanged.
+
 ## Consumer note
 A new opt-in key, `boundary_review:` in `.prawduct/project-state.yaml` (see
-`/prawduct:methodology project-state`). At this point `per_release` is read and changes nothing;
-leave it unset. Nothing changes for a repo that does not set it.
+`/prawduct:methodology project-state`). `per_release` already changes which review inference asks
+for at an eligible branch's last chunk, but the release check that the moved boundary review is
+owed to does not block yet; leave it unset. Nothing changes for a repo that does not set it.
 
 `check-boundary-coverage` (and the count line `check-releasability` prints) now also lists every
 judgeable commit since your last release, including work committed on the integration branch
