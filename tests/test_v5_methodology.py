@@ -1211,7 +1211,10 @@ LAST_MEASURED_TOKENS = {
     # project-state-keys.md own it), the rendezvous gloss (`partial_path`/`started_path` own it),
     # the scope-widened row's re-dispatch line (SKILL.md's exit table owns it), and the ten-round
     # measurement (critic_consolidate owns it). A READING; ceiling unchanged.
-    "skills/critic/review-cycle.md": 8257,
+    # -15 on 2026-11-26 (boundary-review-per-release): the release batch review's paragraph no
+    # longer routes a merged branch's blocker through the verify pass, a route the owner's ruling
+    # retired. A READING; ceiling unchanged.
+    "skills/critic/review-cycle.md": 8242,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the

@@ -42,7 +42,9 @@ and de-duplicated by commit, so a scope a pruned release withheld stays classifi
 lists the whole walk. A repo with neither anchor gets the fragment join alone, and the report says
 there was no anchor. A new covered class, `release-bookkeeping`, is a single-parent commit after the
 anchor whose judgeable changes are all files `release_version_files:` declared at the anchor: the
-reopen commit after a cut, which read `direct` before. A declaration added since the release never
+reopen commit after a cut, which read `direct` before. Another, `reverted`, is owed work whose
+every judgeable change is back, at the base's tip, to where the release span starts: nothing of it
+ships, so a release whose owed work was all reverted needs no batch review. A declaration added since the release never
 qualifies, and an undeclared repo's fallback layout never does. A
 merge whose branch changed nothing judgeable but whose merge commit edits a judgeable file now reads
 `uncovered`, not `no-judgeable`, because the walk reaches such merges. The count line names the
@@ -54,8 +56,8 @@ advice, and `check-releasability`'s exit is unchanged.
 ### Chunk 03: the release batch review, and the relax-only rule that credits it
 A release that defers boundary reviews needs a review that reads what was deferred, and a rule
 that credits it without loosening any PR gate. `/prawduct:critic cumulative` dispatches that review
-on the integration base's own checkout, at its tip, with a clean tree, where `critic-begin --mode
-cumulative` derives the release span (`--span release` is the explicit form). Its
+on the integration base's own checkout, at its tip, with a clean tree, where under `per_release`
+`critic-begin --mode cumulative` derives the release span (`--span release` is the explicit form). Its
 interval is the release anchor to HEAD (Chunk 06: or from the first parent of an owed entry
 older than the anchor). It rates the changed files of every release entry no
 boundary review covered and reads the rest of the span as `files_context`. The manifest records
@@ -71,7 +73,7 @@ review's do, so it can block a span standing on those trees, never cover one. Th
 check credits it through a new pure rule, `coverage_algebra.batch_review_covers`: an entry is
 `batch-covered` when a boundary review on the base brackets it on the first-parent line, rated every
 judgeable file of the entry still changed across its interval, and no unresolved blocker stands at
-its two trees or at the entry's own (a merged branch's). Wave 1's batch rule is the special case of a review that rated every file. The rule
+its two trees. Wave 1's batch rule is the special case of a review that rated every file. The rule
 now applies to work committed on the base as well as to merges. A squash merge whose PR review
 spans exactly the trees it landed reads `batch-covered`, where it read `direct`. A fix committed on
 the base after such a review is `batch-covered` when `verify-resolutions` and free edges alone
@@ -127,12 +129,10 @@ integration branch's state cannot be read at all, a checkout declaring `per_rele
 it, the stricter reading for a release. The PR skill's release guard runs `--gate` and stops on
 either refusal.
 
-Five routes out that the gate would otherwise have closed: a release batch review's span starts at
+Four routes out that the gate would otherwise have closed: a release batch review's span starts at
 the oldest owed entry's first parent when that entry sits before the anchor (a scope a pruned
 release withheld), so it can be credited; the batch rule credits an octopus merge, which read
-`unknown` for good; a merged branch's unresolved blocker, which no batch review clears, is named in
-the roll-call of a `verify-resolutions` pass on the integration branch, so its resolution clears it
-and the release passes; the review round budget never charges a release batch review; and
+`unknown` for good; the review round budget never charges a release batch review; and
 `review-stats` files it under its own `release` span (report schema 15), not `full`. The lane's
 eligibility and the fix-tail deferral now read risk surfaces as the integration branch holds them
 too (the merge-base and the tip), so a branch cannot rewrite its own `risk_surfaces:` to buy
@@ -148,9 +148,7 @@ a blocker-free fix tail may merge unreviewed (`check-cumulative-critic` exit 0, 
 deferred to the release)`), and `check-releasability` then refuses the release
 (`boundary-uncovered:`) until a release batch review on the integration branch has read that work:
 `/prawduct:critic cumulative` on its own checkout at its tip with a clean tree, where `critic-begin
---mode cumulative` derives the release span (`--span release` is the explicit form). A merge whose
-branch still carries an unresolved BLOCKING finding stays held after that review: fix it on the
-integration branch and run `/prawduct:critic verify-resolutions` there, whose roll-call names it.
+--mode cumulative` derives the release span (`--span release` is the explicit form).
 It also refuses (`boundary-unevaluable:`) when it cannot answer, including when the repo has no
 release anchor yet: opt in after your first tagged or cut release. Read the key's entry in
 `project-state-keys.md` before opting in; it lists what can still hold a correct release and how
@@ -160,10 +158,10 @@ to clear each.
 judgeable commit since your last release, including work committed on the integration branch
 without a change fragment, so expect more entries and a count line that names the release anchor.
 `--json` adds `anchor`, `no_anchor_reason`, each entry's `source` (`fragment`, `walk` or
-`both`; `walk-failed` when git could not list the commits since the anchor) and each entry's
-`blockers` (the unresolved blocking findings on a not-covered entry's own trees), and a new covered
-class, `release-bookkeeping`, for a commit that changes only the files `release_version_files:`
-declared at your last release. A merge whose fix tail the PR gate deferred reads `tail-deferred`,
+`both`; `walk-failed` when git could not list the commits since the anchor), and two new covered
+classes: `release-bookkeeping`, for a commit that changes only the files `release_version_files:`
+declared at your last release, and `reverted`, for owed work your integration branch has since
+put back as it was (`counts` gains both keys). A merge whose fix tail the PR gate deferred reads `tail-deferred`,
 not covered. Under `per_pr` neither command's exit code changes; `check-boundary-coverage --gate`
 is the blocking reading, exit 0 there.
 

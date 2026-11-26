@@ -124,14 +124,8 @@ def _boundary_pattern_paths(prawduct_dir: Path) -> list[str]:
     product's documented contract surfaces. Globs and slash-commands are
     excluded by the shared ``_looks_like_file_path`` rule; an unfilled
     template (paths only inside HTML comments, unbackticked) yields none."""
-    path = prawduct_dir / "artifacts" / "boundary-patterns.md"
-    if not path.is_file():
-        return []
-    try:
-        content = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    return _boundary_pattern_paths_in(content)
+    text = _read_text(prawduct_dir / "artifacts" / "boundary-patterns.md")
+    return _boundary_pattern_paths_in(text) if text else []
 
 
 def _boundary_pattern_paths_in(content: str) -> list[str]:
@@ -163,9 +157,28 @@ SOURCE_UNPARSEABLE = "unparseable risk_surfaces"
 
 
 def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
-    """The risk surfaces in force plus their provenance — resolution order
-    steps 1-2 of the module docstring, in ONE place so every consumer answers
-    "is this a risk surface" identically.
+    """The risk surfaces in force plus their provenance, as this checkout's
+    working tree declares them: :func:`resolve_surfaces_from` over the two
+    files read from disk.
+
+    A file that cannot be read declares nothing: an unreadable
+    ``project-state.yaml`` is an absent key (the fallback can only escalate),
+    an unreadable ``boundary-patterns.md`` names no contract path.
+    """
+    return resolve_surfaces_from(
+        _read_text(prawduct_dir / "project-state.yaml"),
+        _read_text(prawduct_dir / "artifacts" / "boundary-patterns.md"),
+    )
+
+
+def resolve_surfaces_from(
+    state_text: "str | None", patterns_text: "str | None"
+) -> tuple[list[str], str]:
+    """THE resolution order (steps 1-2 of the module docstring) over texts in
+    hand: ``project-state.yaml``'s and ``boundary-patterns.md``'s, each ``None``
+    when there is no such file. One function so every consumer answers "is this
+    a risk surface" identically, whether it read the working tree
+    (:func:`resolve_surfaces`) or a committed revision (:func:`_surfaces_at`).
 
     A ``risk_surfaces:`` key is exclusive when present (declared-empty is a
     deliberate opt-out and returns ``[]``); otherwise the derived defaults plus
@@ -175,23 +188,29 @@ def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
     Callers must not treat that as either of the other two — see
     :data:`SOURCE_UNPARSEABLE`.
     """
-    status, declared = read_declared_surfaces(
-        prawduct_dir / "project-state.yaml", "risk_surfaces"
-    )
+    status, declared = (read_block_sequence(state_text, "risk_surfaces")
+                        if state_text is not None else (YAML_ABSENT, ()))
     if status == YAML_UNPARSEABLE:
         return [], SOURCE_UNPARSEABLE
     if status == YAML_DECLARED:
-        return declared, SOURCE_DECLARED
+        return list(declared), SOURCE_DECLARED
     return (
-        [*DERIVED_DEFAULT_SURFACES, *_boundary_pattern_paths(prawduct_dir)],
+        [*DERIVED_DEFAULT_SURFACES, *(_boundary_pattern_paths_in(patterns_text) if patterns_text else [])],
         SOURCE_DERIVED,
     )
 
 
+def _read_text(path: Path) -> "str | None":
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
 def _surfaces_at(project_dir: Path, rev: str) -> "tuple[list[str], str] | None":
-    """:func:`resolve_surfaces` as the committed tree at ``rev`` declares them,
-    or None when git cannot resolve ``rev``. A state file absent there declares
-    nothing, so the derived defaults apply, as they do in a working tree.
+    """:func:`resolve_surfaces_from` over the committed tree at ``rev``, or None
+    when git cannot resolve ``rev``. A file absent there declares nothing, so
+    the derived defaults apply, as they do in a working tree.
 
     Git runs through :func:`evidence.run_git`, the plugin's one bounded runner
     (its timeout, its tolerant decode, never raising), because this sits on
@@ -201,21 +220,13 @@ def _surfaces_at(project_dir: Path, rev: str) -> "tuple[list[str], str] | None":
 
     if evidence.run_git(project_dir, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}")[0] != 0:
         return None
-    rc, state, _err = evidence.run_git(
-        project_dir, "show", f"{rev}:.prawduct/project-state.yaml", strip=False
-    )
-    status, declared = (read_block_sequence(state, "risk_surfaces") if rc == 0
-                        else (YAML_ABSENT, ()))
-    if status == YAML_UNPARSEABLE:
-        return [], SOURCE_UNPARSEABLE
-    if status == YAML_DECLARED:
-        return list(declared), SOURCE_DECLARED
-    rc, patterns, _err = evidence.run_git(
-        project_dir, "show", f"{rev}:.prawduct/artifacts/boundary-patterns.md", strip=False
-    )
-    patterns = patterns if rc == 0 else None
-    return ([*DERIVED_DEFAULT_SURFACES, *(_boundary_pattern_paths_in(patterns) if patterns else [])],
-            SOURCE_DERIVED)
+
+    def show(rel: str) -> "str | None":
+        rc, text, _err = evidence.run_git(project_dir, "show", f"{rev}:{rel}", strip=False)
+        return text if rc == 0 else None
+
+    return resolve_surfaces_from(show(".prawduct/project-state.yaml"),
+                                 show(".prawduct/artifacts/boundary-patterns.md"))
 
 
 def paths_touch_held_risk_surface(

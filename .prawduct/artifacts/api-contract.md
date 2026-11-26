@@ -184,8 +184,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `no-subject` (what is owed changes nothing that still differs from the start); exit 3 when every
   release entry is already covered. `--force` overrides none of them, and the review round budget
   never charges it. A plain `--mode cumulative` on the integration base's own branch with HEAD at
-  its tip derives `--span release` itself (added 2026-11-26, #1232, `boundary_coverage.integration_base_tip`)
-  and says so in a note; a derived span that refuses reads `the release batch review refused
+  its tip derives `--span release` itself when the release check's policy is `boundary_review:
+  per_release` (added 2026-11-26, #1232, `boundary_coverage.integration_base_tip`,
+  `review_lane.release_policy`; under `per_pr` it stays the plain `cumulative` it was) and says so in a note; a derived span that refuses reads `the release batch review refused
   (<code>)`. Any other `--span` value, or `--span` with another mode, is exit 1),
   `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
@@ -350,7 +351,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the base's own commit that release shipped, never the merge; with neither, no commit is walked and
   the report says so.
   Classes: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `release-bookkeeping`,
-  `inner-only`, `tail-deferred`, `uncovered`, `direct` or `unknown`, each with its reason.
+  `reverted`, `inner-only`, `tail-deferred`, `uncovered`, `direct` or `unknown`, each with its reason.
+  `reverted` (covered; added 2026-11-26, #1232) is an entry not otherwise covered every judgeable
+  file of whose change is back, at the base's tip, to its content where the release span starts
+  (the anchor, or the first parent of the oldest owed entry at or before it), so nothing of it ships.
   `batch-covered` is a commit (merge or single-parent) a boundary review on the base credits by
   `coverage_algebra.batch_review_covers` — it brackets the commit on the first-parent line, rated
   every judgeable file of the commit still changed across its interval, and no unresolved blocker
@@ -369,21 +373,19 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `[not covered]`, names the anchor, and ends with a count line naming its denominator and the anchor. Exit 0
   whenever it answered, whatever it found; 2 on an unknown argument; 3 when it could not evaluate.
   `--json` keys: `status` (`ok` | `unevaluable`), `base`, `reason` (`null` when `ok`), `counts` (one
-  key per classification), `entries[]{scope, classification, reason, commit, subject, source, blockers}`
+  key per classification), `entries[]{scope, classification, reason, commit, subject, source}`
   (`source`: `fragment`, `walk` or `both`, or `walk-failed` on the one `unknown` entry standing
   for a walk git could not run, with no commit; a walked commit no fragment names has an empty `scope`;
-  two fragments one merge added share one entry, scopes joined by `, `; `blockers` (added
-  2026-11-26, #1232) lists the unresolved BLOCKING findings standing on a not-covered entry's own
-  trees as `{review_id, fid, title}`, empty when none, and a `verify-resolutions` pass on the
-  base names them in its roll-call), `anchor` (`{commit, tree,
+  two fragments one merge added share one entry, scopes joined by `, `), `anchor` (`{commit, tree,
   source, reason}`, `source` `release-file` | `tag`, or `null`), `no_anchor_reason` (why there is
   none, else `null`) and `refusals[]` (fragments the pending set refused, which are not classified).
   `--gate` (added 2026-11-26, #1232) is the release check's blocking reading, the verdict
   `check-releasability` refuses on (`boundary_coverage.release_gate`), under the policy read at
   the integration branch's tip (`review_lane.release_policy`). Under `per_release`: exit 1 when any
   entry is not covered (`boundary-uncovered:` on stderr, with the release batch review as its
-  remedy), 3 when it could not answer — unevaluable, a fragment the pending set refused, or no
-  release anchor (`boundary-unevaluable:`, with its route) — else 0. Under `per_pr`: exit 0, the
+  remedy), 3 when it could not answer — unevaluable, a fragment the pending set refused, no
+  release anchor, or a walk since the anchor git could not run (`boundary-unevaluable:`, with its
+  route) — else 0. Under `per_pr`: exit 0, the
   advice unchanged. Either way stdout adds a `boundary_review: <value> (read at <ref>)` line with
   the policy's note, and `--gate --json` adds `policy` (`{value, source, note}`) and `gate`
   (`{exit, code, message}`) to the keys above. The bare op's exits do not change.

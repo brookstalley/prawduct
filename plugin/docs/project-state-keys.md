@@ -498,9 +498,8 @@ covered, and `boundary-unevaluable:` when it cannot answer; `check-boundary-cove
 branch's own checkout at its tip with a clean tree, where `critic-begin --mode cumulative` derives
 the release span (`--span release` is the explicit form). It rates what no boundary review read
 since the release anchor, or since the oldest such entry when one sits before the anchor. A blocker
-it raises is fixed there and cleared by `verify-resolutions`, and so is a merged branch's
-unresolved blocker, which the refusal names and no batch review clears: the verify pass on that
-checkout names it in its roll-call.
+it raises is fixed there and cleared by `verify-resolutions`. A merged branch's own blocker is not
+re-checked: merging over it was the owner's call at the PR.
 
 What a correct release can still meet, now that this blocks (each reads not covered unless said):
 
@@ -511,12 +510,11 @@ What a correct release can still meet, now that this blocks (each reads not cove
 | A reopen commit's version bump | Only when `release_version_files:` was not declared at the anchor (`direct`) | Declare it (it counts from the next release); the batch review this time |
 | Octopus merge (`unknown`) | Yes | The release batch review, which credits it like any merge |
 | A merge of a history sharing no merge-base with the base (`--allow-unrelated-histories`, a subtree import), or one git could not diff or read (`unknown`) | Yes | The release batch review, which credits it by what it brought onto the base |
-| A merge whose branch carries an unresolved BLOCKING finding (`uncovered`: its PR gate was bypassed) | Yes, even after a clean batch review: one that outlives the blocker does not clear it | Fix it and record its resolution with `verify-resolutions` |
 | A fragment no commit on the base added (untracked, or its branch unmerged): `unknown`, no commit | Yes, and no review can credit it | Commit or merge it, or delete a stray one |
 | A pruned release's withheld scope, merged before the anchor | Yes | The release batch review, whose span then starts at that scope's first parent |
 | #1250's base-advance transfer (`pr-transferred`) | No, covered. A transfer whose suite condition failed reads `uncovered` and blocks | The batch review, or the suite run its reason names |
 | A boundary review recorded in another clone | Yes until synced | `prawduct-hook evidence sync` |
-| Owed work whose every change has since been reverted | Yes: the batch review refuses `no-subject` | The batch review of any other owed work credits it too; with none, `per_pr` on the integration branch for that release |
+| Owed work whose every change is back to where the release span starts (`reverted`) | No, covered: nothing of it ships. A partial revert stays owed | — |
 | No release anchor (no release file, no version tag) | Yes, `boundary-unevaluable` | Tag the commit your last release shipped (`git tag vX.Y.Z <commit>`) or cut with `cut-change-log`; with no release yet, opt in after the first |
 | The walk since the anchor failed (`walk-failed`), an unreadable or newer-schema store, a refused fragment, an unresolvable base | Yes, `boundary-unevaluable` | Fix what the reason names (update the plugin for newer facts, `base_branch:` for the base) |
 

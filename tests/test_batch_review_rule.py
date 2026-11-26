@@ -57,55 +57,55 @@ def _batch(reviewed: list, **kw) -> dict:
 class TestTheRule:
     def test_it_covers_an_entry_whose_judgeable_files_it_rated(self):
         batch = _batch(["src/a.py", "src/b.py"])
-        got = ca.batch_review_covers([batch], batch, ["src/a.py", "src/b.py"], brackets=True, entry_trees=())
+        got = ca.batch_review_covers([batch], batch, ["src/a.py", "src/b.py"], brackets=True)
         assert got["status"] == "covered", got
 
     def test_a_file_outside_the_subject_refuses_and_is_named(self):
         batch = _batch(["src/a.py"])
-        got = ca.batch_review_covers([batch], batch, ["src/a.py", "src/c.py"], brackets=True, entry_trees=())
+        got = ca.batch_review_covers([batch], batch, ["src/a.py", "src/c.py"], brackets=True)
         assert (got["status"], got["outside"]) == ("not", ["src/c.py"]), got
         assert "src/c.py" in got["reason"]
 
     def test_a_file_back_at_the_anchor_s_content_needs_no_reading(self):
         """``src/gone.py`` changed in the entry but is not in the interval's diff."""
         batch = _batch(["src/a.py"])
-        got = ca.batch_review_covers([batch], batch, ["src/a.py", "src/gone.py"], brackets=True, entry_trees=())
+        got = ca.batch_review_covers([batch], batch, ["src/a.py", "src/gone.py"], brackets=True)
         assert got["status"] == "covered", got
 
     def test_a_non_judgeable_file_outside_the_subject_does_not_refuse(self):
         batch = _batch(["src/a.py"])
         got = ca.batch_review_covers([batch], batch, ["src/a.py", ".prawduct/artifacts/plan.md"],
-                                     brackets=True, entry_trees=())
+                                     brackets=True)
         assert got["status"] == "covered", got
 
     def test_a_review_not_bracketing_refuses(self):
         batch = _batch(["src/a.py"])
-        got = ca.batch_review_covers([batch], batch, ["src/a.py"], brackets=False, entry_trees=())
+        got = ca.batch_review_covers([batch], batch, ["src/a.py"], brackets=False)
         assert got["status"] == "not" and "bracket" in got["reason"], got
 
     def test_unread_entry_files_refuse_rather_than_read_as_nothing_changed(self):
         batch = _batch(["src/a.py"])
-        got = ca.batch_review_covers([batch], batch, None, brackets=True, entry_trees=())
+        got = ca.batch_review_covers([batch], batch, None, brackets=True)
         assert got["status"] == "not" and "could not be read" in got["reason"], got
 
     def test_its_own_unresolved_blocker_refuses(self):
         batch = _batch(["src/a.py"], blocking=True)
-        got = ca.batch_review_covers([batch], batch, ["src/a.py"], brackets=True, entry_trees=())
+        got = ca.batch_review_covers([batch], batch, ["src/a.py"], brackets=True)
         assert got["status"] == "blocked" and got["unresolved"][0]["review_id"] == "rev-batch", got
 
     def test_a_blocker_is_settled_even_when_facts_omit_the_review(self):
         batch = _batch(["src/a.py"], blocking=True)
-        assert ca.batch_review_covers([], batch, ["src/a.py"], brackets=True, entry_trees=())["status"] == "blocked"
+        assert ca.batch_review_covers([], batch, ["src/a.py"], brackets=True)["status"] == "blocked"
 
     def test_a_resolution_fact_clears_it(self):
         batch = _batch(["src/a.py"], blocking=True)
-        got = ca.batch_review_covers([batch, _resolution("rev-batch")], batch, ["src/a.py"], brackets=True, entry_trees=())
+        got = ca.batch_review_covers([batch, _resolution("rev-batch")], batch, ["src/a.py"], brackets=True)
         assert got["status"] == "covered", got
 
     def test_an_unrecognised_disposition_does_not_clear_it(self):
         batch = _batch(["src/a.py"], blocking=True)
         got = ca.batch_review_covers([batch, _resolution("rev-batch", disposition="meh")], batch,
-                                     ["src/a.py"], brackets=True, entry_trees=())
+                                     ["src/a.py"], brackets=True)
         assert got["status"] == "blocked", got
 
     def test_another_fact_s_blocker_at_either_of_its_trees_refuses(self):
@@ -113,46 +113,28 @@ class TestTheRule:
         for at_head, tree in ((True, HEAD), (False, ANCHOR)):
             other = _review("rev-other", MID if at_head else ELSEWHERE, tree, ["src/a.py"],
                             blocking=True, span=None)
-            got = ca.batch_review_covers([batch, other], batch, ["src/a.py"], brackets=True, entry_trees=())
+            got = ca.batch_review_covers([batch, other], batch, ["src/a.py"], brackets=True)
             assert got["status"] == "blocked" and got["unresolved"][0]["review_id"] == "rev-other", got
 
     def test_a_blocker_at_a_tree_it_does_not_stand_on_does_not(self):
         batch = _batch(["src/a.py"])
         other = _review("rev-other", ANCHOR, MID, ["src/a.py"], blocking=True, span=None)
-        got = ca.batch_review_covers([batch, other], batch, ["src/a.py"], brackets=True, entry_trees=())
+        got = ca.batch_review_covers([batch, other], batch, ["src/a.py"], brackets=True)
         assert got["status"] == "covered", got
-
-    def test_a_blocker_at_the_entry_s_own_trees_refuses_until_resolved(self):
-        """W2: a merged branch's blocker (here at MID, a tree of the branch) is
-        owed a resolution; a clean batch review outliving it does not clear it.
-        The control is the test above: the same fact, the entry's trees unnamed."""
-        batch = _batch(["src/a.py"])
-        other = _review("rev-branch", ANCHOR, MID, ["src/a.py"], blocking=True, span=None)
-        got = ca.batch_review_covers([batch, other], batch, ["src/a.py"], brackets=True, entry_trees=[MID])
-        assert got["status"] == "blocked" and "rev-branch R-1" in got["reason"], got
-        assert "the commit's own" in got["reason"], got
-        got = ca.batch_review_covers([batch, other, _resolution("rev-branch")], batch, ["src/a.py"],
-                                     brackets=True, entry_trees=[MID])
-        assert got["status"] == "covered", got
-
-    def test_unread_entry_trees_refuse(self):
-        batch = _batch(["src/a.py"])
-        got = ca.batch_review_covers([batch], batch, ["src/a.py"], brackets=True, entry_trees=None)
-        assert got["status"] == "not" and "own trees could not be read" in got["reason"], got
 
     def test_a_malformed_review_refuses(self):
         broken = _batch(["src/a.py"])
         broken["body"]["files_reviewed"] = "src/a.py"
-        assert ca.batch_review_covers([], broken, ["src/a.py"], brackets=True, entry_trees=())["status"] == "not"
+        assert ca.batch_review_covers([], broken, ["src/a.py"], brackets=True)["status"] == "not"
         bad_tree = _review("rev-x", "not-a-tree", HEAD, ["src/a.py"])
-        assert ca.batch_review_covers([], bad_tree, ["src/a.py"], brackets=True, entry_trees=())["status"] == "not"
+        assert ca.batch_review_covers([], bad_tree, ["src/a.py"], brackets=True)["status"] == "not"
 
     def test_a_whole_edge_review_is_the_special_case_and_covers_any_entry(self):
         """Wave 1's batch rule: a boundary review that is an edge rated every
         judgeable file, so every entry's files are within it."""
         edge = _review("rev-edge", ANCHOR, HEAD, SPAN_FILES, span=None)
         assert ca.review_edges([edge])
-        got = ca.batch_review_covers([edge], edge, ["src/a.py", "src/b.py", "src/c.py"], brackets=True, entry_trees=())
+        got = ca.batch_review_covers([edge], edge, ["src/a.py", "src/b.py", "src/c.py"], brackets=True)
         assert got["status"] == "covered", got
 
 
