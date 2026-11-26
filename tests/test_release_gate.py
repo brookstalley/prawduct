@@ -282,6 +282,21 @@ class TestTheGateExitTable:
         assert "could not be read at the integration branch (RuntimeError: injected)" in line, line
         assert "Traceback" not in proc.stderr and bc.GATE_UNCOVERED not in proc.stderr
 
+    def test_a_walk_git_could_not_run_is_exit_3_not_uncovered(self, tmp_path):
+        """A shallow clone or a corrupt ref fails `git log anchor..base`: that is
+        a check that could not answer, not unreviewed work, and no batch review
+        could ever credit the entry standing for it."""
+        repo = _repo(tmp_path)
+        _cut(repo, "v1.0.0")
+        _lane(repo, "a", review=bc_cumulative())
+        assert _gate(repo, tmp_path).returncode == 0  # control: the walk runs and covers
+        proc = _gate_injected(repo, tmp_path, "from lib import boundary_coverage as m\n"
+                                              "m._Classifier.walk = lambda self, anchor: None\n")
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        line = _refusal(proc.stderr, bc.GATE_UNEVALUABLE)
+        assert "git could not list the first-parent commits on main since the release anchor" in line, line
+        assert bc.GATE_UNCOVERED not in proc.stderr
+
     def test_a_fault_in_the_verdict_is_exit_3_not_main_s_floor(self, tmp_path):
         repo = _repo(tmp_path)
         _released(repo, "a")

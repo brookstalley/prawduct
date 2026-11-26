@@ -1415,8 +1415,9 @@ def release_gate(report: Report, policy) -> ReleaseGate:
     failed (``policy.read_failed``: the value is this checkout's fallback, so the
     check cannot say which policy the merged PRs were judged under), a report
     that could not be evaluated, a pending fragment the pending set refused (it
-    is unclassified), or no release anchor (no commit since the last release was
-    walked) is exit 3, ``boundary-unevaluable``; any entry not covered is exit 1,
+    is unclassified), no release anchor (no commit since the last release was
+    walked), or a walk since the anchor git could not run is exit 3,
+    ``boundary-unevaluable``; any entry not covered is exit 1,
     ``boundary-uncovered``; otherwise exit 0. Each refusal carries its remedy."""
     if not getattr(policy, "per_release", False):
         return ReleaseGate(0, "", "")
@@ -1440,6 +1441,13 @@ def release_gate(report: Report, policy) -> ReleaseGate:
             "last release shipped with its version (`git tag vX.Y.Z <commit>`), or cut releases "
             f"with `cut-change-log`, which commits a `{consumer_digest.RELEASES_DIR_REL}/` file; "
             "a repo with no release yet keeps `per_pr` until its first"))
+    if any(e.source == SOURCE_WALK_FAILED for e in report.entries):
+        # A git failure, not unreviewed work: no review can credit an entry that
+        # names no commit, so the uncovered remedy would never terminate.
+        return ReleaseGate(3, GATE_UNEVALUABLE, (
+            f"{GATE_UNEVALUABLE}: git could not list the first-parent commits on {report.base} "
+            f"since the release anchor {report.anchor.commit[:8]}, so none of them was classified, "
+            f"{held}: fix the git failure (a shallow clone needs `git fetch --unshallow`), then re-run"))
     owed = tuple(e for e in report.entries if e.classification not in COVERED)
     if not owed:
         return ReleaseGate(0, "", "")

@@ -383,8 +383,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-releasability` refuses on (`boundary_coverage.release_gate`), under the policy read at
   the integration branch's tip (`review_lane.release_policy`). Under `per_release`: exit 1 when any
   entry is not covered (`boundary-uncovered:` on stderr, with the release batch review as its
-  remedy), 3 when it could not answer — unevaluable, a fragment the pending set refused, or no
-  release anchor (`boundary-unevaluable:`, with its route) — else 0. Under `per_pr`: exit 0, the
+  remedy), 3 when it could not answer — unevaluable, a fragment the pending set refused, no
+  release anchor, or a walk since the anchor git could not run (`boundary-unevaluable:`, with its
+  route) — else 0. Under `per_pr`: exit 0, the
   advice unchanged. Either way stdout adds a `boundary_review: <value> (read at <ref>)` line with
   the policy's note, and `--gate --json` adds `policy` (`{value, source, note}`) and `gate`
   (`{exit, code, message}`) to the keys above. The bare op's exits do not change.
