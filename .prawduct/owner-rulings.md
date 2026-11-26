@@ -618,3 +618,10 @@ tag, detached, rather than onto `develop`.
    `pr-transferred`. This extends the 2026-11-24 "covered" definition, whose text stands: the transfer requires the
    branch's diff byte-identical to the reviewed span, a base advance touching none of its files, and a suite run that met
    the merged tree, and the release op reads the PR gate's recorded grant before re-deciding.
+
+**2026-11-26 (doctor/janitor).** "can you figure out why agents say they cant run doctor and/or janitor and need the
+human to do it, and fix so agents can run both?" — an agent may invoke both skills, not only a human typing the
+command. Janitor's `disable-model-invocation: true` (85753fda) is lifted by removing the grants that made it
+necessary (an interpreter pre-approved for a model-invoked skill reaches every op an allow-list withholds), not by
+exempting it; doctor runs the repairs it offers on the owner's yes instead of handing the command to the owner.
+Owner judgments (norm ratification, which plans are done, delegation policy) stay the owner's.
