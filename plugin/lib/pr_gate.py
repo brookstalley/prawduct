@@ -406,6 +406,9 @@ def _review_tree_changed(project_dir: Path) -> list[Result]:
     # A base-advance transfer credits the reviews of the span it transferred from.
     if answer.get("status") == "transferred":
         on_path |= set((answer.get("transfer") or {}).get("prior_review_ids") or [])
+    # A deferred fix tail passes on the reviews composing up to its anchor.
+    if answer.get("status") == "deferred":
+        on_path |= set((answer.get("deferral") or {}).get("path") or [])
     if not on_path:
         return []
     items = []

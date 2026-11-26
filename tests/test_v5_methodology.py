@@ -48,7 +48,7 @@ def assert_inert_count_cap(text: str, path: str) -> None:
     verify-resolutions narrowing into `## Severity`, which sits below all three
     goal sections. The legend entry is the right home here for the opposite
     reason: it is a lookup, and it already owns the parent rule (record-only
-    prose is a NOTE because rating it WARNING manufactures the next round).
+    prose is a NOTE).
 
     **The three components are the cap, not decoration.** A bare "rate it NOTE"
     still hands the builder a defect report, and a builder fixes defect
@@ -813,7 +813,18 @@ LAST_MEASURED_TOKENS = {
     # dependency-scope bullet, naming only what a static read cannot judge. The bullet is pinned
     # identical in both carriers, and the detector's results arrive through record-lint, so nothing
     # another file owns was left to cut. A READING; ceiling raised with it.
-    "skills/critic/review-protocol.md": 4171,
+    # -1 on 2026-11-26 (boundary-review-per-release Chunk 06): the `cumulative` bullet and the
+    # Subject-and-oracle sentence name the release span (`Span: release from <commit>`, its
+    # `files_context`). Paid in place by cutting `final`'s wall-clock target and the PR-gate
+    # requirement (review-cycle.md and the PR skill own both) and the Modes line's aside on why
+    # nothing here restates goals-1-3.md. A READING; ceiling lowered with it.
+    # +48 on 2026-11-26 (critic-good-faith-severity, owner ruling 2026-11-26), DECLARED: Severity
+    # Levels gains the good-faith cap (a failure needing the repo's own builder, owner or model to act
+    # in bad faith later is an observation at most) with its floor and what a competent mistake is. Paid in part
+    # by cutting what another surface owns: the BLOCKING bullet's restatement of the Stage paragraph,
+    # the Observation bullet's oracle-order sentence (Scope says cross-checks.md owns it), its pointer
+    # into review-cycle.md (which no reviewer loads). Pinned identical in both carriers. A READING.
+    "skills/critic/review-protocol.md": 4222,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -943,7 +954,13 @@ LAST_MEASURED_TOKENS = {
     # dependency-scope bullet, naming only what a static read cannot judge. The bullet is pinned
     # identical in both carriers, and the detector's results arrive through record-lint, so nothing
     # another file owns was left to cut. A READING; ceiling raised with it.
-    "skills/critic/goals-1-3.md": 2583,
+    # +66 on 2026-11-26 (critic-good-faith-severity, owner ruling 2026-11-26), DECLARED: the same
+    # good-faith cap as review-protocol.md, since chunk and verify-resolutions reviewers read only this
+    # file. Paid in part by merging two Goal bullets that restated paragraphs above them (record checks;
+    # norm departures, whose remedy joined the Normative authority Tell) and by dropping the
+    # Observation bullet's round-cost clause, which the preamble's pricing of observations states.
+    # A READING.
+    "skills/critic/goals-1-3.md": 2649,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1200,7 +1217,19 @@ LAST_MEASURED_TOKENS = {
     # review runs only session files are free of the consolidation tree check. Paid in place by
     # pointing the protected-path list at `buildplan_refs.protected_path_violation`, which owns it,
     # and dropping the heading's restated question. A READING; ceiling lowered with it.
-    "skills/critic/review-cycle.md": 8257,
+    # 0 on 2026-11-26 (boundary-review-per-release Chunk 06): the release batch review's
+    # paragraph, the manifest's release `files_context`, and Mode Selection item 1's lane
+    # exception. Paid in place by cutting the resolve-base fallback list (the op and
+    # project-state-keys.md own it), the rendezvous gloss (`partial_path`/`started_path` own it),
+    # the scope-widened row's re-dispatch line (SKILL.md's exit table owns it), and the ten-round
+    # measurement (critic_consolidate owns it). A READING; ceiling unchanged.
+    # -15 on 2026-11-26 (boundary-review-per-release): the release batch review's paragraph no
+    # longer routes a merged branch's blocker through the verify pass, a route the owner's ruling
+    # retired. A READING; ceiling unchanged.
+    # 0 on 2026-11-26 (boundary-review-per-release round 6, R-3): the manifest key list names
+    # `files_since_anchor`/`release_anchor`. Paid in place by cutting `dispatch_tree`'s gloss (its
+    # writer's comment owns it). A READING; ceiling unchanged.
+    "skills/critic/review-cycle.md": 8242,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1416,7 +1445,23 @@ LAST_MEASURED_TOKENS = {
     # to planning.md "Chunk state", which owns it. Priced in `test_reviewer_payload_budget.py`.
     # +31 on 2026-11-24 (credential-placeholders Chunk 02), DECLARED: the exit table gains exit 9
     # (credential lines the PR gate would refuse, on `cumulative`). Priced in `test_reviewer_payload_budget.py`.
-    "skills/critic/SKILL.md": 3278,
+    # 0 on 2026-11-26 (boundary-review-per-release Chunk 06): step 4 names `--span release` and
+    # step 5 a release cumulative's `files_context`. Paid in place by cutting the designer-handoff
+    # step's "Inlined" aside (its own BEFORE `critic-begin` already says when it fires) and step
+    # 4's "(base/head trees)" gloss (the manifest owns it). A READING; ceiling unchanged.
+    # -13 on 2026-11-26 (boundary-review-per-release round 6, R-4): the exit-8 row says the
+    # `--chunks` line names all chunks under a `per-release lane` rationale. Paid in place by
+    # cutting step 4's gloss on what the live-review refusal names (its stderr owns it). A READING;
+    # ceiling lowered with it.
+    # +108 on 2026-11-26 (fork-project-dir, #1253), DECLARED: the `git -C * <verb> *` grants and
+    # the `--project-dir *` form of each bare hook grant (+104, frontmatter), and step 0 / step 4
+    # carrying `--project-dir` and leading the report with the tree line (+4, net of cutting the
+    # #34164 gloss and the duplicated `--force` sentence). Priced in `test_reviewer_payload_budget.py`.
+    # +34 on 2026-11-26 (fork-project-dir Critic round, #1253), DECLARED: both STOP sentences carry the
+    # `--project-dir` consolidate exception (R-1), each citing coordinator.md inside its mode-qualified
+    # clause (the fast-path citation guard), and the tree line is led with only when printed.
+
+    "skills/critic/SKILL.md": 3407,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1454,7 +1499,14 @@ LAST_MEASURED_TOKENS = {
     # `critic-discard`). Read only by a fork that dispatches, never by a reviewer.
     # -36 on 2026-11-11 (review-round-cost Critic round): the refused-partial remedy left — the coordinator stops before
     # consolidation and never meets a refusal (R-8). A READING; ceiling lowered with it.
-    "skills/critic/coordinator.md": 670,
+    # +29 on 2026-11-26 (fork-project-dir, #1253), DECLARED: the reviewer prompt passes
+    # `--project-dir [dir]` to every hook probe, and step 3 tells the coordinator to consolidate
+    # itself under a `--project-dir` naming another tree, because SubagentStop runs in the launch
+    # repo and never merges there. Net of cutting the `[dir]` bullet's restatement of step 2.
+    # +18 on 2026-11-26 (fork-project-dir Critic round, #1253), DECLARED: step 3 is unconditional under
+    # --project-dir, says how the coordinator knows reviewers returned, and names the builder fallback (R-3).
+
+    "skills/critic/coordinator.md": 717,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -2045,7 +2097,13 @@ LAST_MEASURED_TOKENS = {
     # asks a removal or sweep for the files it touched. building.md cut that list on 2026-11-22
     # because this file owned it, and this file never did. It is added here, the owning item.
     # A READING.
-    "methodology/delegation.md": 3008,
+    # +24 on 2026-11-26 (fork-project-dir, #1253): beside "a skill forks in the session's own
+    # directory", the one sentence saying a delegate in another repository passes `--project-dir`
+    # to each `/prawduct:*` skill. No clause here covered it, so nothing was cut. A READING.
+    # +20 on 2026-11-26 (fork-project-dir Critic round, #1253), DECLARED: the --project-dir sentence names
+    # the forked skills and every hook call the delegate runs itself, not 'each /prawduct:* skill' (R-4/R-5).
+
+    "methodology/delegation.md": 3052,
 }
 
 
@@ -6007,7 +6065,11 @@ class TestCriticSkill:
         # RAISED 4062 -> 4071 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4071 -> 4111 (backlog-roi-wave2 Chunk 02, #847) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4111 -> 4172 (test-determinism Chunk 02, 2026-11-24) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 4172, f"review-protocol.md is ~{tokens} tokens, should be <4172"
+        # LOWERED 4172 -> 4171 (boundary-review-per-release Chunk 06) with the reading.
+        # RAISED (critic-good-faith-severity, 2026-11-26, owner ruling 2026-11-26): the
+        # good-faith cap, a rule that removes review work, net of in-place cuts — see
+        # LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 4223, f"review-protocol.md is ~{tokens} tokens, should be <4223"
 
 
 # =============================================================================
@@ -6189,8 +6251,8 @@ class TestCriticGoals13:
         # NOT, which is not an inconsistency: the narrowing governs whether to
         # report at all, decided continuously while reading the goals, so it had
         # to precede them; a severity cap is a LOOKUP made once at write-up, and
-        # the legend entry already owns its parent rule (record prose is a NOTE
-        # because rating it WARNING manufactures the next round). Both placements
+        # the legend entry already owns its parent rule (record prose is a NOTE).
+        # Both placements
         # are asserted, not assumed -- `assert_inert_count_cap` requires the cap
         # INSIDE the legend entry, and the ordering pin keeps the narrowing above
         # goal 1.
@@ -6319,7 +6381,10 @@ class TestCriticGoals13:
         # RAISED 2494 -> 2507 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 2507 -> 2523 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 2523 -> 2584 (test-determinism Chunk 02, 2026-11-24) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 2584, f"goals-1-3.md is ~{tokens} tokens, should be <2584"
+        # RAISED 2584 -> 2662 (critic-good-faith-severity, 2026-11-25, owner ruling 2026-11-26): the
+        # good-faith cap, a rule that removes review work, net of in-place cuts — see
+        # LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 2650, f"goals-1-3.md is ~{tokens} tokens, should be <2650"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -6593,7 +6658,10 @@ class TestCriticSkillRoutesByMode:
         # LOWERED 3232 -> 3226 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
         # RAISED 3226 -> 3248 (chunk-plan-order Chunk 02, #1141): exit 8's row — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 3248 -> 3279 (credential-placeholders Chunk 02): exit 9's row — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3279, f"SKILL.md is ~{tokens} tokens, should be <3279"
+        # LOWERED 3279 -> 3266 (boundary-review-per-release round 6, R-4) with the reading — see LAST_MEASURED_TOKENS.
+        # RAISED 3266 -> 3374 (fork-project-dir, #1253): `git -C` and `--project-dir` grants — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 3374 -> 3408 (fork-project-dir Critic round, R-1) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3408, f"SKILL.md is ~{tokens} tokens, should be <3408"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6976,7 +7044,10 @@ class TestReviewCycle:
         # RAISED 664 -> 700 (review-round-cost Chunk 01, #961): the failed-partial remedy sentence —
         # see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 700 -> 664 (review-round-cost Critic round, R-8) with the reading.
-        assert tokens < 671, f"coordinator.md is ~{tokens} tokens, should be <671"
+        # RAISED 671 -> 700 (fork-project-dir, #1253): reviewers carry `--project-dir`, and the
+        # coordinator consolidates a review in another tree itself — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 700 -> 718 (fork-project-dir Critic round, R-3) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 718, f"coordinator.md is ~{tokens} tokens, should be <718"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

@@ -21,8 +21,8 @@ Differences from the legacy ``tools/product-hook`` (the file-sync runtime):
 
 Governing invariant (design §2): reads/writes ONLY the governed repo's
 ``.prawduct/`` — the session's active git worktree, resolved by
-``get_project_dir`` (the worktree toplevel of cwd, or ``${CLAUDE_PROJECT_DIR}``
-when not in a same-repo worktree; STH-4K7N). No mutable state is shared between
+``get_project_dir`` (a caller's ``--project-dir``; else the worktree toplevel of
+cwd, or ``${CLAUDE_PROJECT_DIR}`` when not in a same-repo worktree; STH-4K7N). No mutable state is shared between
 *unrelated* repos through the plugin — the resolver's same-repo
 ``--git-common-dir`` guard preserves that.
 
@@ -78,6 +78,11 @@ def _host():
     return sys.modules["prawduct_host"]
 
 
+#: The tree a ``--project-dir`` option named, set once by ``_dispatch`` after it
+#: validates the value (``_apply_project_dir``); ``None`` when the caller named none.
+_PROJECT_DIR_OVERRIDE: "Path | None" = None
+
+
 def get_project_dir() -> Path:
     """Resolve the project dir to the session's active git worktree.
 
@@ -96,7 +101,12 @@ def get_project_dir() -> Path:
     handling (e.g. ``coverage-scaffold``). The host seam is the exception: it
     is loaded from beside this script, not from that ``lib``, and a tree
     without it is not a plugin, so its absence fails here (``main``'s error
-    floor reports it; a Stop then exits 1 and does not block)."""
+    floor reports it; a Stop then exits 1 and does not block).
+
+    A caller-named ``--project-dir`` wins over both (#1253): ``_dispatch`` has
+    already validated it and ``chdir``'d there, so every command sees one tree."""
+    if _PROJECT_DIR_OVERRIDE is not None:
+        return _PROJECT_DIR_OVERRIDE
     hint = _host().project_dir_hint()
     try:
         gitstate = _gitstate()
@@ -183,6 +193,21 @@ def _wrap_gate_prose(text: str) -> str:
     )
 
 
+def _fix_tail_deferral(project_dir: Path):
+    """The Stop gate's read of the fix-tail deferral (``gates.fix_tail_deferral``
+    via ``gates.session_fix_tail_deferral``), or ``None``. A crash is ``None``
+    and says so, as :func:`_short_plan_deferral`'s does: a relaxation that could
+    not be evaluated relaxes nothing."""
+    why: list = []
+    try:
+        deferral = _gates().session_fix_tail_deferral(project_dir, why)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a gate relaxation that cannot be evaluated must not relax the gate
+        deferral, why = None, [f"the fix-tail deferral could not be evaluated ({type(exc).__name__}: {exc})"]
+    if why:
+        print(f"\nNOTE: {why[0]} — the Critic gate is applied in full below.", file=sys.stderr)
+    return deferral
+
+
 def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, binding):
     """The Stop gate's read of the short-plan deferral (#292), or ``None``.
 
@@ -206,7 +231,10 @@ def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, binding):
         progress = cm.binding_progress(project_dir, binding)
         # `read_built`: committed chunks (`plan_status.built_chunks`) may ARM the
         # last-chunk block on a box-free plan; `short_plan_deferral` lets `built`
-        # only turn "warn" into "block", never the reverse.
+        # only turn "warn" into "block", never the reverse. A deferral that
+        # defers carries the per-release lane's answer (`lane`, `lane_note`), so
+        # the messages below name the review inference will ask for; it changes
+        # wording only, never whether the gate warns or blocks.
         return cm.short_plan_deferral(
             project_dir, prawduct_dir, binding, progress, read_built=True
         )
@@ -221,6 +249,16 @@ def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, binding):
             file=sys.stderr,
         )
         return None
+
+
+def _lane_declined_lines(deferral) -> str:
+    """Why the per-release lane did not take this branch, as gate prose, where
+    a Stop-gate message names the per-PR boundary review: under
+    ``per_release`` the builder is otherwise shown the round the owner moved
+    with no word on why it is still owed. ``""`` under ``per_pr`` (the
+    deferral's ``lane_note`` is empty there), so its messages are unchanged."""
+    note = getattr(deferral, "lane_note", "")
+    return _wrap_gate_prose(f"{note[0].upper()}{note[1:]}.") if note else ""
 
 
 def _extension_deferral(project_dir: Path, prawduct_dir: Path, binding):
@@ -2224,6 +2262,17 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
 # =============================================================================
 
 
+def _critic_tree_line(project_dir: Path) -> str:
+    """``PRAWDUCT: tree <toplevel> · <branch or (detached)> @ <sha12>`` — the
+    tree a ``critic-begin`` run judged, named before anything else it says."""
+    gitstate = _gitstate()
+    if gitstate._git_toplevel(project_dir) is None:
+        return f"PRAWDUCT: tree {project_dir} · (not a git work tree)"
+    branch = gitstate.current_branch(project_dir) or "(detached)"
+    head = gitstate._git_head_sha(project_dir)[:12] or "(no commits)"
+    return f"PRAWDUCT: tree {project_dir} · {branch} @ {head}"
+
+
 def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     """Dispatch one Critic review: derive + write the manifest (code, never a
     model — kernel v3 D8) and set the critic-active marker so a session-mutating
@@ -2231,7 +2280,19 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     Usage: critic-begin --mode <chunk|final|cumulative|verify-resolutions>
            [--chosen-by <rationale>] [--chunks <id>[,<id>...]]... [--scope <s>]
-           [--tier <t>] [--session-model <id>] [--force]
+           [--tier <t>] [--session-model <id>] [--span release] [--force]
+
+    `--span release` (with `--mode cumulative` only) is the release batch
+    review (#1232), and a plain `--mode cumulative` on the integration base's
+    own checkout at its tip derives it, the one place a plain one would review
+    nothing (`critic_consolidate.begin_review`): run on that checkout,
+    with a clean tree, it reviews release anchor → HEAD (from the oldest owed
+    entry's first parent when one sits before the anchor) and rates only the
+    files of the release entries no boundary review covered
+    (`critic_consolidate.begin_review` states the interval). Its refusals exit
+    1 naming the code (`off-base`, `dirty-tree`, `no-anchor`, `unevaluable`,
+    `no-subject`); every entry already covered is exit 3. `--force` overrides
+    none of them.
 
     `--session-model` is the model the dispatcher runs as. The manifest's
     `reviewer_model` is `model_tier.reviewer_model_for` of it, and the
@@ -2283,6 +2344,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     dispatch failure (reason on stderr). The scheme these cite is prawduct's own API contract — its
     Error Model section, in the framework repo rather than in yours.
 
+    After argument parsing, every outcome prints `_critic_tree_line` first.
+
     Also resets `.critic-partials/` before writing the fresh manifest —
     archive-first, and `critic_consolidate.remove_partials` states why (it is
     hygiene now, not correctness: partials carry review identity, so a leftover
@@ -2294,6 +2357,7 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         "--scope": "scope",
         "--tier": "tier",
         "--session-model": "session_model",
+        "--span": "span_request",
     }
     opts: dict[str, object] = {}
     chunks: list[str] = []
@@ -2345,6 +2409,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
+    # First on stdout, on every outcome from here on (#1253): a caller that
+    # forgot `--project-dir` reads at once which tree this run judged, where it
+    # would otherwise read "no review needed" about a tree it never meant.
+    print(_critic_tree_line(project_dir))
+
     prawduct_dir = get_prawduct_dir(project_dir)
     if not prawduct_dir.is_dir():
         print("PRAWDUCT: not an onboarded repo — nothing to review or protect.")
@@ -2359,8 +2428,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         print(
             f"critic-begin: refusing — the shell is in {cwd_top} but the review "
             f"resolved to a different tree {project_dir}. Run /prawduct:critic from "
-            "inside the worktree that holds the work (EnterWorktree), or unset "
-            "CLAUDE_PROJECT_DIR — so the review can't silently target the wrong tree.",
+            "inside the worktree that holds the work (EnterWorktree), unset "
+            "CLAUDE_PROJECT_DIR, or name the tree with --project-dir <its "
+            "toplevel> — so the review can't silently target the wrong tree.",
             file=sys.stderr,
         )
         return 1
@@ -2412,6 +2482,18 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         for note in result.get("notes") or []:
             print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         return 4
+    if result["status"] == "no-review-needed" and result.get("span") == consolidate.SPAN_RELEASE:
+        # A release batch review with nothing owed: every release entry already
+        # reads covered, so there is no subject to rate. Exit 3, as below; the
+        # interval lines below describe a coverage-gate interval, not this.
+        print(
+            f"PRAWDUCT: no review needed — {result['reason']}.\n"
+            "  Nothing to do: `prawduct-hook check-boundary-coverage` already reads "
+            "every release entry covered."
+        )
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
+        return 3
     if result["status"] == "no-review-needed":
         # Exit 3, not 0: 0 means "dispatched, go review", and the skill would
         # proceed to spawn a reviewer against a manifest that was never
@@ -4189,18 +4271,32 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             # what the boundary review is. `None` from the predicate is "does
             # not defer": a relaxation that could not be evaluated does not
             # relax anything.
+            # A blocker-free fix tail under `boundary_review: per_release` is
+            # deferred to the release check, as the PR gate defers it
+            # (`gates.fix_tail_deferral`, the one predicate). Asked first: when it
+            # holds, the PR gate passes and no review is owed before the release.
+            tail_deferral = (
+                _fix_tail_deferral(project_dir) if verdict_status == "uncovered" else None
+            )
             deferral = (
                 _short_plan_deferral(project_dir, prawduct_dir, binding)
-                if verdict_status == "uncovered"
+                if verdict_status == "uncovered" and tail_deferral is None
                 else None
             )
             extension = (
                 _extension_deferral(project_dir, prawduct_dir, binding)
                 if verdict_status == "uncovered"
+                and tail_deferral is None
                 and not (deferral is not None and deferral.defers)
                 else None
             )
-            if extension is not None:
+            if tail_deferral is not None:
+                stop_advisories.append(_LogOnlyAdvisory(_attributed("critic",
+                    f"NOTE: no review covers this session's changes{span}, and none is\n"
+                    "  owed before the release.\n"
+                    + _wrap_gate_prose(_gates().fix_tail_deferral_note(tail_deferral))
+                )))
+            elif extension is not None:
                 stop_advisories.append(_LogOnlyAdvisory(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span} yet, and none is owed now — {extension}.\n"
@@ -4208,20 +4304,47 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     "  state, so this work is covered then without a round of its own.\n"
                 )))
             elif deferral is not None and deferral.defers and not deferral.last_chunk:
+                # Under the per-release lane (`deferral.lane`) the review deferred
+                # to is the lane's, not the boundary: its name and where the
+                # boundary went come from `critic_mode`, the wording inference
+                # prints too. Per-PR text is unchanged.
+                cm = _critic_mode()
+                deferred_to = (
+                    _wrap_gate_prose(f"This chunk's review is deferred to {cm.LANE_REVIEW_NAME}. Next:")
+                    if deferral.lane
+                    else "  This chunk's review is deferred to the boundary. Next:\n"
+                )
+                evidence_is = (
+                    _wrap_gate_prose(
+                        f"{cm.LANE_REVIEW_NAME[0].upper()}{cm.LANE_REVIEW_NAME[1:]} is the PR "
+                        f"gate's evidence, and {cm.LANE_BOUNDARY_MOVED}."
+                    ) + "  To review this chunk anyway, run\n"
+                    if deferral.lane
+                    else "  The boundary review is the PR gate's evidence. To review this chunk anyway, run\n"
+                )
                 stop_advisories.append(_LogOnlyAdvisory(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span}, and none is owed yet — {deferral.reason}.\n"
-                    "  This chunk's review is deferred to the boundary. Next:\n"
-                    + _wrap_gate_prose(_critic_mode().short_plan_next_step(deferral) + ".")
-                    + _wrap_gate_prose(_critic_mode().SHORT_PLAN_OWN_PR_NOTE + ".")
-                    + "  The boundary review is the PR gate's evidence. To review this chunk anyway, run\n"
-                    "  `/prawduct:critic chunk`, or declare `Critic mode:` on any chunk of\n"
+                    + _lane_declined_lines(deferral)
+                    + deferred_to
+                    + _wrap_gate_prose(cm.short_plan_next_step(deferral) + ".")
+                    + _wrap_gate_prose(cm.SHORT_PLAN_OWN_PR_NOTE + ".")
+                    + evidence_is
+                    + "  `/prawduct:critic chunk`, or declare `Critic mode:` on any chunk of\n"
                     "  the plan to restore per-chunk review for the whole plan.\n"
                 )))
             else:
                 last_chunk_note = (
-                    "  This plan is short and its per-chunk reviews were deferred to this\n"
-                    f"  boundary review ({deferral.reason}):\n"
+                    (
+                        _wrap_gate_prose(
+                            "This plan is short and its per-chunk reviews were deferred to "
+                            f"{_critic_mode().LANE_REVIEW_NAME} ({deferral.reason}):"
+                        )
+                        if deferral.lane
+                        else "  This plan is short and its per-chunk reviews were deferred to this\n"
+                        f"  boundary review ({deferral.reason}):\n"
+                        + _lane_declined_lines(deferral)
+                    )
                     + _wrap_gate_prose(_critic_mode().short_plan_next_step(deferral) + ".")
                     if deferral is not None and deferral.defers and deferral.last_chunk
                     else ""
@@ -7270,9 +7393,21 @@ def cmd_check_boundary_coverage(project_dir: Path, args: list[str] | None = None
     newer plugin wrote, or a fault inside the classification, which is named
     rather than raised), the exit-code scheme's "could not answer". The classification and its reasons
     live in ``lib.boundary_coverage``, reached lazily so the hook's top level
-    stays lib-free."""
+    stays lib-free.
+
+    ``--gate`` is the release check's blocking reading (#1232), with the policy
+    read at the integration branch's tip (``review_lane.release_policy``):
+    under ``per_release`` exit 1 when any entry is not covered
+    (``boundary-uncovered``) and 3 when it could not answer, a missing release
+    anchor included (``boundary-unevaluable``), each on stderr with its remedy;
+    under ``per_pr`` exit 0 whatever else it found, 1 for a fix tail deferred
+    under ``per_release`` (``boundary_coverage.held_tails``), and 3 when the
+    report could not be evaluated, as the bare op. A gate that cannot answer
+    (a failed policy read under a ``per_release`` checkout, or a fault in the
+    verdict) is 3, never main()'s floor of 1. Either way it prints the
+    policy it read and why, and ``--json`` adds ``policy`` and ``gate``."""
     argv = list(args or [])
-    rejected = _reject_unknown_args("check-boundary-coverage", argv, {"--json"})
+    rejected = _reject_unknown_args("check-boundary-coverage", argv, {"--json", "--gate"})
     if rejected is not None:
         return rejected
     as_json = "--json" in argv
@@ -7282,6 +7417,33 @@ def cmd_check_boundary_coverage(project_dir: Path, args: list[str] | None = None
     from lib import boundary_coverage  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
 
     report = boundary_coverage.classify_pending(project_dir)
+    if "--gate" in argv:
+        from lib import review_lane  # noqa: PLC0415 — lazy, as above
+
+        try:
+            policy = review_lane.release_policy(project_dir)  # never raises by contract
+            gate = boundary_coverage.release_gate(report, policy)
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- a gate that could not answer is exit 3, never main()'s exit 1, which reads as boundary-uncovered
+            print(f"{boundary_coverage.GATE_UNEVALUABLE}: the release gate could not be evaluated "
+                  f"({type(exc).__name__}: {exc}): fix what the reason names, then re-run",
+                  file=sys.stderr)
+            return 3
+        if as_json:
+            print(json.dumps({
+                **report.as_dict(),
+                "policy": {"value": policy.value, "source": policy.source, "note": policy.note},
+                "gate": gate.as_dict(),
+            }, indent=2, sort_keys=True))
+            return gate.exit
+        print(boundary_coverage.render(report),
+              file=sys.stdout if report.status == "ok" else sys.stderr)
+        read_at = f" (read at {policy.source})" if policy.source else ""
+        print(f"boundary_review: {policy.value}{read_at}"
+              + (f" — {policy.note}" if policy.note else "")
+              + ("" if policy.per_release or gate.exit else "; the release check does not block on this"))
+        if gate.message:
+            print(gate.message, file=sys.stderr)
+        return gate.exit
     if as_json:
         print(json.dumps(report.as_dict(), indent=2, sort_keys=True))
     elif report.status == "ok":
@@ -11355,7 +11517,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 #    That is the only reason the sentences above talk around it.
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--session-model <id>] [--scope <s>] [--chunks <id>[,<id>...]] [--force]|critic-end|critic-discard|"
+    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--session-model <id>] [--scope <s>] [--chunks <id>[,<id>...]] [--span release] [--force]|critic-end|critic-discard|"
     "critic-restore <review-id>|critic-consolidate|validate-partial <path>|"
     "native-review prepare <review-id> <session-checkout>|native-review record <review-id> [--text-file <path>]|native-review show [<review-id>]|"
     "subagent-stop|"
@@ -11381,7 +11543,7 @@ _USAGE = (
     "check-pr-doc-only|check-change-log-entry|check-branch-pushed [<branch>]|"
     "check-pr-hygiene [--json]|check-pr-body [<body file>] [--template <path>] [--json]|"
     "check-releasability [--release vX.Y.Z]|"
-    "check-boundary-coverage [--json]|"
+    "check-boundary-coverage [--json] [--gate]|"
     "check-plugin-active [--path P] [--context onboard|doctor|migrate] [--json]|"
     "check-learnings-pairing [deprecated, inert]|"
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
@@ -11412,6 +11574,7 @@ _USAGE = (
     "migrate-change-log [--default-type TYPE] [--apply]|"
     "change-record <scope>... [--json]|"
     "repo-disable [--local] [--apply] [--json]}"
+    " — any subcommand also takes --project-dir <absolute toplevel>, before a bare --"
 )
 
 
@@ -12450,9 +12613,10 @@ def _check_argument_shape(command: str, argv: list[str]) -> int:
     """0 to proceed; 2 when the invocation passed something the command cannot
     read. 2 is the hook's usage-error convention (see `_reject_unknown_args`).
 
-    Runs before anything else in `_dispatch`, including project-dir resolution:
-    a malformed invocation should do nothing at all, and "nothing ran" is the
-    sentence the caller most needs to be able to trust.
+    Runs before anything else in `_dispatch` but `--project-dir`'s removal
+    (`_pop_project_dir`), including project-dir resolution: a malformed
+    invocation should do nothing at all, and "nothing ran" is the sentence the
+    caller most needs to be able to trust.
     """
     if not argv:
         return 0
@@ -12495,6 +12659,118 @@ def _check_argument_shape(command: str, argv: list[str]) -> int:
     return 0
 
 
+# --- `--project-dir`: the caller names its tree (#1253) ----------------------
+# A `context: fork` skill invoked by a subagent that works in another repository
+# starts its shell in the session's launch repo, and its environment names
+# nothing of the caller; its arguments do reach it. So the caller names the repo,
+# and the fork passes the name to every `prawduct-hook` call. Accepted after any
+# subcommand (so the skills' `Bash(prawduct-hook <cmd>*)` grants still match) and
+# before a bare `--`, past which every token is the passthrough command's.
+_PROJECT_DIR_FLAG = "--project-dir"
+
+
+def _pop_project_dir(command: str, argv: list[str]) -> "tuple[str | None, list[str], int]":
+    """``(value, argv without the option, status)``; status 1 is a refusal,
+    already printed. Refuses a missing value, two different values and a
+    relative path: each is a caller who meant a tree and would otherwise get a
+    guessed one. The same tree twice is one tree (compared after
+    ``os.path.normpath``, so ``/b`` and ``/b/`` agree) — a skill that forwards
+    its arguments verbatim and also appends the option passes it twice.
+
+    Exit 1, not the usage error 2 the Conventions name for an unknown flag:
+    `critic-begin` already gives 2 a meaning (scope widened, re-dispatch in the
+    mode it names), and a fork reading this refusal as that would review again
+    in another mode instead of stopping. `critic-begin`'s own unknown argument
+    is 1 for the same reason."""
+    value: "str | None" = None
+    rest: list[str] = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--":
+            rest.extend(argv[i:])
+            break
+        if arg != _PROJECT_DIR_FLAG and not arg.startswith(_PROJECT_DIR_FLAG + "="):
+            rest.append(arg)
+            i += 1
+            continue
+        if arg == _PROJECT_DIR_FLAG:
+            following = argv[i + 1] if i + 1 < len(argv) else ""
+            given = "" if following.startswith("-") else following
+            i += 2
+        else:
+            given = arg[len(_PROJECT_DIR_FLAG) + 1:]
+            i += 1
+        if not given:
+            print(
+                f"{command}: {_PROJECT_DIR_FLAG} requires a value — the absolute "
+                "path of a git work tree's toplevel. Nothing ran.",
+                file=sys.stderr,
+            )
+            return None, argv, 1
+        if value is not None and os.path.normpath(given) != os.path.normpath(value):
+            print(
+                f"{command}: {_PROJECT_DIR_FLAG} names two trees ({value!r} and "
+                f"{given!r}) — name one. Nothing ran.",
+                file=sys.stderr,
+            )
+            return None, argv, 1
+        value = given
+    if value is not None and not os.path.isabs(value):
+        print(
+            f"{command}: {_PROJECT_DIR_FLAG} {value!r} is a relative path — give "
+            "the absolute path of the work tree's toplevel (a relative one would "
+            "resolve against whichever directory this shell started in). "
+            "Nothing ran.",
+            file=sys.stderr,
+        )
+        return None, argv, 1
+    return value, rest, 0
+
+
+def _apply_project_dir(command: str, value: str) -> int:
+    """Validate a named tree, ``chdir`` there and make it the project dir; 0, or
+    1 with the refusal printed. The path must BE a work tree's toplevel: a
+    subdirectory is refused rather than walked up, because the caller named a
+    repo and a silent walk-up is the guess this option exists to end. Fails
+    closed when ``lib/`` cannot be imported — authority never falls back to the
+    launch dir it was given to override."""
+    global _PROJECT_DIR_OVERRIDE
+    named = Path(value)
+    if not named.is_dir():
+        print(
+            f"{command}: {_PROJECT_DIR_FLAG} {value}: no such directory. Nothing ran.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        top = _gitstate()._git_toplevel(named)
+    except ImportError:
+        print(
+            f"{command}: {_PROJECT_DIR_FLAG} cannot be validated — the plugin's "
+            "lib/ did not import. Nothing ran.",
+            file=sys.stderr,
+        )
+        return 1
+    if top is None:
+        print(
+            f"{command}: {_PROJECT_DIR_FLAG} {value} is not a git work tree. "
+            "Nothing ran.",
+            file=sys.stderr,
+        )
+        return 1
+    if top != named.resolve():
+        print(
+            f"{command}: {_PROJECT_DIR_FLAG} {value} is inside the work tree {top}, "
+            "not its toplevel — name the toplevel itself. Nothing ran.",
+            file=sys.stderr,
+        )
+        return 1
+    os.chdir(top)
+    _PROJECT_DIR_OVERRIDE = top
+    return 0
+
+
 def _dispatch() -> int:
     if len(sys.argv) < 2:
         print(_USAGE, file=sys.stderr)
@@ -12507,11 +12783,21 @@ def _dispatch() -> int:
         print(f"{command}: {_RETIRED_COMMANDS[command]}", file=sys.stderr)
         return 1
 
+    # `--project-dir` is the dispatcher's, not the command's: removed here, so
+    # no subcommand parser sees it and the shape check judges what remains.
+    named_dir, remaining, status = _pop_project_dir(command, sys.argv[2:])
+    if status != 0:
+        return status
+    sys.argv[2:] = remaining
+
     # Before dispatch, and before anything else: a command that never receives
     # `argv` cannot refuse an argument, so the dispatcher refuses on its behalf.
     shape = _check_argument_shape(command, sys.argv[2:])
     if shape != 0:
         return shape
+
+    if named_dir is not None and _apply_project_dir(command, named_dir) != 0:
+        return 1
 
     project_dir = get_project_dir()
 

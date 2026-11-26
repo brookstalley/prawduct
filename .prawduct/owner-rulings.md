@@ -619,12 +619,35 @@ tag, detached, rather than onto `develop`.
    branch's diff byte-identical to the reviewed span, a base advance touching none of its files, and a suite run that met
    the merged tree, and the release op reads the PR gate's recorded grant before re-deciding.
 
+**2026-11-26, later.** "yes agreed with your recs, let's do it" — answering two asks:
+1. A release batch review (`span: release`, #1232) is never charged to `review_round_budget` and takes no scope's
+   boundary slot (`critic_consolidate._cadence_round_ids`). This widens the 2026-11-23 ruling's item 2, whose
+   not-counted set was a chunk's first full review and a scope's first boundary review. Why: it is the release's own
+   step, not a round on any scope; charging it would leave `--force` the only route past a held `per_release`
+   release, and a re-run is owed only when new merges land (fixes clear through `verify-resolutions`). Recorded as
+   M2 in `build-plan-boundary-review-per-release.md`; key doc `review_round_budget` updated.
+2. PR #1252 (#1250, `fix/boundary-coverage-transfer` → `develop`) is merged, ahead of #1232's PR, so #1232's PR does
+   not carry it.
+
 **2026-11-26 (doctor/janitor).** "can you figure out why agents say they cant run doctor and/or janitor and need the
 human to do it, and fix so agents can run both?" — an agent may invoke both skills, not only a human typing the
 command. Janitor's `disable-model-invocation: true` (85753fda) is lifted by removing the grants that made it
 necessary (an interpreter pre-approved for a model-invoked skill reaches every op an allow-list withholds), not by
 exempting it; doctor runs the repairs it offers on the owner's yes instead of handing the command to the owner.
 Owner judgments (norm ratification, which plans are done, delegation policy) stay the owner's.
+
+**2026-11-26 (round-4 review asks).** "yes to your recommendations" — answering two asks:
+1. #1232 R-4 (rev at f2512df9): a release entry whose changes are all back to the release span's starting content
+   (merged, then fully reverted before the release) is credited covered under its own named class, not owed a
+   review. Why: nothing of it ships, so nothing is left unread — the batch rule's own condition 2 reasoning (a file
+   back at the interval's base content needs no reading), applied to the whole entry. Recorded beneath the
+   2026-11-25 amendment ("the boundary review is moved, not skipped"), whose words stand: what is moved is the
+   review of what ships. The alternative (dispatching an empty-subject release review) was declined as a full
+   boundary review that reads nothing.
+2. The critic-reviewer agent's `git -C * <verb> *` grants, which also admit `git -C <dir> -c alias.x='!cmd' x`, stay
+   as a recorded reach exemption (later moot: the reach rails retired with "what was over-built" below; `_REACH_EXEMPT` in `tests/test_backlog_skill_metadata.py`, branch
+   `fix/agent-runnable-doctor-janitor`): the agent is dispatched only by the Critic under a no-execution contract,
+   and narrowing it means redesigning the `git -C <dir>` form its own tests require.
 
 **2026-11-26 (design stance).** "trying to close an open set makes no sense. Don't do that. We have to assume good faith
 by humans and competence by models." Defenses whose premise is a human acting in bad faith (bypassing a gate to hide
@@ -648,3 +671,20 @@ and a confirmation before an irreversible, outward-facing act the person asked f
    re-checks a merge the owner made over a blocker.
 4. The Critic's review protocol gains a severity rule: a finding whose failure needs a human acting in bad faith or a
    model ignoring its instructions is an observation at most, never a warning. Its own change, off `develop`.
+
+**2026-11-26 (later).** "yes to all recs" — PR #1254 (`fix/agent-runnable-doctor-janitor` → `develop`, agents can run doctor
+and janitor; grant-reach rails retired) is merged.
+
+**2026-11-26 (afternoon).** "Yes to all recommendations", answering two asks on PR #1258 (#1232):
+1. Merge PR #1258 (`feature/boundary-review-per-release` → `develop`).
+2. Keep every inferred design call in the build plan (M10–M21), M15's second clause included. That clause
+   relaxes the release gate: an entry whose read diff brought no judgeable file onto the base is `reverted`
+   and covered without a review, because nothing of it ships. It is owner-confirmed now, no longer only the
+   builder's call.
+
+**2026-11-26 (late afternoon).** "Yep merge and keep all three and delete merged and dismiss oversized advisory":
+1. Merge PR #1259 (`fix/fork-project-dir` → `develop`, #1253).
+2. Keep its three named decisions: `--project-dir` goes after the subcommand; a subdirectory is refused rather
+   than walked up to its toplevel; every `--project-dir` refusal exits 1, not 2.
+3. Delete the merged local branches `git-tidy` lists, and dismiss the oversized-build-plan advisory: the plan is
+   archived at the next release, which is when its size stops being paid.

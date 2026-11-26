@@ -272,7 +272,7 @@ overall          one stat block (below)
 by_role_model_mode  [{role, model, mode, ...stat block}]
 by_scope         [{scope, ...stat block}]
 by_stage         [{stage, ...stat block}] — `inner` / `boundary` / null
-by_span          [{span, ...stat block}] — `bounded` / `full`, cumulatives
+by_span          [{span, ...stat block}] — `bounded` / `full` / `release`, cumulatives
                  only; the `full` entry adds `reasons` {decline code: count}
 consolidated_by  {subagent-stop, explicit, session-end-backstop, unrecorded}
                  — review.critic events per `trigger`, every path listed even
@@ -366,7 +366,8 @@ event, which carries none. Schema 5 added the key. This is the yield-by-stage qu
 stage-keyed rigor norm (`nonfunctional-requirements.md` § Direction) was drawn to answer.
 
 `by_span` groups `cumulative` reviews by the record's `span`: `bounded` (the delta since an earlier
-boundary review) or `full` (the whole bundle). Both are listed even at zero. A cumulative event
+boundary review), `full` (the whole bundle) or `release` (a release batch review, from the release
+anchor; schema 15). All are listed even at zero. A cumulative event
 written before the field reads `full`, which is true, because nothing was bounded then; its reason
 is `unrecorded`. The `full` entry's `reasons` counts each recorded decline code (`gates.SPAN_FULL_*`),
 so why a repeat ran full is a query. Other modes carry no span and are not grouped. Schema 11 added

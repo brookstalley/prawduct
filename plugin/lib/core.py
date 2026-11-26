@@ -521,8 +521,9 @@ def read_scalar_yaml_key(state_path: Path, key: str) -> "tuple[str, str | None]"
     quotes and inline ``#`` comments are stripped; indented and commented-out
     occurrences are ignored.
 
-    THE column-0 scanner: :func:`read_str_yaml_key` is a thin wrapper that
-    collapses the two unset states, so there is one parser to be wrong.
+    THE column-0 scanner, with its text form :func:`read_scalar_yaml_text`:
+    :func:`read_str_yaml_key` is a thin wrapper that collapses the two unset
+    states, so there is one parser to be wrong.
     """
     try:
         content = state_path.read_text(encoding="utf-8")
@@ -534,6 +535,15 @@ def read_scalar_yaml_key(state_path: Path, key: str) -> "tuple[str, str | None]"
         # far from here. `already_migrated` is the sharp case: it calls this
         # first, so an undecodable state file aborted the cutover before any of
         # the later steps could reach their own decode guards.
+        return YAML_SCALAR_ABSENT, None
+    return read_scalar_yaml_text(content, key)
+
+
+def read_scalar_yaml_text(content: "str | None", key: str) -> "tuple[str, str | None]":
+    """:func:`read_scalar_yaml_key` over a ``project-state.yaml`` text in hand,
+    such as one read out of a committed tree. ``None`` (no such file) reads as
+    :data:`YAML_SCALAR_ABSENT`."""
+    if content is None:
         return YAML_SCALAR_ABSENT, None
     needle = f"{key}:"
     for raw in content.splitlines():
@@ -858,6 +868,13 @@ def oversized_file_threshold(prawduct_dir: Path) -> int:
             kilobytes = configured
     return kilobytes * 1000
 
+
+#: Where a repo's boundary review runs: ``per_pr`` (the default) or
+#: ``per_release``. Like :data:`STATIC_CONTENT_PREFIXES_KEY` it lightens what a
+#: PR owes, so it is read from the integration branch, never the branch
+#: declaring it; ``review_lane`` is its one reader, and combines every reading
+#: a caller needs (a live branch, a merged one, the release check).
+BOUNDARY_REVIEW_KEY = "boundary_review"
 
 REVIEW_ROUND_BUDGET_KEY = "review_round_budget"
 

@@ -124,13 +124,12 @@ def _boundary_pattern_paths(prawduct_dir: Path) -> list[str]:
     product's documented contract surfaces. Globs and slash-commands are
     excluded by the shared ``_looks_like_file_path`` rule; an unfilled
     template (paths only inside HTML comments, unbackticked) yields none."""
-    path = prawduct_dir / "artifacts" / "boundary-patterns.md"
-    if not path.is_file():
-        return []
-    try:
-        content = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
+    text = _read_text(prawduct_dir / "artifacts" / "boundary-patterns.md")
+    return _boundary_pattern_paths_in(text) if text else []
+
+
+def _boundary_pattern_paths_in(content: str) -> list[str]:
+    """:func:`_boundary_pattern_paths` over the file's text."""
     seen: list[str] = []
     for token in _BACKTICK_RE.findall(content):
         token = token.strip()
@@ -158,9 +157,28 @@ SOURCE_UNPARSEABLE = "unparseable risk_surfaces"
 
 
 def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
-    """The risk surfaces in force plus their provenance — resolution order
-    steps 1-2 of the module docstring, in ONE place so every consumer answers
-    "is this a risk surface" identically.
+    """The risk surfaces in force plus their provenance, as this checkout's
+    working tree declares them: :func:`resolve_surfaces_from` over the two
+    files read from disk.
+
+    A file that cannot be read declares nothing: an unreadable
+    ``project-state.yaml`` is an absent key (the fallback can only escalate),
+    an unreadable ``boundary-patterns.md`` names no contract path.
+    """
+    return resolve_surfaces_from(
+        _read_text(prawduct_dir / "project-state.yaml"),
+        _read_text(prawduct_dir / "artifacts" / "boundary-patterns.md"),
+    )
+
+
+def resolve_surfaces_from(
+    state_text: "str | None", patterns_text: "str | None"
+) -> tuple[list[str], str]:
+    """THE resolution order (steps 1-2 of the module docstring) over texts in
+    hand: ``project-state.yaml``'s and ``boundary-patterns.md``'s, each ``None``
+    when there is no such file. One function so every consumer answers "is this
+    a risk surface" identically, whether it read the working tree
+    (:func:`resolve_surfaces`) or a committed revision (:func:`_surfaces_at`).
 
     A ``risk_surfaces:`` key is exclusive when present (declared-empty is a
     deliberate opt-out and returns ``[]``); otherwise the derived defaults plus
@@ -170,17 +188,80 @@ def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
     Callers must not treat that as either of the other two — see
     :data:`SOURCE_UNPARSEABLE`.
     """
-    status, declared = read_declared_surfaces(
-        prawduct_dir / "project-state.yaml", "risk_surfaces"
-    )
+    status, declared = (read_block_sequence(state_text, "risk_surfaces")
+                        if state_text is not None else (YAML_ABSENT, ()))
     if status == YAML_UNPARSEABLE:
         return [], SOURCE_UNPARSEABLE
     if status == YAML_DECLARED:
-        return declared, SOURCE_DECLARED
+        return list(declared), SOURCE_DECLARED
     return (
-        [*DERIVED_DEFAULT_SURFACES, *_boundary_pattern_paths(prawduct_dir)],
+        [*DERIVED_DEFAULT_SURFACES, *(_boundary_pattern_paths_in(patterns_text) if patterns_text else [])],
         SOURCE_DERIVED,
     )
+
+
+def _read_text(path: Path) -> "str | None":
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _surfaces_at(project_dir: Path, rev: str) -> "tuple[list[str], str] | None":
+    """:func:`resolve_surfaces_from` over the committed tree at ``rev``, or None
+    when git cannot resolve ``rev``. A file absent there declares nothing, so
+    the derived defaults apply, as they do in a working tree.
+
+    Git runs through :func:`evidence.run_git`, the plugin's one bounded runner
+    (its timeout, its tolerant decode, never raising), because this sits on
+    the PR gate's, the Stop gate's and inference's path: a git call that hangs
+    must not hang them."""
+    from . import evidence  # noqa: PLC0415 — lazy: only the per_release relaxations read a revision
+
+    if evidence.run_git(project_dir, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}")[0] != 0:
+        return None
+
+    def show(rel: str) -> "str | None":
+        rc, text, _err = evidence.run_git(project_dir, "show", f"{rev}:{rel}", strip=False)
+        return text if rc == 0 else None
+
+    return resolve_surfaces_from(show(".prawduct/project-state.yaml"),
+                                 show(".prawduct/artifacts/boundary-patterns.md"))
+
+
+def paths_touch_held_risk_surface(
+    project_dir: Path, prawduct_dir: Path, paths: "list[str]", revs: "tuple[str, ...]"
+) -> tuple[bool, str]:
+    """:func:`paths_touch_risk_surface` for a decision that RELAXES a review
+    under ``boundary_review: per_release`` (#1232): the per-release lane's
+    eligibility and the fix-tail deferral. The one reader for both.
+
+    The surfaces are the UNION of what the working tree declares and what each
+    of ``revs`` (the merge-base with the integration branch, and its tip or the
+    merged branch's tip) declares, so a branch can add a risk surface and never
+    remove one: rewriting ``risk_surfaces:`` (``[]`` included) or
+    ``boundary-patterns.md`` on the branch cannot buy it the relaxation, the
+    self-authority hole ``boundary_review:`` itself is read around. A side
+    whose declaration does not parse, or a rev git cannot resolve, answers
+    touched: a relaxation that cannot be evaluated relaxes nothing."""
+    sides = [("this checkout", resolve_surfaces(prawduct_dir))]
+    for rev in dict.fromkeys(r for r in revs if r):
+        at = _surfaces_at(project_dir, rev)
+        if at is None:
+            return True, f"git could not read the risk surfaces at {rev[:12]}, so none is known to be untouched"
+        sides.append((f"{rev[:12]}", at))
+    surfaces: "list[str]" = []
+    for where, (listed, source) in sides:
+        if source == SOURCE_UNPARSEABLE:
+            return True, f"risk_surfaces: does not parse at {where}, so none is known to be untouched"
+        surfaces += [s for s in listed if s not in surfaces]
+    matches = surface_matches(paths, surfaces)
+    if not matches:
+        return False, f"no risk-surface paths (held by {', '.join(w for w, _ in sides)})"
+    path, surface = matches[0]
+    more = f" (+{len(matches) - 1} more)" if len(matches) > 1 else ""
+    held = next(w for w, (listed, _src) in sides if surface in listed)
+    return True, f"{path} matched risk surface {surface}{more} (declared at {held})"
 
 
 def surface_matches(
@@ -259,10 +340,15 @@ def paths_touch_risk_surface(prawduct_dir: Path, paths: "list[str]") -> tuple[bo
 
 def _git_lines(project_dir: Path, *args: str) -> list[str] | None:
     """Lines of one git read; ``None`` on any failure (callers decide whether
-    that fails open or closed — see module docstring)."""
+    that fails open or closed — see module docstring).
+
+    ``core.quotepath=false`` returns non-ASCII names raw: under git's default,
+    ``skills/café.md`` comes back C-quoted and matches no surface, so a
+    risk-surface change would read ``standard`` and could be granted the
+    per-release lane (fail-open)."""
     try:
         proc = subprocess.run(
-            ["git", *args],
+            ["git", "-c", "core.quotepath=false", *args],
             cwd=str(project_dir), capture_output=True, encoding="utf-8", errors="surrogateescape", timeout=30,
         )
     except Exception:  # prawduct:allow prawduct/broad-except -- verdict degrades per the declared fail-open/closed rule, never crashes
@@ -272,17 +358,25 @@ def _git_lines(project_dir: Path, *args: str) -> list[str] | None:
     return [ln for ln in proc.stdout.splitlines() if ln.strip()]
 
 
-def _review_scope_paths(project_dir: Path, base: str | None) -> list[str] | None:
+def _review_scope_paths(
+    project_dir: Path, base: str | None, *, renames: bool = True
+) -> list[str] | None:
     """The paths a final/cumulative review covers: committed names in
     ``merge-base(base)...HEAD`` plus working-tree changed/untracked names.
-    ``None`` when git evaluation fails (the fail-open/closed branch point)."""
+    ``None`` when git evaluation fails (the fail-open/closed branch point).
+
+    ``renames=False`` turns git's rename detection off in both reads, so a
+    renamed file lists its old path as well as its new one: the per-release
+    lane (``critic_mode.lane_eligibility``) asks it that way, because a
+    relaxation must see a risk surface the branch renamed away."""
+    no_renames = [] if renames else ["--no-renames"]
     paths: list[str] = []
     if base is not None:
         merge_base_lines = _git_lines(project_dir, "merge-base", base, "HEAD")
         if not merge_base_lines:
             return None
         committed = _git_lines(
-            project_dir, "diff", "--name-only", f"{merge_base_lines[0]}..HEAD"
+            project_dir, "diff", "--name-only", *no_renames, f"{merge_base_lines[0]}..HEAD"
         )
         if committed is None:
             return None
@@ -291,7 +385,7 @@ def _review_scope_paths(project_dir: Path, base: str | None) -> list[str] | None
     # one "?? dir/" line, hiding the files inside it from glob surfaces
     # (e.g. `lib/gates*` never sees a file under an untracked `lib/`) — a
     # silently missed escalation. Caught by test_uncommitted_work_counts.
-    porcelain = _git_lines(project_dir, "status", "--porcelain", "--untracked-files=all")
+    porcelain = _git_lines(project_dir, "status", "--porcelain", "--untracked-files=all", *no_renames)
     if porcelain is None:
         return None
     for line in porcelain:
