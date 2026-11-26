@@ -143,7 +143,11 @@ the composition over all facts also `covered`, with wave 1's three inferences
   base branch with a new `critic-begin --span release` interval: release anchor tree → HEAD tree,
   subject = the judgeable files of every not-covered entry, context = the rest of the span
   (`files_context`, the bounded-cumulative mechanism). Its fact is never a `review_edges` edge
-  (its subject is partial), so it cannot change any PR gate verdict.
+  (its subject is partial), so it cannot turn any PR gate verdict toward covered. *Inferred at
+  Chunk 03 (2026-11-26):* its blocking findings still stand at the two trees it read, as every
+  review's do, so a branch standing on those trees reads `blocked` until a resolution (recorded
+  anywhere) clears them. Hiding release-span facts from every gate instead would also hide the
+  blocker from the verify-resolutions pass that fixes it on the base.
 - *Inferred:* the relax-only batch rule (design §3): a not-covered merge `M` reads `batch-covered`
   when a boundary-stage review `B` brackets it on the first-parent line, `M`'s judgeable files that
   still differ from the anchor are within `B.files_reviewed`, and composition over all facts at
