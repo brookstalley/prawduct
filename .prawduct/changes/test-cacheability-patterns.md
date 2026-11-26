@@ -31,8 +31,13 @@ test's temporary directory when it is not the test's subject.
 The advisory raises every cause testament lists, keeps testament's order, and says to fix them in
 this order. testament ranks causes greedily, so a cause's `frees` counts what fixing it frees only
 after the causes above it are fixed. The summary says "frees N after those above", and from a
-coordinator that sends no `frees` it gives `alone` ("sole blocker of N"). A cause that frees 0 at
-its place is still raised, because the causes below it free theirs only once it is fixed. The
+coordinator that sends no `frees` it gives `alone` ("sole blocker of N"), and then the owner
+action says what that count is instead of calling it a fix order. A cause that frees 0 at
+its place is still raised, because the causes below it free theirs only once it is fixed. A cause
+whose kind, site or scope fails the token check is not shown, but it is counted: the summary says
+how many are missing, and the sync reads as "could not look", because a gap makes every count
+below it a count after a fix the owner was never shown. A module-level site (`path:<module>`, an
+import-time read) passes the check. The
 evidence format and `PROBE_VERSION` are unchanged. The advisory
 never fired before this change (below), so no dismissal exists to reset.
 
@@ -46,11 +51,14 @@ and finds this project's snapshots by the `project` each file names, not by its 
 envelope's `commit` is a synthetic commit in testament's own store, never one of the repo's, so it
 cannot place a run on a branch. The `tree` is the worktree content the run shipped. It equals a
 commit's tree only when the run was of that commit with nothing uncommitted, so a dirty-tree run,
-perhaps a sibling worktree's work in progress, is skipped. Each snapshot is judged alone. One that
-is skipped (narrowed only, an unknown version, a suite name that is not a plain word, or not of
-this branch) is named on stderr. A file that will not parse is ignored whatever its name, and of
-two files for one suite the one with the newest `generated_at` is read. The other suites' current snapshots keep reporting, but no open advisory resolves on that
-sync. The probe reports "could not look" only when none of the project's snapshots is usable. Another
+perhaps a sibling worktree's work in progress, is skipped. A snapshot is unusable when it is
+narrowed only, of an unknown version, not of this branch, or has a suite name that is not a plain
+word. Every file is checked before one is chosen, and of a suite's usable files the newest
+`generated_at`, read as a time rather than as text, speaks for it, so a stale backup or a later
+narrowed run beside a good snapshot changes nothing. A suite with no usable file is named once on
+stderr, which echoes a file's name, version or tree only when it passes a check of its own. A file
+that will not parse is ignored whatever its name. The other suites' current snapshots keep
+reporting, but no open advisory resolves on that sync. The probe reports "could not look" only when none of the project's snapshots is usable. Another
 project's file, whatever its shape, never affects this one. One test fixture,
 `tests/fixtures/testament_cacheability_snapshot.json`, is a real snapshot of this repo trimmed to
 four causes, and it drives the advisory end to end with its own synthetic commit.
