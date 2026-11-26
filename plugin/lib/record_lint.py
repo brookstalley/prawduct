@@ -80,6 +80,7 @@ from . import (
     buildplan_refs,
     determinism_lint,
     evidence,
+    gitstate,
     late_requirements,
     learnings_files,
     plan_index,
@@ -327,7 +328,6 @@ def records_in(paths: "list[str] | None") -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-_DIFF_HEADER_RE = re.compile(r"^diff --git a/(?:.*) b/(.+)$")
 _HUNK_RE = re.compile(r"^@@+ .*?\+(\d+)(?:,\d+)? @@")
 
 
@@ -354,20 +354,22 @@ def _added_lines(
     """
     rc, out, _err = evidence.run_git(
         project_dir,
-        # `core.quotepath` defaults on, so git C-quotes any non-ASCII pathname in
-        # the `diff --git` header (`"a/caf\303\251.md"`). The header parser would
-        # then miss it and attach that file's added lines to the PREVIOUS file —
-        # wrong attribution, silently. Turning it off is a one-flag fix and keeps
-        # this working for any repo whose records aren't named in ASCII.
-        "-c", "core.quotepath=false",
+        # git C-quotes a header's name when it holds a non-ASCII byte, a quote or a
+        # backslash (`"a/caf\303\251.md"`); `_parse_diff` decodes it, so the quoting
+        # is left at git's default, which keeps any name off a raw line of its own.
         "diff",
         "--unified=0",
         "--no-color",
         "--no-ext-diff",
+        # The header's `a/` and `b/` are what `gitstate.diff_header_path` reads a name by;
+        # `diff.noprefix` or `diff.srcPrefix`/`diff.dstPrefix` in a user's config would move them.
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
         base_tree,
         head_tree,
         "--",
         *paths,
+        strip=False,
     )
     if rc != 0:
         return None
@@ -380,25 +382,34 @@ def _parse_diff(out: str) -> "dict[str, list[tuple[int, str]]]":
     be committed on every platform this test suite runs on."""
     by_path: dict[str, list[tuple[int, str]]] = {}
     current: "list[tuple[int, str]] | None" = None
+    header_name: "str | None" = None
     in_hunk = False
     line_num = 0
-    for raw in out.splitlines():
-        header = _DIFF_HEADER_RE.match(raw)
-        if header:
-            current = by_path.setdefault(header.group(1), [])
+    # git's newline only: a content line may hold a character `str.splitlines` also splits on.
+    # A CRLF file's lines keep their `\r` that way, and lose it here, as `splitlines` dropped it.
+    for raw in (line.removesuffix("\r") for line in out.split("\n")):
+        if raw.startswith("diff --git "):
+            # The header's name, decoded (`gitstate.diff_header_path`). A header it
+            # cannot read drops the file: losing one file's findings is recoverable,
+            # while leaving `current` alone would attach its added lines to the
+            # PREVIOUS file, and a finding naming a record that never contained the
+            # text is indistinguishable from a true one. (Content lines cannot reach
+            # here — inside a hunk every line carries a `+`/`-`/space prefix.)
+            name = gitstate.diff_header_path(raw)
+            current = by_path.setdefault(name, []) if name else None
+            header_name = name
             in_hunk = False
             continue
-        if raw.startswith("diff --git "):
-            # A header the regex could not parse. `core.quotepath=false` above
-            # covers non-ASCII names, but git still C-quotes a pathname holding
-            # `"` or `\`, and that quoting is not disableable. Dropping the file
-            # loses one file's findings; leaving `current` alone would attach its
-            # added lines to the PREVIOUS file, and a finding naming a record
-            # that never contained the text is indistinguishable from a true one.
-            # Silence beats a confident lie. (Content lines cannot reach here —
-            # inside a hunk every line carries a `+`/`-`/space prefix.)
-            current = None
-            in_hunk = False
+        if not in_hunk and raw.startswith("+++ "):
+            # The new side's own line names it unambiguously, where a rename's header can split
+            # wrong on a name holding ` b/`. `/dev/null` (a deletion) adds no line. git ends an
+            # unquoted name holding a space with a tab, so the name's end is unambiguous too.
+            text = raw[4:]
+            side = gitstate.unquote_git_path(text[:-1] if text.endswith("\t") and " " in text else text)
+            if side.startswith("b/") and len(side) > 2 and side[2:] != header_name:
+                if header_name is not None and not by_path.get(header_name):
+                    by_path.pop(header_name, None)
+                current = by_path.setdefault(side[2:], [])
             continue
         hunk = _HUNK_RE.match(raw)
         if hunk:
@@ -785,13 +796,14 @@ def _resolve_artifact(project_dir: Path, prawduct_dir: Path, name: str) -> "Path
     if canonical.is_file():
         return canonical
     rc, out, _err = evidence.run_git(
-        project_dir, "ls-files", "--", f"{name}.md", f"*/{name}.md"
+        project_dir, "ls-files", "--", f"{name}.md", f"*/{name}.md",
+        strip=False,
     )
     if rc != 0:
         return None
-    for line in out.splitlines():
-        candidate = project_dir / line.strip()
-        if line.strip() and candidate.is_file():
+    for rel in gitstate.git_path_lines(out):
+        candidate = project_dir / rel
+        if candidate.is_file():
             return candidate
     return None
 
@@ -1731,7 +1743,7 @@ def _check_learnings_areas(
     if not scoped:
         return findings, [], set()
 
-    rc, out, err = evidence.run_git(project_dir, "ls-files", "-z")
+    rc, out, err = evidence.run_git(project_dir, "ls-files", "-z", strip=False)
     if rc != 0:
         return (
             findings,

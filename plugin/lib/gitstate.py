@@ -566,13 +566,16 @@ def worktree_records(project_dir: Path) -> list[dict] | None:
         return [] if in_repo != 0 else None
     records: list[dict] = []
     current: dict = {}
-    for line in out.splitlines():
+    for line in out.split("\n"):
         if not line.strip():
             if current:
                 records.append(current)
                 current = {}
             continue
         key, _sep, value = line.partition(" ")
+        # git prints a worktree path raw here, never C-quoted (measured, git 2.54), so it
+        # is not decoded; only a newline in a path, which `-z` (git 2.36+) would carry,
+        # breaks this record.
         current[key] = value
     if current:
         records.append(current)
@@ -934,37 +937,121 @@ def _is_metadata_path(filepath: str) -> bool:
     return any(filepath.startswith(p) for p in METADATA_PREFIXES)
 
 
+#: git's C-quoting escapes (``quote.c``): the letter after a backslash, and the byte it stands for.
+_C_ESCAPES = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+
+
+def _read_quoted(text: str, start: int) -> "tuple[str, int] | None":
+    """The name a C-quoted token at ``text[start]`` (a ``"``) stands for, and the index after
+    its closing quote; ``None`` when the token is not well-formed git quoting."""
+    out = bytearray()
+    i = start + 1
+    while i < len(text):
+        char = text[i]
+        if char == '"':
+            return out.decode("utf-8", "surrogateescape"), i + 1
+        if char != "\\":
+            out += char.encode("utf-8", "surrogateescape")
+            i += 1
+            continue
+        escape = text[i + 1:i + 2]
+        if escape in _C_ESCAPES:
+            out.append(_C_ESCAPES[escape])
+            i += 2
+            continue
+        digits = text[i + 1:i + 4]
+        if len(digits) == 3 and all(d in "01234567" for d in digits) and int(digits, 8) < 256:
+            out.append(int(digits, 8))
+            i += 4
+            continue
+        return None
+    return None
+
+
+def unquote_git_path(text: str) -> str:
+    """A path name as git prints it, decoded to the name on disk.
+
+    git C-quotes a name holding a non-ASCII byte, a double quote, a backslash or a control
+    character (``core.quotepath``, on by default): ``skills/café.md`` prints as
+    ``"skills/caf\\303\\251.md"``. A reader that compares the printed text with names on disk
+    misses the file, and a governance reader that misses a file fails open. This is the one
+    decoder of that quoting, and its inverse is exact: escapes become their bytes, and the
+    bytes are UTF-8 with ``surrogateescape``, as ``os.fsdecode`` reads a name. Text that is not
+    one whole well-formed quoted token is returned unchanged, so a reader sees at worst what
+    git printed. ``-z`` output is never quoted and needs none of this."""
+    if len(text) >= 2 and text[0] == '"':
+        read = _read_quoted(text, 0)
+        if read is not None and read[1] == len(text):
+            return read[0]
+    return text
+
+
+def git_path_lines(stdout: str) -> list[str]:
+    """One decoded name per line of a git command that prints a name per line (``diff
+    --name-only``, ``ls-files``, ``ls-tree --name-only``, ``log --name-only``, ``grep -l``).
+    Split on git's newline only: a quoted name never holds one, and an unquoted name may hold a
+    character ``str.splitlines`` also splits on. Blank lines are dropped."""
+    return [unquote_git_path(line) for line in stdout.split("\n") if line]
+
+
+def diff_header_path(line: str) -> "str | None":
+    """The new-side name of a ``diff --git a/<old> b/<new>`` header, decoded; ``None`` when
+    ``line`` is not a header this can read. git quotes each side on its own (``"a/caf\\303\\251.md"
+    "b/caf\\303\\251.md"``), so a quoted new side is read as one token, and an unquoted header
+    is read at its midpoint when both sides name the same file, and otherwise (a rename) split at
+    its last `` b/``, which is ambiguous only for a renamed name that itself holds `` b/``."""
+    prefix = "diff --git "
+    if not line.startswith(prefix):
+        return None
+    rest = line[len(prefix):]
+    new_side: "str | None" = None
+    if rest.startswith('"'):
+        read = _read_quoted(rest, 0)
+        if read is not None and rest[read[1]:read[1] + 1] == " ":
+            new_side = rest[read[1] + 1:]
+    elif rest.endswith('"') and ' "b/' in rest:
+        new_side = rest[rest.rindex(' "b/') + 1:]
+    elif rest.startswith("a/") and (len(rest) - 5) % 2 == 0 and \
+            rest[2:2 + (len(rest) - 5) // 2] == rest[5 + (len(rest) - 5) // 2:] and \
+            rest[2 + (len(rest) - 5) // 2:5 + (len(rest) - 5) // 2] == " b/":
+        # The same name on both sides, `a/X b/X`: read at the midpoint, because X itself may
+        # hold ` b/` (a folder `notes/a b/`), and git does not quote a space.
+        new_side = rest[3 + (len(rest) - 5) // 2:]
+    elif " b/" in rest:
+        new_side = rest[rest.rindex(" b/") + 1:]  # a rename; ambiguous only if a name holds " b/"
+    if new_side is None:
+        return None
+    name = unquote_git_path(new_side)
+    if new_side.startswith('"') and name == new_side:
+        return None  # a quoted side that is not well-formed quoting
+    return name[2:] if name.startswith("b/") and len(name) > 2 else None
+
+
 def parse_porcelain_line(line: str) -> tuple[str, str | None, str] | None:
     """Parse one ``git status --porcelain`` line into ``(status, src_path, path)``.
 
-    Git QUOTES paths containing spaces or special characters (`` M "my doc.md"``)
-    and renders renames as ``R  old -> new`` — a naive ``line.split()[-1]`` returns
-    ``doc.md"`` for the quoted form, which made the doc-only classification fail on
-    the trailing quote and falsely block doc-only sessions at the Critic/reflection
-    gates (review-fixes Chunk 1). ``src_path`` is the rename source (None for
-    non-renames); ``path`` is the current/destination path, quote-stripped.
-    Returns None for blank or malformed lines. Two accepted caveats, both
-    classification-only impact: octal escapes inside quoted paths (non-ASCII
-    filenames) are left as-is — quote-stripping is sufficient for path
-    *classification* by prefix/suffix, which is all the callers do; and a
-    quoted rename SOURCE itself containing ``" -> "`` mis-splits at the first
-    arrow (vanishingly rare, still strictly better than the ``split()[-1]``
-    parse this replaced).
+    Each name is decoded by :func:`unquote_git_path`, so it is the name on disk. A rename
+    (``R`` or ``C`` in either status column) prints ``old -> new``; ``src_path`` is the old
+    name, ``None`` otherwise. Only a rename is split on `` -> ``, because git does not quote
+    that text and an ordinary name may hold it; a quoted rename source ends at its closing
+    quote, so its own `` -> `` never splits it. An unquoted rename source holding `` -> ``
+    is the one ambiguous form git prints, and it splits at the first arrow. Returns ``None``
+    for a blank or malformed line.
     """
     if len(line) < 4:
         return None
     status = line[:2]
-    raw = line[3:].strip()
+    rest = line[3:].rstrip("\n")
     src_path: str | None = None
-    if " -> " in raw:
-        src_raw, dst_raw = raw.split(" -> ", 1)
-        src_path = src_raw.strip()
-        if src_path.startswith('"') and src_path.endswith('"'):
-            src_path = src_path[1:-1]
-        raw = dst_raw.strip()
-    path = raw
-    if path.startswith('"') and path.endswith('"'):
-        path = path[1:-1]
+    if "R" in status or "C" in status:
+        if rest.startswith('"'):
+            read = _read_quoted(rest, 0)
+            if read is None or rest[read[1]:read[1] + 4] != " -> ":
+                return None  # a quoted source that is not well-formed git quoting
+            src_path, rest = read[0], rest[read[1] + 4:]
+        elif " -> " in rest:
+            src_path, rest = rest.split(" -> ", 1)
+    path = unquote_git_path(rest)
     if not path:
         return None
     return status, src_path, path
@@ -999,8 +1086,8 @@ def git_has_session_changes(project_dir: Path, status_output: str | None = None)
     # No whole-output .strip(): it eats the FIRST line's leading status space
     # (" M x" → "M x"), corrupting the fixed-offset porcelain parse. Both sides
     # unstripped (review-fixes Chunk 1).
-    baseline_lines = set(baseline.splitlines())
-    current_lines = current.splitlines()
+    baseline_lines = set(baseline.split("\n"))
+    current_lines = current.split("\n")
 
     for line in current_lines:
         if line not in baseline_lines:
@@ -1390,12 +1477,12 @@ def _get_session_changed_files(project_dir: Path, status_output: str | None = No
         try:
             # Unstripped on both sides — see git_has_session_changes.
             baseline_lines = set(
-                baseline_path.read_text(encoding="utf-8", errors="surrogateescape").splitlines()
+                baseline_path.read_text(encoding="utf-8", errors="surrogateescape").split("\n")
             )
         except (UnicodeDecodeError, OSError):
             pass  # Corrupted baseline — same stance as the sibling readers above
     changed = []
-    for line in current.splitlines():
+    for line in current.split("\n"):
         if line and line not in baseline_lines:
             parsed = parse_porcelain_line(line)
             if parsed:

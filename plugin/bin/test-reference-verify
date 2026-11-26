@@ -179,14 +179,16 @@ def _changed_files(cwd: Path, base: str) -> list[str]:
 
     Returns a sorted, deduplicated list.
     """
-    rc, out, err = _git(["diff", "--name-only", base], cwd)
+    # -z: NUL-separated and never C-quoted, so a name holding a non-ASCII byte or a
+    # quote reads as it is on disk (this file imports no lib/ decoder).
+    rc, out, err = _git(["diff", "--name-only", "-z", base], cwd)
     if rc != 0:
         raise RuntimeError(f"git diff failed: {err.strip()}")
-    files = {line.strip() for line in out.splitlines() if line.strip()}
+    files = {name for name in out.split("\0") if name}
 
-    rc2, out2, _ = _git(["ls-files", "--others", "--exclude-standard"], cwd)
+    rc2, out2, _ = _git(["ls-files", "--others", "--exclude-standard", "-z"], cwd)
     if rc2 == 0:
-        files.update(line.strip() for line in out2.splitlines() if line.strip())
+        files.update(name for name in out2.split("\0") if name)
 
     return sorted(files)
 

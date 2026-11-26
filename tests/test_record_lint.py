@@ -264,9 +264,9 @@ class TestAddedLineScoping:
 
     def test_a_non_ascii_pathname_is_attributed_to_itself(self, tmp_path):
         """`core.quotepath` defaults on, and git then C-quotes the whole
-        `diff --git` header for a non-ASCII name. Without the flag the header
-        parser misses it and this record's added line lands on the PREVIOUS
-        file's findings — a finding naming a record that never held the text.
+        `diff --git` header for a non-ASCII name. Read raw, the header parser
+        misses it and this record's added line lands on the PREVIOUS file's
+        findings — a finding naming a record that never held the text.
 
         The two files and their order are the whole test: `a.md` sorts first and
         adds nothing lintable, so a misattributed `café.md` line surfaces as a
@@ -286,15 +286,12 @@ class TestAddedLineScoping:
             (".prawduct/artifacts/café.md", 2)
         ]
 
-    def test_an_unparseable_header_drops_its_file_rather_than_misattributing(self):
-        """Pathnames holding `"` or `\\` stay C-quoted whatever `core.quotepath`
-        says, so the header parser can still meet a line it cannot read. When it
-        does, the file is dropped: losing one file's findings is recoverable,
-        while attaching its lines to the previous file produces a confident
-        finding against a record that never contained the text.
-
-        Parsed at the unit rather than through a repo because git will not let a
-        pathname with a quote in it exist on every platform this runs on."""
+    def test_a_quoted_header_names_its_own_file(self):
+        """git C-quotes a header's name when it holds `"` or `\\`, whatever `core.quotepath`
+        says. The header is decoded (`gitstate.diff_header_path`), so the file's added lines
+        land under its real name, never on the previous file. Parsed at the unit rather than
+        through a repo because git will not let a pathname with a quote in it exist on every
+        platform this runs on."""
         diff = (
             'diff --git a/one.md b/one.md\n'
             "--- a/one.md\n"
@@ -305,10 +302,25 @@ class TestAddedLineScoping:
             '--- "a/we\\"ird.md"\n'
             '+++ "b/we\\"ird.md"\n'
             "@@ -1,0 +2 @@\n"
-            "+must not land on one.md\n"
+            "+belongs to we\"ird\n"
         )
         by_path = record_lint._parse_diff(diff)
-        assert by_path == {"one.md": [(2, "belongs to one")]}
+        assert by_path == {"one.md": [(2, "belongs to one")], 'we"ird.md': [(2, 'belongs to we"ird')]}
+
+    def test_an_unreadable_header_still_drops_its_file_rather_than_misattributing(self):
+        """The invariant the decoder does not change: a header it cannot read (malformed
+        quoting here) drops that file. Losing one file's findings is recoverable; attaching its
+        lines to the previous file is a confident finding against a record that never held
+        the text."""
+        diff = (
+            'diff --git a/one.md b/one.md\n'
+            "@@ -1,0 +2 @@\n"
+            "+belongs to one\n"
+            'diff --git "a/bad\\q.md" "b/bad\\q.md"\n'
+            "@@ -1,0 +2 @@\n"
+            "+must not land on one.md\n"
+        )
+        assert record_lint._parse_diff(diff) == {"one.md": [(2, "belongs to one")]}
 
 
 # ---------------------------------------------------------------------------

@@ -726,7 +726,9 @@ def branch_change_record(project_dir: Path, base: str) -> BranchRecord:
     )
     if code != 0:
         return BranchRecord(error=f"git diff of {FRAGMENT_DIR_REL}/ failed: {out}")
-    for rel in (line.strip() for line in out.splitlines()):
+    from . import gitstate  # noqa: PLC0415 — lazy; only the branch-record readers run git
+
+    for rel in gitstate.git_path_lines(out):
         if not rel.endswith(".md"):
             continue
         code, text = _git(project_dir, "show", f"HEAD:{rel}")
@@ -741,7 +743,7 @@ def branch_change_record(project_dir: Path, base: str) -> BranchRecord:
     code, out = _git(project_dir, "diff", "--name-only", f"{merge_base}..HEAD", "--", archive_rel + "/")
     if code != 0:
         return BranchRecord(error=f"git diff of {archive_rel}/ failed: {out}")
-    buckets = [line.strip() for line in out.splitlines() if line.strip().endswith(".md")]
+    buckets = [rel for rel in gitstate.git_path_lines(out) if rel.endswith(".md")]
     if buckets:
         known: set[str] = set()
         code, live = _git(project_dir, "show", f"{merge_base}:{change_log_mod.CHANGE_LOG_REL_PATH}")

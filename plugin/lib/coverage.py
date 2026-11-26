@@ -1082,13 +1082,15 @@ def _uncommitted_paths(
     from . import evidence  # noqa: PLC0415 -- lazy, as this module's other evidence imports are
 
     rc, out, err = evidence.run_git(
-        project_dir, "diff", "--name-only", "--no-renames", "-z", "HEAD"
+        project_dir, "diff", "--name-only", "--no-renames", "-z", "HEAD",
+        strip=False,
     )
     if rc != 0:
         return f"uncommitted paths unreadable ({err.strip()[:80]})"
     tracked = [p for p in out.split("\0") if p]
     rc, out, err = evidence.run_git(
-        project_dir, "ls-files", "--others", "--exclude-standard", "-z"
+        project_dir, "ls-files", "--others", "--exclude-standard", "-z",
+        strip=False,
     )
     if rc != 0:
         return f"untracked paths unreadable ({err.strip()[:80]})"
@@ -1096,6 +1098,7 @@ def _uncommitted_paths(
     rc, out, err = evidence.run_git(
         project_dir, "diff", "--cached", "--name-only", "--no-renames",
         "--diff-filter=D", "-z", "HEAD",
+        strip=False,
     )
     if rc != 0:
         return f"index deletions unreadable ({err.strip()[:80]})"
@@ -1816,7 +1819,8 @@ def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
     )
     if proc.returncode != 0:
         raise RuntimeError(f"git diff failed: {proc.stderr.strip()}")
-    files = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+    from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+    files = set(gitstate.git_path_lines(proc.stdout))
 
     proc2 = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],
@@ -1827,7 +1831,7 @@ def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
         timeout=30,
     )
     if proc2.returncode == 0:
-        files.update(line.strip() for line in proc2.stdout.splitlines() if line.strip())
+        files.update(gitstate.git_path_lines(proc2.stdout))
     return sorted(files)
 
 
@@ -1870,7 +1874,8 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     if proc.returncode != 0:
         return False, f"git-failed: git diff {base}...HEAD failed: {proc.stderr.strip()}"
 
-    files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+    files = gitstate.git_path_lines(proc.stdout)
     if not files:
         return False, f"empty-diff: no files changed in {base}...HEAD"
 
@@ -2249,7 +2254,8 @@ def check_change_log_entry(project_dir: Path) -> int:
         )
         return 1
 
-    files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+    files = gitstate.git_path_lines(proc.stdout)
     # THE predicate, shared with `check-pr-doc-only` (CRT-5D8Q). This used to be
     # an inline `not f.endswith(".md")`, which is a FOURTH classifier that the
     # CRT-5D8Q consolidation never folded in — so the two gates at the same PR
@@ -2475,7 +2481,7 @@ def _working_tree_paths(project_dir: Path) -> "tuple[list[str] | None, str | Non
     from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
     paths: set[str] = set()
-    for line in status_output.splitlines():
+    for line in status_output.split("\n"):
         parsed = gitstate.parse_porcelain_line(line)
         if parsed is None:
             continue

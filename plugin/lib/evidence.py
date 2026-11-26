@@ -1782,9 +1782,9 @@ def tree_diff(
       Handed back as a pathspec that string matches nothing on disk, git
       reports no difference over a file it never compared, and a caller reading
       emptiness as agreement gets a fail-OPEN. ``-c core.quotepath=false`` is
-      NOT sufficient: a name containing ``"`` or ``\\`` stays quoted regardless
-      (pinned in ``tests/test_record_lint.py``), so only ``-z`` closes it. Same
-      reasoning, same fix as :func:`tree_entries`.
+      NOT sufficient: a name containing ``"`` or ``\\`` stays quoted regardless.
+      A line reader decodes it with ``gitstate.unquote_git_path``; this one takes
+      ``-z``, which needs no decoding. Same reasoning, same fix as :func:`tree_entries`.
     - ``:(literal)`` on each pathspec, because pathspecs are wildmatch patterns
       and real filenames carry glob metacharacters (``app/[id]/page.tsx`` is an
       ordinary route convention). Measured rather than assumed (2026-08-13):
@@ -1811,6 +1811,7 @@ def tree_diff(
     rc, out, _err = run_git(
         project_dir, "diff", "--name-only", "-z", *([] if renames else ["--no-renames"]),
         tree_a, tree_b, *pathspec,
+        strip=False,
     )
     if rc != 0:
         return None
@@ -1979,7 +1980,7 @@ def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | 
     if not gitstate.is_object_id(tree):
         _attribute_bad_tree(tree)
         return None
-    rc, out, _err = run_git(project_dir, "ls-tree", "-r", "-z", "--full-tree", tree)
+    rc, out, _err = run_git(project_dir, "ls-tree", "-r", "-z", "--full-tree", tree, strip=False)
     if rc != 0:
         return None
     entries: list[tuple[str, str, str]] = []

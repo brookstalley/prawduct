@@ -1558,7 +1558,7 @@ def _session_untracked_paths(
         return []
     session_new = set(gitstate._get_session_changed_files(project_dir, current))
     paths: list[str] = []
-    for line in current.splitlines():
+    for line in current.split("\n"):
         if not line.startswith("??"):
             continue
         parsed = gitstate.parse_porcelain_line(line)
@@ -1652,7 +1652,7 @@ def session_work_span(
     # `-z` for the same reason `evidence.tree_diff` uses it: `--name-only`
     # honours `core.quotepath`, so a non-ASCII filename comes back C-quoted and
     # would be classified on a spelling that is not the path.
-    rc, out, _err = evidence.run_git(project_dir, "diff", "--name-only", "-z", base)
+    rc, out, _err = evidence.run_git(project_dir, "diff", "--name-only", "-z", base, strip=False)
     if rc != 0:
         return _span(porcelain, "porcelain")
     changed = [p for p in out.split("\0") if p]
@@ -1779,6 +1779,7 @@ def _paths_per_commit(
     rc, out, _err = evidence.run_git(
         project_dir, "diff-tree", "--stdin", "--name-only", "-z", *flags,
         input="\n".join(shas) + "\n",
+        strip=False,
     )
     if rc != 0:
         return None
@@ -2109,11 +2110,12 @@ def _session_authored_paths(
         rc, out, _err = evidence.run_git(
             project_dir, "diff-tree", "--stdin", "--no-commit-id", "--name-only", "-z",
             *flags, input="\n".join(shas) + "\n",
+            strip=False,
         )
         if rc != 0:
             return _cannot_tell("the session's commits could not be diffed")
         authored.update(p for p in out.split("\0") if p)
-    rc, out, _err = evidence.run_git(project_dir, "diff", "--name-only", "-z", "HEAD")
+    rc, out, _err = evidence.run_git(project_dir, "diff", "--name-only", "-z", "HEAD", strip=False)
     if rc != 0:
         return _cannot_tell("the working tree could not be diffed against HEAD")
     authored.update(p for p in out.split("\0") if p)
@@ -2909,7 +2911,8 @@ def _imported_history_verdict(
     did not apply. Silent only when HEAD's tree never moved, where no sync
     brought anything in to excuse."""
     rc, out, _err = evidence.run_git(
-        project_dir, "ls-files", "--others", "--exclude-standard", "-z"
+        project_dir, "ls-files", "--others", "--exclude-standard", "-z",
+        strip=False,
     )
     if rc != 0:
         return _excuse_declined(verdict, "untracked files could not be listed")
