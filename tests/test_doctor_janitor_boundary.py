@@ -178,3 +178,81 @@ class TestGitignoreCrossReference:
             "match that cannot pass `--dry-run`, and a spaced star cannot run the "
             "repair form; only the attached star covers both."
         )
+
+
+def _doctor_check(number: int) -> str:
+    """The text of doctor's Health Check ``number``, up to the next numbered check."""
+    src = _read(DOCTOR)
+    start = src.index(f"\n{number}. **")
+    nxt = src.find(f"\n{number + 1}. **", start)
+    return src[start:nxt if nxt != -1 else len(src)]
+
+
+def _doctor_flow(heading: str) -> str:
+    src = _read(DOCTOR)
+    start = src.index(f"## {heading}")
+    nxt = src.find("\n## ", start + 1)
+    return src[start:nxt if nxt != -1 else len(src)]
+
+
+class TestDoctorRunsRepairsOnTheOwnersYes:
+    """Doctor runs the repairs it offers once the owner says yes
+    (`.prawduct/owner-rulings.md`, 2026-11-26). So each repair's failure output
+    reaches the agent, and every text that describes doctor must say who acts."""
+
+    #: A repair doctor runs -> (the failure line its handler prints, the file that
+    #: prints it). Each line is asserted in that file too, so a renamed refusal
+    #: fails here rather than leaving doctor naming a line nothing prints.
+    FAILURE_LINES = {
+        "archive-plan": ("not-archived:", "bin/prawduct-hook"),
+        "coverage-scaffold": ("NOTE: could not write", "bin/prawduct-hook"),
+        "lifecycle-repair": ("could not write", "bin/prawduct-hook"),
+        "reanchor": ('STATUS_UNWRITABLE = "unwritable"', "lib/anchor_repair.py"),
+    }
+
+    def test_doctor_names_each_repairs_failure_line(self):
+        src = _read(DOCTOR)
+        for command, (source_line, origin) in self.FAILURE_LINES.items():
+            line = source_line.split('"')[1] if '"' in source_line else source_line
+            assert f"prawduct-hook {command}" in src, f"control: doctor runs `{command}`"
+            assert source_line in _read(origin), f"{origin} no longer prints `{line}`; re-derive this row"
+            assert line in src, f"{DOCTOR} runs `{command}` but never names its failure `{line}`"
+        assert "never retry the repair" in src, (
+            f"{DOCTOR} must say a failed repair is relayed, not retried around"
+        )
+
+    def test_coverage_scaffold_says_its_note_is_a_failure_under_exit_zero(self):
+        check = _doctor_check(11)
+        assert "coverage-scaffold" in check, "control: Check #11 was found"
+        assert "NOTE: could not write" in check and "exits 0" in check, (
+            "Check #11 must say `coverage-scaffold --apply` exits 0 while a stub went unwritten"
+        )
+
+    def test_a_vanished_claim_is_re_pointed_by_hand_not_by_plan_bind(self):
+        """`plan_mint.bind` refuses a plan that already claims a branch, which is
+        every plan Check #24 reports missing, so `plan bind` cannot be the repair."""
+        check = _doctor_check(24)
+        assert "plan check-claims" in check, "control: Check #24 was found"
+        assert "prawduct-hook plan bind" not in check, (
+            "Check #24 routes a re-point through `plan bind`, which refuses a claimed plan"
+        )
+        assert "plan-claims-other-branch" in check and "by hand" in check
+        mint = (ROOT / "lib" / "plan_mint.py").read_text(encoding="utf-8")
+        assert '"plan-claims-other-branch"' in mint, "the refusal Check #24 cites is gone from plan_mint"
+        assert "plan bind" not in _read(DOCTOR).split("---", 2)[1], (
+            "doctor still grants `plan bind`, which no step can use"
+        )
+
+    def test_archive_plan_is_previewed_before_the_owner_is_asked(self):
+        for where, text in (("Check #24", _doctor_check(24)),
+                            ("Lifecycle Convergence Flow", _doctor_flow("Lifecycle Convergence Flow"))):
+            assert "archive-plan" in text, f"control: {where} runs archive-plan"
+            assert "--dry-run" in text, f"{where} archives a plan without showing its --dry-run first"
+
+    def test_the_boundary_doc_says_doctor_repairs_on_the_owners_yes(self):
+        src = _read(CANONICAL)
+        row = next(line for line in src.splitlines() if line.startswith("| **Action model**"))
+        assert "owner's yes" in row, row
+        for stale in ("owner-invoked", "auto-fix", "reported-and-guided"):
+            assert stale not in src, f"{CANONICAL} still says doctor's repairs are {stale!r}"
+        assert "reports-and-guides rather than fixes" not in _read(JANITOR)

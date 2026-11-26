@@ -215,21 +215,41 @@ def _in_adapter_context(surface: Path, line: str) -> bool:
     return bool(_ADAPTER_INVOCATION.search(line))
 
 
-def _offending_lines(finder) -> list[str]:
-    """``finder(line)`` returns the match offset, or None. Offset is required so
+_GRANT = re.compile(r"Bash\(([^)]*)\)")
+
+
+def _units(line: str) -> list[str]:
+    """The spans of ``line`` judged one at a time. A frontmatter ``allowed-tools:``
+    line holds every grant of its skill on one line, so an adapter grant there
+    would put the whole line in adapter context and charge the adapter with a
+    flag belonging to another command's grant (an ``archive-plan * --dry-run``
+    beside a ``backlog cache-query*``). Each ``Bash(...)`` grant is
+    its own unit; any other line is one unit."""
+    if line.lstrip().startswith("allowed-tools:"):
+        return [f"Bash({g})" for g in _GRANT.findall(line)]
+    return [line]
+
+
+def _offending_units(surface: Path, text: str, finder) -> list[str]:
+    """``finder(unit)`` returns the match offset, or None. Offset is required so
     negation is judged adjacent to the claim rather than line-wide."""
     offenders: list[str] = []
+    rel = surface.relative_to(PLUGIN).as_posix() if surface.is_relative_to(PLUGIN) else surface.name
+    for lineno, line in enumerate(text.splitlines(), 1):
+        for unit in _units(line):
+            if not _in_adapter_context(surface, unit):
+                continue
+            at = finder(unit)
+            if at is None or _is_denied(unit, at):
+                continue
+            offenders.append(f"{rel}:{lineno}: {unit.strip()[:120]}")
+    return offenders
+
+
+def _offending_lines(finder) -> list[str]:
+    offenders: list[str] = []
     for surface in SURFACES:
-        for lineno, line in enumerate(
-            surface.read_text(encoding="utf-8").splitlines(), 1
-        ):
-            if not _in_adapter_context(surface, line):
-                continue
-            at = finder(line)
-            if at is None or _is_denied(line, at):
-                continue
-            rel = surface.relative_to(PLUGIN).as_posix()
-            offenders.append(f"{rel}:{lineno}: {line.strip()[:120]}")
+        offenders += _offending_units(surface, surface.read_text(encoding="utf-8"), finder)
     return offenders
 
 
@@ -250,6 +270,22 @@ def test_surfaces_name_no_unparsed_mutation_flag():
         "the CLI must implement the flag or the surface must stop promising it "
         "(BKL-8V3D).\n  - " + "\n  - ".join(offenders)
     )
+
+
+def test_a_grant_line_is_judged_grant_by_grant():
+    """An ``allowed-tools:`` line is judged per grant: another command's
+    ``--dry-run`` beside an adapter grant is not the adapter's, while an adapter
+    grant carrying the flag is still caught (the true positive the split must
+    keep)."""
+    elsewhere = PLUGIN / "skills" / "janitor" / "SKILL.md"
+    find = lambda unit: _first_offset(unit, ["--dry-run"])  # noqa: E731
+    beside = "allowed-tools: Bash(prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan * --dry-run)\n"
+    assert _offending_units(elsewhere, beside, find) == []
+    own = "allowed-tools: Bash(prawduct-hook backlog file --dry-run*), Bash(git log *)\n"
+    caught = _offending_units(elsewhere, own, find)
+    assert len(caught) == 1 and "backlog file --dry-run" in caught[0], caught
+    prose = "Run `prawduct-hook backlog file --dry-run` to preview.\n"
+    assert len(_offending_units(elsewhere, prose, find)) == 1
 
 
 def test_surfaces_make_no_prose_dry_run_claim():
