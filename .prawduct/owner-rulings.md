@@ -672,6 +672,21 @@ and a confirmation before an irreversible, outward-facing act the person asked f
 4. The Critic's review protocol gains a severity rule: a finding whose failure needs a human acting in bad faith or a
    model ignoring its instructions is an observation at most, never a warning. Its own change, off `develop`.
 
+**2026-11-26 (test cacheability).** "yes to all" — answering three asks:
+1. `plugin/docs/test-determinism.md` gains the patterns this repo's own cache work (#1226) proved and never shipped:
+   tests that run the product's own CLI as a subprocess (run it in-process), tool children that read ambient state
+   (one helper that isolates and dates them), production code reading the clock or randomness directly (one
+   replaceable owner), and declaring a test uncacheable on purpose. The testament cacheability advisory names each
+   cause's remedy pattern. One change off `develop`; no new mechanical detectors (the design-stance ruling).
+2. This repo fixes its own two largest remaining blockers (evidence-id randomness; the subprocess hook runner) and
+   measures the gain, as a separate change.
+3. An issue on testament proposes a `testament guide cacheable` page, its exact text shown to the owner before it
+   is posted.
+   **2026-11-26, later:** "yes post" — filed as brookstalley/testament#1013.
+
+**2026-11-26 (later).** "yes PR and merge" — PR #1255 (`fix/critic-good-faith-severity` → `develop`, the Critic's good-faith
+severity cap) is merged.
+
 **2026-11-26 (later).** "yes to all recs" — PR #1254 (`fix/agent-runnable-doctor-janitor` → `develop`, agents can run doctor
 and janitor; grant-reach rails retired) is merged.
 
