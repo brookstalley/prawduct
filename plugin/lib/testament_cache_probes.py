@@ -27,18 +27,22 @@ it equals a commit's tree exactly when the run was of that commit with nothing
 uncommitted. A snapshot whose tree is no tree of HEAD's last
 :data:`_HISTORY_TREES` commits was a dirty-tree run (perhaps a sibling worktree's
 work in progress), another branch's, or too old to trust; it is skipped and named,
-and fires and resolves nothing. Remaining limit: a clean run at an older commit of
-this branch is accepted and reports the causes as they were at that commit, not
-as they are at HEAD.
+and fires and resolves nothing. Remaining limits: a clean run at an older commit
+of this branch is accepted and reports the causes as they were at that commit, not
+as they are at HEAD; and in a repo whose git filters change file bytes (autocrlf or
+eol, LFS, ident) a run's tree may never be a commit's, so every suite reads as could
+not look and the advisory never fires, rather than giving wrong advice.
 
 **One advisory per suite, its id following the set of causes.** Evidence is one
 ``suite kind site scope`` line per cause, sorted by its own text — never a count,
 a line number or a rank by count, since the store hashes evidence in order — so a
-dismissal holds until a cause is added or goes away. A cause is raised when fixing
-it frees tests: testament's ``frees`` (what fixing it, after the causes ranked
-before it, leaves with no cause) is above 0, or, from a coordinator that sends no
-``frees``, ``alone`` (the tests it is the sole blocker of) is. The summary ranks
-by that same count, so it leads with the cause whose fix frees the most.
+dismissal holds until a cause is added or goes away. Every cause testament lists
+is raised, in testament's order. testament ranks them greedily, so a cause's
+``frees`` counts what fixing it frees only after the causes above it are fixed; a
+cause freeing 0 there must still be fixed for those below it to free theirs. The
+summary keeps that order and says each count is "after those above", and
+``owner_action`` says to fix them in this order. A coordinator that sends no
+``frees`` gives ``alone``, the tests a cause is the sole blocker of.
 
 **Only checked tokens reach the briefing.** The snapshot is foreign-written
 content arriving at a governance surface that renders into the model's context.
@@ -51,13 +55,15 @@ raised causes, its pattern in ``docs/test-determinism.md`` and a one-line remedy
 (:data:`REMEDIES`); a kind not in the map is sent to that page, never guessed at.
 
 **One unusable snapshot is skipped, not the probe.** An envelope of this project
-that is narrowed only, of an unknown version, unreadable or holding no ``row``, or
-not of this branch's history, is skipped with a note; the other suites' current
-snapshots still report, as :class:`~lib.advisory_store.CouldNotLook`, so no open
-advisory resolves on a sync that skipped one. Could not look (``None``) when no
+that is narrowed only, of an unknown version, holding no ``row`` or no plain-word
+suite, or not of this branch's history, is skipped with a note; the other suites'
+current snapshots still report, as :class:`~lib.advisory_store.CouldNotLook`, so no
+open advisory resolves on a sync that skipped one. Could not look (``None``) when no
 envelope of this project is usable, or the manifest names no project: an open
 advisory then stays open instead of resolving on data that is not about this
-checkout.
+checkout. Remaining limit: a suite left stale (only ever narrowed, or last run on a
+dirty tree or another branch) keeps the advisory at could not look until that suite
+is run cleanly here; the note names the suite to run.
 
 Registered at the composition root (``lib/probe_families.register_all``).
 """
@@ -170,10 +176,9 @@ def _snapshots(root: Path) -> "tuple[list[dict], int] | None":
 
     The one home of "which files are this repo's". Every ``*.json`` in
     :func:`snapshot_dir` is opened and kept when its ``project`` is the manifest's
-    name, whatever the file is called; another project's file, whatever its shape,
-    is passed over and never costs this one anything. A file that will not parse
-    names no project, so it is counted as skipped only when its name is this
-    project's (``<project>.``...), the one way it could be one of its snapshots.
+    name, whatever the file is called; any other file, one that will not parse
+    included, is passed over and never costs this one anything. Of several files for
+    one suite (a backup beside testament's own), the newest ``generated_at`` is kept.
     ``([], 0)`` when testament has written nothing for this project. Whether an
     envelope is about this branch is :func:`_history_trees`'s question.
     """
@@ -185,7 +190,7 @@ def _snapshots(root: Path) -> "tuple[list[dict], int] | None":
         return [], 0
     if not project:
         return None
-    found: list[dict] = []
+    found: dict[str, dict] = {}
     skipped = 0
     try:
         paths = sorted(p for p in directory.iterdir() if p.suffix == ".json")
@@ -195,10 +200,7 @@ def _snapshots(root: Path) -> "tuple[list[dict], int] | None":
     for path in paths:
         try:
             envelope = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            if path.name.startswith(f"{project}."):
-                _note(f"{path} could not be read ({type(exc).__name__})", one=True)
-                skipped += 1
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             continue
         if not (isinstance(envelope, dict) and envelope.get("project") == project):
             continue
@@ -209,9 +211,14 @@ def _snapshots(root: Path) -> "tuple[list[dict], int] | None":
         elif not isinstance(envelope.get("row"), dict):
             _note(f"{path} is not a cacheability snapshot", one=True)
             skipped += 1
-        else:
-            found.append(envelope)
-    return found, skipped
+        elif not (isinstance(suite := envelope.get("suite"), str) and _WORD_RE.match(suite)):
+            _note(f"{path}'s suite name is not a plain word", one=True)
+            skipped += 1
+        elif str(envelope.get("generated_at") or "") >= str(
+            found.get(suite, {}).get("generated_at") or ""
+        ):
+            found[suite] = envelope
+    return list(found.values()), skipped
 
 
 def _note(why: str, *, one: bool = False) -> None:
@@ -241,15 +248,10 @@ def _history_trees(root: Path) -> "frozenset[str] | None":
     return frozenset(out.split())
 
 
-def _suite(envelope: dict) -> str:
-    suite = envelope.get("suite")
-    return suite if isinstance(suite, str) and _WORD_RE.match(suite) else "default"
-
-
-def _causes(row: dict) -> "list[tuple[str, str, str, int, str]]":
-    """``(kind, site, scope, count, what)`` for each checked cause whose fix frees
-    tests, most first. ``count`` is testament's ``frees``, or ``alone`` from a
-    coordinator that sends no ``frees``; ``what`` says which, for the summary."""
+def _causes(row: dict) -> "list[tuple[str, str, str, str]]":
+    """``(kind, site, scope, count)`` for each checked cause, in testament's order.
+    ``count`` says testament's ``frees``, or ``alone`` from a coordinator that sends
+    no ``frees``, or nothing when neither is a count."""
     out = []
     for cause in row.get("causes") or []:
         if not isinstance(cause, dict):
@@ -262,18 +264,14 @@ def _causes(row: dict) -> "list[tuple[str, str, str, int, str]]":
         if not (isinstance(site, str) and _SITE_RE.match(site)):
             continue
         frees, alone = cause.get("frees"), cause.get("alone")
-        if _count(frees):
-            count, what = frees, "fixing it frees"
-        elif frees is None and _count(alone):
-            count, what = alone, "sole blocker of"
-        else:
-            continue
-        out.append((kind, site, scope, count, what))
-    return sorted(out, key=lambda c: (-c[3], c[0], c[1], c[2]))
+        count = (f", frees {frees} after those above" if _count(frees)
+                 else f", sole blocker of {alone} test(s)" if _count(alone) else "")
+        out.append((kind, site, scope, count))
+    return out
 
 
 def _count(value: object) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def probe_uncacheable_tests(state: ProjectState, codebase: Codebase):
@@ -290,7 +288,7 @@ def probe_uncacheable_tests(state: ProjectState, codebase: Codebase):
             # A narrowed run (`-k`, a path) is not the suite's state, and its
             # absence of causes proves nothing; testament writes one only where
             # the suite has no full run.
-            _note(f"suite `{_suite(envelope)}` has only a narrowed run's snapshot; run the "
+            _note(f"suite `{envelope['suite']}` has only a narrowed run's snapshot; run the "
                   "whole suite once", one=True)
             skipped += 1
         else:
@@ -307,7 +305,7 @@ def probe_uncacheable_tests(state: ProjectState, codebase: Codebase):
                 current.append(envelope)
                 continue
             _note(
-                f"suite `{_suite(envelope)}`'s snapshot is of tree {str(tree)[:12]!r}, which "
+                f"suite `{envelope['suite']}`'s snapshot is of tree {str(tree)[:12]!r}, which "
                 "is no commit of this branch's recent history (a run with uncommitted work, "
                 "perhaps another worktree's, or another branch's); run the suite here on a "
                 "clean commit", one=True,
@@ -324,27 +322,27 @@ def _candidate(envelope: dict) -> "AdvisoryCandidate | None":
     causes = _causes(envelope["row"])
     if not causes:
         return None
-    suite = _suite(envelope)
+    suite = envelope["suite"]
     named = "; ".join(
-        f"{kind} at {site} ({scope}-wide, {what} {count} test(s))"
-        for kind, site, scope, count, what in causes[:_SUMMARY_CAUSES]
+        f"{kind} at {site} ({scope}-wide{count})"
+        for kind, site, scope, count in causes[:_SUMMARY_CAUSES]
     )
     more = len(causes) - _SUMMARY_CAUSES
     return AdvisoryCandidate(
         type=PROBE_TYPE,
         evidence=tuple(sorted(
-            f"{suite} {kind} {site} {scope}" for kind, site, scope, _n, _w in causes
+            f"{suite} {kind} {site} {scope}" for kind, site, scope, _n in causes
         )),
         trigger_summary=(
             f"testament cannot cache some of suite `{suite}`'s results, and fixing "
-            f"{len(causes)} cause(s) would free tests, the most first: {named}"
+            f"{len(causes)} cause(s) would free tests, in testament's order: {named}"
             + (f"; and {more} more" if more > 0 else "")
         ),
         owner_action=(
             "Decide, cause by cause, whether to fix it so those tests can be "
             "cached, or to declare it expected in testament's configuration, "
-            "which stops it being reported. Fix first the cause that frees the "
-            f"most tests; the summary leads with it. {_remedies(causes)} "
+            "which stops it being reported. Fix them in this order: each count "
+            f"is what that fix frees once the causes before it are fixed. {_remedies(causes)} "
             "Dismissing this advisory hides it until the set of causes changes."
         ),
         # Owner-only: the decision is per cause and the summary names
@@ -354,7 +352,7 @@ def _candidate(envelope: dict) -> "AdvisoryCandidate | None":
     )
 
 
-def _remedies(causes: "list[tuple[str, str, str, int, str]]") -> str:
+def _remedies(causes: "list[tuple[str, str, str, str]]") -> str:
     """One line per kind among ``causes``, in the order the kinds first appear (the
     summary's): its pattern and remedy, or the pointer for a kind the map lacks."""
     lines = []

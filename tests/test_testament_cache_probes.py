@@ -119,7 +119,11 @@ def test_no_snapshot_directory_is_silent_and_asks_git_nothing(repo, monkeypatch)
     assert calls == []
 
 
-def test_a_sole_blocker_is_raised_and_a_shared_one_is_not(repo):
+def test_every_cause_testament_lists_is_raised(repo):
+    """Was: a shared cause (``alone`` 0) is not raised. testament's order is a fix
+    order, and a cause that frees nothing on its own must still be fixed for the
+    causes after it to free theirs, so dropping it would break the order the
+    advisory tells the owner to follow."""
     snapshot(repo, [
         cause(),
         cause(kind="subprocess", site="tests/test_git.py:run_git", scope="test", alone=40),
@@ -129,9 +133,12 @@ def test_a_sole_blocker_is_raised_and_a_shared_one_is_not(repo):
     assert candidate.type == tcp.PROBE_TYPE
     assert candidate.evidence == (
         "unit clock_read tests/conftest.py:write_scope_record process",
+        "unit clock_read tools/measure.py:main test",
         "unit subprocess tests/test_git.py:run_git test",
     )
-    assert "tools/measure.py" not in candidate.trigger_summary
+    assert "tools/measure.py:main (test-wide, sole blocker of 0 test(s))" in (
+        candidate.trigger_summary
+    )
     assert "sole blocker of 300 test(s)" in candidate.trigger_summary
     assert candidate.owner_action
     assert candidate.recommended_action == ""  # owner-only: the decision is per cause
@@ -140,13 +147,13 @@ def test_a_sole_blocker_is_raised_and_a_shared_one_is_not(repo):
 def test_moving_counts_keep_the_same_advisory_id(repo):
     """The id hashes the evidence IN ORDER, so ranking evidence by count would
     reopen a dismissed advisory whenever two causes swapped places. Two causes
-    whose counts swap must keep the id (the summary still leads with the
-    larger)."""
+    that testament re-ranks must keep the id (the summary follows the new
+    order)."""
     a = dict(kind="clock_read", site="tests/conftest.py:write_scope_record", scope="process")
     b = dict(kind="subprocess", site="tests/test_git.py:run_git", scope="test")
     snapshot(repo, [cause(alone=300, **a), cause(alone=40, **b)])
     first = run(repo)[0]
-    snapshot(repo, [cause(alone=12, **a), cause(alone=40, **b)])
+    snapshot(repo, [cause(alone=40, **b), cause(alone=12, **a)])
     second = run(repo)[0]
     ids = [compute_id(tcp.FEATURE, tcp.PROBE_TYPE, tcp.PROBE_VERSION, c.evidence)
            for c in (first, second)]
@@ -160,13 +167,20 @@ def test_past_three_causes_the_summary_counts_the_rest(repo):
     (candidate,) = run(repo)
     assert candidate.trigger_summary.endswith("; and 2 more")
     assert len(candidate.evidence) == 5
-    assert "tests/t0.py" not in candidate.trigger_summary  # the smallest two are counted
+    assert "tests/t2.py" in candidate.trigger_summary
+    assert "tests/t3.py" not in candidate.trigger_summary  # the last two listed are counted
 
 
-def test_an_unchecked_suite_name_reads_as_default(repo):
-    snapshot(repo, [cause()], suite="Unit Tests!")
-    (candidate,) = run(repo)
+def test_an_unchecked_suite_name_is_skipped_with_a_note_naming_its_file(repo, capsys):
+    """Was: relabelled ``default``, which collided with a real ``default`` suite."""
+    snapshot(repo, [cause()], name="prawduct.default.json", suite="default")
+    snapshot(repo, [cause(site="tests/odd.py:f")], name="prawduct.odd.json", suite="Unit Tests!")
+    result = run(repo)
+    assert isinstance(result, CouldNotLook)
+    (candidate,) = result
     assert candidate.evidence == ("default clock_read tests/conftest.py:write_scope_record process",)
+    err = capsys.readouterr().err
+    assert f"{tcp.snapshot_dir() / 'prawduct.odd.json'}'s suite name is not a plain word" in err
 
 
 def test_another_projects_snapshot_is_not_read(repo):
@@ -231,11 +245,16 @@ def test_a_snapshot_not_about_this_checkout_could_not_look(repo, envelope, capsy
     assert "testament cacheability probe skipped" in capsys.readouterr().err
 
 
-def test_an_unreadable_snapshot_could_not_look(repo):
-    directory = tcp.snapshot_dir()
-    directory.mkdir(parents=True)
-    (directory / "prawduct.unit.json").write_text("{not json")
-    assert run(repo) is None
+@pytest.mark.parametrize("name", ["prawduct.unit.json", "prawduct.x.unit.json"])
+def test_an_unparseable_file_is_ignored_whatever_its_name(repo, name, capsys):
+    """Was: counted as skipped when named ``<project>.``..., which another project
+    (``prawduct.x``) also matches. A file that will not parse names no project."""
+    snapshot(repo, [cause()], name="own.json")
+    (tcp.snapshot_dir() / name).write_text("{not json")
+    result = run(repo)
+    assert not isinstance(result, CouldNotLook)
+    assert len(result) == 1
+    assert name not in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("bad", [
@@ -295,7 +314,7 @@ def test_each_kind_is_named_once_in_the_summarys_order(repo):
     action = candidate.owner_action
     assert action.count("subprocess (") == 1
     assert action.index("subprocess (") < action.index("clock (")
-    assert "Fix first the cause that frees the most tests" in action
+    assert "Fix them in this order" in action
 
 
 def test_every_remedy_line_passes_the_owner_text_rule(repo):
@@ -450,29 +469,39 @@ def test_a_snapshot_is_found_by_its_content_not_its_filename(repo):
 # -- Ranking: what fixing a cause frees ------------------------------------------
 
 
-def test_the_summary_ranks_by_frees_not_alone(repo):
-    """``alone`` and ``frees`` disagree here: ranked by ``alone`` the summary would
-    lead with the pool cause and drop the joint one. Ranked by ``frees`` it leads
-    with the clock, keeps the joint cause whose ``alone`` is 0, and drops the one
-    whose fix, after the others, frees nothing."""
+def test_the_summary_keeps_testaments_order(repo):
+    """testament ranks causes greedily: a cause's ``frees`` counts only once the
+    causes above it are fixed, so re-sorting by it would lead with a cause that
+    frees nothing alone. Here ``frees`` rises down the list and the summary still
+    keeps the row's order, says each count is "after those above", and keeps the
+    cause freeing 0, which must be fixed for the one below it to free its 33."""
     snapshot(repo, [
         cause(kind="subprocess", site="tests/pool.py:run", scope="test", alone=20, frees=20),
+        cause(kind="file", site="lib/core.py:read", scope="test", alone=0, frees=0),
         cause(kind="clock", site="lib/host.py:scan", scope="test", alone=5, frees=33),
-        cause(kind="entropy", site="lib/ids.py:mint", scope="test", alone=0, frees=12),
-        cause(kind="file", site="lib/core.py:read", scope="test", alone=9, frees=0),
     ])
     (candidate,) = run(repo)
     summary = candidate.trigger_summary
-    assert summary.index("clock at lib/host.py:scan") < summary.index("subprocess at")
-    assert summary.index("subprocess at") < summary.index("entropy at lib/ids.py:mint")
-    assert "fixing it frees 33 test(s)" in summary
-    assert "lib/core.py:read" not in summary
-    assert candidate.evidence == (
-        "unit clock lib/host.py:scan test",
-        "unit entropy lib/ids.py:mint test",
-        "unit subprocess tests/pool.py:run test",
-    )
-    assert candidate.owner_action.index("clock (") < candidate.owner_action.index("subprocess (")
+    assert summary.index("subprocess at") < summary.index("file at lib/core.py:read")
+    assert summary.index("file at lib/core.py:read") < summary.index("clock at lib/host.py:scan")
+    assert "lib/host.py:scan (test-wide, frees 33 after those above)" in summary
+    assert "lib/core.py:read (test-wide, frees 0 after those above)" in summary
+    action = candidate.owner_action
+    assert "Fix them in this order" in action
+    assert action.index("subprocess (") < action.index("file (") < action.index("clock (")
+
+
+# -- Duplicates: one suite, several files ------------------------------------------
+
+
+def test_of_two_files_for_one_suite_the_newest_is_kept(repo):
+    """The older copy's name sorts last, so keeping the last file listed fails."""
+    snapshot(repo, [cause(site="tests/old.py:f")], name="prawduct.unit.zbak.json",
+             generated_at="2026-10-01T00:00:00Z")
+    snapshot(repo, [cause(site="tests/new.py:f")], name="prawduct.unit.json",
+             generated_at="2026-10-26T00:00:00Z")
+    (candidate,) = run(repo)
+    assert candidate.evidence == ("unit clock_read tests/new.py:f process",)
 
 
 def test_a_real_snapshot_of_an_unknown_version_could_not_be_read(repo, capsys):

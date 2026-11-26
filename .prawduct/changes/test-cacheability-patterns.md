@@ -28,11 +28,12 @@ and no guess. The `file` kind, a read outside the tree and temp, points at the p
 test uncacheable on purpose" section, which now says to read such a file from the tree or the
 test's temporary directory when it is not the test's subject.
 
-The advisory says to fix first the cause that frees the most tests, and the summary now leads with
-it. Causes are ranked by testament's `frees` (what fixing a cause frees once the causes ranked
-before it are fixed), or by `alone` from a coordinator that sends no `frees`. A cause is raised
-when that count is above 0, so a cause that never blocks a test alone but frees some once others
-are fixed is raised now too. The evidence format and `PROBE_VERSION` are unchanged. The advisory
+The advisory raises every cause testament lists, keeps testament's order, and says to fix them in
+this order. testament ranks causes greedily, so a cause's `frees` counts what fixing it frees only
+after the causes above it are fixed. The summary says "frees N after those above", and from a
+coordinator that sends no `frees` it gives `alone` ("sole blocker of N"). A cause that frees 0 at
+its place is still raised, because the causes below it free theirs only once it is fixed. The
+evidence format and `PROBE_VERSION` are unchanged. The advisory
 never fired before this change (below), so no dismissal exists to reset.
 
 **Before this change the advisory never fired.** The probe read a provisional envelope (`root`,
@@ -46,8 +47,9 @@ envelope's `commit` is a synthetic commit in testament's own store, never one of
 cannot place a run on a branch. The `tree` is the worktree content the run shipped. It equals a
 commit's tree only when the run was of that commit with nothing uncommitted, so a dirty-tree run,
 perhaps a sibling worktree's work in progress, is skipped. Each snapshot is judged alone. One that
-is skipped (narrowed only, an unknown version, unreadable, or not of this branch) is named on
-stderr. The other suites' current snapshots keep reporting, but no open advisory resolves on that
+is skipped (narrowed only, an unknown version, a suite name that is not a plain word, or not of
+this branch) is named on stderr. A file that will not parse is ignored whatever its name, and of
+two files for one suite the one with the newest `generated_at` is read. The other suites' current snapshots keep reporting, but no open advisory resolves on that
 sync. The probe reports "could not look" only when none of the project's snapshots is usable. Another
 project's file, whatever its shape, never affects this one. One test fixture,
 `tests/fixtures/testament_cacheability_snapshot.json`, is a real snapshot of this repo trimmed to
@@ -65,3 +67,9 @@ The advisory reads only a snapshot of a clean run of a commit on your branch. Af
 uncommitted changes, it skips that suite until the suite runs on a clean commit, and it says so at
 session start. A clean run of an older commit on your branch still counts, and it reports the causes
 as they were at that commit, not as they are at HEAD.
+
+Two limits remain. A suite left stale (only ever run narrowed, or last run on a dirty tree or
+another branch) keeps the advisory at "could not look" until you run that suite cleanly, and the
+session-start note names the suite to run. In a repo whose git filters change file bytes
+(autocrlf or eol, LFS, ident), a run's tree may never match a commit's, so the advisory reads
+"could not look" and never fires, rather than giving wrong advice.

@@ -30,7 +30,7 @@ runner can see. Measuring any of them is a job for the project's runner (testame
 tool); this page defines the patterns and does not depend on any one. P9 through P11 are found by
 measuring, not by reading a change: the runner's list of what blocks caching names them (where
 the runner is testament, prawduct's `uncacheable-tests` advisory relays that list with each cause's
-pattern). Fix first the cause whose fix frees the most tests.
+pattern). Fix the causes in the order the list gives.
 
 ## Declaring a test uncacheable on purpose
 
