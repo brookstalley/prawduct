@@ -630,7 +630,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # Severity section gains the good-faith cap, net of in-place cuts (see its LAST_MEASURED_TOKENS
     # entry). Priced against the SUM: ~56 tokens per review against a WARNING or BLOCKING raised on
     # a bad-faith premise, each a fix round spent on a defense the owner ruled out.
-    "dispatched-reviewer": 9775,
+    # +12 on 2026-11-26 (fork-project-dir, #1253, coordinator round), DECLARED: coordinator.md's
+    # reviewer prompt passes `--project-dir [dir]` to every hook probe, and critic-reviewer.md gains a
+    # `--project-dir *` form of its bare `verify-coverage` grants (a grant is a literal prefix). Priced
+    # against the SUM: a few tokens per review against reviewers whose probes read the launch repo's
+    # evidence while they rate another tree's code.
+    "dispatched-reviewer": 9787,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -760,7 +765,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # the report leads with the tree line (+4, net of cutting the #34164 gloss and the duplicated
     # `--force` sentence). Priced against the SUM: ~108 tokens per fork review against a review of
     # the wrong repository reported as "nothing to review", which the caller cannot see.
-    "coordinator-fork": 11081,
+    # +29 on 2026-11-26 (fork-project-dir, #1253, coordinator round), DECLARED: coordinator.md's
+    # reviewer prompt passes `--project-dir [dir]` to every hook probe, and critic-reviewer.md gains a
+    # `--project-dir *` form of its bare `verify-coverage` grants (a grant is a literal prefix). Priced
+    # against the SUM: a few tokens per review against reviewers whose probes read the launch repo's
+    # evidence while they rate another tree's code.
+    "coordinator-fork": 11110,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -823,7 +833,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # the report leads with the tree line (+4, net of cutting the #34164 gloss and the duplicated
     # `--force` sentence). Priced against the SUM: ~108 tokens per fork review against a review of
     # the wrong repository reported as "nothing to review", which the caller cannot see.
-    "coordinator-fork-inner": 6692,
+    # +29 on 2026-11-26 (fork-project-dir, #1253, coordinator round), DECLARED: coordinator.md's
+    # reviewer prompt passes `--project-dir [dir]` to every hook probe, and critic-reviewer.md gains a
+    # `--project-dir *` form of its bare `verify-coverage` grants (a grant is a literal prefix). Priced
+    # against the SUM: a few tokens per review against reviewers whose probes read the launch repo's
+    # evidence while they rate another tree's code.
+    "coordinator-fork-inner": 6721,
     # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
     # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
@@ -861,16 +876,21 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # Severity section gains the good-faith cap, net of in-place cuts (see its LAST_MEASURED_TOKENS
     # entry). Priced against the SUM: ~78 tokens per review against a WARNING or BLOCKING raised on
     # a bad-faith premise, each a fix round spent on a defense the owner ruled out.
-    "dispatched-reviewer-inner": 5386,
+    # +12 on 2026-11-26 (fork-project-dir, #1253, coordinator round), DECLARED: coordinator.md's
+    # reviewer prompt passes `--project-dir [dir]` to every hook probe, and critic-reviewer.md gains a
+    # `--project-dir *` form of its bare `verify-coverage` grants (a grant is a literal prefix). Priced
+    # against the SUM: a few tokens per review against reviewers whose probes read the launch repo's
+    # evidence while they rate another tree's code.
+    "dispatched-reviewer-inner": 5398,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 6023,
     "single-pass-full": 10412,
-    "dispatched-reviewer": 9776,
-    "coordinator-fork": 11082,
-    "coordinator-fork-inner": 6693,
-    "dispatched-reviewer-inner": 5387,
+    "dispatched-reviewer": 9788,
+    "coordinator-fork": 11111,
+    "coordinator-fork-inner": 6722,
+    "dispatched-reviewer-inner": 5399,
 }
 
 

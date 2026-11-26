@@ -389,3 +389,33 @@ def test_the_critic_grants_every_git_verb_through_git_c():
     assert len(plain) >= 7, plain
     for grant in plain:
         assert "git -C * " + grant[len("git "):] in grants, f"no -C form of {grant!r}"
+
+
+def _reviewer_agent() -> tuple[str, str]:
+    return _frontmatter((ROOT / "agents" / "critic-reviewer.md").read_text())
+
+
+def test_the_critic_reviewer_can_pass_the_option_to_its_probes():
+    """The coordinator's reviewers are subagents: their shells start in the
+    launch repo, as the fork's does. Each bare hook grant they hold needs its
+    `--project-dir` form; the coordinator's prompt tells them to pass it."""
+    front, _body = _reviewer_agent()
+    grants = re.findall(r"Bash\(([^)]*)\)", front)
+    bare = [g for g in grants if "prawduct-hook" in g and not g.endswith("*")]
+    assert bare, "the reviewer agent holds no bare hook grant; the sweep looked at nothing"
+    for grant in bare:
+        assert f"{grant} --project-dir *" in grants, f"critic-reviewer: {grant!r} has no --project-dir form"
+
+
+def test_the_coordinator_hands_the_tree_to_reviewers_and_consolidates_it():
+    """The SubagentStop hook resolves the launch repo, so under a
+    `--project-dir` naming another tree it never merges the partials: the
+    coordinator does, and its reviewers carry the option on every probe."""
+    text = (SKILLS_DIR / "critic" / "coordinator.md").read_text()
+    template = text[text.index("Prompt template"):]
+    template = template[: template.index("\n3. ")]
+    assert "pass `--project-dir [dir]` to every `prawduct-hook` call" in template
+    stop = text[text.index("3. **Stop"):]
+    stop = stop.split("\n", 1)[0]
+    assert "run `prawduct-hook critic-consolidate --project-dir [dir]` yourself" in stop
+    assert "launch repo" in stop

@@ -64,6 +64,24 @@ argument and pass it to each `prawduct-hook` call, each `git -C`, and each file 
 - *Out of scope:* detecting a forgotten `--project-dir` (a Skill hook sees the subagent's cwd, which
   is also the launch dir), and the harness-side fix (reported to Claude Code as feedback).
 
+**Decisions made mid-build (inferred, open for the owner at the boundary review):**
+- The same `--project-dir` value twice is one tree; two different values exit 2. The critic forwards
+  its arguments to `infer-critic-mode` and also appends the option, so a strict refusal would fire
+  on a correct call. `--project-dir=<p>` is the same option.
+- Usage errors are refused before the shape check, path checks after it, so nothing runs before a
+  git probe. Validation fails closed when `lib/` will not import, unlike the rest of dispatch.
+- No `CLAUDE_PROJECT_DIR` rewrite for child processes (it would be a host-variable write outside the
+  host seam); the `chdir` plus the override cover in-process readers.
+- The tree line goes to stdout, on the not-onboarded path too; a non-git tree reads
+  `(not a git work tree)`, an empty repo `(no commits)`.
+- Each bare hook grant in a forked skill, and in `critic-reviewer`, gains a `--project-dir *` form
+  rather than becoming a starred grant, so no grant widens past its command.
+- Coordinator gap (builder-found, fixed by the coordinator): the SubagentStop hook runs in the
+  launch repo and never merges a three-reviewer review in another tree, so under `--project-dir`
+  the coordinator consolidates itself, and the reviewer prompt passes the option to every probe.
+- Budget raises declared in the pins: critic SKILL.md +108 (frontmatter grants +104), coordinator.md
+  +29, the reviewer payload routes +12 to +137, delegation.md +24.
+
 ## Build Chunks
 
 ### Chunk 01: A forked skill acts on the repo its caller names

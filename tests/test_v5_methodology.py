@@ -1495,7 +1495,11 @@ LAST_MEASURED_TOKENS = {
     # `critic-discard`). Read only by a fork that dispatches, never by a reviewer.
     # -36 on 2026-11-11 (review-round-cost Critic round): the refused-partial remedy left — the coordinator stops before
     # consolidation and never meets a refusal (R-8). A READING; ceiling lowered with it.
-    "skills/critic/coordinator.md": 670,
+    # +29 on 2026-11-26 (fork-project-dir, #1253), DECLARED: the reviewer prompt passes
+    # `--project-dir [dir]` to every hook probe, and step 3 tells the coordinator to consolidate
+    # itself under a `--project-dir` naming another tree, because SubagentStop runs in the launch
+    # repo and never merges there. Net of cutting the `[dir]` bullet's restatement of step 2.
+    "skills/critic/coordinator.md": 699,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -7029,7 +7033,9 @@ class TestReviewCycle:
         # RAISED 664 -> 700 (review-round-cost Chunk 01, #961): the failed-partial remedy sentence —
         # see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 700 -> 664 (review-round-cost Critic round, R-8) with the reading.
-        assert tokens < 671, f"coordinator.md is ~{tokens} tokens, should be <671"
+        # RAISED 671 -> 700 (fork-project-dir, #1253): reviewers carry `--project-dir`, and the
+        # coordinator consolidates a review in another tree itself — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 700, f"coordinator.md is ~{tokens} tokens, should be <700"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
