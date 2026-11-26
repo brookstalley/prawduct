@@ -1,0 +1,104 @@
+{
+ "v": 1,
+ "generated_at": "2026-11-26T06:02:34Z",
+ "project": "prawduct",
+ "suite": "default",
+ "tree": "207061ff09e1208a5ac1cf99dbda8b284fc32404",
+ "commit": "645b2478b4b9cecb030851205a4da5129747de38",
+ "selection": "full",
+ "row": {
+  "project": "prawduct",
+  "suite": "default",
+  "counts": {
+   "items": 13859,
+   "cacheable": 10678,
+   "uncacheable": 3122,
+   "declared": 59
+  },
+  "causes": [
+   {
+    "kind": "subprocess",
+    "site": "plugin/lib/evidence.py:run_git",
+    "scope": "test",
+    "blocks": 284,
+    "alone": 116,
+    "examples": [
+     "tests/preferences/test_free_interval_prose.py::test_both_code_carriers_compose_the_one_operator_sentence",
+     "tests/preferences/test_no_upstream_content_egress.py::TestTheTargetIsPinned::test_a_repo_that_agrees_with_the_pin_is_honored_and_changes_nothing",
+     "tests/preferences/test_no_upstream_content_egress.py::TestNothingFilesWithoutAnApproval::test_no_unapproved_invocation_reaches_the_transport_seam[bare]"
+    ],
+    "hint": "starts a subprocess in the test itself",
+    "whats": [
+     "git (the checkout's repository)",
+     "git (an option that reads the time now)"
+    ],
+    "frees": 116
+   },
+   {
+    "kind": "entropy",
+    "site": "plugin/lib/evidence.py:append_stop_block",
+    "scope": "test",
+    "blocks": 82,
+    "alone": 62,
+    "examples": [
+     "tests/test_cumulative_gate_explain.py::TestStopGateCause::test_an_uncommitted_judgeable_file_is_named_in_the_span",
+     "tests/test_cumulative_gate_explain.py::TestStopGateCause::test_a_reviewed_committed_branch_then_edited_names_the_head_and_review",
+     "tests/test_cumulative_gate_explain.py::TestStopGateCause::test_an_unavailable_stop_explanation_still_prints_a_cause"
+    ],
+    "hint": "reads randomness (any random.Random draw, seeded or not, os.urandom, uuid4, secrets) in the test itself",
+    "whats": [
+     "os.urandom"
+    ],
+    "frees": 70
+   },
+   {
+    "kind": "file",
+    "site": "plugin/lib/core.py:_shared_ignore_matches",
+    "scope": "test",
+    "blocks": 81,
+    "alone": 58,
+    "examples": [
+     "tests/test_advisory_cmd.py::TestShow::test_compact_entry_reconstructs_full_evidence",
+     "tests/test_advisory_cmd.py::TestShow::test_compact_entry_unrecoverable_when_probe_silent",
+     "tests/test_advisory_cmd.py::TestShow::test_show_self_registers_probe_roster_for_reconstruction"
+    ],
+    "hint": "reads a file outside the tree, the environment and temp in the test itself",
+    "whats": [
+     ".git"
+    ],
+    "frees": 58
+   },
+   {
+    "kind": "clock",
+    "site": "plugin/lib/host.py:_store_scan",
+    "scope": "test",
+    "blocks": 34,
+    "alone": 5,
+    "examples": [
+     "tests/test_host_seam.py::TestTheTranscriptCache::test_any_split_gives_the_full_reads_answer",
+     "tests/test_host_seam.py::TestTheTranscriptCache::test_a_replaced_or_rewritten_transcript_is_read_again",
+     "tests/test_host_seam.py::TestTheTranscriptCache::test_a_broken_line_stays_fatal_across_stops"
+    ],
+    "hint": "reads the clock in the test itself",
+    "whats": [
+     "time.time"
+    ],
+    "frees": 33
+   }
+  ],
+  "more_causes": 0,
+  "declared": [
+   {
+    "kind": "site",
+    "match": "tests/test_plugin_packaging.py:_tracked",
+    "why": "its subject is what this checkout tracks, read with git ls-files",
+    "items": 29,
+    "examples": [
+     "tests/test_plugin_packaging.py::test_required_component_ships[.claude-plugin/plugin.json]",
+     "tests/test_plugin_packaging.py::test_required_component_ships[VERSION]",
+     "tests/test_plugin_packaging.py::test_required_component_ships[CHANGELOG.md]"
+    ]
+   }
+  ]
+ }
+}
