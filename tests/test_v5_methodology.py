@@ -1453,7 +1453,15 @@ LAST_MEASURED_TOKENS = {
     # `--chunks` line names all chunks under a `per-release lane` rationale. Paid in place by
     # cutting step 4's gloss on what the live-review refusal names (its stderr owns it). A READING;
     # ceiling lowered with it.
-    "skills/critic/SKILL.md": 3265,
+    # +108 on 2026-11-26 (fork-project-dir, #1253), DECLARED: the `git -C * <verb> *` grants and
+    # the `--project-dir *` form of each bare hook grant (+104, frontmatter), and step 0 / step 4
+    # carrying `--project-dir` and leading the report with the tree line (+4, net of cutting the
+    # #34164 gloss and the duplicated `--force` sentence). Priced in `test_reviewer_payload_budget.py`.
+    # +34 on 2026-11-26 (fork-project-dir Critic round, #1253), DECLARED: both STOP sentences carry the
+    # `--project-dir` consolidate exception (R-1), each citing coordinator.md inside its mode-qualified
+    # clause (the fast-path citation guard), and the tree line is led with only when printed.
+
+    "skills/critic/SKILL.md": 3407,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1491,7 +1499,14 @@ LAST_MEASURED_TOKENS = {
     # `critic-discard`). Read only by a fork that dispatches, never by a reviewer.
     # -36 on 2026-11-11 (review-round-cost Critic round): the refused-partial remedy left — the coordinator stops before
     # consolidation and never meets a refusal (R-8). A READING; ceiling lowered with it.
-    "skills/critic/coordinator.md": 670,
+    # +29 on 2026-11-26 (fork-project-dir, #1253), DECLARED: the reviewer prompt passes
+    # `--project-dir [dir]` to every hook probe, and step 3 tells the coordinator to consolidate
+    # itself under a `--project-dir` naming another tree, because SubagentStop runs in the launch
+    # repo and never merges there. Net of cutting the `[dir]` bullet's restatement of step 2.
+    # +18 on 2026-11-26 (fork-project-dir Critic round, #1253), DECLARED: step 3 is unconditional under
+    # --project-dir, says how the coordinator knows reviewers returned, and names the builder fallback (R-3).
+
+    "skills/critic/coordinator.md": 717,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -2082,7 +2097,13 @@ LAST_MEASURED_TOKENS = {
     # asks a removal or sweep for the files it touched. building.md cut that list on 2026-11-22
     # because this file owned it, and this file never did. It is added here, the owning item.
     # A READING.
-    "methodology/delegation.md": 3008,
+    # +24 on 2026-11-26 (fork-project-dir, #1253): beside "a skill forks in the session's own
+    # directory", the one sentence saying a delegate in another repository passes `--project-dir`
+    # to each `/prawduct:*` skill. No clause here covered it, so nothing was cut. A READING.
+    # +20 on 2026-11-26 (fork-project-dir Critic round, #1253), DECLARED: the --project-dir sentence names
+    # the forked skills and every hook call the delegate runs itself, not 'each /prawduct:* skill' (R-4/R-5).
+
+    "methodology/delegation.md": 3052,
 }
 
 
@@ -6638,7 +6659,9 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3226 -> 3248 (chunk-plan-order Chunk 02, #1141): exit 8's row — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 3248 -> 3279 (credential-placeholders Chunk 02): exit 9's row — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3279 -> 3266 (boundary-review-per-release round 6, R-4) with the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 3266, f"SKILL.md is ~{tokens} tokens, should be <3266"
+        # RAISED 3266 -> 3374 (fork-project-dir, #1253): `git -C` and `--project-dir` grants — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 3374 -> 3408 (fork-project-dir Critic round, R-1) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3408, f"SKILL.md is ~{tokens} tokens, should be <3408"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -7021,7 +7044,10 @@ class TestReviewCycle:
         # RAISED 664 -> 700 (review-round-cost Chunk 01, #961): the failed-partial remedy sentence —
         # see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 700 -> 664 (review-round-cost Critic round, R-8) with the reading.
-        assert tokens < 671, f"coordinator.md is ~{tokens} tokens, should be <671"
+        # RAISED 671 -> 700 (fork-project-dir, #1253): reviewers carry `--project-dir`, and the
+        # coordinator consolidates a review in another tree itself — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 700 -> 718 (fork-project-dir Critic round, R-3) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 718, f"coordinator.md is ~{tokens} tokens, should be <718"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

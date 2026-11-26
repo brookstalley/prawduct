@@ -681,3 +681,10 @@ and janitor; grant-reach rails retired) is merged.
    relaxes the release gate: an entry whose read diff brought no judgeable file onto the base is `reverted`
    and covered without a review, because nothing of it ships. It is owner-confirmed now, no longer only the
    builder's call.
+
+**2026-11-26 (late afternoon).** "Yep merge and keep all three and delete merged and dismiss oversized advisory":
+1. Merge PR #1259 (`fix/fork-project-dir` → `develop`, #1253).
+2. Keep its three named decisions: `--project-dir` goes after the subcommand; a subdirectory is refused rather
+   than walked up to its toplevel; every `--project-dir` refusal exits 1, not 2.
+3. Delete the merged local branches `git-tidy` lists, and dismiss the oversized-build-plan advisory: the plan is
+   archived at the next release, which is when its size stops being paid.

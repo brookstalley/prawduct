@@ -251,10 +251,18 @@ class TestCoordinatorProseRewritten:
         assert "critic-reviewer" in text
         assert "critic-consolidate" in text
 
-    def test_protocol_says_stop_no_resume(self):
+    def test_protocol_says_stop_and_resumes_only_to_consolidate_another_tree(self):
+        """Renegotiated 2026-11-26 (#1253). Was `test_protocol_says_stop_no_resume`:
+        the coordinator never resumed, because SubagentStop consolidated for it.
+        That hook runs in the launch repo, so a review under `--project-dir` in
+        another tree is never merged by it, and the coordinator resumes there to
+        run `critic-consolidate` and nothing else. The invariant that stays: it
+        never writes findings, the ledger or `critic-end` itself."""
         text = COORDINATOR.read_text()
-        # The load-bearing behavior change: the coordinator does not resume to write.
-        assert "do not resume" in text.lower() or "no resume-to-aggregate" in text.lower()
+        step = text[text.index("3. **Stop"):].split("\n", 1)[0]
+        assert step.startswith("3. **Stop, unless your arguments carried `--project-dir`.**")
+        assert "run `prawduct-hook critic-consolidate --project-dir [dir]` yourself" in step
+        assert "You do NOT write findings, append the ledger, or run `critic-end`" in step
 
     def test_protocol_coordinator_does_not_write_findings_inline(self):
         """The old step 3 ('persist .critic-findings.json') must be gone from the
