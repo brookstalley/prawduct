@@ -579,3 +579,27 @@ designs for each land in their build plans (`build-plan-tripwire-disabled.md`,
 **2026-11-25.** "when done also be sure ../prawduct-live is on this release" — after the v3.10.0 cut,
 `../prawduct-live` (the machine plugin every governed repo here runs) is moved onto the `v3.10.0`
 tag, detached, rather than onto `develop`.
+
+**2026-11-25.** "yes to all of your recommendations" — answering four asks on the #1247 cluster:
+1. #1232 is built in two steps. Chunks 01-02 of `build-plan-boundary-review-per-release.md` first; then
+   `prawduct-hook check-boundary-coverage --json` runs in `~/source/discodon` (the repo #1222/#1223's figures
+   came from; the run writes only its tree-key memo there), and its per-merge counts decide go/no-go on
+   Chunks 03-06.
+2. The NFR amendment text in that plan's Goals (decision 1) is confirmed as written: recorded beneath the
+   stage-keyed clause in `nonfunctional-requirements.md`, the clause keeping its ratified words. A
+   `boundary_review: per_release` repo runs the boundary review for derived-eligible work once per release
+   batch; it is moved, not skipped; a blocker-free fix tail may merge as a deferral to the release check,
+   never as coverage.
+3. That plan's decisions 2-5 as recommended: the release anchor is whichever sits nearer the base's tip of
+   (A) the newest first-parent commit adding a `.prawduct/releases/` file and (B) the oldest first-parent
+   commit containing the newest version tag reachable from the base; a single-parent base commit whose
+   judgeable changes are all declared `release_version_files:` reads `release-bookkeeping`, counted covered;
+   the eligibility bound is 10 judgeable files, a constant beside `SHORT_PLAN_MAX_CHUNKS`, not a key; the
+   fix-tail deferral applies to any PR in a per_release repo whose tail meets `diagnose_fix_churn`'s
+   conditions and touches no risk surface.
+4. #1247's six decisions in `documentation/issues/1247-design.md` as recommended: a per-repo
+   `chunk_review: per_chunk | per_plan` key, default `per_chunk`; `per_plan` keeps the risk-surface
+   condition; under `per_plan` a chunk declaring `Critic mode:` is a keystone that alone owes its review;
+   `per_release` eligibility stays fixed at three chunks independent of `chunk_review`; #1247's ask 3 gets no
+   new mechanism (test-impact reuse is #1096/#1088; #367 stands). #1247 stays open at stage design (effort
+   M, impact S), built after #1232's Chunk 04.
