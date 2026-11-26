@@ -703,3 +703,11 @@ and janitor; grant-reach rails retired) is merged.
    than walked up to its toplevel; every `--project-dir` refusal exits 1, not 2.
 3. Delete the merged local branches `git-tidy` lists, and dismiss the oversized-build-plan advisory: the plan is
    archived at the next release, which is when its size stops being paid.
+
+**2026-11-26 (evening).** "Yes to your recommendations", answering two asks:
+1. Finish the two unfinished branches (`docs/test-cacheability-patterns`, then `chore/testament-cache-dogfood`):
+   sync develop, run the suite, run the cumulative Critic, open a PR for each. Then #1257, then #1261 and #1260.
+2. Reap this repo's stale agent worktrees, keeping the one that held the dogfood branch until it lands.
+
+**2026-11-26 (evening, later).** "Yes yes merge": PR #1264 (`docs/test-cacheability-patterns` → `develop`, the
+three determinism patterns and the uncacheable-tests advisory) is merged.

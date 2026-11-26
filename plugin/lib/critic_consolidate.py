@@ -76,12 +76,11 @@ import re
 import shutil
 import sys
 import tempfile
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
-from . import coverage, coverage_algebra, critic_marker, dispositions, evidence, evidence_notes, gates, gitstate, ledger, model_tier
+from . import coverage, coverage_algebra, critic_marker, dispositions, entropy, evidence, evidence_notes, gates, gitstate, ledger, model_tier
 from .core import GITIGNORE_ENTRIES, TEMP_SUFFIX, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -1622,7 +1621,7 @@ def mint_review_id() -> str:
     Producer and consumer therefore stay adjacent, with a round-trip test.
     """
     return "rev-{}-{}".format(
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), entropy.token_hex(8)
     )
 
 _RESOLUTION_DISPOSITIONS = frozenset({"fixed", "waived"})

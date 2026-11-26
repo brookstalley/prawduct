@@ -15,8 +15,8 @@ broadening). `TestDesignerHandoffSkipsCriticGate` is its contrast partner —
 the one value that legitimately skips — so the pair reads as a complete
 truth-table for the carveout (Tests Are Contracts).
 
-Harness mirrors `test_plugin_runtime.py::TestPluginStopGate` — subprocess
-invocation of `bin/prawduct-hook stop` with a mock git on PATH — because the
+Harness is a subprocess invocation of `bin/prawduct-hook stop` with a mock git
+on PATH, because the
 gate decision is only observable end-to-end (the Type parse, the empirical
 doc-only check, and the findings-freshness check all compose inside `cmd_stop`).
 """

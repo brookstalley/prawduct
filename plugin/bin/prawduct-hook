@@ -9215,10 +9215,8 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
         print(f"plan import-status: {what}\n{_PLAN_HELP}", file=sys.stderr)
         return 2
     apply, remove, as_json = "--apply" in seen, "--remove-block" in seen, "--json" in seen
-    import uuid  # noqa: PLC0415 — lazy; only the fact writers need it
-
     plan_status = _plan_status()
-    from lib import evidence, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
+    from lib import entropy, evidence, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
 
     plan_path = Path(positionals[0])
     if not plan_path.is_absolute():
@@ -9286,7 +9284,7 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
     if apply:
         for cid in to_write:
             now = _clock().now()
-            fact_id = "chunk-imported-{}-{}".format(now.strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8])
+            fact_id = "chunk-imported-{}-{}".format(now.strftime("%Y%m%dT%H%M%SZ"), entropy.token_hex(8))
             body = {
                 "scope": scope,
                 "chunk": cid,
@@ -9567,10 +9565,8 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
         print(f"plan retract: --all withdraws every certification, so it takes no --fact\n{_PLAN_HELP}",
               file=sys.stderr)
         return 2
-    import uuid  # noqa: PLC0415 — lazy; only the fact writers need it
-
     plan_status = _plan_status()
-    from lib import evidence, evidence_notes, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
+    from lib import entropy, evidence, evidence_notes, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
 
     if "--plan" in values:
         plan_path = Path(values["--plan"])
@@ -9612,7 +9608,7 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
         """Append one pair's `chunk-retracted` fact and its note on HEAD:
         ``(retraction id, None)``, or ``(None, why)`` when the append failed."""
         now = _clock().now()
-        retraction_id = "chunk-retracted-{}-{}".format(now.strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8])
+        retraction_id = "chunk-retracted-{}-{}".format(now.strftime("%Y%m%dT%H%M%SZ"), entropy.token_hex(8))
         body = {
             "scope": target.scope,
             "chunk": target.chunk,

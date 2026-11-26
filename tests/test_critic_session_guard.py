@@ -11,7 +11,8 @@ TTL expiry, a session-start sweep, and an explicit override.
 
 Two layers:
   * Unit — lib/critic_marker (write/clear/review_active + TTL + fallbacks).
-  * Behavioral — the real CLI via subprocess (the reviewer's actual attack path).
+  * Behavioral — the hook's own CLI entry point, run in-process by `run_plugin_hook`
+    (the reviewer's actual path through the command; not a process-boundary test).
 """
 
 from __future__ import annotations
@@ -30,8 +31,9 @@ if str(_ROOT) not in sys.path:
 from lib import critic_consolidate as cc  # noqa: E402
 from lib import critic_marker as cm  # noqa: E402
 
-# Reuse the proven plugin-runtime subprocess harness (same tests/ dir → importable
-# under pytest's prepend import mode).
+# Reuse the plugin-runtime harness, which runs the hook in-process with mock git and gh
+# (same tests/ dir → importable under pytest's prepend import mode). A test whose subject
+# is the process boundary itself uses `run_plugin_hook_child` instead.
 from test_plugin_runtime import run_plugin_hook  # noqa: E402
 from conftest import scrubbed_env  # noqa: E402
 
@@ -1204,8 +1206,8 @@ class TestArchiveMessagesNameTheWayBack:
 
 def _expired(prawduct: Path) -> None:
     """Age the marker strictly past the TTL, in the SAME clock domain the code
-    reads. Every actor here — this stamp, `review_active`, and the CLI
-    subprocess — runs on the real wall clock; a frozen `now` on one side and a
+    reads. Every actor here — this stamp, `review_active`, and the hook's CLI
+    — runs on the real wall clock; a frozen `now` on one side and a
     real clock on the other turns a TTL into a test that goes red at
     stamp+TTL."""
     old = datetime.now(timezone.utc) - timedelta(seconds=cm.CRITIC_ACTIVE_TTL_SECONDS + 60)
@@ -1806,10 +1808,11 @@ class TestAnUnanswerableRosterIsAnnouncedAsItself:
         assert "consolidation lib unavailable" in (cm.LAST_ROSTER_ERROR or "")
 
     def test_the_notice_for_an_unanswerable_roster_does_not_claim_liveness(self, tmp_path):
-        """The head an operator actually reads. Loaded in-process rather than
-        driven through the CLI: the branch is reachable only when the
-        consolidation lib cannot answer, and there is no honest way to arrange
-        that across a subprocess boundary without breaking the install itself.
+        """The head an operator actually reads. The hook is loaded as a module
+        and its import patched, rather than driven through `run_plugin_hook`: the
+        branch is reachable only when the consolidation lib cannot answer, and
+        making it unanswerable for a whole CLI run would break the plugin tree
+        that run loads.
         """
         import importlib.machinery  # noqa: PLC0415 — the extensionless hook script
         import importlib.util  # noqa: PLC0415
