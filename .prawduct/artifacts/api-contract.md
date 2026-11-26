@@ -170,7 +170,25 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   manifest's `reviewer_model` and prints it as a `reviewer model:` line — absent, the reviewer
   ceiling is assumed and a note says so; `--tier` never moves it; on a development build's
   `cumulative`, a `native review paired` line tells the fork to dispatch the manifest's
-  `native_review` wrapper, and a dev cumulative that does not pair says why in a note),
+  `native_review` wrapper, and a dev cumulative that does not pair says why in a note;
+  `--span release`, with `--mode cumulative` only (added 2026-11-26, #1232), is the release batch
+  review: run on the integration base's own checkout at its tip with a clean tree, its interval is
+  the release anchor → HEAD (from the oldest owed entry's first parent instead when one sits at or
+  before the anchor, 2026-11-26), `files_reviewed` is the changed files of every release entry
+  `check-boundary-coverage` reads not covered that still differ at HEAD from that start or from the
+  release anchor (one differing only from the anchor is rated against it), and the rest of
+  the span is `files_context`; the manifest and fact record `span: release` and a `span_reason`
+  naming the anchor, and the fact is never a coverage edge (only the release check's
+  `batch_review_covers` credits it). Refused with exit 1 and `--span release refused (<code>)`
+  on stderr, before anything is written: `off-base` (not the base's checkout, or HEAD is not the
+  base's tip), `dirty-tree`, `no-anchor`, `unevaluable` (the classification could not run),
+  `no-subject` (what is owed changes nothing that still differs from the start or the anchor); exit 3 when every
+  release entry is already covered. `--force` overrides none of them, and the review round budget
+  never charges it. A plain `--mode cumulative` on the integration base's own branch with HEAD at
+  its tip derives `--span release` itself when the release check's policy is `boundary_review:
+  per_release` (added 2026-11-26, #1232, `boundary_coverage.integration_base_tip`,
+  `review_lane.release_policy`; under `per_pr` it stays the plain `cumulative` it was) and says so in a note; a derived span that refuses reads `the release batch review refused
+  (<code>)`. Any other `--span` value, or `--span` with another mode, is exit 1),
   `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
   and writes the optional `dispatched_at` review-fact body key when the mark is this review's —
@@ -318,23 +336,67 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   scan of something), `unparsed[]` and `unruled[]` (test files in a language with no rules yet).
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
   `check-branch-pushed` (0/1/**3**),
-  `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
+  `check-releasability [--release vX.Y.Z]` (under `boundary_review: per_release`, read at the
+  integration branch's tip, it also refuses with exit 1 on `check-boundary-coverage --gate`'s
+  verdict, nothing pending or not: `boundary-uncovered:` naming each entry not covered and the
+  release batch review, or `boundary-unevaluable:`; under `per_pr` only on a `tail-deferred`
+  entry, classified with nothing pending when `per_release` was declared since the release
+  anchor; added 2026-11-26, #1232),
+  `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
-  **`check-boundary-coverage [--json]`** (read-only, advisory; owner `lib/boundary_coverage.py`)
-  classifies each release-pending scope by the first-parent commit on the integration base that added
-  its fragment: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `inner-only`,
-  `uncovered`, `direct` or `unknown`, each with its reason. `pr-transferred` is a branch that synced
+  **`check-boundary-coverage [--json] [--gate]`** (read-only, advisory without `--gate`; owner `lib/boundary_coverage.py`)
+  classifies first-parent commits on the integration base: the one that added each release-pending
+  scope's fragment, unioned with every commit after the **release anchor** that changes a judgeable
+  file, one entry per commit. The anchor is the nearer the tip of the newest first-parent commit
+  adding `.prawduct/releases/<version>.md` and the oldest first-parent commit containing the
+  merge-base of the base and the newest version tag (so a tag on a promotion merge the base never
+  contains still anchors); a candidate reached through a merge's second parent (a back-merge) anchors on
+  the base's own commit that release shipped, never the merge; with neither, no commit is walked and
+  the report says so.
+  Classes: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `release-bookkeeping`,
+  `reverted`, `inner-only`, `tail-deferred`, `uncovered`, `direct` or `unknown`, each with its reason.
+  `reverted` (covered; added 2026-11-26, #1232) is an entry not otherwise covered every judgeable
+  file of whose change is back, at the base's tip, to its content both at the release anchor and
+  where the release span starts (the anchor, or the first parent of the oldest owed entry at or
+  before it), or whose diff against its first parent, read, changes no judgeable file (a merge whose
+  branch's changes were already on the base), so nothing of it ships. A diff git could not read
+  stays owed.
+  `batch-covered` is a commit (merge or single-parent) a boundary review on the base credits by
+  `coverage_algebra.batch_review_covers` — it brackets the commit on the first-parent line, rated
+  every judgeable file of the commit still changed across its interval or, at its head, from the
+  release anchor's tree, and no unresolved blocker stands at its trees — or a single-parent fix after such a review that `verify-resolutions` and
+  free edges compose to; a `critic-begin --span release` review is credited only this way.
+  `tail-deferred` (not covered) is a fix tail the PR gate deferred to the release. `pr-transferred` is a branch that synced
   its base after its PR's boundary review and that the PR gate passed by its base-advance transfer:
-  the op reads the grant the PR gate recorded (`gates.recorded_transfer_grant`), or, with none,
+  the op reads the grant recorded for exactly that span (`gates.recorded_transfer_grant`: the PR gate's,
+  or the Stop gate's when one record serves both), or, with none,
   re-decides with the gate's own function (`gates.base_advance_transfer`) over the branch's suite
   runs. It counts as covered and is named in the count line. Grants and suite runs are clone-local
   (not in `evidence.TRANSPORTED_KINDS`), so in another clone the same merge can read `uncovered`,
-  with a reason saying so. The human form marks each scope not counted as covered
-  `[not covered]` and ends with a count line naming its denominator. Exit 0
+  with a reason saying so. `release-bookkeeping` (covered) is a single-parent commit after the anchor whose
+  judgeable changes are all paths `release_version_files:` declared at the anchor; the undeclared
+  fallback never qualifies. The human form marks each entry not counted as covered
+  `[not covered]`, names the anchor, and ends with a count line naming its denominator and the anchor. Exit 0
   whenever it answered, whatever it found; 2 on an unknown argument; 3 when it could not evaluate.
   `--json` keys: `status` (`ok` | `unevaluable`), `base`, `reason` (`null` when `ok`), `counts` (one
-  key per classification), `entries[]{scope, classification, reason, commit, subject}` and
-  `refusals[]` (fragments the pending set refused, which are not classified).
+  key per classification), `entries[]{scope, classification, reason, commit, subject, source}`
+  (`source`: `fragment`, `walk` or `both`, or `walk-failed` on the one `unknown` entry standing
+  for a walk git could not run, with no commit; a walked commit no fragment names has an empty `scope`;
+  two fragments one merge added share one entry, scopes joined by `, `), `anchor` (`{commit, tree,
+  source, reason}`, `source` `release-file` | `tag`, or `null`), `no_anchor_reason` (why there is
+  none, else `null`) and `refusals[]` (fragments the pending set refused, which are not classified).
+  `--gate` (added 2026-11-26, #1232) is the release check's blocking reading, the verdict
+  `check-releasability` refuses on (`boundary_coverage.release_gate`), under the policy read at
+  the integration branch's tip (`review_lane.release_policy`). Under `per_release`: exit 1 when any
+  entry is not covered (`boundary-uncovered:` on stderr, with the release batch review as its
+  remedy), 3 when it could not answer — a failed policy read, unevaluable, a fragment the pending
+  set refused, no release anchor, or a walk since the anchor git could not run
+  (`boundary-unevaluable:`, with its route) — else 0. Under `per_pr`: 3 when the report is
+  unevaluable (`boundary-unevaluable:`, as the bare op's 3), 1 when it holds a `tail-deferred`
+  entry (`boundary-uncovered:`: a tail merged unread under `per_release` does not ship unread
+  once the policy goes back), else exit 0 whatever it found, the advice unchanged. Either way stdout adds a `boundary_review: <value> (read at <ref>)` line with
+  the policy's note, and `--gate --json` adds `policy` (`{value, source, note}`) and `gate`
+  (`{exit, code, message}`) to the keys above. The bare op's exits do not change.
   **`check-pr-hygiene [--json]`** (read-only; owner `lib/pr_gate.py`) answers over merge-base…HEAD of
   the checked-out branch, the base from the resolver `resolve-base` uses. Named results:
   `credential-shape` (refuses: a line the branch ADDS matches the plugin's one credential denylist,
@@ -919,7 +981,9 @@ would have said, because the argument is only convincing in the concrete.
   traceback)* — folded into 0 it prints a coverage count over a pending set or a store it never read, so
   a release reads "all covered" off nothing; folded into 1 it would give advice a failing exit it
   never has, since every answered run exits 0 whatever it found. It is advice, so 3 blocks nothing
-  that reads it as advice; it is the "could not answer" the scheme reserves.
+  that reads it as advice; it is the "could not answer" the scheme reserves. `--gate` keeps that
+  meaning under `per_release`, where it BLOCKS (2026-11-26): a release check that cannot answer
+  refuses the release.
 - `check-pr-hygiene` (2026-11-11), *no base or no merge-base* — folded into 0 it reports a clean
   branch off an interval it never had; folded into 1 it claims a refusing result it never computed.
   A single result it could not read is `unchecked` in the output, not a third exit, unless that
@@ -1027,6 +1091,9 @@ Fail-direction is deliberate and per-purpose:
   `verify-resolutions` anchored to an unchanged tree with nothing outstanding takes the same 3, for
   the same reason — it used to fall out as a bare 1, which the skill's exit table routes to
   "re-dispatch per the demotion property", manufacturing a full round the gate did not want.
+  A `--span release` dispatch takes the same 3 when every release entry already reads covered,
+  because the release check then needs no batch review; `--force` does not override that one,
+  since the review would have nothing to rate.
 
   **`critic-begin` 4 — round budget exhausted.** This build-plan SCOPE has already bought the full
   rounds `review_round_budget` allows (`.prawduct/project-state.yaml`, default 6, `null` disables).

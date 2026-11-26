@@ -29,7 +29,9 @@ behavioral logic here — PR-5K8D — so protection overrides the doc carveout).
 - A ``review`` fact contributes edge ``base_tree → head_tree``, valid iff
   every judgeable file it recorded as changed is in its reviewed set — a
   scoped review that saw less than its diff yields NO edge (stricter, never
-  looser). A malformed body yields no edge for the same reason.
+  looser). A malformed body yields no edge for the same reason, and so does a
+  release batch review (:data:`RELEASE_SPAN`), which only
+  :func:`batch_review_covers` credits.
 - The caller's ``diff_fn`` contributes **free edges**: an interval whose
   entire diff is non-judgeable needs no review (the doc-only allowance,
   computed — never stored). "No judgeable path differs" is equality of a
@@ -60,7 +62,7 @@ from __future__ import annotations
 
 import re
 from collections import deque
-from typing import Callable, Iterator
+from typing import Callable, Iterable, Iterator
 
 from . import buildplan_refs
 from .gitstate import METADATA_PREFIXES, is_object_id
@@ -79,6 +81,41 @@ _RESOLVING_DISPOSITIONS = frozenset({"fixed", "waived"})
 #: ``evidence.OBSERVATIONAL_KINDS`` (the kinds left out of the verdict memo's
 #: key) to exist at all; the two sets must never overlap.
 VERDICT_INPUT_KINDS = frozenset({"review", "resolution"})
+
+#: The ``span`` a release batch review records (``critic-begin --span
+#: release``): anchor tree → the base's HEAD tree, rating only the files of the
+#: merges no boundary review read. Such a fact is never an edge
+#: (:func:`review_edges`); only :func:`batch_review_covers` credits it, and its
+#: blockers settle every span standing on its head tree but one forked there
+#: (:func:`_counts_at`), as do those of the verify passes that verify it
+#: (:func:`is_release_scoped`).
+RELEASE_SPAN = "release"
+
+
+def is_release_batch(fact: dict) -> bool:
+    """A review fact recorded by a release batch review (its ``span`` is
+    :data:`RELEASE_SPAN`)."""
+    body = fact.get("body") if isinstance(fact, dict) else None
+    return isinstance(body, dict) and body.get("span") == RELEASE_SPAN
+
+
+def is_release_scoped(reviews: "list[dict]", fact: dict) -> bool:
+    """Is ``fact`` a review taken on the integration base for the release: the
+    release batch review (:func:`is_release_batch`), or a ``verify-resolutions``
+    pass whose recorded :data:`VERIFIES_KEY` chain reaches one? The batch fix
+    tail's pass anchors there, so its blockers say the same thing the batch's
+    do: the base at that tree is not fit to release.
+
+    Only a recorded claim is followed (:func:`walk_links`): a pass linked by
+    tree alone, or one whose claim does not resolve, is not release-scoped, so
+    its blocker counts everywhere, the stricter reading. ``reviews`` is the
+    store's review facts in store order."""
+    for current in walk_links(reviews, fact):
+        if is_release_batch(current):
+            return True
+        if (current.get("body") or {}).get(VERIFIES_KEY) is None:
+            return False
+    return False
 
 
 def is_judgeable_path(path: str) -> bool:
@@ -704,9 +741,10 @@ def reviews_linked_from(reviews: list[dict], root_tree: str) -> list[dict]:
 def review_edges(facts: list[dict]) -> list[dict]:
     """Valid edges from ``review`` facts:
     ``{"src", "dst", "fact"}``. Validity — the fact recorded both trees as
-    full-length git object ids and every judgeable changed file is within its
-    reviewed set; anything less yields no edge (a partial or malformed fact
-    must weaken coverage, never strengthen it).
+    full-length git object ids, every judgeable changed file is within its
+    reviewed set, and it is not a release batch review (:func:`is_release_batch`);
+    anything less yields no edge (a partial or malformed fact must weaken
+    coverage, never strengthen it).
 
     The tree ids are shape-checked here rather than trusted because facts are
     read back from a plain file on disk: a corrupted or hand-edited one can
@@ -739,6 +777,14 @@ def review_edges(facts: list[dict]) -> list[dict]:
         changed = [f for f in files_changed if isinstance(f, str)]
         if any(f not in reviewed for f in judgeable_files(changed)):
             continue  # under-reviewed interval — not an edge
+        if is_release_batch(fact):
+            # A release batch review is never an edge, even when its subject
+            # happens to be every judgeable file: its subject was chosen by the
+            # release classification, not by the interval, and what credits it
+            # is `batch_review_covers`, which is relax-only. Its findings still
+            # stand at its trees (`_unresolved_at_nodes`), for any span but one
+            # forked at its head tree (`_counts_at`), so it can block, never cover.
+            continue
         if src == dst:
             # Degenerate interval: contributes nothing to *connectivity* that
             # the node does not already give. It still carries findings, and
@@ -979,10 +1025,46 @@ def _verify_anchor_id(facts: list[dict], nodes: "set[str]") -> "str | None":
     return newest
 
 
+def _counts_at(fact: dict, base: "str | None", target: "str | None",
+               reviews: "Callable[[], list[dict]]") -> bool:
+    """Does ``fact``'s blocker settle the span ``base`` → ``target``?
+
+    Every fact's does, except a release-scoped review's (:func:`is_release_scoped`:
+    the release batch review, or a verify pass verifying it) on a span that
+    STARTS at the tree it reviewed and ends anywhere else: a feature branch
+    forked there, which stands on it as its merge-base and is not held for code
+    it never touched. Such a review is taken for the release, and its blocker
+    says the tree is not fit to RELEASE: it is owed by the release check
+    (:func:`batch_review_blockers`, which counts it always) and by a span ending
+    at that tree, where the verify pass that clears it composes to (its
+    roll-call composes merge-base tree → the tree it anchors on, which is this
+    one). A span that merely passes through the tree, such as a fix branch whose
+    verify pass against the release batch review raised a blocker at the fix,
+    is carrying that tree's code, so it counts there.
+
+    ``target`` ``None`` counts every fact: the release check's settlement.
+    ``reviews`` gives the store's review facts, asked only for a fact that
+    could be release-scoped, since following a claim reads the store."""
+    if target is None:
+        return True
+    body = fact.get("body") or {}
+    head = body.get("head_tree")
+    if head == target or head != base:
+        return True
+    if not is_release_batch(fact) and body.get(VERIFIES_KEY) is None:
+        return True
+    return not is_release_scoped(reviews(), fact)
+
+
 def _unresolved_at_nodes(
-    facts: list[dict], resolved: set[tuple[str, str]], nodes: "set[str]"
+    facts: list[dict], resolved: set[tuple[str, str]], nodes: "set[str]",
+    target: "str | None" = None, *, base: "str | None" = None,
+    at_nodes: "list[dict] | None" = None,
 ) -> list[dict]:
-    """Every unresolved blocking finding recorded at a tree on the path.
+    """Every unresolved blocking finding recorded at a tree on the path, of the
+    facts whose blockers settle the span ``base`` → ``target`` (:func:`_counts_at`).
+    ``at_nodes`` is :func:`_facts_at_nodes`' answer when the caller already
+    holds it (a :class:`Settlement`'s index), in store order.
 
     This is the composition-side answer to CRT-5H2D. Connectivity and findings
     were previously answered by one edge set, and that conflation is what let a
@@ -1003,9 +1085,19 @@ def _unresolved_at_nodes(
     direction for a gate that had been reporting ``satisfied`` while the store
     held an unresolved blocker.
     """
-    anchor = _verify_anchor_id(facts, nodes)
+    at = _facts_at_nodes(facts, nodes) if at_nodes is None else at_nodes
+    if target is not None:
+        memo: "list[list[dict]]" = []
+
+        def reviews() -> "list[dict]":
+            if not memo:
+                memo.append([f for f in facts if f.get("kind") == "review"])
+            return memo[0]
+
+        at = [f for f in at if _counts_at(f, base, target, reviews)]
+    anchor = _verify_anchor_id(at, nodes)
     entries = []
-    for fact in _facts_at_nodes(facts, nodes):
+    for fact in at:
         for finding in unresolved_blocking(fact, resolved):
             entry = {
                 "review_id": fact.get("id"),
@@ -1060,6 +1152,12 @@ def coverage_verdict(
     (``gates.blocking_remedy_lines`` asks). The verdict itself is unaffected —
     a blocker blocks either way.
 
+    A release-scoped review's blocker (the release batch review's, or a verify
+    pass's verifying it: :func:`is_release_scoped`) settles every span standing
+    on the tree it reviewed except one starting there (:func:`_counts_at`): it
+    gates the release check, the base and a branch carrying that tree's code,
+    never a branch forked from it.
+
     A blocker the verdict does NOT list is not open, whatever its resolution
     facts say: one recorded at a tree no composed path stands on (a clean
     spanning review routed around it) gates nothing. :func:`blockers_counted`
@@ -1081,7 +1179,7 @@ def coverage_verdict(
     def _settle(path: list[dict]) -> dict:
         """``covered`` unless a tree on ``path`` still carries a blocker."""
         unresolved = _unresolved_at_nodes(
-            facts, resolved, _path_nodes(base_tree, path)
+            facts, resolved, _path_nodes(base_tree, path), target_tree, base=base_tree
         )
         if unresolved:
             return {"status": "blocked", "path": path, "unresolved": unresolved}
@@ -1267,7 +1365,8 @@ def excused_gap_verdict(
                     smallest = gap
                 continue
             path = forward[f] + [{"kind": "gap", **gap}] + backward[r]
-            unresolved = _unresolved_at_nodes(facts, resolved, _path_nodes(base_tree, path))
+            unresolved = _unresolved_at_nodes(facts, resolved, _path_nodes(base_tree, path), target_tree,
+                                              base=base_tree)
             if not unresolved:
                 return {
                     "status": "covered", "path": _attribute_free_steps(path, diff_fn),
@@ -1284,6 +1383,149 @@ def excused_gap_verdict(
     if capped:
         uncovered["capped"] = True
     return uncovered
+
+
+class Settlement:
+    """One store read's verdict-input facts (:data:`VERDICT_INPUT_KINDS`), their
+    resolution index and their review facts by head tree, built once and handed
+    to :func:`batch_review_blockers` and :func:`batch_review_covers` in place of
+    the fact list. The release check asks those once per entry and per
+    candidate review, and rebuilding the
+    whole-store indices on every ask made its cost grow with the store, not the
+    release (``boundary_coverage._Classifier`` builds one)."""
+
+    def __init__(self, facts: "list[dict]"):
+        self.facts = [f for f in facts if f.get("kind") in VERDICT_INPUT_KINDS]
+        self.resolved = resolution_index(self.facts)
+        self.ids = frozenset(f.get("id") for f in self.facts if f.get("id") is not None)
+        self._by_head: "dict[str, list[tuple[int, dict]]]" = {}
+        for i, fact in enumerate(self.facts):
+            head = (fact.get("body") or {}).get("head_tree") if fact.get("kind") == "review" else None
+            if isinstance(head, str):
+                self._by_head.setdefault(head, []).append((i, fact))
+
+    def at_nodes(self, nodes: "Iterable[str]") -> "list[dict]":
+        """:func:`_facts_at_nodes` from the index: the review facts standing at
+        ``nodes``, in store order."""
+        found = [pair for node in set(nodes) for pair in self._by_head.get(node, ())]
+        return [fact for _i, fact in sorted(found, key=lambda pair: pair[0])]
+
+
+def _settled(facts: "list[dict] | Settlement") -> Settlement:
+    return facts if isinstance(facts, Settlement) else Settlement(facts)
+
+
+def batch_review_blockers(facts: "list[dict] | Settlement", review: dict) -> list[dict]:
+    """The unresolved blocking findings standing at ``review``'s two trees, over
+    every review and resolution fact (``review`` itself included, whether or not
+    ``facts`` holds it). The settlement half of :func:`batch_review_covers`,
+    shared with the release check's batch fix tail, which asks it of a review
+    whose findings the tail fixed: a ``verify-resolutions`` pass's resolution
+    facts are what clear them.
+
+    Every fact standing at those trees counts, a release batch review's
+    included: this is the release check's settlement, where a release batch
+    review's blockers always gate (contrast :func:`_counts_at`). A blocker on a
+    merged branch's own trees is not asked: merging over it was the owner's
+    call at the PR (owner ruling 2026-11-26). ``facts`` may be a
+    :class:`Settlement` built once for many asks."""
+    body = review.get("body") if isinstance(review, dict) else None
+    if not isinstance(body, dict):
+        return []
+    settled = _settled(facts)
+    nodes = {t for t in (body.get("base_tree"), body.get("head_tree")) if isinstance(t, str) and t}
+    at = settled.at_nodes(nodes)
+    held = review.get("id") is not None and review.get("id") in settled.ids
+    if not held and not any(f is review for f in at):
+        # Not in the store yet: it stands at its own head tree, newest of all.
+        at = at + [review] if body.get("head_tree") in nodes else at
+    return _unresolved_at_nodes(settled.facts, settled.resolved, nodes, at_nodes=at)
+
+
+def batch_review_covers(
+    facts: "list[dict] | Settlement",
+    review: dict,
+    entry_files: "list[str] | None",
+    *,
+    brackets: bool,
+    ships: "Iterable[str] | None" = None,
+) -> dict:
+    """Does one boundary-stage review ``review`` cover one release entry, a
+    commit on the integration base whose changed files are ``entry_files``?
+
+    ``ships`` is the paths that differ, at the review's head, from what the last
+    release shipped (the release anchor's tree), as the caller reads them from
+    git; ``None`` asks nothing more than the interval.
+
+    The question :func:`coverage_verdict` cannot ask (design §3 of
+    ``documentation/issues/1222-1223-design.md``): a release batch review rates
+    only the files of the merges no boundary review read, so it is not an edge
+    (:func:`review_edges`), and composition cannot credit it. This rule credits
+    it for one entry at a time, when all three hold:
+
+    1. ``brackets``: the review's base tree is at or before the entry's first
+       parent on the base's first-parent line, and its head tree at or after the
+       entry. A git question, so the caller answers it.
+    2. Every judgeable file of the entry that still differs across the review's
+       interval (is in its ``files_changed``), or in ``ships``, is in its
+       ``files_reviewed``. A file the entry changed that is back to the
+       interval's base content needs no reading unless it is in ``ships``: an
+       interval starting before the release anchor can end back at its start on
+       a file the last release shipped changed, and then the entry ships a
+       change (M15, owner ruling 2026-11-26, R-4). A review whose subject is every judgeable file it changed
+       (any valid edge) meets this for every entry, which is wave 1's
+       whole-edge batch rule as the special case.
+    3. No unresolved blocking finding stands at the review's two trees, over
+       every fact (:func:`batch_review_blockers`).
+
+    **Relax-only.** It reads facts and returns an answer about one entry; it adds
+    no edge, and :func:`coverage_verdict` never calls it, so no gate verdict can
+    move because a batch fact exists. Its caller may only turn a not-covered
+    release entry into covered with it, never the reverse.
+
+    The caller passes only boundary-stage reviews: stage is the consolidator's
+    reading of a mode, which this pure module does not import.
+
+    Returns ``{"status": "covered" | "blocked" | "not", "reason": str}``, with
+    ``outside`` (the files the review did not rate) on condition 2's refusal and
+    ``unresolved`` (as :func:`coverage_verdict` lists them) on ``blocked``.
+    """
+    body = review.get("body") if isinstance(review, dict) else None
+    if not isinstance(body, dict) or review.get("kind") != "review":
+        return {"status": "not", "reason": "not a review fact"}
+    changed = body.get("files_changed")
+    reviewed = body.get("files_reviewed")
+    if not (
+        is_object_id(body.get("base_tree"))
+        and is_object_id(body.get("head_tree"))
+        and isinstance(changed, list)
+        and isinstance(reviewed, list)
+    ):
+        return {"status": "not", "reason": "the review's interval or file sets are malformed"}
+    if not brackets:
+        return {"status": "not", "reason": "the review's interval does not bracket the commit "
+                                           "on the base's first-parent line"}
+    if not isinstance(entry_files, list):
+        # Unread is never "changed nothing": that would credit any commit.
+        return {"status": "not", "reason": "the commit's changed files could not be read"}
+    in_interval = {f for f in changed if isinstance(f, str)} | set(ships or ())
+    rated = {f for f in reviewed if isinstance(f, str)}
+    outside = [f for f in judgeable_files([f for f in entry_files if isinstance(f, str)])
+               if f in in_interval and f not in rated]
+    if outside:
+        return {"status": "not", "outside": outside,
+                "reason": f"the review did not rate {len(outside)} of the commit's judgeable "
+                          f"file(s): {', '.join(outside)}"}
+    unresolved = batch_review_blockers(facts, review)
+    if unresolved:
+        named = ", ".join(f"{u.get('review_id')} {u.get('fid')}" for u in unresolved[:3])
+        return {"status": "blocked", "unresolved": unresolved,
+                "reason": f"{len(unresolved)} unresolved blocking finding(s) stand at the review's "
+                          f"trees ({named}{' …' if len(unresolved) > 3 else ''})"}
+    return {"status": "covered", "reason": "the review rated every judgeable file of the commit "
+                                           "still changed across its interval"
+                                           + (" or since the release anchor" if ships else "")
+                                           + ", with no open blocker"}
 
 
 def _find_path(

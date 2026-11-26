@@ -1740,7 +1740,8 @@ def _report_run_start_ns(report: Path) -> "tuple[int | None, str]":
 
 
 def tree_diff(
-    project_dir: Path, tree_a: str, tree_b: str, paths: "list[str] | None" = None
+    project_dir: Path, tree_a: str, tree_b: str, paths: "list[str] | None" = None,
+    *, renames: bool = True,
 ) -> "list[str] | None":
     """Paths changed between two tree objects (``git diff --name-only``),
     or ``None`` when the diff cannot be computed (missing object, git
@@ -1748,6 +1749,13 @@ def tree_diff(
     contract. This is the diff the gates inject into the algebra and the
     dispatch side uses for its ``files_changed`` snapshot, so the recorded
     set and the composed edge-validity check agree by construction.
+
+    ``renames=False`` passes ``--no-renames``, so a renamed file lists both its
+    old and its new path; by default git's rename detection lists only the new
+    one. A relaxation asking whether a path set touches a risk surface wants it
+    off (``gates.fix_tail_deferral``), or a surface renamed away goes unseen.
+    The default stays on because the recorded ``files_changed`` snapshots and
+    the algebra's edge check were all taken with it, and must keep agreeing.
 
     ``paths`` narrows the question to a pathspec: *do these two trees differ on
     THESE files?* Asked of a whole tree the answer costs a full tree walk; asked
@@ -1801,7 +1809,8 @@ def tree_diff(
             return None
     pathspec = ["--", *(f":(literal){p}" for p in paths)] if paths else []
     rc, out, _err = run_git(
-        project_dir, "diff", "--name-only", "-z", tree_a, tree_b, *pathspec
+        project_dir, "diff", "--name-only", "-z", *([] if renames else ["--no-renames"]),
+        tree_a, tree_b, *pathspec,
     )
     if rc != 0:
         return None

@@ -813,13 +813,18 @@ LAST_MEASURED_TOKENS = {
     # dependency-scope bullet, naming only what a static read cannot judge. The bullet is pinned
     # identical in both carriers, and the detector's results arrive through record-lint, so nothing
     # another file owns was left to cut. A READING; ceiling raised with it.
+    # -1 on 2026-11-26 (boundary-review-per-release Chunk 06): the `cumulative` bullet and the
+    # Subject-and-oracle sentence name the release span (`Span: release from <commit>`, its
+    # `files_context`). Paid in place by cutting `final`'s wall-clock target and the PR-gate
+    # requirement (review-cycle.md and the PR skill own both) and the Modes line's aside on why
+    # nothing here restates goals-1-3.md. A READING; ceiling lowered with it.
     # +48 on 2026-11-26 (critic-good-faith-severity, owner ruling 2026-11-26), DECLARED: Severity
     # Levels gains the good-faith cap (a failure needing the repo's own builder, owner or model to act
     # in bad faith later is an observation at most) with its floor and what a competent mistake is. Paid in part
     # by cutting what another surface owns: the BLOCKING bullet's restatement of the Stage paragraph,
     # the Observation bullet's oracle-order sentence (Scope says cross-checks.md owns it), its pointer
     # into review-cycle.md (which no reviewer loads). Pinned identical in both carriers. A READING.
-    "skills/critic/review-protocol.md": 4219,
+    "skills/critic/review-protocol.md": 4222,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -1212,7 +1217,19 @@ LAST_MEASURED_TOKENS = {
     # review runs only session files are free of the consolidation tree check. Paid in place by
     # pointing the protected-path list at `buildplan_refs.protected_path_violation`, which owns it,
     # and dropping the heading's restated question. A READING; ceiling lowered with it.
-    "skills/critic/review-cycle.md": 8257,
+    # 0 on 2026-11-26 (boundary-review-per-release Chunk 06): the release batch review's
+    # paragraph, the manifest's release `files_context`, and Mode Selection item 1's lane
+    # exception. Paid in place by cutting the resolve-base fallback list (the op and
+    # project-state-keys.md own it), the rendezvous gloss (`partial_path`/`started_path` own it),
+    # the scope-widened row's re-dispatch line (SKILL.md's exit table owns it), and the ten-round
+    # measurement (critic_consolidate owns it). A READING; ceiling unchanged.
+    # -15 on 2026-11-26 (boundary-review-per-release): the release batch review's paragraph no
+    # longer routes a merged branch's blocker through the verify pass, a route the owner's ruling
+    # retired. A READING; ceiling unchanged.
+    # 0 on 2026-11-26 (boundary-review-per-release round 6, R-3): the manifest key list names
+    # `files_since_anchor`/`release_anchor`. Paid in place by cutting `dispatch_tree`'s gloss (its
+    # writer's comment owns it). A READING; ceiling unchanged.
+    "skills/critic/review-cycle.md": 8242,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1428,7 +1445,15 @@ LAST_MEASURED_TOKENS = {
     # to planning.md "Chunk state", which owns it. Priced in `test_reviewer_payload_budget.py`.
     # +31 on 2026-11-24 (credential-placeholders Chunk 02), DECLARED: the exit table gains exit 9
     # (credential lines the PR gate would refuse, on `cumulative`). Priced in `test_reviewer_payload_budget.py`.
-    "skills/critic/SKILL.md": 3278,
+    # 0 on 2026-11-26 (boundary-review-per-release Chunk 06): step 4 names `--span release` and
+    # step 5 a release cumulative's `files_context`. Paid in place by cutting the designer-handoff
+    # step's "Inlined" aside (its own BEFORE `critic-begin` already says when it fires) and step
+    # 4's "(base/head trees)" gloss (the manifest owns it). A READING; ceiling unchanged.
+    # -13 on 2026-11-26 (boundary-review-per-release round 6, R-4): the exit-8 row says the
+    # `--chunks` line names all chunks under a `per-release lane` rationale. Paid in place by
+    # cutting step 4's gloss on what the live-review refusal names (its stderr owns it). A READING;
+    # ceiling lowered with it.
+    "skills/critic/SKILL.md": 3265,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -6019,10 +6044,11 @@ class TestCriticSkill:
         # RAISED 4062 -> 4071 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4071 -> 4111 (backlog-roi-wave2 Chunk 02, #847) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4111 -> 4172 (test-determinism Chunk 02, 2026-11-24) — see LAST_MEASURED_TOKENS. Declared.
-        # RAISED 4172 -> 4228 (critic-good-faith-severity, 2026-11-25, owner ruling 2026-11-26): the
+        # LOWERED 4172 -> 4171 (boundary-review-per-release Chunk 06) with the reading.
+        # RAISED (critic-good-faith-severity, 2026-11-26, owner ruling 2026-11-26): the
         # good-faith cap, a rule that removes review work, net of in-place cuts — see
         # LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 4220, f"review-protocol.md is ~{tokens} tokens, should be <4220"
+        assert tokens < 4223, f"review-protocol.md is ~{tokens} tokens, should be <4223"
 
 
 # =============================================================================
@@ -6611,7 +6637,8 @@ class TestCriticSkillRoutesByMode:
         # LOWERED 3232 -> 3226 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
         # RAISED 3226 -> 3248 (chunk-plan-order Chunk 02, #1141): exit 8's row — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 3248 -> 3279 (credential-placeholders Chunk 02): exit 9's row — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3279, f"SKILL.md is ~{tokens} tokens, should be <3279"
+        # LOWERED 3279 -> 3266 (boundary-review-per-release round 6, R-4) with the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 3266, f"SKILL.md is ~{tokens} tokens, should be <3266"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
