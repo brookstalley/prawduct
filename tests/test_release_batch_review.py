@@ -349,7 +349,14 @@ class TestTheBatchCreditsWhatItRead:
         base = _branch(repo, "a")
         _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
         blocker = _review(repo, base, _tree(repo), CHUNK, blocking=True)
+        branch_tip = _tree(repo)
+        # The base moves first, so the merge's tree (the batch review's head) is
+        # not the branch tip's, where the blocker stands: only the entry's own
+        # trees can carry it to the batch rule.
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
         merge = _merge(repo, "a")
+        assert _tree(repo, merge) != branch_tip, "the fixture must keep the blocker off the batch's trees"
         before = _coverage(repo, tmp_path)[merge]
         assert before["classification"] == bc.UNCOVERED and "unresolved blocking" in before["reason"], before
         assert _begin_release(repo, tmp_path).returncode == 0

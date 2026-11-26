@@ -222,6 +222,63 @@ class TestTheBaseTipReader:
         )
 
 
+class TestTheMergedBranchReader:
+    """``boundary_review_policy_of_merge``: the one combined reading for a branch
+    that has already merged (the fix-tail deferral at release time). Both its
+    merge-base and its tip must declare per_release; the working tree has no say."""
+
+    @pytest.mark.parametrize("on_base, on_branch, expected", [
+        (OPT_IN, OPT_IN, review_lane.PER_RELEASE),
+        ("", OPT_IN, review_lane.PER_PR),  # a branch cannot opt itself in
+        (OPT_IN, "boundary_review: per_pr\n", review_lane.PER_PR),  # it may opt out
+    ], ids=["both", "branch-opts-in", "branch-opts-out"])
+    def test_both_revisions_must_declare_it(self, tmp_path, on_base, on_branch, expected):
+        repo = _repo(tmp_path, on_base)
+        _feature(repo, on_branch)
+        merge_base = _git(repo, "merge-base", "main", "feat")
+        _git(repo, "checkout", "-q", "main")
+        _state(repo, OPT_IN)  # the working tree, which must not count
+        policy = review_lane.boundary_review_policy_of_merge(repo, merge_base, "feat")
+        assert policy.value == expected, policy
+
+    def test_a_tip_that_cannot_be_read_says_so(self, tmp_path):
+        repo = _repo(tmp_path, OPT_IN)
+        policy = review_lane.boundary_review_policy_of_merge(repo, _git(repo, "rev-parse", "HEAD"), "gone")
+        assert policy.value == review_lane.PER_PR and "no project-state.yaml reads at gone" in policy.note
+
+    def test_the_fix_tail_deferral_reads_it(self, tmp_path, monkeypatch):
+        """W5: the deferral of a merged branch asks this reader, not its own
+        combination: a per_pr answer from it is what the deferral obeys."""
+        from lib import boundary_coverage as bc  # noqa: PLC0415
+        from test_fix_tail_deferral import _merged  # noqa: PLC0415
+
+        repo, merge = _merged(tmp_path)
+        assert bc.classify_merge(repo, merge).classification == bc.TAIL_DEFERRED  # the control
+        monkeypatch.setattr(review_lane, "boundary_review_policy_of_merge",
+                            lambda *_a: review_lane.Policy(review_lane.PER_PR, "x"))
+        assert bc.classify_merge(repo, merge).classification == bc.UNCOVERED
+
+
+class TestTheReleasePolicyNeverRaises:
+    def test_a_failed_read_falls_back_to_the_checkout_and_says_so(self, tmp_path, monkeypatch):
+        repo = _repo(tmp_path, OPT_IN)
+
+        def boom(_p):
+            raise RuntimeError("read boom")
+
+        monkeypatch.setattr(review_lane, "_release_policy", boom)
+        policy = review_lane.release_policy(repo)
+        assert (policy.value, policy.read_failed) == (review_lane.PER_RELEASE, True), policy
+        assert "(RuntimeError: read boom)" in policy.note and "stands (per_release)" in policy.note
+        _state(repo, "")
+        policy = review_lane.release_policy(repo)
+        assert (policy.value, policy.read_failed) == (review_lane.PER_PR, True), policy
+
+    def test_a_read_that_works_is_not_marked_failed(self, tmp_path):
+        repo = _repo(tmp_path, OPT_IN)
+        assert review_lane.release_policy(repo).read_failed is False
+
+
 class TestTheDocTemplateAndConstantAgree:
     """One key, written in three places: the constant the reader uses, the
     reference entry and the template hint."""
