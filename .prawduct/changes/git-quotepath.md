@@ -47,9 +47,10 @@ spellings, `--porcelain`). It holds four rules:
 - A function makes no more such reads without `-z` than it uses decoders, or it is listed with the
   reason its reads use no name: an emptiness or exit-code check, a fixed ASCII pathspec, or git
   printing the name raw.
-- No name read goes through a runner that trims git's output (`evidence.run_git` without
-  `strip=False`, `gitstate._git_text`, and the module helpers that trim). Trimming takes the
-  status column's leading space off the first porcelain line, and a leading space off a first name.
+- No name read, and no diff read for its headers, goes through a runner that trims git's output:
+  `evidence.run_git` without `strip=False`, `gitstate._git_text`, or a module's own wrapper around
+  one, which the lint finds from the code rather than from a list. Trimming takes the status
+  column's leading space off the first porcelain line, and a leading space off a first name.
 - Every function that parses `diff --git` headers reads them through `gitstate.diff_header_path`.
 - Every reader of `gitstate.git_status_output`'s text decodes, or is listed with why it needs no
   name.
@@ -62,7 +63,8 @@ its caller's arguments, builds its arguments as a literal the scan reads, or is 
   space from their first name. `critic_consolidate.no_judgeable_wip` misread an unstaged first line
   (` M .prawduct/x.py` became `prawduct/x.py`, a judgeable file). Each now passes `strip=False`.
 - A `diff --git a/X b/X` header is read at its midpoint, because X may hold ` b/` and git does not
-  quote a space. `record_lint`'s diff pins `--src-prefix=a/ --dst-prefix=b/` against a user's
+  quote a space there. `record_lint._parse_diff` then takes the new side's name from its `+++ b/`
+  line, which names a renamed file whole (git ends an unquoted name holding a space with a tab). `record_lint`'s diff pins `--src-prefix=a/ --dst-prefix=b/` against a user's
   `diff.noprefix`.
 - Porcelain readers split on git's newline only, as `git_path_lines` does, and skip the empty last
   line. `late_requirements.scan` sorts the decoded names, not git's quoted text.

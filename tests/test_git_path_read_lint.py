@@ -46,14 +46,37 @@ UNDECODED: dict[str, str] = {
 
 #: Runners that trim git's output, and the keyword that stops it (``None``: always trims).
 #: Trimming takes the leading space off the first line: a porcelain status column, or a name
-#: that begins with a space. Module-local wrappers that trim are named by their file.
+#: that begins with a space. A module's own wrapper around one is found by :func:`_wrappers`.
 TRIMMING: dict[str, "str | None"] = {"run_git": "strip", "_git_text": None}
-TRIMMING_IN_FILE: dict[str, frozenset[str]] = {
-    "lib/boundary_coverage.py": frozenset({"git", "_git"}),
-    "lib/git_hygiene.py": frozenset({"_git"}),
-    "lib/evidence_sync.py": frozenset({"_git"}),
-    "lib/stranded_work.py": frozenset({"_git"}),
-}
+
+
+def _wrappers(tree: ast.AST) -> "dict[str, str | None]":
+    """The functions in ``tree`` that forward their arguments to a trimming runner, and the
+    keyword that stops each trimming (``None``: it always trims). A wrapper is a function that
+    passes ``*args`` to one; it trims unless it passes ``strip=False``, and it lets its caller
+    choose when it passes ``strip=<its own parameter>``. One that returns ``….strip()`` always
+    trims. Derived from the code, so a new module's `_git` helper is seen without a list."""
+    found: dict[str, "str | None"] = {}
+    for function in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        strips_result = any(
+            isinstance(n, ast.Return) and isinstance(n.value, ast.Call)
+            and isinstance(n.value.func, ast.Attribute) and n.value.func.attr == "strip"
+            for n in ast.walk(function))
+        for call in (n for n in ast.walk(function) if isinstance(n, ast.Call)):
+            runner = _name(call.func)
+            if runner not in TRIMMING or not any(isinstance(a, ast.Starred) for a in call.args):
+                continue
+            keyword = TRIMMING[runner]
+            given = next((k.value for k in call.keywords if k.arg == keyword), None) if keyword else None
+            if strips_result:
+                found[function.name] = None
+            elif isinstance(given, ast.Constant) and given.value is False:
+                continue
+            elif isinstance(given, ast.Name):
+                found[function.name] = given.id
+            else:
+                found[function.name] = None
+    return found
 
 #: `<file>::<function>` → why a function reading ``git_status_output``'s text needs no decoder.
 STATUS_TEXT_READERS: dict[str, str] = {
@@ -98,9 +121,7 @@ class Facts:
 
 def scan(source: str, rel: str = "") -> "dict[str, Facts]":
     tree = ast.parse(source)
-    trimming = dict(TRIMMING) | {name: None for name in TRIMMING_IN_FILE.get(rel, ())}
-    if rel == "lib/stranded_work.py":
-        trimming["_git"] = "strip"
+    trimming = dict(TRIMMING) | _wrappers(tree)
     out: dict[str, Facts] = {}
 
     def record(key: str, node: ast.AST) -> None:
@@ -118,7 +139,8 @@ def scan(source: str, rel: str = "") -> "dict[str, Facts]":
             if _is_name_read(direct) and "-z" not in direct:
                 facts.reads += 1
             runner = _name(node.func)
-            if runner in trimming and _is_name_read(words):
+            header_read = any(word.startswith("--dst-prefix=") for word in words)
+            if runner in trimming and (_is_name_read(words) or header_read):
                 keyword = trimming[runner]
                 kept = any(k.arg == keyword and isinstance(k.value, ast.Constant) and k.value.value is False
                            for k in node.keywords) if keyword else False
@@ -194,6 +216,15 @@ def one_of_two_decoded(p):
 def trimmed(p):
     return run_git(p, "ls-files", "-z")[1].split("\\0")
 
+def _trimming_git(p, *args):
+    return run_git(p, *args)
+
+def through_a_new_wrapper(p):
+    return gitstate.git_path_lines(_trimming_git(p, "diff", "--name-only")[1])
+
+def header_read_trimmed(p):
+    return run_git(p, "diff", "--src-prefix=a/", "--dst-prefix=b/")
+
 def header_parser(out):
     return [line for line in out.split("\\n") if line.startswith("diff --git ")]
 
@@ -216,6 +247,8 @@ def unrelated(p):
         "decoded_by_map": (1, 1, False, False, False),
         "one_of_two_decoded": (2, 1, False, False, False),
         "trimmed": (0, 0, True, False, False),
+        "through_a_new_wrapper": (1, 1, True, False, False),
+        "header_read_trimmed": (0, 0, True, False, False),
         "header_parser": (0, 0, False, True, False),
         "<module>": (0, 0, False, True, False),
         "status_reader": (0, 0, False, False, True),

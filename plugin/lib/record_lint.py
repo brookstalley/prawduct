@@ -365,11 +365,11 @@ def _added_lines(
         # `diff.noprefix` or `diff.srcPrefix`/`diff.dstPrefix` in a user's config would move them.
         "--src-prefix=a/",
         "--dst-prefix=b/",
-
         base_tree,
         head_tree,
         "--",
         *paths,
+        strip=False,
     )
     if rc != 0:
         return None
@@ -382,6 +382,7 @@ def _parse_diff(out: str) -> "dict[str, list[tuple[int, str]]]":
     be committed on every platform this test suite runs on."""
     by_path: dict[str, list[tuple[int, str]]] = {}
     current: "list[tuple[int, str]] | None" = None
+    header_name: "str | None" = None
     in_hunk = False
     line_num = 0
     # git's newline only: a content line may hold a character `str.splitlines` also splits on.
@@ -396,7 +397,19 @@ def _parse_diff(out: str) -> "dict[str, list[tuple[int, str]]]":
             # here — inside a hunk every line carries a `+`/`-`/space prefix.)
             name = gitstate.diff_header_path(raw)
             current = by_path.setdefault(name, []) if name else None
+            header_name = name
             in_hunk = False
+            continue
+        if not in_hunk and raw.startswith("+++ "):
+            # The new side's own line names it unambiguously, where a rename's header can split
+            # wrong on a name holding ` b/`. `/dev/null` (a deletion) adds no line. git ends an
+            # unquoted name holding a space with a tab, so the name's end is unambiguous too.
+            text = raw[4:]
+            side = gitstate.unquote_git_path(text[:-1] if text.endswith("\t") and " " in text else text)
+            if side.startswith("b/") and len(side) > 2 and side[2:] != header_name:
+                if header_name is not None and not by_path.get(header_name):
+                    by_path.pop(header_name, None)
+                current = by_path.setdefault(side[2:], [])
             continue
         hunk = _HUNK_RE.match(raw)
         if hunk:
@@ -788,8 +801,8 @@ def _resolve_artifact(project_dir: Path, prawduct_dir: Path, name: str) -> "Path
     )
     if rc != 0:
         return None
-    for name in gitstate.git_path_lines(out):
-        candidate = project_dir / name
+    for rel in gitstate.git_path_lines(out):
+        candidate = project_dir / rel
         if candidate.is_file():
             return candidate
     return None

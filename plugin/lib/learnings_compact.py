@@ -452,6 +452,15 @@ def validate(project_dir: Path, ws: dict) -> Result:
 # ---------------------------------------------------------------------------
 
 
+def _shown_status(line: str, parsed: "tuple[str, str | None, str] | None") -> str:
+    """One status line as the owner reads it: each name decoded, so a rules file named outside
+    ASCII shows its name; a line that does not parse is shown as git printed it."""
+    if parsed is None:
+        return line
+    status, source, path = parsed
+    return f"{status} {source} -> {path}" if source else f"{status} {path}"
+
+
 def undo_refusals(project_dir: Path, local: bool) -> list[str]:
     """Why ``--apply`` cannot promise an undo. Empty under ``--local``, whose
     undo is the backup :func:`apply` verifies before writing."""
@@ -479,13 +488,8 @@ def undo_refusals(project_dir: Path, local: bool) -> list[str]:
         refusals.append(
             "the rules files have uncommitted changes; commit them first, because "
             "the commit is this command's undo:\n    "
-            + "\n    ".join(
-                # Each name decoded, so a rules file named outside ASCII shows its name.
-                f"{status} {source} -> {path}" if source else f"{status} {path}"
-                for status, source, path in filter(
-                    None, map(gitstate.parse_porcelain_line, proc.stdout.split("\n"))
-                )
-            )
+            + "\n    ".join(_shown_status(line, gitstate.parse_porcelain_line(line))
+                             for line in proc.stdout.split("\n") if line)
         )
     return refusals
 

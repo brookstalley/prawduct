@@ -85,6 +85,14 @@ Sites already passing `-z` stay as they are; `-z` output is never quoted.
   test gains a generated domain (every ASCII character but upper case, which a case-insensitive
   filesystem folds, plus awkward Unicode), since `hypothesis` is not a dependency.
 
+- *Round-4 review fixes (rev-20261126T223221Z-1bc3b9c1):* the lint derives trimming wrappers from
+  the code (a new module's `_git` helper is seen without a list), and counts a diff read for its
+  headers in the trim rule; `_parse_diff` names a file by its `+++ b/` line; a porcelain rename with
+  malformed quoting parses to `None`; the undo refusal shows a line it cannot parse as git printed
+  it. Not taken: routing every name read through one `gitstate` read function (the warning's other
+  remedy). The lint now holds what that function would, and a 25-site rewrite after four review
+  rounds buys no reader a different answer.
+
 **Level:** High. The site table below was built by reading each of the 66 grep hits plus a search
 past the grep (2026-11-26); the fix per site is mechanical.
 

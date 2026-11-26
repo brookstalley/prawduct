@@ -1046,8 +1046,9 @@ def parse_porcelain_line(line: str) -> tuple[str, str | None, str] | None:
     if "R" in status or "C" in status:
         if rest.startswith('"'):
             read = _read_quoted(rest, 0)
-            if read is not None and rest[read[1]:read[1] + 4] == " -> ":
-                src_path, rest = read[0], rest[read[1] + 4:]
+            if read is None or rest[read[1]:read[1] + 4] != " -> ":
+                return None  # a quoted source that is not well-formed git quoting
+            src_path, rest = read[0], rest[read[1] + 4:]
         elif " -> " in rest:
             src_path, rest = rest.split(" -> ", 1)
     path = unquote_git_path(rest)

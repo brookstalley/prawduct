@@ -445,3 +445,29 @@ def test_every_ascii_character_and_awkward_unicode_round_trips(repo):
     status = git(repo, "status", "--porcelain", "-uall")
     parsed = [gitstate.parse_porcelain_line(line) for line in status.split("\n") if line]
     assert {path for _s, _src, path in parsed} == set(names)
+
+
+def test_a_rename_whose_new_name_holds_space_b_is_named_by_its_plus_line(repo):
+    """A rename's header has two different names, so no midpoint; the last ` b/` split would
+    cut `notes/a b/new.md` wrong. The `+++ b/` line names the new side whole."""
+    from lib import record_lint
+    write(repo, ["old.md"])
+    commit_all(repo, "old")
+    base_tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
+    (repo / "notes" / "a b").mkdir(parents=True)
+    git(repo, "mv", "old.md", "notes/a b/new.md")
+    (repo / "notes" / "a b" / "new.md").write_text("old.md\nadded\n")
+    commit_all(repo, "rename and add")
+    head_tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
+    by_path = record_lint._added_lines(repo, base_tree, head_tree, ["old.md", "notes/a b/new.md"])
+    assert by_path == {"notes/a b/new.md": [(2, "added")]}
+
+
+def test_a_porcelain_rename_with_malformed_quoting_is_none():
+    assert gitstate.parse_porcelain_line('R  "bad\\q.md" -> new.md') is None
+
+
+def test_an_undo_refusal_keeps_a_line_it_cannot_parse():
+    from lib import learnings_compact
+    assert learnings_compact._shown_status("R  odd", None) == "R  odd"
+    assert learnings_compact._shown_status("?? x", ("??", None, "x")) == "?? x"
