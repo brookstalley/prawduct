@@ -430,7 +430,9 @@ chunk's first review in any other mode. The budget ends a review loop, and those
 Counted, they ran out any plan with more chunks than the budget before its boundary review (owner ruling
 2026-11-23). At the ceiling a dispatch that is itself one of them still runs. Its chunks are the ones it will
 name, `--chunks` or the proposal. A later review of a chunk, a second `cumulative`, and a review naming no chunk
-are counted.
+are counted. A release batch review (`critic-begin --span release`) is never counted and takes no scope's boundary
+slot: it is the release's own step on the integration branch, and counting it would leave `--force` as the only
+route past a held `per_release` release (owner ruling 2026-11-26).
 
 The unit is the build-plan SCOPE, not the branch: a branch may carry two scopes (one would charge
 the other), and on a trunk-based repo the merge-base span is zeroed by every push, so a

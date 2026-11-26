@@ -618,3 +618,13 @@ tag, detached, rather than onto `develop`.
    `pr-transferred`. This extends the 2026-11-24 "covered" definition, whose text stands: the transfer requires the
    branch's diff byte-identical to the reviewed span, a base advance touching none of its files, and a suite run that met
    the merged tree, and the release op reads the PR gate's recorded grant before re-deciding.
+
+**2026-11-26, later.** "yes agreed with your recs, let's do it" — answering two asks:
+1. A release batch review (`span: release`, #1232) is never charged to `review_round_budget` and takes no scope's
+   boundary slot (`critic_consolidate._cadence_round_ids`). This widens the 2026-11-23 ruling's item 2, whose
+   not-counted set was a chunk's first full review and a scope's first boundary review. Why: it is the release's own
+   step, not a round on any scope; charging it would leave `--force` the only route past a held `per_release`
+   release, and a re-run is owed only when new merges land (fixes clear through `verify-resolutions`). Recorded as
+   M2 in `build-plan-boundary-review-per-release.md`; key doc `review_round_budget` updated.
+2. PR #1252 (#1250, `fix/boundary-coverage-transfer` → `develop`) is merged, ahead of #1232's PR, so #1232's PR does
+   not carry it.

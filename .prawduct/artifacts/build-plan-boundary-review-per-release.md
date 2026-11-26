@@ -201,9 +201,9 @@ W9) found M2 to M6 recorded only in docstrings.
   hides nothing from it. Lives in `coverage_algebra._counts_at`.
 - **M2, the round budget never charges a release batch review** (`critic_consolidate._cadence_round_ids`).
   *Why:* it is the release's own step, not a round on any scope. Charging it would leave `--force`
-  as the only route to a held per_release release. **This widens the owner's 2026-11-23 ruling
-  (item 2) and needs the owner's word.** Until then, the `review_round_budget` key doc is left saying
-  what that ruling says.
+  as the only route to a held per_release release. It widens the owner's 2026-11-23 ruling
+  (item 2). **Confirmed by the owner 2026-11-26** (`owner-rulings.md`); the `review_round_budget` key
+  doc says so.
 - **M3, the release policy falls back to the checkout's declaration.** The checkout's `per_release`
   stands when the integration tip cannot be read, or when the read fails. A failed read then
   refuses as unevaluable rather than passing. *Why:* for a release check `per_release` is the
