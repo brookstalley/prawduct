@@ -619,7 +619,8 @@ def _boundary_coverage_lines(project_dir: Path) -> "list[tuple[str, bool]]":
 
     Stdout gets the op's count line, because a control heard only when it fires
     cannot be judged, so its passing reading is printed too. Stderr gets one
-    ``NOTE:`` per scope not covered, and one when the op could not evaluate. NOTE is
+    ``NOTE:`` per entry not covered (a scope, or a commit the walk since the release
+    anchor found), and one when the op could not evaluate. NOTE is
     advice's prefix, and every line is advice: `check-boundary-coverage` is the
     detail."""
     from . import boundary_coverage  # noqa: PLC0415 — lazy: it imports the consolidator
@@ -636,8 +637,8 @@ def _boundary_coverage_lines(project_dir: Path) -> "list[tuple[str, bool]]":
     for entry in report.entries:
         if entry.classification not in boundary_coverage.COVERED:
             lines.append((
-                f"NOTE: boundary-coverage: {entry.scope} is {entry.classification}, not covered — "
-                f"{entry.reason} (`prawduct-hook check-boundary-coverage` lists every scope).",
+                f"NOTE: boundary-coverage: {entry.label} is {entry.classification}, not covered — "
+                f"{entry.reason} (`prawduct-hook check-boundary-coverage` lists every entry).",
                 True,
             ))
     return lines

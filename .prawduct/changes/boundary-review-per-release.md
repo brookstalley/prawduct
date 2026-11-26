@@ -24,7 +24,32 @@ the state template, and the NFR amendment is recorded beneath the clause, whose 
 ratified. `per_release` is read and changes nothing yet: no gate, inference or review consults it
 until the later chunks of this scope land.
 
+### Chunk 02: a release anchor, and every judgeable commit since it
+Wave 1's `check-boundary-coverage` found merges only through the fragments they added, so work
+committed on the base without a fragment was invisible to it, and a release check that blocks on
+its answer would have passed that work unread. The op now finds the release anchor, the nearer the
+tip of the newest first-parent commit adding a release file under `.prawduct/releases/` and the
+oldest first-parent commit containing the newest version tag reachable from the base (the second
+serves repos that back-merge tags and write no release files). It then classifies every
+first-parent commit after the anchor that changes a judgeable file, unioned with the fragment join
+and de-duplicated by commit, so a scope a pruned release withheld stays classified. One `git log`
+lists the whole walk. A repo with neither anchor gets the fragment join alone, and the report says
+there was no anchor. A new covered class, `release-bookkeeping`, is a single-parent commit whose
+judgeable changes are all files `release_version_files:` declares at its parent: the reopen commit
+after a cut, which read `direct` before. An undeclared repo's fallback layout never qualifies. A
+merge whose branch changed nothing judgeable but whose merge commit edits a judgeable file now reads
+`uncovered`, not `no-judgeable`, because the walk reaches such merges. The count line names the
+anchor and how many commits the walk found. It is still advice, and `check-releasability`'s exit is
+unchanged.
+
 ## Consumer note
 A new opt-in key, `boundary_review:` in `.prawduct/project-state.yaml` (see
 `/prawduct:methodology project-state`). At this point `per_release` is read and changes nothing;
 leave it unset. Nothing changes for a repo that does not set it.
+
+`check-boundary-coverage` (and the count line `check-releasability` prints) now also lists every
+judgeable commit since your last release, including work committed on the integration branch
+without a change fragment, so expect more entries and a count line that names the release anchor.
+`--json` adds `anchor`, `no_anchor_reason` and each entry's `source` (`fragment`, `walk` or
+`both`), and a new covered class, `release-bookkeeping`, for a commit that changes only the files
+you declare in `release_version_files:`. Neither command's exit code changes.

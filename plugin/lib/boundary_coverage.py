@@ -1,10 +1,23 @@
-"""Which release-pending merges did a boundary review cover? (#1223, wave 1)
+"""Which release-pending merges did a boundary review cover? (#1223, wave 1; #1232)
 
 A per-release boundary review is only safe if, at the release, something can name
-the merged work no boundary review read. This module is that one answer. For each
-release-pending scope (``release_readiness.pending_scopes``) it finds the
-first-parent commit on the integration base that added the scope's fragment, and
-classifies that commit:
+the merged work no boundary review read. This module is that one answer. It
+classifies two sets of first-parent commits on the integration base, unioned and
+de-duplicated by commit (each entry's ``source`` says which set named it):
+
+- the **fragment join** (wave 1): for each release-pending scope
+  (``release_readiness.pending_scopes``), the commit that added its fragment;
+- the **walk** (#1232): every first-parent commit after the **release anchor**
+  that changes a judgeable file, so work that never wrote a fragment is seen.
+
+The anchor (:func:`release_anchor`) is the nearer to the base's tip of: the newest
+first-parent commit adding a release file under ``.prawduct/releases/`` (the cut
+writes one), and the oldest first-parent commit containing the newest version tag
+reachable from the base. With neither there is no anchor, the walk is skipped and
+the report says so; the fragment join is still given. The union keeps a scope a
+pruned release withheld (merged before the anchor, still pending) classified.
+
+Each commit is classified as:
 
 - ``no-judgeable``: its span changes no judgeable file
   (``coverage_algebra.is_judgeable_path``).
@@ -30,8 +43,14 @@ classifies that commit:
 - ``inner-only``: coverage composes, but only through inner-stage reviews.
 - ``uncovered``: nothing composes, or an open blocker stands on the path. When
   only the transfer's suite condition failed, the reason says so.
-- ``direct``: a commit with one parent changed a judgeable file. That is work
-  committed on the base itself, or a squash merge; git cannot tell the two apart.
+- ``release-bookkeeping``: a commit with one parent whose judgeable changes are all
+  files the repo declares in ``release_version_files:``, read at its parent (the
+  release reopen's version bump). Covered. An undeclared repo's fallback layout
+  is a guess and never qualifies, and the declaration is read before the commit,
+  so a commit cannot declare its own files bookkeeping.
+- ``direct``: any other commit with one parent that changed a judgeable file. That
+  is work committed on the base itself, or a squash merge; git cannot tell the
+  two apart.
 - ``unknown``: no commit on the base added the fragment (not merged yet, or the
   fragment is untracked), or git could not answer.
 
@@ -51,12 +70,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import change_fragments, coverage, coverage_algebra, evidence
+from . import change_fragments, change_log, consumer_digest, coverage, coverage_algebra, evidence
 
 NO_JUDGEABLE = "no-judgeable"
 PR_COVERED = "pr-covered"
 PR_TRANSFERRED = "pr-transferred"
 BATCH_COVERED = "batch-covered"
+RELEASE_BOOKKEEPING = "release-bookkeeping"
 INNER_ONLY = "inner-only"
 UNCOVERED = "uncovered"
 DIRECT = "direct"
@@ -64,11 +84,22 @@ UNKNOWN = "unknown"
 
 #: Every classification, in the order a report lists its counts. The covered ones
 #: come first; the rest are what a release operator reads.
-CLASSES = (NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED, INNER_ONLY, UNCOVERED, DIRECT,
-           UNKNOWN)
-COVERED = frozenset({NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED})
+CLASSES = (NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED, RELEASE_BOOKKEEPING, INNER_ONLY,
+           UNCOVERED, DIRECT, UNKNOWN)
+COVERED = frozenset({NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED, RELEASE_BOOKKEEPING})
+
+#: Which set named an entry: the pending-fragment join, the walk since the
+#: release anchor, or both.
+SOURCE_FRAGMENT = "fragment"
+SOURCE_WALK = "walk"
+SOURCE_BOTH = "both"
+
+#: How the release anchor was found.
+ANCHOR_RELEASE_FILE = "release-file"
+ANCHOR_TAG = "tag"
 
 _VERIFY = "verify-resolutions"
+_STATE_REL = ".prawduct/project-state.yaml"
 
 
 @dataclass
@@ -78,6 +109,16 @@ class Entry:
     reason: str
     commit: "str | None" = None
     subject: str = ""
+    #: ``fragment``, ``walk`` or ``both`` in a report; empty for a commit asked
+    #: about directly (:func:`classify_merge`).
+    source: str = ""
+
+    @property
+    def label(self) -> str:
+        """The scope, or, for a walked commit no fragment names, its short name and subject."""
+        if self.scope:
+            return self.scope
+        return f'{(self.commit or "no commit")[:8]} "{self.subject}"'
 
     def as_dict(self) -> dict:
         return {
@@ -86,7 +127,21 @@ class Entry:
             "reason": self.reason,
             "commit": self.commit,
             "subject": self.subject,
+            "source": self.source,
         }
+
+
+@dataclass(frozen=True)
+class Anchor:
+    """The release the walk starts after: a first-parent commit on the base."""
+
+    commit: str
+    tree: str
+    source: str  # ANCHOR_RELEASE_FILE | ANCHOR_TAG
+    reason: str
+
+    def as_dict(self) -> dict:
+        return {"commit": self.commit, "tree": self.tree, "source": self.source, "reason": self.reason}
 
 
 @dataclass
@@ -99,6 +154,9 @@ class Report:
     #: invalid ones, which carry no trustworthy scope, so they are not classified,
     #: and are named here so the count line cannot read as the whole pending set.
     refusals: list = field(default_factory=list)
+    anchor: "Anchor | None" = None
+    #: Why there is no anchor (so no walk), when there is none on an ``ok`` report.
+    no_anchor_reason: "str | None" = None
 
     def counts(self) -> dict:
         tally = {name: 0 for name in CLASSES}
@@ -114,6 +172,8 @@ class Report:
             "counts": self.counts(),
             "entries": [entry.as_dict() for entry in self.entries],
             "refusals": list(self.refusals),
+            "anchor": self.anchor.as_dict() if self.anchor else None,
+            "no_anchor_reason": self.no_anchor_reason,
         }
 
 
@@ -161,6 +221,7 @@ class _Classifier:
         self._diff_fn = gates._cached_diff_fn(project_dir)
         self._key_fn = gates._tree_key_fn(project_dir)
         self._first_parent: "list[tuple[str, str]] | None" = None
+        self._declared: dict = {}
 
     def _git(self, *args: str) -> "str | None":
         rc, out, _err = evidence.run_git(self.project_dir, *args)
@@ -221,17 +282,30 @@ class _Classifier:
         commit = resolved  # the full name, which the first-parent line is keyed by
         subject = self._git("log", "-1", "--format=%s", commit) or ""
         parents = (self._git("rev-list", "--parents", "-n", "1", commit) or "").split()[1:]
+        return self.classify_known(commit, subject, parents)
+
+    def classify_known(self, commit: str, subject: str, parents: list,
+                       changed: "list[str] | None" = None) -> Entry:
+        """Classify a full commit name whose subject and parents are already read
+        (the walk reads them for every commit in one log). ``changed`` is the
+        judgeable diff against the only parent, when the caller has it."""
         if not parents:
             return Entry("", UNKNOWN, "a root commit, or git could not read its parents", commit, subject)
         if len(parents) > 2:
             return Entry("", UNKNOWN, f"an octopus merge of {len(parents) - 1} branches, which this "
                                       "classification reads one branch at a time", commit, subject)
         if len(parents) == 1:
-            changed = self._judgeable(parents[0], commit)
+            if changed is None:
+                changed = self._judgeable(parents[0], commit)
             if changed is None:
                 return Entry("", UNKNOWN, "git could not diff the commit", commit, subject)
             if not changed:
                 return Entry("", NO_JUDGEABLE, "a single-parent commit that changes no judgeable file",
+                             commit, subject)
+            declared = self._declared_version_files(parents[0])
+            if declared and set(changed) <= declared:
+                return Entry("", RELEASE_BOOKKEEPING, "a single-parent commit changing only declared "
+                                                      f"release version file(s): {', '.join(changed)}",
                              commit, subject)
             return Entry("", DIRECT, f"a single-parent commit changing {len(changed)} judgeable file(s): "
                                      "work committed on the base, or a squash merge", commit, subject)
@@ -243,6 +317,15 @@ class _Classifier:
         if changed is None:
             return Entry("", UNKNOWN, "git could not diff the merged branch", commit, subject)
         if not changed:
+            # The walk reaches a merge by its diff against the first parent, so
+            # one whose branch changed nothing judgeable can still carry an edit
+            # made in the merge itself, which no review of the branch read.
+            resolved_here = self._merge_only_judgeable(commit)
+            if resolved_here:
+                return Entry("", UNCOVERED, f"the merged branch changes no judgeable file, but the merge "
+                                           f"commit itself changes {len(resolved_here)} judgeable file(s) "
+                                           "beyond both parents, and no review read the merge",
+                             commit, subject)
             return Entry("", NO_JUDGEABLE, "the merged branch changes no judgeable file", commit, subject)
         span_base = self._git("rev-parse", f"{merge_base}^{{tree}}")
         span_head = self._git("rev-parse", f"{tip}^{{tree}}")
@@ -309,6 +392,47 @@ class _Classifier:
             return PR_TRANSFERRED, (f"a boundary review covered the branch at its PR before it synced "
                                     f"its base, and only fix verification followed it ({carried})")
         return INNER_ONLY, f"the branch's coverage composes only through inner-stage reviews ({carried})"
+
+    def _declared_version_files(self, commit: str) -> "frozenset[str] | None":
+        """The paths ``release_version_files:`` declares in ``commit``'s tree, or None
+        when it declares none (the fallback layout is a guess, never a declaration).
+        Read at the PARENT of the commit being classified, so a commit cannot
+        declare its own changes bookkeeping."""
+        if commit not in self._declared:
+            from . import release_verification  # noqa: PLC0415 — lazy: it imports release_readiness
+
+            text = self._git("show", f"{commit}:{_STATE_REL}")
+            specs = release_verification._read_declaration(text) if text is not None else None
+            self._declared[commit] = frozenset(spec.path for spec in specs) if specs else None
+        return self._declared[commit]
+
+    def walk(self, anchor: str) -> "list[tuple[str, list, str, list]] | None":
+        """``(commit, parents, subject, judgeable files)`` for every first-parent
+        commit after ``anchor`` on the base whose diff against its first parent
+        changes a judgeable file, oldest first; None when git could not answer.
+
+        One log reads every commit's parents, subject and changed paths. `-m` with
+        `--first-parent` diffs a merge against its first parent, which is what the
+        merge brought onto the base."""
+        rc, out, _err = evidence.run_git(
+            self.project_dir, "log", "--first-parent", "-m", "--no-renames", "--name-only",
+            "--format=%x1e%H%x1f%P%x1f%s", f"{anchor}..{self.base}", "--",
+        )
+        if rc != 0:
+            return None
+        found = []
+        for record in out.split("\x1e"):
+            head, _, names = record.partition("\n")
+            if not head.strip():
+                continue
+            commit, parents, subject = (head.split("\x1f") + ["", ""])[:3]
+            changed = list(dict.fromkeys(
+                p for p in names.splitlines() if p and coverage_algebra.is_judgeable_path(p)
+            ))
+            if changed:
+                found.append((commit, parents.split(), subject, changed))
+        found.reverse()
+        return found
 
     def _merge_only_judgeable(self, commit: str) -> list:
         """Judgeable files the merge's tree holds in a state neither parent had: the
@@ -393,10 +517,149 @@ def _classify_pending(project_dir: Path) -> Report:
     if unreadable:
         return Report("unevaluable", base=base, reason=unreadable)
     classifier = _Classifier(project_dir, read.get("facts", []), base)
-    return Report(
-        "ok", base=base, entries=[classifier.classify(scope) for scope in sorted(pending.scopes)],
-        refusals=list(pending.refusals),
-    )
+    entries: list = []
+    by_commit: dict = {}
+    for scope in sorted(pending.scopes):
+        entry = classifier.classify(scope)
+        entry.source = SOURCE_FRAGMENT
+        prior = by_commit.get(entry.commit) if entry.commit else None
+        if prior is not None:
+            # Two fragments one merge added: one commit, one entry, both scopes.
+            prior.scope = f"{prior.scope}, {scope}"
+            continue
+        entries.append(entry)
+        if entry.commit:
+            by_commit[entry.commit] = entry
+    anchor, no_anchor = _resolve_anchor(project_dir, base)
+    if anchor is not None:
+        walked = classifier.walk(anchor.commit)
+        if walked is None:
+            entries.append(Entry("", UNKNOWN, f"git could not list the first-parent commits on {base} "
+                                              f"since the release anchor {anchor.commit[:8]}",
+                                 source=SOURCE_WALK))
+        for commit, parents, subject, changed in walked or []:
+            prior = by_commit.get(commit)
+            if prior is not None:
+                prior.source = SOURCE_BOTH
+                continue
+            entry = classifier.classify_known(commit, subject, parents,
+                                              changed if len(parents) == 1 else None)
+            entry.source = SOURCE_WALK
+            entries.append(entry)
+            by_commit[commit] = entry
+    return Report("ok", base=base, entries=entries, refusals=list(pending.refusals),
+                  anchor=anchor, no_anchor_reason=no_anchor)
+
+
+def _version_key(name: str) -> "tuple | None":
+    """An ordering key for a version-shaped name (``v3.10.0``, ``3.10.0``, a
+    four-part or prerelease form: ``change_log.RELEASE_VALUE_RE`` after
+    ``release_readiness.normalize_version``), else None. A prerelease sorts below
+    its release."""
+    from . import release_readiness  # noqa: PLC0415 — lazy, as above
+
+    version = release_readiness.normalize_version(name)
+    if not change_log.RELEASE_VALUE_RE.match(version):
+        return None
+    numbers, _, pre = version[1:].partition("-")
+    return tuple(int(part) for part in numbers.split(".")), (0, pre) if pre else (1, "")
+
+
+def _release_file_candidate(git, base: str) -> "tuple[str, str] | None":
+    """``(commit, path)``: the newest first-parent commit on ``base`` adding a
+    release file (``.prawduct/releases/<version>.md``)."""
+    out = git("log", "--first-parent", "-m", "--diff-filter=A", "--no-renames", "--name-only",
+              "--format=%x1e%H", base, "--", f"{consumer_digest.RELEASES_DIR_REL}/")
+    if out is None:
+        return None
+    for record in out.split("\x1e"):
+        commit, _, names = record.strip().partition("\n")
+        for name in names.splitlines():
+            parent, _, leaf = name.rpartition("/")
+            if (parent == consumer_digest.RELEASES_DIR_REL and leaf.endswith(".md")
+                    and _version_key(leaf[:-3]) is not None):
+                return commit, name
+    return None
+
+
+def _tag_candidate(git, base: str) -> "tuple[str, str] | None":
+    """``(tag, commit)``: the newest version-shaped tag reachable from ``base``."""
+    out = git("for-each-ref", f"--merged={base}",
+              "--format=%(refname:strip=2)%00%(objectname)%00%(*objectname)", "refs/tags")
+    if not out:
+        return None
+    best = None
+    for line in out.splitlines():
+        name, _, rest = line.partition("\0")
+        target, _, peeled = rest.partition("\0")
+        key = _version_key(name)
+        if key is not None and (best is None or key > best[0]):
+            best = (key, name, peeled or target)
+    return (best[1], best[2]) if best else None
+
+
+def _oldest_containing(git, base: str, tag_commit: str) -> "str | None":
+    """The oldest first-parent commit on ``base`` that contains ``tag_commit``.
+    A tag on the first-parent line is its own answer; a tag merged in from a side
+    line (a gitflow back-merge) is answered by the merge that brought it in."""
+    line = git("log", "--first-parent", "--format=%H %P", f"{tag_commit}..{base}")
+    if line is None:
+        return None
+    rows = [row.split() for row in line.splitlines() if row.strip()]
+    if not rows or (len(rows[-1]) > 1 and rows[-1][1] == tag_commit):
+        return tag_commit
+    descendants = git("rev-list", "--ancestry-path", f"{tag_commit}..{base}")
+    if descendants is None:
+        return None
+    contains = set(descendants.split())
+    for row in reversed(rows):
+        if row[0] in contains:
+            return row[0]
+    return None
+
+
+def release_anchor(project_dir: Path, base: str) -> "Anchor | None":
+    """The release anchor on ``base``: whichever is nearer the tip of (A) the newest
+    first-parent commit adding a release file under ``.prawduct/releases/`` and (B)
+    the oldest first-parent commit containing the newest version tag reachable from
+    ``base``. None when there is neither."""
+    return _resolve_anchor(project_dir, base)[0]
+
+
+def _resolve_anchor(project_dir: Path, base: str) -> "tuple[Anchor | None, str | None]":
+    """``(anchor, None)``, or ``(None, why there is none)``. A candidate git could
+    not answer counts as absent: the other is then the older or the same, so a
+    failure only ever widens the walk, never narrows it."""
+    def git(*args: str) -> "str | None":
+        rc, out, _err = evidence.run_git(project_dir, *args)
+        return out.strip() if rc == 0 else None
+
+    by_file = _release_file_candidate(git, base)
+    tag = _tag_candidate(git, base)
+    chosen = None
+    if by_file is not None:
+        commit, path = by_file
+        # The nearer wins. The tag's anchor is the oldest commit containing it, so
+        # it is nearer than the release file's commit only if that commit does not
+        # contain the tag; a tie goes to the release file.
+        tag_older = tag is not None and evidence.run_git(
+            project_dir, "merge-base", "--is-ancestor", tag[1], commit)[0] == 0
+        if tag is None or tag_older:
+            note = f"; tag {tag[0]} is older on this line" if tag else ""
+            chosen = (commit, ANCHOR_RELEASE_FILE, f"{commit[:8]} adds the release file {path}{note}")
+    if chosen is None and tag is not None:
+        commit = _oldest_containing(git, base, tag[1])
+        if commit is not None:
+            note = f"; nearer the tip than the release file {by_file[1]}" if by_file else ""
+            chosen = (commit, ANCHOR_TAG, f"{commit[:8]} is the oldest first-parent commit on {base} "
+                                          f"containing tag {tag[0]}{note}")
+    if chosen is None:
+        return None, (f"no first-parent commit on {base} adds a release file under "
+                      f"{consumer_digest.RELEASES_DIR_REL}/, and no version tag is reachable from it")
+    tree = git("rev-parse", f"{chosen[0]}^{{tree}}")
+    if not tree:
+        return None, f"git could not read the release anchor {chosen[0][:8]}'s tree"
+    return Anchor(chosen[0], tree, chosen[1], chosen[2]), None
 
 
 def _unreadable_store(read: dict) -> "str | None":
@@ -429,25 +692,34 @@ def classify_merge(project_dir: Path, commit: str) -> Entry:
 
 def count_line(report: Report) -> str:
     """The one summary line, with its denominator: the report's last word, and the
-    line check-releasability prints on every run."""
+    line check-releasability prints on every run. It names the release anchor and
+    how many entries the walk since it found, or says there was no anchor."""
     counts = report.counts()
     covered = sum(counts[name] for name in COVERED)
     detail = ", ".join(f"{counts[name]} {name}" for name in CLASSES if counts[name])
-    return (
-        f"boundary coverage: {covered} of {len(report.entries)} release-pending scope(s) covered "
-        f"on {report.base}" + (f" ({detail})" if detail else "")
-    )
+    detail = f" ({detail})" if detail else ""
+    total = len(report.entries)
+    if report.anchor is None:
+        return (f"boundary coverage: {covered} of {total} release-pending scope(s) covered on "
+                f"{report.base}{detail}; no release anchor, so no commit since a release was walked")
+    walked = sum(1 for e in report.entries if e.source in (SOURCE_WALK, SOURCE_BOTH))
+    return (f"boundary coverage: {covered} of {total} covered on {report.base}{detail}: {walked} "
+            f"judgeable commit(s) since release anchor {report.anchor.commit[:8]} "
+            f"({report.anchor.source}), and {total - walked} more by release-pending fragment")
 
 
 def render(report: Report) -> str:
-    """The human report: one line per scope, then the count line with its denominator."""
+    """The human report: one line per entry, the anchor, then the count line with its denominator."""
     if report.status != "ok":
         return f"check-boundary-coverage: could not evaluate — {report.reason}"
     lines = [
-        f"{e.classification:14} {e.scope}  {(e.commit or '')[:8]}  {e.reason}"
+        f"{e.classification:19} {e.scope or '(no fragment) ' + repr(e.subject)}  "
+        f"{(e.commit or '')[:8]}  {e.reason}"
         + ("" if e.classification in COVERED else "  [not covered]")
         for e in report.entries
     ]
+    lines.append(f"release anchor: {report.anchor.reason} ({report.anchor.source})" if report.anchor
+                 else f"release anchor: none — {report.no_anchor_reason}")
     lines.append(count_line(report))
     if report.refusals:
         lines.append(f"not classified: {len(report.refusals)} fragment(s) the pending set refused — "

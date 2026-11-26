@@ -321,17 +321,26 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
   **`check-boundary-coverage [--json]`** (read-only, advisory; owner `lib/boundary_coverage.py`)
-  classifies each release-pending scope by the first-parent commit on the integration base that added
-  its fragment: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `inner-only`,
-  `uncovered`, `direct` or `unknown`, each with its reason. `pr-transferred` is a branch that synced
+  classifies first-parent commits on the integration base: the one that added each release-pending
+  scope's fragment, unioned with every commit after the **release anchor** that changes a judgeable
+  file, one entry per commit. The anchor is the nearer the tip of the newest first-parent commit
+  adding `.prawduct/releases/<version>.md` and the oldest first-parent commit containing the newest
+  version tag reachable from the base; with neither, no commit is walked and the report says so.
+  Classes: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `release-bookkeeping`,
+  `inner-only`, `uncovered`, `direct` or `unknown`, each with its reason. `pr-transferred` is a branch that synced
   its base after its PR's boundary review and that the PR gate passed by its base-advance transfer
   (`gates.base_advance_transfer`, the one decision both read); it counts as covered and is named in
-  the count line. The human form marks each scope not counted as covered
-  `[not covered]` and ends with a count line naming its denominator. Exit 0
+  the count line. `release-bookkeeping` (covered) is a single-parent commit whose judgeable changes
+  are all paths `release_version_files:` declares at its parent; the undeclared fallback never
+  qualifies. The human form marks each entry not counted as covered
+  `[not covered]`, names the anchor, and ends with a count line naming its denominator and the anchor. Exit 0
   whenever it answered, whatever it found; 2 on an unknown argument; 3 when it could not evaluate.
   `--json` keys: `status` (`ok` | `unevaluable`), `base`, `reason` (`null` when `ok`), `counts` (one
-  key per classification), `entries[]{scope, classification, reason, commit, subject}` and
-  `refusals[]` (fragments the pending set refused, which are not classified).
+  key per classification), `entries[]{scope, classification, reason, commit, subject, source}`
+  (`source`: `fragment`, `walk` or `both`; a walked commit no fragment names has an empty `scope`;
+  two fragments one merge added share one entry, scopes joined by `, `), `anchor` (`{commit, tree,
+  source, reason}`, `source` `release-file` | `tag`, or `null`), `no_anchor_reason` (why there is
+  none, else `null`) and `refusals[]` (fragments the pending set refused, which are not classified).
   **`check-pr-hygiene [--json]`** (read-only; owner `lib/pr_gate.py`) answers over merge-base…HEAD of
   the checked-out branch, the base from the resolver `resolve-base` uses. Named results:
   `credential-shape` (refuses: a line the branch ADDS matches the plugin's one credential denylist,

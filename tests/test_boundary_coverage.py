@@ -492,11 +492,26 @@ class TestThisRepositorysHistory:
     names once (``gates._tree_key_fn``), which on a cold clone takes tens of seconds,
     the same cost the PR gate pays on its first run there. A warm run is under a second."""
 
-    def test_the_v3_9_0_release_commit_on_develop_is_direct(self):
-        """Git alone answers this one: a single-parent commit changing judgeable
-        files, whatever the store holds."""
+    def test_the_v3_9_0_reopen_commit_on_develop_is_release_bookkeeping(self):
+        """Git alone answers this one, whatever the store holds. It read `direct`
+        until decision 3 of #1232 (owner-rulings 2026-11-25): its judgeable changes
+        are the three files `release_version_files:` declares at its parent, so it
+        is release bookkeeping. `4dffd694` is the control: a single-parent commit
+        that adds two `.py` measurement scripts beside its records stays direct."""
         entry = bc.classify_merge(ROOT, "95308783")
-        assert entry.classification == bc.DIRECT, entry
+        assert entry.classification == bc.RELEASE_BOOKKEEPING, entry
+        assert bc.classify_merge(ROOT, "4dffd694").classification == bc.DIRECT
+
+    @pytest.mark.requires_local_cache
+    def test_the_v3_10_0_cut_is_the_release_anchor(self):
+        """Decision 2's worked case: `436f44d3 release: prep v3.10.0` adds the
+        release file, and the walk from a fixed point after it (the base as it
+        stood on 2026-11-25, so a later release cannot move the answer) reaches the
+        reopen commit as release bookkeeping. `v3.10.0` is tagged on main and never
+        reachable from develop; the reachable tag (`v1.8.1`) is older on the line."""
+        anchor = bc.release_anchor(ROOT, "4dffd694152233daab3d2e960481e3e5327da102")
+        assert anchor is not None and anchor.commit.startswith("436f44d3"), anchor
+        assert anchor.source == bc.ANCHOR_RELEASE_FILE and "v3.10.0.md" in anchor.reason, anchor
 
     @pytest.mark.requires_local_cache
     def test_a_per_pr_merge_with_a_cumulative_and_a_verify_is_pr_covered(self):
@@ -694,3 +709,265 @@ def test_a_fault_in_the_classification_is_an_attributed_exit_3(repo, tmp_path):
                           capture_output=True, text=True, timeout=60, env=env)
     assert proc.returncode == 3, (proc.stdout, proc.stderr)
     assert "RuntimeError: injected" in proc.stderr and "Traceback" not in proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# #1232 requirement 1: the release anchor, and the walk since it (Chunk 02)
+# ---------------------------------------------------------------------------
+
+_DECLARING_STATE = (
+    "release_version_files:\n"
+    "  - path: plugin/VERSION\n"
+    "    format: bare\n"
+    "  - path: pyproject.toml\n"
+    "    format: toml\n"
+    "    key: project.version\n"
+)
+
+
+def _cut(repo: Path, version: str, ship: tuple = ()) -> str:
+    """A release cut on main: the shipped fragments removed, the release file
+    added, the version bumped. ``.gitkeep`` keeps the fragment directory."""
+    _git(repo, "checkout", "-q", "main")
+    _write(repo, ".prawduct/changes/.gitkeep", "")
+    for scope in ship:
+        _git(repo, "rm", "-q", f".prawduct/changes/{scope}.md")
+    return _commit(repo, {f".prawduct/releases/{version}.md": f"# {version}\n",
+                          "plugin/VERSION": version.lstrip("v") + "\n"}, f"release: prep {version}")
+
+
+def _merged(repo: Path, scope: str, files: "dict | None" = None, *, fragment: bool = True) -> str:
+    _branch(repo, scope)
+    _commit(repo, {**(files or {f"src/{scope}.py": f"{scope} = 1\n"}),
+                   **(_fragment(scope) if fragment else {})}, scope)
+    return _merge(repo, scope)
+
+
+def _by_commit(report: "bc.Report") -> dict:
+    return {e.commit: e for e in report.entries}
+
+
+class TestTheReleaseAnchor:
+    def test_a_whole_develop_cut_anchors_on_the_newest_release_file(self, repo):
+        """Two cuts: the anchor is the newer one, and nothing merged before it is
+        walked (its fragments were shipped, so nothing names it either)."""
+        _merged(repo, "first")
+        _cut(repo, "v1.0.0", ship=("first",))
+        _merged(repo, "second")
+        cut = _cut(repo, "v1.1.0", ship=("second",))
+        after = _merged(repo, "third")
+        anchor = bc.release_anchor(repo, "main")
+        assert (anchor.commit, anchor.source) == (cut, bc.ANCHOR_RELEASE_FILE), anchor
+        assert ".prawduct/releases/v1.1.0.md" in anchor.reason
+        assert anchor.tree == _tree(repo, cut)
+        report = bc.classify_pending(repo)
+        assert [(e.commit, e.scope, e.source) for e in report.entries] == [(after, "third", bc.SOURCE_BOTH)]
+
+    def test_a_file_under_releases_that_is_not_a_release_file_is_no_anchor(self, repo):
+        """Only `<version>.md` directly under the directory is a release file: a
+        README there would anchor the walk on nothing and hide what follows it."""
+        _commit(repo, {".prawduct/releases/README.md": "about\n", ".prawduct/changes/.gitkeep": ""}, "docs")
+        assert bc.release_anchor(repo, "main") is None
+
+    def test_a_pruned_cut_keeps_a_withheld_scope_merged_before_it_classified(self, repo):
+        withheld = _merged(repo, "withheld")
+        _merged(repo, "shipped")
+        cut = _cut(repo, "v1.0.0", ship=("shipped",))
+        report = bc.classify_pending(repo)
+        assert report.anchor.commit == cut
+        entry = _by_commit(report)[withheld]
+        assert (entry.scope, entry.classification, entry.source) == ("withheld", bc.UNCOVERED,
+                                                                     bc.SOURCE_FRAGMENT), entry
+
+    def test_a_back_merged_tag_anchors_on_the_merge_that_brought_it_in(self, repo):
+        """Gitflow: the tag sits on a release line merged back into the base. The
+        anchor is the back-merge, not the tag commit: a direct commit made on the
+        base before the back-merge is not after the release."""
+        _git(repo, "checkout", "-q", "-b", "release", "main")
+        _commit(repo, {"plugin/VERSION": "1.0.0\n"}, "release 1.0.0")
+        _git(repo, "tag", "-a", "v1.0.0", "-m", "v1.0.0")
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"src/before.py": "b = 1\n", ".prawduct/changes/.gitkeep": ""}, "before the back-merge")
+        back = _merge(repo, "release")
+        after = _commit(repo, {"src/after.py": "a = 1\n"}, "after the release")
+        anchor = bc.release_anchor(repo, "main")
+        assert (anchor.commit, anchor.source) == (back, bc.ANCHOR_TAG), anchor
+        assert "v1.0.0" in anchor.reason
+        assert [e.commit for e in bc.classify_pending(repo).entries] == [after]
+
+    def test_a_tag_on_the_first_parent_line_is_its_own_anchor(self, repo):
+        tagged = _commit(repo, {"plugin/VERSION": "1.0.0\n", ".prawduct/changes/.gitkeep": ""}, "1.0.0")
+        _git(repo, "tag", "v1.0.0")
+        _commit(repo, {"src/after.py": "a = 1\n"}, "after")
+        assert bc.release_anchor(repo, "main").commit == tagged
+
+    def test_the_newest_version_tag_wins_and_other_tags_are_ignored(self, repo):
+        _commit(repo, {".prawduct/changes/.gitkeep": ""}, "x")
+        _git(repo, "tag", "v1.10.0")
+        _commit(repo, {"src/b.py": "b = 1\n"}, "y")
+        _git(repo, "tag", "v1.9.0")  # a newer commit, an older version
+        _git(repo, "tag", "backup/not-a-version")
+        _git(repo, "tag", "v2.0.0-rc1")  # a prerelease of a newer version sorts above v1.10.0
+        _commit(repo, {"src/c.py": "c = 1\n"}, "z")
+        _git(repo, "tag", "nightly")
+        anchor = bc.release_anchor(repo, "main")
+        assert "v2.0.0-rc1" in anchor.reason and anchor.commit == _git(repo, "rev-parse", "main~1"), anchor
+
+    def test_a_tag_nearer_the_tip_than_the_release_file_wins(self, repo):
+        _merged(repo, "early")
+        _cut(repo, "v1.0.0", ship=("early",))
+        _commit(repo, {"src/between.py": "b = 1\n"}, "between")
+        tagged = _commit(repo, {"src/t.py": "t = 1\n"}, "tagged")
+        _git(repo, "tag", "v1.0.1")
+        anchor = bc.release_anchor(repo, "main")
+        assert (anchor.commit, anchor.source) == (tagged, bc.ANCHOR_TAG), anchor
+        assert "nearer the tip than the release file" in anchor.reason
+
+    def test_a_release_file_nearer_the_tip_than_the_tag_wins(self, repo):
+        _commit(repo, {".prawduct/changes/.gitkeep": ""}, "x")
+        _git(repo, "tag", "v0.9.0")
+        _merged(repo, "early")
+        cut = _cut(repo, "v1.0.0", ship=("early",))
+        anchor = bc.release_anchor(repo, "main")
+        assert (anchor.commit, anchor.source) == (cut, bc.ANCHOR_RELEASE_FILE), anchor
+        assert "tag v0.9.0 is older" in anchor.reason
+
+    def test_a_tied_anchor_goes_to_the_release_file(self, repo):
+        cut = _cut(repo, "v1.0.0")
+        _git(repo, "tag", "v1.0.0")
+        anchor = bc.release_anchor(repo, "main")
+        assert (anchor.commit, anchor.source) == (cut, bc.ANCHOR_RELEASE_FILE), anchor
+
+    def test_with_neither_there_is_no_anchor_and_the_report_says_so(self, repo, tmp_path):
+        """No anchor: the walk is skipped, so a direct commit no fragment names is
+        not seen, and the report says why rather than reading as a full answer."""
+        _merged(repo, "f")
+        _commit(repo, {"src/direct.py": "d = 1\n"}, "direct, no fragment")
+        report = bc.classify_pending(repo)
+        assert report.anchor is None and "no version tag" in report.no_anchor_reason, report
+        assert [(e.scope, e.source) for e in report.entries] == [("f", bc.SOURCE_FRAGMENT)]
+        assert "no release anchor" in bc.count_line(report)
+        assert "release anchor: none — " in bc.render(report)
+        data = json.loads(_run_cli(repo, tmp_path, "--json").stdout)
+        assert data["anchor"] is None and data["no_anchor_reason"] == report.no_anchor_reason
+
+
+class TestTheWalkSinceTheAnchor:
+    def test_a_judgeable_direct_commit_with_no_fragment_is_classified(self, repo, tmp_path):
+        """Wave 1's invisible case: work committed on the base that wrote no
+        fragment. A records-only commit is not judgeable, so is not walked."""
+        _cut(repo, "v1.0.0")
+        direct = _commit(repo, {"src/direct.py": "d = 1\n"}, "direct, no fragment")
+        _commit(repo, {".prawduct/owner-rulings.md": "ruled\n"}, "records only")
+        report = bc.classify_pending(repo)
+        (entry,) = report.entries
+        assert (entry.commit, entry.classification, entry.source, entry.scope, entry.subject) == (
+            direct, bc.DIRECT, bc.SOURCE_WALK, "", "direct, no fragment"), entry
+        line = bc.count_line(report)
+        assert "0 of 1 covered" in line and "1 judgeable commit(s) since release anchor" in line, line
+        assert "(no fragment) 'direct, no fragment'" in bc.render(report)
+        data = json.loads(_run_cli(repo, tmp_path, "--json").stdout)
+        assert data["anchor"]["commit"] == report.anchor.commit
+        assert data["anchor"]["source"] == bc.ANCHOR_RELEASE_FILE
+        assert [(e["commit"], e["source"]) for e in data["entries"]] == [(direct, bc.SOURCE_WALK)]
+
+    def test_a_merge_found_by_both_is_one_entry(self, repo):
+        _cut(repo, "v1.0.0")
+        base = _branch(repo, "f")
+        _commit(repo, {"src/f.py": "f = 1\n", **_fragment("f")}, "work")
+        _review(repo, base, _tree(repo), CUMULATIVE)
+        merge = _merge(repo, "f")
+        (entry,) = bc.classify_pending(repo).entries
+        assert (entry.commit, entry.scope, entry.source, entry.classification) == (
+            merge, "f", bc.SOURCE_BOTH, bc.PR_COVERED), entry
+
+    def test_two_fragments_one_merge_added_are_one_entry_naming_both(self, repo):
+        _branch(repo, "pair")
+        _commit(repo, {"src/p.py": "p = 1\n", **_fragment("a"), **_fragment("b")}, "two scopes")
+        merge = _merge(repo, "pair")
+        (entry,) = bc.classify_pending(repo).entries
+        assert (entry.commit, entry.scope) == (merge, "a, b"), entry
+
+    def test_a_merge_whose_only_judgeable_change_is_its_own_edit_is_uncovered(self, repo):
+        """The walk reaches a merge by its diff against the first parent. A branch
+        that changed nothing judgeable, merged with an edit made in the merge,
+        carries code no review of the branch read."""
+        _cut(repo, "v1.0.0")
+        _branch(repo, "docs")
+        _commit(repo, {"README.md": "docs\n"}, "docs")
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "--no-commit", "docs")
+        _write(repo, "src/sneak.py", "s = 1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "merge docs, with an edit")
+        (entry,) = bc.classify_pending(repo).entries
+        assert entry.classification == bc.UNCOVERED and "merge commit itself" in entry.reason, entry
+
+    def test_a_clean_docs_merge_is_not_walked(self, repo):
+        """Control for the test above: the same merge without the edit changes no
+        judgeable file against its first parent, so the walk passes it by."""
+        _cut(repo, "v1.0.0")
+        _merged(repo, "docs", {"README.md": "docs\n"}, fragment=False)
+        report = bc.classify_pending(repo)
+        assert report.anchor is not None and report.entries == [], report
+
+    def test_moving_code_to_a_non_judgeable_path_is_walked(self, repo):
+        """Rename detection would list only the new `.md` path, which is not
+        judgeable; the deleted code is, so the walk lists both sides."""
+        _cut(repo, "v1.0.0")
+        (repo / "notes").mkdir()
+        _git(repo, "mv", "src/app.py", "notes/app.md")
+        moved = _commit(repo, {}, "move code into notes")
+        assert [e.commit for e in bc.classify_pending(repo).entries] == [moved]
+
+    def test_check_releasability_notes_a_walked_commit_by_its_name(self, repo):
+        """The NOTE for a walked commit names it: it has no scope to name."""
+        from lib import release_readiness  # noqa: PLC0415
+
+        _cut(repo, "v1.0.0")
+        direct = _commit(repo, {"src/direct.py": "d = 1\n"}, "direct, no fragment")
+        notes = [line for line, to_stderr in release_readiness._boundary_coverage_lines(repo) if to_stderr]
+        assert notes == [
+            f'NOTE: boundary-coverage: {direct[:8]} "direct, no fragment" is direct, not covered — '
+            "a single-parent commit changing 1 judgeable file(s): work committed on the base, or a "
+            "squash merge (`prawduct-hook check-boundary-coverage` lists every entry)."
+        ], notes
+
+
+class TestReleaseBookkeeping:
+    """Decision 3: the reopen commit after a cut changes only version files."""
+
+    def _reopen(self, repo: Path, extra: "dict | None" = None, *, state: "str | None" = _DECLARING_STATE,
+                state_in_reopen: bool = False) -> str:
+        if state is not None and not state_in_reopen:
+            _commit(repo, {".prawduct/project-state.yaml": state}, "declare version files")
+        _cut(repo, "v1.0.0")
+        files = {"plugin/VERSION": "1.0.1-dev\n", "pyproject.toml": '[project]\nversion = "1.0.1-dev"\n',
+                 **_fragment("release-v1.0.0"), **(extra or {})}
+        if state_in_reopen:
+            files[".prawduct/project-state.yaml"] = state
+        return _commit(repo, files, "release: reopen")
+
+    def test_a_reopen_touching_only_declared_version_files_is_release_bookkeeping(self, repo):
+        reopen = self._reopen(repo)
+        entry = _by_commit(bc.classify_pending(repo))[reopen]
+        assert (entry.classification, entry.source, entry.scope) == (
+            bc.RELEASE_BOOKKEEPING, bc.SOURCE_BOTH, "release-v1.0.0"), entry
+        assert bc.RELEASE_BOOKKEEPING in bc.COVERED
+        assert "plugin/VERSION" in entry.reason and "pyproject.toml" in entry.reason
+
+    def test_a_reopen_touching_another_judgeable_file_too_is_direct(self, repo):
+        reopen = self._reopen(repo, {"src/sneak.py": "s = 1\n"})
+        assert _classify(repo, reopen).classification == bc.DIRECT
+
+    def test_an_undeclared_repo_never_reads_release_bookkeeping(self, repo):
+        """The fallback layout (`plugin/VERSION`, `pyproject.toml`, ...) is
+        prawduct's own, a guess for any other repo: it never qualifies."""
+        reopen = self._reopen(repo, state=None)
+        assert _classify(repo, reopen).classification == bc.DIRECT
+
+    def test_a_commit_cannot_declare_its_own_files_bookkeeping(self, repo):
+        """The declaration is read at the commit's parent: one that adds the
+        declaration and changes the files it names is direct."""
+        reopen = self._reopen(repo, state_in_reopen=True)
+        assert _classify(repo, reopen).classification == bc.DIRECT
