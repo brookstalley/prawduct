@@ -21,7 +21,7 @@ full version.
 | Axis | doctor | janitor |
 |---|---|---|
 | **Subject** | prawduct scaffolding & recorded decisions (`.prawduct/`, `.claude/settings.json`, the `AGENTS.md` anchor and `CLAUDE.md`'s import of it, the gitignore *contract*), and the machine-level state prawduct's own install leaves | the product's own source, tests, docs, dependencies, git history |
-| **Action model** | report & present the exact edit; never auto-fixes (plus the bounded `prawduct-hook` operations it drives, each owner-invoked — `skills/doctor/SKILL.md` and its flows are their one roster, so this row does not keep a second copy) | survey, then fix through a full build plan + Critic |
+| **Action model** | report, and change nothing without the owner's yes: it presents the exact edit for the owner to make, or runs one of the bounded `prawduct-hook` repairs itself on that yes (`skills/doctor/SKILL.md` and its flows are their one roster, so this row does not keep a second copy) | survey, then fix through a full build plan + Critic |
 | **Question type** | "is X present / recorded / correct?" — conformance, roughly binary | "is X well-built / current / proportionate?" — craft, graded |
 
 A softer fourth axis is **cadence**: doctor is point-in-time (after onboarding/migration, or when
@@ -34,7 +34,7 @@ time away.
    *recorded · present · correct*, or whether prawduct's own installation on this machine is
    sound? → **doctor** (a conformance check answered by reading `.prawduct/` / `.claude/` / the
    anchor, or the install state prawduct leaves under the Claude config roots;
-   reported-and-guided, never auto-fixed).
+   reported, and repaired only on the owner's yes).
 2. Does it ask whether the product's own code/docs/tests/deps are *well-built · current ·
    proportionate*? → **janitor** (a craft survey resolved by fixing through the build cycle).
 3. Does it have **both** facets — a governance-conformance facet *and* a craft-quality facet? →

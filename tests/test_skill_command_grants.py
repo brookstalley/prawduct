@@ -982,8 +982,8 @@ _WRITE_REACH_EXEMPT = {
     ("skills/janitor/SKILL.md", "python3 *"): (
         "an interpreter grant the janitor needs to drive the product's own "
         "toolchain; it reaches only the self-hosted spelling, only in a checkout "
-        "carrying the plugin, and the skill is human-invoked only "
-        "(`disable-model-invocation: true` — its frontmatter states why)"
+        "carrying the plugin; `allowed-tools` cuts prompts for a competent model and "
+        "is not a security boundary (`.prawduct/owner-rulings.md`, 2026-11-26)"
     ),
 }
 

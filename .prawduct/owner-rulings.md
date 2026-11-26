@@ -629,6 +629,13 @@ tag, detached, rather than onto `develop`.
 2. PR #1252 (#1250, `fix/boundary-coverage-transfer` → `develop`) is merged, ahead of #1232's PR, so #1232's PR does
    not carry it.
 
+**2026-11-26 (doctor/janitor).** "can you figure out why agents say they cant run doctor and/or janitor and need the
+human to do it, and fix so agents can run both?" — an agent may invoke both skills, not only a human typing the
+command. Janitor's `disable-model-invocation: true` (85753fda) is lifted by removing the grants that made it
+necessary (an interpreter pre-approved for a model-invoked skill reaches every op an allow-list withholds), not by
+exempting it; doctor runs the repairs it offers on the owner's yes instead of handing the command to the owner.
+Owner judgments (norm ratification, which plans are done, delegation policy) stay the owner's.
+
 **2026-11-26 (round-4 review asks).** "yes to your recommendations" — answering two asks:
 1. #1232 R-4 (rev at f2512df9): a release entry whose changes are all back to the release span's starting content
    (merged, then fully reverted before the release) is credited covered under its own named class, not owed a
@@ -641,6 +648,29 @@ tag, detached, rather than onto `develop`.
    as a recorded reach exemption (`_REACH_EXEMPT` in `tests/test_backlog_skill_metadata.py`, branch
    `fix/agent-runnable-doctor-janitor`): the agent is dispatched only by the Critic under a no-execution contract,
    and narrowing it means redesigning the `git -C <dir>` form its own tests require.
+
+**2026-11-26 (design stance).** "trying to close an open set makes no sense. Don't do that. We have to assume good faith
+by humans and competence by models." Defenses whose premise is a human acting in bad faith (bypassing a gate to hide
+work, rewriting a version file into a command) or a model ignoring its instructions (self-invoking a skill to reach an
+op it was not asked to run) are not built, and an enumerated list is never extended toward completeness of an open set
+(every spelling a prefix grant can reach). `allowed-tools` exists to cut prompts for a competent model; it is not a
+security boundary. What stays: guards against accidents and real failure modes (crashes, git errors, stale state),
+and a confirmation before an irreversible, outward-facing act the person asked for.
+
+**2026-11-26 (what was over-built).** "Yes to all recommendations" — applying the design-stance ruling above:
+1. The grant-reach rails retire (the must-prompt probe set, its witnesses, exemption tables and controls, and the
+   semantic irreversible-op rail of 85753fda). Kept: `test_every_instructed_command_is_granted` (a skill can run what
+   it instructs) and one literal check that no skill grants `backlog import|merge|file-upstream` by name.
+2. The grant narrowings that only added prompts are reverted: janitor's `python3 *`, `npm *`, `git *`; pr's `git *`;
+   runbook's `find *`; onboard's `git -C` grants. Janitor stays model-invocable and doctor runs its repairs on the
+   owner's yes.
+3. #1232's merged-branch-blocker route retires (W2's entry trees in the batch rule, M12's owed blockers in the verify
+   roll-call, f2512df9, R-2, native 2), as do the version-shape checks on declared version files (bare and json/toml).
+   A release batch review settles its own findings only. This narrows the 2026-11-25 NFR amendment's "BLOCKING
+   findings clear only through `verify-resolutions`, at either point": the PR point stands; the release no longer
+   re-checks a merge the owner made over a blocker.
+4. The Critic's review protocol gains a severity rule: a finding whose failure needs a human acting in bad faith or a
+   model ignoring its instructions is an observation at most, never a warning. Its own change, off `develop`.
 
 **2026-11-26 (later).** "yes to all recs" — PR #1254 (`fix/agent-runnable-doctor-janitor` → `develop`, agents can run doctor
 and janitor; grant-reach rails retired) is merged.
