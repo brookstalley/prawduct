@@ -633,3 +633,18 @@ op it was not asked to run) are not built, and an enumerated list is never exten
 (every spelling a prefix grant can reach). `allowed-tools` exists to cut prompts for a competent model; it is not a
 security boundary. What stays: guards against accidents and real failure modes (crashes, git errors, stale state),
 and a confirmation before an irreversible, outward-facing act the person asked for.
+
+**2026-11-26 (what was over-built).** "Yes to all recommendations" — applying the design-stance ruling above:
+1. The grant-reach rails retire (the must-prompt probe set, its witnesses, exemption tables and controls, and the
+   semantic irreversible-op rail of 85753fda). Kept: `test_every_instructed_command_is_granted` (a skill can run what
+   it instructs) and one literal check that no skill grants `backlog import|merge|file-upstream` by name.
+2. The grant narrowings that only added prompts are reverted: janitor's `python3 *`, `npm *`, `git *`; pr's `git *`;
+   runbook's `find *`; onboard's `git -C` grants. Janitor stays model-invocable and doctor runs its repairs on the
+   owner's yes.
+3. #1232's merged-branch-blocker route retires (W2's entry trees in the batch rule, M12's owed blockers in the verify
+   roll-call, f2512df9, R-2, native 2), as do the version-shape checks on declared version files (bare and json/toml).
+   A release batch review settles its own findings only. This narrows the 2026-11-25 NFR amendment's "BLOCKING
+   findings clear only through `verify-resolutions`, at either point": the PR point stands; the release no longer
+   re-checks a merge the owner made over a blocker.
+4. The Critic's review protocol gains a severity rule: a finding whose failure needs a human acting in bad faith or a
+   model ignoring its instructions is an observation at most, never a warning. Its own change, off `develop`.
