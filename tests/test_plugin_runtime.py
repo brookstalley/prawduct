@@ -7,9 +7,9 @@ ported runtime:
     with the sync cluster excised; hooks.json wires the briefing (clear) +
     Critic/reflection gate (stop) via ${CLAUDE_PLUGIN_ROOT}/bin/, and keeps the
     Chunk-1 banner.
-  * **Behavioral** — invoked with CLAUDE_PLUGIN_ROOT + CLAUDE_PROJECT_DIR (in-process
-    through `tests/_hook_inproc.py`, or as a child where a fake `git` on PATH is the
-    fixture), the briefing renders, the Stop-hook Critic gate BLOCKS
+  * **Behavioral** — invoked with CLAUDE_PLUGIN_ROOT + CLAUDE_PROJECT_DIR, in-process
+    through `tests/_hook_inproc.py` (with the mock git answered in-process, and a
+    few entry-point tests as a real child with the mock git on PATH), the briefing renders, the Stop-hook Critic gate BLOCKS
     (exit 2) when code changed against an active plan with no findings, the
     lib-backed subcommands resolve, and NOTHING is written outside .prawduct/
     (the design §2 invariant).
@@ -252,11 +252,13 @@ class TestPluginHookStructure:
 
 
 # =============================================================================
-# Behavioral — subprocess invocation with a mock git
+# Behavioral — the hook against a mock git (in-process; a few as a real child)
 # =============================================================================
 
+_MOCK_HEAD = "deadbeef" * 5
 
-def _write_mock_git(mock_bin: Path, *, status: str = "", branch: str = "main", head: str = "deadbeef" * 5):
+
+def _write_mock_git(mock_bin: Path, *, status: str = "", branch: str = "main", head: str = _MOCK_HEAD):
     mock_bin.mkdir(parents=True, exist_ok=True)
     status_file = mock_bin / "_status"
     status_file.write_text(status)
@@ -280,6 +282,52 @@ def _write_mock_git(mock_bin: Path, *, status: str = "", branch: str = "main", h
     gh.chmod(0o755)
 
 
+def _mock_stubs(mock_bin: Path, *, branch: str = "main", head: str = _MOCK_HEAD) -> dict:
+    """The stubs `_write_mock_git` writes, as the in-process runner's ``stubs``: the same answer
+    for every argv, line for line (`TestMockGitParity` holds the two equal). The status is read
+    from the stub's own `_status` file at each call, as the script's `cat` read it."""
+    status_file = mock_bin / "_status"
+
+    def git(argv: list[str], _input):
+        args = argv[1:]
+        first = args[0] if args else ""
+        second = args[1] if len(args) > 1 else ""
+        if first == "rev-parse" and second == "HEAD":
+            return 0, f"{head}\n", ""
+        if first == "rev-parse":
+            return 0, ".git\n", ""
+        if first == "status":
+            return 0, status_file.read_text(), ""
+        if first == "branch" and second == "--show-current":
+            return 0, f"{branch}\n", ""
+        if first == "symbolic-ref" and args[-1] == "HEAD":
+            return 0, f"{branch}\n", ""
+        if first == "worktree":
+            return 0, "", ""
+        if first == "ls-files":
+            return 1, "", ""
+        return 0, "", ""
+
+    def gh(_argv: list[str], _input):
+        return 0, "[]\n", ""
+
+    return {"git": git, "gh": gh}
+
+
+def _mock_env(project_dir: Path, mock_bin: Path) -> dict[str, str]:
+    # HOME outside project_dir so per-user caches don't land under the project
+    # (would confound the §2 write-isolation snapshot). PYTHONDONTWRITEBYTECODE
+    # keeps the plugin-lib import from writing .pyc into this repo during tests.
+    home = mock_bin.parent / "_home"
+    home.mkdir(exist_ok=True)
+    return scrubbed_env(
+        home,
+        CLAUDE_PROJECT_DIR=str(project_dir),
+        CLAUDE_PLUGIN_ROOT=str(ROOT),
+        PATH=f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+    )
+
+
 def run_plugin_hook(
     command: str,
     project_dir: Path,
@@ -296,29 +344,115 @@ def run_plugin_hook(
     positional ``*args`` are passed through as subcommand argv (e.g.
     ``run_plugin_hook("clear", proj, "--session-start")``).
 
-    ``stdin`` is fed to the child as ``input=`` — Claude Code writes a JSON
-    payload to a Stop hook's stdin (``background_tasks`` etc.); the default
-    ``""`` gives a clean closed pipe (EOF), which the hook reads as "no signal"
-    so existing callers keep their pre-STH-3W7F behavior.
+    ``stdin`` is what the hook reads — Claude Code writes a JSON payload to a
+    Stop hook's stdin (``background_tasks`` etc.); the default ``""`` is a
+    clean closed pipe (EOF), which the hook reads as "no signal" so existing
+    callers keep their pre-STH-3W7F behavior.
+
+    In-process (`tests/_hook_inproc.py`), with the mock git and gh answered by
+    :func:`_mock_stubs` rather than started, so the test's result is reusable;
+    the cwd is the project's parent, a temp directory, rather than this
+    checkout. A test whose subject is the entry point itself (the exit status
+    the OS reports, stdin and stdout through real pipes) uses
+    :func:`run_plugin_hook_child`.
     """
     if mock_bin is None:
         mock_bin = project_dir.parent / "_mock_bin"
     _write_mock_git(mock_bin, status=git_status, branch=branch)
-    # HOME outside project_dir so per-user caches don't land under the project
-    # (would confound the §2 write-isolation snapshot). PYTHONDONTWRITEBYTECODE
-    # keeps the plugin-lib import from writing .pyc into this repo during tests.
-    home = mock_bin.parent / "_home"
-    home.mkdir(exist_ok=True)
-    env = scrubbed_env(
-        home,
-        CLAUDE_PROJECT_DIR=str(project_dir),
-        CLAUDE_PLUGIN_ROOT=str(ROOT),
-        PATH=f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+    return run_hook(
+        command, *args,
+        cwd=project_dir.parent,
+        env=_mock_env(project_dir, mock_bin),
+        input=stdin,
+        stubs=_mock_stubs(mock_bin, branch=branch),
     )
+
+
+def run_plugin_hook_child(
+    command: str,
+    project_dir: Path,
+    *args: str,
+    git_status: str = "",
+    branch: str = "main",
+    mock_bin: Path | None = None,
+    stdin: str = "",
+) -> subprocess.CompletedProcess:
+    """:func:`run_plugin_hook` as a real `python3` child with the shell-script mock git first on
+    PATH: for a test whose subject is the entry point itself. Such a test is uncacheable and is
+    marked so."""
+    if mock_bin is None:
+        mock_bin = project_dir.parent / "_mock_bin"
+    _write_mock_git(mock_bin, status=git_status, branch=branch)
     return subprocess.run(
         [sys.executable, str(HOOK), command, *args],
-        capture_output=True, text=True, env=env, timeout=90, input=stdin,
+        capture_output=True, text=True, env=_mock_env(project_dir, mock_bin), timeout=90,
+        input=stdin,
     )
+
+
+@pytest.mark.uncacheable("its subject is the shell-script mock git, run as the child it is")
+class TestMockGitParity:
+    """`_mock_stubs` answers every git call the in-process runner stubs; `_write_mock_git`'s
+    script answers the real-child tests. Two copies of one fake: these hold them equal over
+    every branch of the script and over every argv the hook actually sends on the paths the
+    suite drives, recorded from a clear, a blocking stop and a deferred stop."""
+
+    _BRANCHES = [
+        ["rev-parse", "HEAD"], ["rev-parse", "--show-toplevel"], ["rev-parse", "--git-common-dir"],
+        ["status", "--porcelain"], ["branch", "--show-current"], ["branch", "-a"],
+        ["symbolic-ref", "--short", "HEAD"], ["symbolic-ref", "-q", "HEAD"],
+        ["symbolic-ref", "HEAD", "x"], ["worktree", "list"], ["ls-files"], ["log", "-1"],
+        ["-C", "somewhere", "status"], [],
+    ]
+
+    def _script(self, mock_bin: Path, args: list[str]) -> tuple[int, str, str]:
+        proc = subprocess.run(
+            [str(mock_bin / "git"), *args], capture_output=True, text=True, timeout=30,
+            cwd=mock_bin,
+        )
+        return proc.returncode, proc.stdout, proc.stderr
+
+    def _sent_by_the_hook(self, tmp_path: Path, mock_bin: Path) -> list[list[str]]:
+        sent: list[list[str]] = []
+        stubs = _mock_stubs(mock_bin, branch="feature/x")
+        recorded = {
+            name: (lambda argv, stdin, _stub=stub: (sent.append(argv[1:]), _stub(argv, stdin))[1])
+            for name, stub in stubs.items()
+        }
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        env = _mock_env(tmp_path, mock_bin)
+        for command, stdin in (
+            ("clear", ""),
+            ("stop", ""),
+            ("stop", json.dumps({"background_tasks": [{"id": "w", "type": "workflow", "name": "n"}]})),
+        ):
+            _make_session_start(prawduct)
+            run_hook(command, cwd=tmp_path.parent, env=env, input=stdin, stubs=recorded)
+        return sent
+
+    def test_the_two_fakes_answer_every_argv_alike(self, tmp_path):
+        mock_bin = tmp_path.parent / "_mock_bin"
+        _write_mock_git(mock_bin, status=" M src/app.py\n?? new.txt\n", branch="feature/x")
+        sent = self._sent_by_the_hook(tmp_path, mock_bin)
+        assert any(args[:1] == ["status"] for args in sent), "the hook's calls were not recorded"
+        stub = _mock_stubs(mock_bin, branch="feature/x")["git"]
+        cases = {tuple(args) for args in self._BRANCHES + sent}
+        mismatched = {
+            args: (stub(["git", *args], None), self._script(mock_bin, list(args)))
+            for args in sorted(cases)
+            if stub(["git", *args], None) != self._script(mock_bin, list(args))
+        }
+        assert mismatched == {}
+
+    def test_the_gh_fakes_answer_alike(self, tmp_path):
+        mock_bin = tmp_path / "_mock_bin"
+        _write_mock_git(mock_bin)
+        proc = subprocess.run([str(mock_bin / "gh"), "pr", "list"], capture_output=True, text=True,
+                              timeout=30, cwd=mock_bin)
+        assert _mock_stubs(mock_bin)["gh"](["gh", "pr", "list"], None) == (
+            proc.returncode, proc.stdout, proc.stderr)
 
 
 def _make_session_start(prawduct: Path, offset_seconds: int = -60) -> None:
@@ -331,11 +465,12 @@ def _make_session_start(prawduct: Path, offset_seconds: int = -60) -> None:
 
 
 class TestPluginClearBriefing:
+    @pytest.mark.uncacheable("the entry point as a real python3 child: exit 0 and stdout through a pipe")
     def test_clear_renders_briefing_and_writes_session_markers(self, tmp_path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / "project-state.yaml").write_text("backlog_format_version: 2\n")
-        result = run_plugin_hook("clear", tmp_path, git_status=" M src/app.py")
+        result = run_plugin_hook_child("clear", tmp_path, git_status=" M src/app.py")
         assert result.returncode == 0, result.stderr
         # Session markers written under .prawduct/
         assert (prawduct / ".session-start").is_file()
@@ -420,10 +555,11 @@ class TestPluginStopGate:
         _make_session_start(prawduct)
         return prawduct
 
+    @pytest.mark.uncacheable("the entry point as a real python3 child: the exit 2 the OS reports to the harness")
     def test_stop_blocks_when_critic_findings_absent(self, tmp_path):
         """Keystone acceptance: code changed vs active plan + no findings -> exit 2."""
         self._active_plan_repo(tmp_path)
-        result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
+        result = run_plugin_hook_child("stop", tmp_path, git_status=" M src/app.py")
         assert result.returncode == 2, (result.stdout, result.stderr)
         assert "CRITIC" in result.stderr
         # The gate names the plugin-namespaced command — a bare `/critic` does not
@@ -547,11 +683,12 @@ class TestPluginStopGateBackgroundDefer:
     def _stdin(tasks) -> str:
         return json.dumps({"background_tasks": tasks, "session_crons": []})
 
+    @pytest.mark.uncacheable("the entry point as a real python3 child: the Stop payload through a real stdin pipe")
     def test_defers_while_background_work_in_flight(self, tmp_path):
         """Non-empty background_tasks -> exit 0 with a deferral note, NOT a block."""
         self._active_plan_repo(tmp_path)
         stdin = self._stdin([{"id": "wf-1", "type": "workflow", "name": "build-pipeline"}])
-        result = run_plugin_hook("stop", tmp_path, git_status=self._CODE_DIFF, stdin=stdin)
+        result = run_plugin_hook_child("stop", tmp_path, git_status=self._CODE_DIFF, stdin=stdin)
         assert result.returncode == 0, (result.stdout, result.stderr)
         assert "GATES DEFERRED" in result.stderr
         # The note names the in-flight task and the deferred gate, and is explicit
@@ -1061,6 +1198,10 @@ class TestValidateEvidenceSchema:
 class TestWriteIsolationInvariant:
     """Design §2: the runtime reads/writes ONLY .prawduct/ — never elsewhere."""
 
+    @pytest.mark.uncacheable(
+        "the invariant is about everything the hook PROCESS writes, the interpreter's own writes"
+        " included, which an in-process call cannot show"
+    )
     def test_clear_and_stop_write_only_under_prawduct(self, tmp_path):
         project = tmp_path / "repo"
         project.mkdir()
@@ -1089,9 +1230,9 @@ class TestWriteIsolationInvariant:
             return out
 
         before = snapshot()
-        r1 = run_plugin_hook("clear", project, git_status=" M src/lib.py", mock_bin=tmp_path / "_mock_bin")
+        r1 = run_plugin_hook_child("clear", project, git_status=" M src/lib.py", mock_bin=tmp_path / "_mock_bin")
         _make_session_start(prawduct)
-        r2 = run_plugin_hook("stop", project, git_status=" M src/lib.py", mock_bin=tmp_path / "_mock_bin")
+        r2 = run_plugin_hook_child("stop", project, git_status=" M src/lib.py", mock_bin=tmp_path / "_mock_bin")
         after = snapshot()
         assert before == after, (
             "the plugin runtime modified files outside .prawduct/ — violates the "

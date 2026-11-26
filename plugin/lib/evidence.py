@@ -60,11 +60,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import clock
+from . import entropy
 from . import gitstate
 
 SCHEMA_VERSION = 1
@@ -585,7 +585,7 @@ def append_guard_refusal(
     runs once per dispatch, so a fresh id per firing counts dispatches; a gate
     is re-asked several times a session about an unchanged repo, so the same id
     per *observation* is what counts events. With a key, the id is a digest of
-    ``(guard, dedupe_key)`` — no timestamp, no uuid — and the second
+    ``(guard, dedupe_key)`` — no timestamp, no random token — and the second
     observation of the same event appends nothing at all, so the store does not
     grow a line per poll. (``verdict_cache``'s key leaves ``guard-refusal``
     lines out — ``read_facts``'s ``coverage_fingerprint`` — so a firing never
@@ -657,7 +657,7 @@ def _append_guard_fact(project_dir, guard, body, dedupe_key, known_facts) -> dic
     fact_id = "guard-{}-{}-{}".format(
         guard.strip(),
         clock.now().strftime("%Y%m%dT%H%M%SZ"),
-        uuid.uuid4().hex[:8],
+        entropy.token_hex(8),
     )
     # `guard` LAST, not first: the id was minted from the parameter, so a body
     # carrying its own "guard" key must not win — a record whose grouping key
@@ -709,7 +709,7 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
         return {"status": "error", "reason": "a test-run fact needs a tree"}
     fact_id = "test-run-{}-{}".format(
         clock.now().strftime("%Y%m%dT%H%M%SZ"),
-        uuid.uuid4().hex[:8],
+        entropy.token_hex(8),
     )
     return append_fact(project_dir, "test-run", fact_id, body)
 
@@ -836,7 +836,7 @@ def append_stop_block(
     correct whether or not its record lands.
     """
     stop_id = "{}-{}".format(
-        clock.now().strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+        clock.now().strftime("%Y%m%dT%H%M%SZ"), entropy.token_hex(8)
     )
     results = []
     for gate in gates:
@@ -900,7 +900,7 @@ def append_session_start(project_dir: Path) -> dict:
     rates this fact exists for need only that a session began, so the
     SessionStart payload's ``source`` (``startup`` or ``clear``) is not read."""
     fact_id = "session-start-{}-{}".format(
-        clock.now().strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+        clock.now().strftime("%Y%m%dT%H%M%SZ"), entropy.token_hex(8)
     )
     return append_fact(project_dir, "session-start", fact_id, {})
 

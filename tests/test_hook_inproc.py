@@ -126,6 +126,7 @@ class TestInventories:
         passed_through = {
             "PRAWDUCT_VERSION",  # `lib/__init__`'s export table names the constant
             "PRAWDUCT_TEST_ONLY_FROZEN_NOW",  # the suite's one clock (`lib/clock.py`), set by conftest
+            "PRAWDUCT_TEST_ONLY_ENTROPY_SEED",  # the suite's id tokens (`lib/entropy.py`), set by conftest
         }
         assert names - _hook_inproc.STRIPPED_ENV - passed_through == set()
         assert _hook_inproc.STRIPPED_ENV - names == set(), "stripped names production never reads"
@@ -265,6 +266,64 @@ class TestWhatTheCallReturns:
         with pytest.raises(ProcessLookupError):
             os.kill(EXITED_PID, 0)
         os.kill(os.getpid(), 0)  # control: the live process answers
+
+
+class TestStubbedExecutables:
+    """`stubs` answers a stubbed executable's `subprocess.run` as a child's would be read."""
+
+    @staticmethod
+    def _stub(argv, stdin):
+        return (3 if "fail" in argv else 0), f"out {argv[1:]} {stdin}\n", "err\n"
+
+    def test_a_captured_call_gets_the_answer_as_text_or_bytes(self):
+        with _hook_inproc._stubbed_children({"git": self._stub}):
+            text = subprocess.run(["git", "a"], capture_output=True, text=True, input="in")
+            raw = subprocess.run(["/opt/x/git", "a"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        assert (text.returncode, text.stdout, text.stderr) == (0, "out ['a'] in\n", "err\n")
+        assert (raw.stdout, raw.stderr) == (b"out ['a'] None\n", b"err\n"), "any path to the name"
+
+    def test_check_raises_on_a_non_zero_answer(self):
+        with _hook_inproc._stubbed_children({"git": self._stub}):
+            with pytest.raises(subprocess.CalledProcessError) as raised:
+                subprocess.run(["git", "fail"], capture_output=True, text=True, check=True)
+            unchecked = subprocess.run(["git", "fail"], capture_output=True, text=True)
+        assert raised.value.returncode == 3
+        assert unchecked.returncode == 3, "control: without check the code is returned"
+
+    def test_stderr_to_stdout_merges_and_an_uncaptured_stream_reaches_the_descriptor(self):
+        with _hook_inproc._captured_fds("") as captured:
+            with _hook_inproc._stubbed_children({"git": self._stub}):
+                merged = subprocess.run(["git", "m"], stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True)
+                inherited = subprocess.run(["git", "i"])
+                dropped = subprocess.run(["git", "d"], stdout=subprocess.DEVNULL,
+                                         stderr=subprocess.DEVNULL)
+        assert (merged.stdout, merged.stderr) == ("out ['m'] None\nerr\n", None)
+        assert (inherited.stdout, inherited.stderr, dropped.stdout) == (None, None, None)
+        assert captured["stdout"] == b"out ['i'] None\n"
+        assert captured["stderr"] == b"err\n"
+
+    def test_an_unstubbed_executable_still_starts_and_the_patch_is_gone_after(self, tmp_path):
+        real = subprocess.run
+        with _hook_inproc._stubbed_children({"gh": self._stub}):
+            started = subprocess.run(["git", "--version"], capture_output=True, text=True,
+                                     cwd=tmp_path)
+        assert started.returncode == 0 and started.stdout.startswith("git version"), started
+        assert subprocess.run is real
+
+    def test_run_hook_answers_the_hooks_own_git_from_the_stub(self, tmp_path):
+        """End to end: the hook's `git` reaches the stub, and nothing reaches it without one."""
+        asked: list[list[str]] = []
+
+        def git(argv, _stdin):
+            asked.append(argv[1:])
+            return 0, "stubbed-base\n", ""
+
+        run_hook("resolve-base", cwd=tmp_path, stubs={"git": git})
+        assert asked, "the hook's git calls never reached the stub"
+        asked.clear()
+        run_hook("resolve-base", cwd=tmp_path)
+        assert asked == [], "control: with no stubs the stub is not consulted"
 
 
 @pytest.mark.uncacheable(

@@ -26,9 +26,10 @@ the same:
   globals start new. The library modules are shared with the test process, so every module-level
   value production mutates is listed in :data:`PROCESS_STATE`: emptied or reset before the call,
   restored after, so neither a previous call nor the test's own in-process use leaks into the
-  hook, and the hook leaks nothing back. :data:`PROCESS_CONSTANTS` lists the memos left alone
-  because a fresh process computes the same value (the running plugin's own build and code
-  identity among them). `tests/test_hook_inproc.py` derives both from
+  hook, and the hook leaks nothing back. :data:`PROCESS_CONSTANTS` lists the values left alone:
+  memos a fresh process computes the same (the running plugin's own build and code identity
+  among them), and the seeded id sequence's draw count, whose reset would make two calls mint
+  the same id where two children never did. `tests/test_hook_inproc.py` derives both from
   the code, so a new memo cannot be missed by forgetting to list it.
 - **exit handlers.** The tree-key memo saves itself from an `atexit` handler; the call runs that
   save before it returns, as a child's exit did.
@@ -38,6 +39,16 @@ the same:
   process can hold, and a stamp the call leaves behind reads as interrupted, as the child's did.
   Only that module's view changes: anything else that writes or probes its own pid during the
   call (a temp-file name, a lock) sees a live process, as the child saw itself.
+
+- **stub executables.** A fixture that put a stub `git` (a shell script) first on PATH gave the
+  child a fake whose answers are a function of its argv. Run that way in this process, the stub
+  would be the test's own child, which testament vouches for no more than the hook's `python3`.
+  So a caller may hand :func:`run_hook` the same answers as Python (``stubs``, by executable
+  name): for the call, a `subprocess.run` of that executable, by bare name or by any path, is
+  answered by the stub rather than started, with the return code, the output streams, `check`
+  and `text` handled as `subprocess.run` handles a child's. Every other `subprocess.run` (a real
+  `git`, which testament does vouch for) starts as before. The caller keeps the stub file on
+  PATH too, so a `shutil.which` still finds it, and owns a parity check that the two agree.
 
 What it cannot give: a timeout (nothing can stop a call in this process), and a different
 interpreter. A test whose subject is the process boundary itself (the entry point parsing on an
@@ -55,6 +66,7 @@ import tempfile
 import types
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
+from typing import Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = PLUGIN_ROOT / "bin" / "prawduct-hook"
@@ -101,7 +113,8 @@ PROCESS_STATE = (
     ("_python_floor", "REEXECUTED_FROM", None),
 )
 
-#: Per-process memos deliberately NOT reset, with why a fresh process would compute the same.
+#: Per-process values deliberately NOT reset, with why: a memo a fresh process would compute the
+#: same, or a count whose reset would make two calls collide where two processes did not.
 #: The first three describe the running plugin, which is this checkout's: production memoises
 #: them because the code that runs cannot change under a running process, and the code the hook
 #: runs here is the test process's own. Resetting them would make every call probe this
@@ -112,6 +125,10 @@ PROCESS_CONSTANTS = {
     ("lib.verdict_cache", "_MODULE_DIGEST"): "the bytes of the running plugin's identity modules",
     ("lib.learnings_files", "glob_to_regex"): "a pure function of its argument",
     ("lib.record_progress", "this_machine"): "this machine's boot identity, the same in any process",
+    ("lib.entropy", "_drawn"): (
+        "the seeded id sequence's draw count. Not reset, because a fresh process's tokens never"
+        " repeated another process's: two calls in one test must mint distinct ids, as two"
+        " children did, and this process's pid is the same for both"),
 }
 
 #: One above the largest pid Linux can allocate (`pid_max` is at most 2**22), and far above
@@ -312,11 +329,65 @@ def _exit_code(exc: SystemExit) -> int:
     return 1
 
 
+#: A stub executable: ``(argv, input) -> (returncode, stdout, stderr)``, all text.
+Stub = Callable[[list[str], "str | None"], "tuple[int, str, str]"]
+
+
+def _stub_output(kwargs: dict, stream: str, text: str, as_text: bool):
+    """What `subprocess.run` hands back for one stream of a stub, and where else it goes: kept
+    when captured, written to this process's fd when inherited (as a child's went), else dropped."""
+    target = kwargs.get(stream)
+    if kwargs.get("capture_output") or target == subprocess.PIPE:
+        return text if as_text else text.encode()
+    if stream == "stderr" and target == subprocess.STDOUT:
+        return None
+    if target is None and text:
+        os.write(1 if stream == "stdout" else 2, text.encode())
+    return None
+
+
+@contextmanager
+def _stubbed_children(stubs: "dict[str, Stub]"):
+    """`subprocess.run` answers a stubbed executable in-process, for the call; restored after."""
+    if not stubs:
+        yield
+        return
+    real_run = subprocess.run
+
+    def run(args, *posargs, **kwargs):
+        argv = [os.fsdecode(a) for a in args] if isinstance(args, (list, tuple)) else None
+        stub = stubs.get(os.path.basename(argv[0])) if argv else None
+        if stub is None:
+            return real_run(args, *posargs, **kwargs)
+        as_text = bool(kwargs.get("text") or kwargs.get("universal_newlines")
+                       or kwargs.get("encoding") or kwargs.get("errors"))
+        stdin = kwargs.get("input")
+        if isinstance(stdin, bytes):
+            stdin = stdin.decode()
+        code, out, err = stub(argv, stdin)
+        if kwargs.get("stderr") == subprocess.STDOUT:
+            out, err = out + err, ""
+        result = subprocess.CompletedProcess(
+            args, code, _stub_output(kwargs, "stdout", out, as_text),
+            _stub_output(kwargs, "stderr", err, as_text),
+        )
+        if kwargs.get("check") and code:
+            raise subprocess.CalledProcessError(code, args, result.stdout, result.stderr)
+        return result
+
+    subprocess.run = run
+    try:
+        yield
+    finally:
+        subprocess.run = real_run
+
+
 def run_hook(
     *args: str,
     cwd: Path | str | None = None,
     env: dict[str, str] | None = None,
     input: str | None = None,
+    stubs: "dict[str, Stub] | None" = None,
 ) -> subprocess.CompletedProcess:
     """Run `prawduct-hook <args>` in this process; return what `subprocess.run(...,
     capture_output=True, text=True)` of a fresh child would have.
@@ -325,6 +396,7 @@ def run_hook(
     repository-locating variables are removed) for the call only. ``cwd`` is entered for the
     call; ``None`` keeps the current one, as `subprocess.run` without `cwd` did. ``input`` is
     what the hook reads from stdin, as `subprocess.run(input=...)`; ``None`` is an empty stdin.
+    ``stubs`` answers the executables it names in-process (the module docstring says how).
     """
     argv = [str(HOOK), *args]
     with ExitStack() as stack:
@@ -333,6 +405,7 @@ def run_hook(
         stack.enter_context(_argv(argv))
         stack.enter_context(_exited_pid())
         stack.enter_context(_fresh_process_state())
+        stack.enter_context(_stubbed_children(stubs or {}))
         captured = stack.enter_context(_captured_fds(input or ""))
         try:
             returncode = _fresh_hook().main()
