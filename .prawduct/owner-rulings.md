@@ -645,7 +645,7 @@ Owner judgments (norm ratification, which plans are done, delegation policy) sta
    review of what ships. The alternative (dispatching an empty-subject release review) was declined as a full
    boundary review that reads nothing.
 2. The critic-reviewer agent's `git -C * <verb> *` grants, which also admit `git -C <dir> -c alias.x='!cmd' x`, stay
-   as a recorded reach exemption (`_REACH_EXEMPT` in `tests/test_backlog_skill_metadata.py`, branch
+   as a recorded reach exemption (later moot: the reach rails retired with "what was over-built" below; `_REACH_EXEMPT` in `tests/test_backlog_skill_metadata.py`, branch
    `fix/agent-runnable-doctor-janitor`): the agent is dispatched only by the Critic under a no-execution contract,
    and narrowing it means redesigning the `git -C <dir>` form its own tests require.
 

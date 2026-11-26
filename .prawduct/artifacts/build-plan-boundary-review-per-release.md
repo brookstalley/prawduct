@@ -130,8 +130,9 @@ the composition over all facts also `covered`, with wave 1's three inferences
   `static_content_prefixes` uses), so a branch cannot opt itself into the lane: a governance change
   cannot supply its own authority. The release check reads it at the base tip. A value it cannot
   read, or any value but `per_release`, is `per_pr`.
-- *Inferred:* eligibility reuses `short_plan_deferral`'s conditions by calling it (chunk count, no
-  `Critic mode:`, not on the base, no risk surface by `risk.paths_touch_risk_surface`), adds the
+- *Inferred:* eligibility reuses `short_plan_deferral`'s shape conditions (`_short_plan_shape`: chunk
+  count, no `Critic mode:`, not on the base, no risk surface by `risk.paths_touch_risk_surface`;
+  decision M14), adds the
   judgeable-file bound over merge-base…working tree, and treats `Type: cumulative-final` as an
   opt-out, because that declaration names a boundary review.
 - *Inferred:* the lane's review at the last chunk is `chunk` over the whole branch: commit the last
@@ -229,15 +230,29 @@ W9) found M2 to M6 recorded only in docstrings.
 - **M10, prerelease tags (`-rc.N`, `-dev.N`) are never a release anchor**; only a release file the
   cut wrote anchors one. *Why:* the work between the last release and an rc tag would go unwalked.
 - **M11, a plain `/prawduct:critic cumulative` on the integration base at its tip is the release
-  batch review** (`critic-begin` derives `--span release`), under either policy. *Why:* that is the
+  batch review** (`critic-begin` derives `--span release`) where the policy in force is
+  `per_release`; under `per_pr` it stays the plain cumulative (round-4 review, native finding 1:
+  deriving it there turned a no-op into a refusal or a review no gate reads). *Why:* that is the
   one state where a plain cumulative reviews nothing; no model has to choose the flag.
-- **M12, a merged branch's unresolved blocker is cleared on the base:** under `per_release`, a
-  `verify-resolutions` pass on the base's own branch names the blockers standing on the trees of
-  the entries the release check holds, at the tip or ahead of the remote. *Why:* BLOCKING findings
-  clear only through `verify-resolutions`, and the branch that owned this one has merged.
+- **M12, retired 2026-11-26 (owner ruling "what was over-built", item 3).** It cleared a merged
+  branch's unresolved blocker on the base. Its premise, a merge made over a blocker past the PR
+  gate, is the owner's deliberate call under good faith, so the release no longer re-checks it: a
+  release batch review settles its own findings only. The version-shape checks on declared version
+  files retired with it.
 - **M13, the lane's reading is memoised for one inference only**, and a crash in the lane predicate
   is noted even under `per_pr`. *Why:* inference writes nothing to the tree; the crash happens
   while the policy is being read, before anything knows which policy applies.
+- **M14, lane eligibility calls `_short_plan_shape`, not `short_plan_deferral(...).defers`.** *Why:*
+  `defers` also answers "not finished", and a plan the lane's review just finished must stay in the
+  lane, or the first fix after that review would bring back the cumulative the lane moved. A later
+  widening of `short_plan_deferral` (#1247 seam 2) is not inherited by the lane; change both.
+- **M15, `reverted`** (owner ruling 2026-11-26, R-4): an owed entry whose every judgeable file is,
+  at the base tip, back to its content at the release span's start is covered. Where the span starts
+  before the anchor, an entry reverting a change shipped between that start and the anchor also reads
+  `reverted` (the batch rule's condition 2 shares this). Veto-able.
+- **M16, the batch fix tail asks only boundary reviews at or after the span start.** A verify-only
+  tail from an older review no longer credits a later commit; it reads `direct` and the release
+  batch review reads it, the safe direction. Veto-able.
 
 **Level:** Medium. The mechanism is clear and every piece has a precedent in the code (the short-plan
 deferral, the bounded cumulative, the fix-churn diagnosis, `excused_gap_verdict`). Two things would
@@ -401,7 +416,7 @@ Beyond tests, the op is read as an operator reads it:
 
 - **Description:** In `plugin/lib/critic_mode.py`:
   - `lane_eligibility(project_dir, prawduct_dir, plan, progress) -> LaneEligibility(eligible, reason)`:
-    policy per_release (Chunk 01's reader), short_plan_deferral(...).defers, at most
+    policy per_release (Chunk 01's reader), the short plan's shape (`_short_plan_shape`, M14), at most
     `LANE_MAX_JUDGEABLE_FILES` (decision 4) judgeable files merge-base…working tree, and no
     `Type: cumulative-final`. Fails closed: anything unreadable is not eligible.
   - At an eligible last chunk on a clean tree, rule 2 and the rule-4 redirect answer `chunk` with a
