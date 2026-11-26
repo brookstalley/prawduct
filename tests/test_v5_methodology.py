@@ -48,7 +48,7 @@ def assert_inert_count_cap(text: str, path: str) -> None:
     verify-resolutions narrowing into `## Severity`, which sits below all three
     goal sections. The legend entry is the right home here for the opposite
     reason: it is a lookup, and it already owns the parent rule (record-only
-    prose is a NOTE because rating it WARNING manufactures the next round).
+    prose is a NOTE).
 
     **The three components are the cap, not decoration.** A bare "rate it NOTE"
     still hands the builder a defect report, and a builder fixes defect
@@ -813,7 +813,13 @@ LAST_MEASURED_TOKENS = {
     # dependency-scope bullet, naming only what a static read cannot judge. The bullet is pinned
     # identical in both carriers, and the detector's results arrive through record-lint, so nothing
     # another file owns was left to cut. A READING; ceiling raised with it.
-    "skills/critic/review-protocol.md": 4171,
+    # +48 on 2026-11-26 (critic-good-faith-severity, owner ruling 2026-11-26), DECLARED: Severity
+    # Levels gains the good-faith cap (a failure needing the repo's own builder, owner or model to act
+    # in bad faith later is an observation at most) with its floor and what a competent mistake is. Paid in part
+    # by cutting what another surface owns: the BLOCKING bullet's restatement of the Stage paragraph,
+    # the Observation bullet's oracle-order sentence (Scope says cross-checks.md owns it), its pointer
+    # into review-cycle.md (which no reviewer loads). Pinned identical in both carriers. A READING.
+    "skills/critic/review-protocol.md": 4219,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -943,7 +949,13 @@ LAST_MEASURED_TOKENS = {
     # dependency-scope bullet, naming only what a static read cannot judge. The bullet is pinned
     # identical in both carriers, and the detector's results arrive through record-lint, so nothing
     # another file owns was left to cut. A READING; ceiling raised with it.
-    "skills/critic/goals-1-3.md": 2583,
+    # +66 on 2026-11-26 (critic-good-faith-severity, owner ruling 2026-11-26), DECLARED: the same
+    # good-faith cap as review-protocol.md, since chunk and verify-resolutions reviewers read only this
+    # file. Paid in part by merging two Goal bullets that restated paragraphs above them (record checks;
+    # norm departures, whose remedy joined the Normative authority Tell) and by dropping the
+    # Observation bullet's round-cost clause, which the preamble's pricing of observations states.
+    # A READING.
+    "skills/critic/goals-1-3.md": 2649,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -6007,7 +6019,10 @@ class TestCriticSkill:
         # RAISED 4062 -> 4071 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4071 -> 4111 (backlog-roi-wave2 Chunk 02, #847) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4111 -> 4172 (test-determinism Chunk 02, 2026-11-24) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 4172, f"review-protocol.md is ~{tokens} tokens, should be <4172"
+        # RAISED 4172 -> 4228 (critic-good-faith-severity, 2026-11-25, owner ruling 2026-11-26): the
+        # good-faith cap, a rule that removes review work, net of in-place cuts — see
+        # LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 4220, f"review-protocol.md is ~{tokens} tokens, should be <4220"
 
 
 # =============================================================================
@@ -6189,8 +6204,8 @@ class TestCriticGoals13:
         # NOT, which is not an inconsistency: the narrowing governs whether to
         # report at all, decided continuously while reading the goals, so it had
         # to precede them; a severity cap is a LOOKUP made once at write-up, and
-        # the legend entry already owns its parent rule (record prose is a NOTE
-        # because rating it WARNING manufactures the next round). Both placements
+        # the legend entry already owns its parent rule (record prose is a NOTE).
+        # Both placements
         # are asserted, not assumed -- `assert_inert_count_cap` requires the cap
         # INSIDE the legend entry, and the ordering pin keeps the narrowing above
         # goal 1.
@@ -6319,7 +6334,10 @@ class TestCriticGoals13:
         # RAISED 2494 -> 2507 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 2507 -> 2523 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 2523 -> 2584 (test-determinism Chunk 02, 2026-11-24) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 2584, f"goals-1-3.md is ~{tokens} tokens, should be <2584"
+        # RAISED 2584 -> 2662 (critic-good-faith-severity, 2026-11-25, owner ruling 2026-11-26): the
+        # good-faith cap, a rule that removes review work, net of in-place cuts — see
+        # LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 2650, f"goals-1-3.md is ~{tokens} tokens, should be <2650"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
