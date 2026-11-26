@@ -340,6 +340,35 @@ class TestTheBatchCreditsWhatItRead:
         assert fixed[fix]["classification"] == bc.BATCH_COVERED, fixed[fix]
         assert batch in fixed[fix]["reason"] and "verify-resolutions" in fixed[fix]["reason"]
 
+    def test_a_branch_merged_over_a_blocker_is_not_credited_until_it_is_resolved(self, repo, tmp_path):
+        """W2: the PR gate refuses a blocked branch, so this merge bypassed it,
+        and catching bypassed merges is the release check's job. A clean batch
+        review that outlives the blocker does not clear it: only a resolution
+        does (`BLOCKING findings clear only through verify-resolutions`)."""
+        _cut(repo, "v1.0.0")
+        base = _branch(repo, "a")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
+        blocker = _review(repo, base, _tree(repo), CHUNK, blocking=True)
+        branch_tip = _tree(repo)
+        # The base moves first, so the merge's tree (the batch review's head) is
+        # not the branch tip's, where the blocker stands: only the entry's own
+        # trees can carry it to the batch rule.
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
+        merge = _merge(repo, "a")
+        assert _tree(repo, merge) != branch_tip, "the fixture must keep the blocker off the batch's trees"
+        before = _coverage(repo, tmp_path)[merge]
+        assert before["classification"] == bc.UNCOVERED and "unresolved blocking" in before["reason"], before
+        assert _begin_release(repo, tmp_path).returncode == 0
+        batch = _consolidate(repo, tmp_path)
+        after = _coverage(repo, tmp_path)[merge]
+        assert after["classification"] == bc.UNCOVERED, after
+        assert batch in after["reason"] and f"{blocker} R-1" in after["reason"], after
+        assert "the commit's own" in after["reason"], after
+        _resolve(repo, blocker)
+        resolved = _coverage(repo, tmp_path)[merge]
+        assert resolved["classification"] == bc.BATCH_COVERED and batch in resolved["reason"], resolved
+
     def test_verify_resolutions_dispatches_on_the_base_against_the_batch(self, repo, tmp_path):
         """The fix tail's route exists: after the batch blocker is fixed on the base,
         a verify pass anchors to the batch review and names its blocker."""
@@ -433,6 +462,30 @@ class TestNoGateMoves:
         base, tip = self._branch_with_inner_review(repo)
         _review(repo, base, tip, CHUNK)
         _review(repo, base, tip, CUMULATIVE, blocking=True, extra={"span": "release"})
+        assert gates.branch_coverage_verdict(repo)["status"] == "blocked"
+
+
+    def test_a_release_batch_blocker_does_not_hold_a_branch_forked_at_its_tree(self, repo, tmp_path):
+        """The native review's cross-branch blocker: the release batch review is
+        taken at the base's tip, and a branch forked there stands on that tree
+        as its merge-base. Its blocker says the base is not fit to RELEASE, owed
+        by the release check and the base's verify pass, never by unrelated work
+        built on top. Control: the same blocker on an ordinary review holds it."""
+        _cut(repo, "v1.0.0")
+        tip = _tree(repo)
+        batch = _review(repo, _tree(repo, "main~1"), tip, CUMULATIVE, blocking=True,
+                        extra={"span": "release"})
+        _branch(repo, "feature")
+        _commit(repo, {"src/feature.py": "f = 1\n"}, "unrelated work")
+        _review(repo, tip, _tree(repo), CHUNK)
+        assert gates.branch_coverage_verdict(repo)["status"] == "covered"
+        # The release check still counts it, at the base's own tree.
+        (fact,) = [f for f in evidence.read_facts(repo)["facts"] if f.get("id") == batch]
+        facts = evidence.read_facts(repo)["facts"]
+        assert coverage_algebra.batch_review_blockers(facts, fact)
+        verdict = coverage_algebra.coverage_verdict(facts, tip, tip, lambda a, b: evidence.tree_diff(repo, a, b))
+        assert verdict["status"] == "blocked", verdict
+        _review(repo, _tree(repo, "main~1"), tip, CUMULATIVE, blocking=True)  # the control
         assert gates.branch_coverage_verdict(repo)["status"] == "blocked"
 
 

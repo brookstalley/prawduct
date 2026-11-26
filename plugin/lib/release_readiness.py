@@ -656,30 +656,22 @@ def _boundary_coverage_check(project_dir: Path, pending: bool) -> "tuple[list[tu
     --gate`` exits with: an entry not covered refuses as
     ``boundary-uncovered:``, an answer it could not give (a missing release
     anchor included) as ``boundary-unevaluable:``, each with its remedy and the
-    entries it names. A policy that cannot be read at all is ``per_release``
-    only where this checkout declares it, which is the stricter reading here.
+    entries it names. A policy whose read fails is ``review_lane``'s to answer
+    (``release_policy`` never raises; under a ``per_release`` checkout the
+    gate then refuses as unevaluable), so this check and ``--gate`` agree.
     ``pending`` is whether anything is release-pending: under ``per_pr`` a
     release with nothing pending prints no advice, so nothing is classified."""
     from . import boundary_coverage, review_lane  # noqa: PLC0415 — lazy: they import the consolidator
 
-    try:
-        policy = review_lane.release_policy(project_dir)
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- the policy read must not crash the release gate; the fallback below is the stricter reading where the checkout declares per_release
-        from .core import BOUNDARY_REVIEW_KEY, read_scalar_yaml_key  # noqa: PLC0415
-
-        _state, working = read_scalar_yaml_key(
-            Path(project_dir) / ".prawduct" / "project-state.yaml", BOUNDARY_REVIEW_KEY)
-        policy = review_lane.Policy(
-            review_lane.PER_RELEASE if working == review_lane.PER_RELEASE else review_lane.PER_PR, "",
-            f"the policy could not be read at the integration branch ({type(exc).__name__}: {exc}), "
-            "so this checkout's declaration stands")
+    policy = review_lane.release_policy(project_dir)
     note = [(f"NOTE: boundary-coverage: {policy.note}.", True)] if policy.note else []
     if not policy.per_release:
         return (_boundary_coverage_lines(project_dir) + note if pending else []), False
     report = boundary_coverage.classify_pending(project_dir)
     gate = boundary_coverage.release_gate(report, policy)
     lines = [(f"  {boundary_coverage.count_line(report)}.", False)] if report.status == "ok" else []
-    lines += note
+    # A failed read's refusal already carries the note; printing it twice adds nothing.
+    lines += [] if policy.read_failed else note
     if gate.message:
         lines.append((f"{gate.message}.", True))
         lines += [(f"  {e.label} is {e.classification} — {e.reason}", True) for e in gate.owed]

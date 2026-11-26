@@ -495,8 +495,9 @@ pending or not, with `boundary-uncovered:` while any entry `check-boundary-cover
 covered, and `boundary-unevaluable:` when it cannot answer; `check-boundary-coverage --gate` exits
 1 and 3 on the same verdict (0 under `per_pr`, where both stay advice). The route out of
 `boundary-uncovered` is the release batch review: on the integration branch's own checkout, at its
-tip, with a clean tree, `/prawduct:critic cumulative` dispatched as `critic-begin --mode cumulative
---span release`. It rates what no boundary review read since the release anchor, or since the
+tip, with a clean tree, a `/prawduct:critic cumulative` whose dispatch is `prawduct-hook
+critic-begin --mode cumulative --span release`. Without `--span release`, a cumulative there
+reviews the empty merge-base→tip interval, exits 3 and credits nothing. It rates what no boundary review read since the release anchor, or since the
 oldest such entry when one sits before the anchor, and a blocker it raises is fixed there and
 cleared by `verify-resolutions`.
 
@@ -508,6 +509,8 @@ What a correct release can still meet, now that this blocks (each reads not cove
 | Work committed on the base, a hotfix (`direct`) | Yes | The release batch review |
 | A reopen commit's version bump | Only when `release_version_files:` was not declared at the anchor (`direct`) | Declare it (it counts from the next release); the batch review this time |
 | Octopus merge (`unknown`) | Yes | The release batch review, which credits it like any merge |
+| A merge of a history sharing no merge-base with the base (`--allow-unrelated-histories`, a subtree import), or one git could not diff or read (`unknown`) | Yes | The release batch review, which credits it by what it brought onto the base |
+| A merge whose branch carries an unresolved BLOCKING finding (`uncovered`: its PR gate was bypassed) | Yes, even after a clean batch review: one that outlives the blocker does not clear it | Fix it and record its resolution with `verify-resolutions` |
 | A fragment no commit on the base added (untracked, or its branch unmerged): `unknown`, no commit | Yes, and no review can credit it | Commit or merge it, or delete a stray one |
 | A pruned release's withheld scope, merged before the anchor | Yes | The release batch review, whose span then starts at that scope's first parent |
 | #1250's base-advance transfer (`pr-transferred`) | No, covered. A transfer whose suite condition failed reads `uncovered` and blocks | The batch review, or the suite run its reason names |

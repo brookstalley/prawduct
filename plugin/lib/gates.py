@@ -4100,10 +4100,7 @@ def _fix_tail_deferral(project_dir, facts, base_tree, tip_tree, merge_base, verd
     if tip == "HEAD":
         if not review_lane.boundary_review_policy(project_dir).per_release:
             return None
-    elif not (
-        review_lane.boundary_review_policy_at(project_dir, merge_base).per_release
-        and review_lane.boundary_review_policy_at(project_dir, tip).per_release
-    ):
+    elif not review_lane.boundary_review_policy_of_merge(project_dir, merge_base, tip).per_release:
         return None
 
     churn = coverage.diagnose_fix_churn(

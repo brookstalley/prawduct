@@ -7358,7 +7358,9 @@ def cmd_check_boundary_coverage(project_dir: Path, args: list[str] | None = None
     under ``per_release`` exit 1 when any entry is not covered
     (``boundary-uncovered``) and 3 when it could not answer, a missing release
     anchor included (``boundary-unevaluable``), each on stderr with its remedy;
-    under ``per_pr`` exit 0, the advice unchanged. Either way it prints the
+    under ``per_pr`` exit 0, the advice unchanged. A gate that cannot answer
+    (a failed policy read under a ``per_release`` checkout, or a fault in the
+    verdict) is 3, never main()'s floor of 1. Either way it prints the
     policy it read and why, and ``--json`` adds ``policy`` and ``gate``."""
     argv = list(args or [])
     rejected = _reject_unknown_args("check-boundary-coverage", argv, {"--json", "--gate"})
@@ -7374,8 +7376,14 @@ def cmd_check_boundary_coverage(project_dir: Path, args: list[str] | None = None
     if "--gate" in argv:
         from lib import review_lane  # noqa: PLC0415 — lazy, as above
 
-        policy = review_lane.release_policy(project_dir)
-        gate = boundary_coverage.release_gate(report, policy)
+        try:
+            policy = review_lane.release_policy(project_dir)  # never raises by contract
+            gate = boundary_coverage.release_gate(report, policy)
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- a gate that could not answer is exit 3, never main()'s exit 1, which reads as boundary-uncovered
+            print(f"{boundary_coverage.GATE_UNEVALUABLE}: the release gate could not be evaluated "
+                  f"({type(exc).__name__}: {exc}): fix what the reason names, then re-run",
+                  file=sys.stderr)
+            return 3
         if as_json:
             print(json.dumps({
                 **report.as_dict(),
