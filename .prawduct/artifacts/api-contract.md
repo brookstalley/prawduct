@@ -170,7 +170,19 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   manifest's `reviewer_model` and prints it as a `reviewer model:` line — absent, the reviewer
   ceiling is assumed and a note says so; `--tier` never moves it; on a development build's
   `cumulative`, a `native review paired` line tells the fork to dispatch the manifest's
-  `native_review` wrapper, and a dev cumulative that does not pair says why in a note),
+  `native_review` wrapper, and a dev cumulative that does not pair says why in a note;
+  `--span release`, with `--mode cumulative` only (added 2026-11-26, #1232), is the release batch
+  review: run on the integration base's own checkout at its tip with a clean tree, its interval is
+  the release anchor → HEAD, `files_reviewed` is the changed files of every release entry
+  `check-boundary-coverage` reads not covered that still differ from the anchor, and the rest of
+  the span is `files_context`; the manifest and fact record `span: release` and a `span_reason`
+  naming the anchor, and the fact is never a coverage edge (only the release check's
+  `batch_review_covers` credits it). Refused with exit 1 and `--span release refused (<code>)`
+  on stderr, before anything is written: `off-base` (not the base's checkout, or HEAD is not the
+  base's tip), `dirty-tree`, `no-anchor`, `unevaluable` (the classification could not run),
+  `no-subject` (what is owed changes nothing that still differs from the anchor); exit 3 when every
+  release entry is already covered. `--force` overrides none of them. Any other `--span` value, or
+  `--span` with another mode, is exit 1),
   `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
   and writes the optional `dispatched_at` review-fact body key when the mark is this review's —
@@ -328,7 +340,13 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   merge-base of the base and the newest version tag (so a tag on a promotion merge the base never
   contains still anchors); with neither, no commit is walked and the report says so.
   Classes: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `release-bookkeeping`,
-  `inner-only`, `uncovered`, `direct` or `unknown`, each with its reason. `pr-transferred` is a branch that synced
+  `inner-only`, `tail-deferred`, `uncovered`, `direct` or `unknown`, each with its reason.
+  `batch-covered` is a commit (merge or single-parent) a boundary review on the base credits by
+  `coverage_algebra.batch_review_covers` — it brackets the commit on the first-parent line, rated
+  every judgeable file of the commit still changed across its interval, and no unresolved blocker
+  stands at its trees — or a single-parent fix after such a review that `verify-resolutions` and
+  free edges compose to; a `critic-begin --span release` review is credited only this way.
+  `tail-deferred` (not covered) is a fix tail the PR gate deferred to the release. `pr-transferred` is a branch that synced
   its base after its PR's boundary review and that the PR gate passed by its base-advance transfer:
   the op reads the grant the PR gate recorded (`gates.recorded_transfer_grant`), or, with none,
   re-decides with the gate's own function (`gates.base_advance_transfer`) over the branch's suite
@@ -1037,6 +1055,9 @@ Fail-direction is deliberate and per-purpose:
   `verify-resolutions` anchored to an unchanged tree with nothing outstanding takes the same 3, for
   the same reason — it used to fall out as a bare 1, which the skill's exit table routes to
   "re-dispatch per the demotion property", manufacturing a full round the gate did not want.
+  A `--span release` dispatch takes the same 3 when every release entry already reads covered,
+  because the release check then needs no batch review; `--force` does not override that one,
+  since the review would have nothing to rate.
 
   **`critic-begin` 4 — round budget exhausted.** This build-plan SCOPE has already bought the full
   rounds `review_round_budget` allows (`.prawduct/project-state.yaml`, default 6, `null` disables).
