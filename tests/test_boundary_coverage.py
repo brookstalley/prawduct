@@ -214,13 +214,36 @@ class TestABatchReviewOnTheBase:
 
 
 def _suite_ran(repo: Path, rev: str) -> None:
-    """A green suite run recorded on the store against ``rev``'s tree: the
-    transfer's third condition, in the body `evidence.append_test_run` writes,
-    under a fixed id so the test draws no randomness."""
-    body = {"tree": _tree(repo, rev), "passed": 3, "failed": 0, "skipped": 0,
-            "duration_seconds": 1, "source": "run"}
+    """A green suite run recorded on the store against ``rev``'s tree, at
+    ``rev``: the transfer's third condition, in the body
+    `evidence.append_test_run` writes, under a fixed id so the test draws no
+    randomness."""
+    body = {"tree": _tree(repo, rev), "head": _git(repo, "rev-parse", rev), "passed": 3,
+            "failed": 0, "skipped": 0, "duration_seconds": 1, "source": "run"}
     fact_id = f"test-run-bc-{next(_ids):04d}"
     assert evidence.append_fact(repo, "test-run", fact_id, body)["status"] == "appended"
+
+
+def _local_record(repo: Path, *, tree: "str | None", void: bool = False) -> None:
+    """This checkout's own `.test-evidence.json`, kept out of the fixture's commits.
+    ``void`` writes what `test-evidence record` leaves while a run is in flight:
+    no `evidence_tree`, `degraded`, `void`, and an `in_progress` stamp."""
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    if ".prawduct/.test-evidence.json" not in (exclude.read_text() if exclude.exists() else ""):
+        with exclude.open("a", encoding="utf-8") as fh:
+            fh.write("\n.prawduct/.test-evidence.json\n")
+    record = {"timestamp": "2026-11-25T12:00:00Z", "passed": 3, "failed": 0, "skipped": 0,
+              "duration_seconds": 1, "command": "pytest", "verifier": "none",
+              "tests_executed": [], "changes_referenced": [], "coverage_level": "referenced"}
+    if void:
+        record.update(timestamp="2099-01-01T00:00:00Z", void="record attempt did not complete",
+                      void_counts_from=None, degraded="a record attempt is in flight",
+                      in_progress={"pid": 1, "host": "elsewhere", "started_at": "2099-01-01T00:00:00Z",
+                                   "command": "pytest"})
+    else:
+        record["evidence_tree"] = tree
+    _write(repo, ".prawduct/.test-evidence.json", json.dumps(record))
 
 
 class TestABranchThatSyncedItsBaseAfterReview:
@@ -229,8 +252,11 @@ class TestABranchThatSyncedItsBaseAfterReview:
     never a wider one. The repro: review a branch, merge its base into it, commit
     only `.prawduct/` records, merge, classify."""
 
-    def _synced(self, repo: Path, mode: str = CUMULATIVE, *, suite: bool = True,
-                after_sync: "dict | None" = None) -> str:
+    def _synced(self, repo: Path, mode: str = CUMULATIVE, *, suite: "str | None" = "tip",
+                after_sync: "dict | None" = None, before_merge=None) -> str:
+        """``suite`` says where the branch's one green run was recorded: on its
+        ``tip``, ``before-records`` (on the sync commit, before the records-only
+        commit), or nowhere (None). ``before_merge`` runs at the branch tip."""
         base = _branch(repo, "f")
         _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
         reviewed = _tree(repo)
@@ -241,9 +267,13 @@ class TestABranchThatSyncedItsBaseAfterReview:
         _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
         _git(repo, "checkout", "-q", "f")
         _git(repo, "merge", "-q", "--no-ff", "-m", "sync main", "main")
-        _commit(repo, after_sync or {".prawduct/artifacts/build-plan-f.md": "records\n"}, "records")
-        if suite:
+        if suite == "before-records":
             _suite_ran(repo, "f")
+        _commit(repo, after_sync or {".prawduct/artifacts/build-plan-f.md": "records\n"}, "records")
+        if suite == "tip":
+            _suite_ran(repo, "f")
+        if before_merge is not None:
+            before_merge()
         merge = _merge(repo, "f")
         # The release reads the merge later, from a base that has moved on: the
         # suite question is about the branch tip, never the tree checked out now.
@@ -275,9 +305,51 @@ class TestABranchThatSyncedItsBaseAfterReview:
         assert _classify(repo, _merge(repo, "f")).classification == bc.PR_TRANSFERRED
 
     def test_with_no_suite_run_on_the_tip_it_is_uncovered_and_says_why(self, repo):
-        entry = _classify(repo, self._synced(repo, suite=False))
+        entry = _classify(repo, self._synced(repo, suite=None))
         assert entry.classification == bc.UNCOVERED, entry
-        assert "no saved suite run met the branch tip" in entry.reason, entry
+        assert "no suite run met the branch tip" in entry.reason, entry
+        assert "may exist in another clone" in entry.reason, entry
+
+    def test_a_grant_the_pr_gate_recorded_decides_with_no_suite_recheck(self, repo):
+        """The PR gate granted against this checkout's own record, which never
+        reaches the store; at the release that record is void (a run in flight)
+        and no store run matches the tip. The recorded grant still answers."""
+        from lib import gates  # noqa: PLC0415
+
+        def pr_gate_grants():
+            _local_record(repo, tree=_tree(repo))
+            answer = gates.branch_coverage_verdict(repo, record_grants=True)
+            assert answer["status"] == "transferred", answer
+
+        merge = self._synced(repo, suite=None, before_merge=pr_gate_grants)
+        _local_record(repo, tree=None, void=True)
+        entry = _classify(repo, merge)
+        assert entry.classification == bc.PR_TRANSFERRED, entry
+        assert "recorded its base-advance transfer grant" in entry.reason, entry
+
+    def test_a_run_before_a_records_only_commit_still_meets_the_tip(self, repo):
+        """No grant is recorded, so the op re-decides; the branch's run predates
+        its records-only commit, which cannot change a test outcome."""
+        entry = _classify(repo, self._synced(repo, suite="before-records"))
+        assert entry.classification == bc.PR_TRANSFERRED, entry
+        assert "transferred across base advance" in entry.reason, entry
+
+    def test_a_void_local_record_does_not_decide_a_merged_branch(self, repo):
+        """The release checkout's own record is about the checkout, not the merged
+        branch: a run in flight there must not deny every merge."""
+        merge = self._synced(repo)
+        _local_record(repo, tree=None, void=True)
+        assert _classify(repo, merge).classification == bc.PR_TRANSFERRED
+
+    def test_a_transfer_check_that_could_not_run_says_so(self, repo, monkeypatch):
+        from lib import coverage  # noqa: PLC0415
+
+        merge = self._synced(repo)
+        monkeypatch.setattr(coverage, "diagnose_base_advance_transfer",
+                            lambda *a, **k: {"status": "unavailable", "reason": "injected: tree pruned"})
+        entry = _classify(repo, merge)
+        assert entry.classification == bc.UNCOVERED, entry
+        assert "transfer check could not run (injected: tree pruned)" in entry.reason, entry
 
     def test_a_transfer_of_chunk_coverage_is_inner_only(self, repo):
         """The transfer carries coverage; the boundary question still applies to the
@@ -476,10 +548,11 @@ class TestTheReport:
 _PR_1231_MERGE = "09a262e0ed69fc486c15573632f694793d97b296"
 _PR_1231_REVIEWS = ("rev-20261124T031246Z-e5f07ea3", "rev-20261124T032413Z-a3ec33e4")
 #: #1249: a boundary review and a verify pass, then a develop sync and a records
-#: commit; the suite run that met its tip.
+#: commit; the suite run that met its tip, and the grant the PR gate recorded.
 _PR_1249_MERGE = "199ccf1071f3adc2187b22a2d1f33387c08bfa9c"
 _PR_1249_REVIEWS = ("rev-20261125T230216Z-7af05777", "rev-20261125T231645Z-d07f7323")
 _PR_1249_RUN = "test-run-20261125T232222Z-80d8b97e"
+_PR_1249_GRANT = "guard-base-advance-transfer-045a45140cc3e077"
 
 
 @pytest.mark.requires_history
@@ -517,37 +590,28 @@ class TestThisRepositorysHistory:
         self, monkeypatch
     ):
         """#1250's own repro: #1249 was reviewed, synced develop (#1248), took a
-        records-only commit, and the PR gate passed it by transfer. Present-ness is
-        read from the store file, as above.
+        records-only commit, and the PR gate passed it by transfer and recorded the
+        grant. Present-ness is read from the store file, as above.
 
-        The suite condition is answered from the store's #1249 run alone. The real
-        `gates.suite_vouches_for_tree` reads this checkout's own
-        `.test-evidence.json` first, and `test-evidence record` voids it with no
-        tree while it runs (the suite this test runs in), which denies every tree
-        by design: so the answer here would depend on who is running the suite.
-        The stub keeps what this test pins: the op must apply the transfer, over
-        the real store and history, and ask the suite about #1249's tip. The
-        suite condition's own reading is pinned on fixtures above."""
+        Both routes are asked of the real history: the PR gate's recorded grant,
+        and, with that lookup hidden, the re-decision, whose suite question reads
+        the store's runs for the branch. Neither reads this checkout's own
+        `.test-evidence.json`, which `test-evidence record` voids while the suite
+        this test runs in is running."""
         from lib import gates  # noqa: PLC0415
 
         path = evidence.store_path(ROOT)
         text = path.read_text(encoding="utf-8") if path is not None and path.is_file() else ""
-        missing = [rid for rid in (*_PR_1249_REVIEWS, _PR_1249_RUN) if rid not in text]
+        missing = [rid for rid in (*_PR_1249_REVIEWS, _PR_1249_GRANT, _PR_1249_RUN) if rid not in text]
         if missing:
             pytest.skip(f"this clone's evidence store lacks #1249's evidence {missing}")
-        (run,) = [f for f in evidence.facts_of_kind(evidence.read_facts(ROOT), "test-run")
-                  if f.get("id") == _PR_1249_RUN]
-        asked: list = []
-
-        def store_run_met(project_dir, target_tree=None):
-            asked.append(target_tree)
-            met = target_tree == run["body"]["tree"] and run["body"].get("failed") == 0
-            return met, "#1249's recorded run met this exact tree" if met else "not #1249's tip"
-
-        monkeypatch.setattr(gates, "suite_vouches_for_tree", store_run_met)
-        entry = bc.classify_merge(ROOT, _PR_1249_MERGE)
-        assert entry.classification == bc.PR_TRANSFERRED, entry
-        assert asked == [_git(ROOT, "rev-parse", f"{_PR_1249_MERGE}^2^{{tree}}")], asked
+        granted = bc.classify_merge(ROOT, _PR_1249_MERGE)
+        assert granted.classification == bc.PR_TRANSFERRED, granted
+        assert _PR_1249_GRANT in granted.reason, granted
+        monkeypatch.setattr(gates, "recorded_transfer_grant", lambda *a, **k: None)
+        redecided = bc.classify_merge(ROOT, _PR_1249_MERGE)
+        assert redecided.classification == bc.PR_TRANSFERRED, redecided
+        assert "transferred across base advance" in redecided.reason, redecided
 
 
 class TestTheBoundaryReviewsFixes:
