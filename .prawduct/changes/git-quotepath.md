@@ -40,10 +40,34 @@ every case it did and more. A file whose header cannot be read is still dropped,
 to the previous file. `gitstate.worktree_records` is left as it is: git prints a worktree path raw
 there.
 
-`tests/test_git_path_read_lint.py` scans every git argument list that prints names, in every
-Python source the plugin ships (`conftest.plugin_python_sources`, hooks included). Each must pass `-z`, sit in a function that uses the decoder, or
-be listed with the reason it needs neither: an emptiness or exit-code check, a fixed ASCII
-pathspec, or git printing the name raw.
+`tests/test_git_path_read_lint.py` reads every Python source the plugin ships
+(`conftest.plugin_python_sources`, hooks included) for git argument lists in the forms that print
+names (`--name-only`, `--name-status`, `ls-files`, `ls-tree`, `diff-tree`, `grep -l` and its
+spellings, `--porcelain`). It holds four rules:
+- A function makes no more such reads without `-z` than it uses decoders, or it is listed with the
+  reason its reads use no name: an emptiness or exit-code check, a fixed ASCII pathspec, or git
+  printing the name raw.
+- No name read goes through a runner that trims git's output (`evidence.run_git` without
+  `strip=False`, `gitstate._git_text`, and the module helpers that trim). Trimming takes the
+  status column's leading space off the first porcelain line, and a leading space off a first name.
+- Every function that parses `diff --git` headers reads them through `gitstate.diff_header_path`.
+- Every reader of `gitstate.git_status_output`'s text decodes, or is listed with why it needs no
+  name.
+
+A companion test holds that every git call whose arguments hold no literal is a wrapper forwarding
+its caller's arguments, builds its arguments as a literal the scan reads, or is listed.
+
+### Found and fixed by the boundary review
+- `evidence.run_git` trims by default, so its name reads, `-z` ones included, lost a leading
+  space from their first name. `critic_consolidate.no_judgeable_wip` misread an unstaged first line
+  (` M .prawduct/x.py` became `prawduct/x.py`, a judgeable file). Each now passes `strip=False`.
+- A `diff --git a/X b/X` header is read at its midpoint, because X may hold ` b/` and git does not
+  quote a space. `record_lint`'s diff pins `--src-prefix=a/ --dst-prefix=b/` against a user's
+  `diff.noprefix`.
+- Porcelain readers split on git's newline only, as `git_path_lines` does, and skip the empty last
+  line. `late_requirements.scan` sorts the decoded names, not git's quoted text.
+
+
 
 ## Consumer note
 A file whose name holds a non-ASCII character, a quote or a backslash is now seen by the review,

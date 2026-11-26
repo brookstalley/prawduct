@@ -3263,12 +3263,15 @@ def no_judgeable_wip(project_dir: Path) -> bool:
     from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
 
     rc, out, _err = evidence.run_git(
-        project_dir, "status", "--porcelain", "--untracked-files=all"
+        project_dir, "status", "--porcelain", "--untracked-files=all",
+        strip=False,
     )
     if rc != 0:
         return False
     paths = []
-    for line in out.splitlines():
+    for line in out.split("\n"):
+        if not line:
+            continue  # the newline after the last line
         parsed = gitstate.parse_porcelain_line(line)
         if parsed is None:
             return False

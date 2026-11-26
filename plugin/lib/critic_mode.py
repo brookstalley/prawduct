@@ -2782,7 +2782,7 @@ def _get_uncommitted_code_files(project_dir: Path) -> set[str]:
     if proc.returncode != 0:
         return set()
     files: set[str] = set()
-    for line in proc.stdout.splitlines():
+    for line in proc.stdout.split("\n"):
         parsed = gitstate.parse_porcelain_line(line)
         if parsed is None:
             continue

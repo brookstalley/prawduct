@@ -1082,13 +1082,15 @@ def _uncommitted_paths(
     from . import evidence  # noqa: PLC0415 -- lazy, as this module's other evidence imports are
 
     rc, out, err = evidence.run_git(
-        project_dir, "diff", "--name-only", "--no-renames", "-z", "HEAD"
+        project_dir, "diff", "--name-only", "--no-renames", "-z", "HEAD",
+        strip=False,
     )
     if rc != 0:
         return f"uncommitted paths unreadable ({err.strip()[:80]})"
     tracked = [p for p in out.split("\0") if p]
     rc, out, err = evidence.run_git(
-        project_dir, "ls-files", "--others", "--exclude-standard", "-z"
+        project_dir, "ls-files", "--others", "--exclude-standard", "-z",
+        strip=False,
     )
     if rc != 0:
         return f"untracked paths unreadable ({err.strip()[:80]})"
@@ -1096,6 +1098,7 @@ def _uncommitted_paths(
     rc, out, err = evidence.run_git(
         project_dir, "diff", "--cached", "--name-only", "--no-renames",
         "--diff-filter=D", "-z", "HEAD",
+        strip=False,
     )
     if rc != 0:
         return f"index deletions unreadable ({err.strip()[:80]})"
@@ -2478,7 +2481,7 @@ def _working_tree_paths(project_dir: Path) -> "tuple[list[str] | None, str | Non
     from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
     paths: set[str] = set()
-    for line in status_output.splitlines():
+    for line in status_output.split("\n"):
         parsed = gitstate.parse_porcelain_line(line)
         if parsed is None:
             continue

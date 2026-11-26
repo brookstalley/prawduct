@@ -361,6 +361,11 @@ def _added_lines(
         "--unified=0",
         "--no-color",
         "--no-ext-diff",
+        # The header's `a/` and `b/` are what `gitstate.diff_header_path` reads a name by;
+        # `diff.noprefix` or `diff.srcPrefix`/`diff.dstPrefix` in a user's config would move them.
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+
         base_tree,
         head_tree,
         "--",
@@ -379,7 +384,9 @@ def _parse_diff(out: str) -> "dict[str, list[tuple[int, str]]]":
     current: "list[tuple[int, str]] | None" = None
     in_hunk = False
     line_num = 0
-    for raw in out.splitlines():
+    # git's newline only: a content line may hold a character `str.splitlines` also splits on.
+    # A CRLF file's lines keep their `\r` that way, and lose it here, as `splitlines` dropped it.
+    for raw in (line.removesuffix("\r") for line in out.split("\n")):
         if raw.startswith("diff --git "):
             # The header's name, decoded (`gitstate.diff_header_path`). A header it
             # cannot read drops the file: losing one file's findings is recoverable,
@@ -776,7 +783,8 @@ def _resolve_artifact(project_dir: Path, prawduct_dir: Path, name: str) -> "Path
     if canonical.is_file():
         return canonical
     rc, out, _err = evidence.run_git(
-        project_dir, "ls-files", "--", f"{name}.md", f"*/{name}.md"
+        project_dir, "ls-files", "--", f"{name}.md", f"*/{name}.md",
+        strip=False,
     )
     if rc != 0:
         return None
@@ -1722,7 +1730,7 @@ def _check_learnings_areas(
     if not scoped:
         return findings, [], set()
 
-    rc, out, err = evidence.run_git(project_dir, "ls-files", "-z")
+    rc, out, err = evidence.run_git(project_dir, "ls-files", "-z", strip=False)
     if rc != 0:
         return (
             findings,

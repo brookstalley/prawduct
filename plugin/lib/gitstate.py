@@ -998,7 +998,8 @@ def diff_header_path(line: str) -> "str | None":
     """The new-side name of a ``diff --git a/<old> b/<new>`` header, decoded; ``None`` when
     ``line`` is not a header this can read. git quotes each side on its own (``"a/caf\\303\\251.md"
     "b/caf\\303\\251.md"``), so a quoted new side is read as one token, and an unquoted header
-    is split at its last `` b/``, as git's own unquoted form allows."""
+    is read at its midpoint when both sides name the same file, and otherwise (a rename) split at
+    its last `` b/``, which is ambiguous only for a renamed name that itself holds `` b/``."""
     prefix = "diff --git "
     if not line.startswith(prefix):
         return None
@@ -1010,8 +1011,14 @@ def diff_header_path(line: str) -> "str | None":
             new_side = rest[read[1] + 1:]
     elif rest.endswith('"') and ' "b/' in rest:
         new_side = rest[rest.rindex(' "b/') + 1:]
+    elif rest.startswith("a/") and (len(rest) - 5) % 2 == 0 and \
+            rest[2:2 + (len(rest) - 5) // 2] == rest[5 + (len(rest) - 5) // 2:] and \
+            rest[2 + (len(rest) - 5) // 2:5 + (len(rest) - 5) // 2] == " b/":
+        # The same name on both sides, `a/X b/X`: read at the midpoint, because X itself may
+        # hold ` b/` (a folder `notes/a b/`), and git does not quote a space.
+        new_side = rest[3 + (len(rest) - 5) // 2:]
     elif " b/" in rest:
-        new_side = rest[rest.rindex(" b/") + 1:]
+        new_side = rest[rest.rindex(" b/") + 1:]  # a rename; ambiguous only if a name holds " b/"
     if new_side is None:
         return None
     name = unquote_git_path(new_side)
@@ -1078,8 +1085,8 @@ def git_has_session_changes(project_dir: Path, status_output: str | None = None)
     # No whole-output .strip(): it eats the FIRST line's leading status space
     # (" M x" → "M x"), corrupting the fixed-offset porcelain parse. Both sides
     # unstripped (review-fixes Chunk 1).
-    baseline_lines = set(baseline.splitlines())
-    current_lines = current.splitlines()
+    baseline_lines = set(baseline.split("\n"))
+    current_lines = current.split("\n")
 
     for line in current_lines:
         if line not in baseline_lines:
@@ -1469,12 +1476,12 @@ def _get_session_changed_files(project_dir: Path, status_output: str | None = No
         try:
             # Unstripped on both sides — see git_has_session_changes.
             baseline_lines = set(
-                baseline_path.read_text(encoding="utf-8", errors="surrogateescape").splitlines()
+                baseline_path.read_text(encoding="utf-8", errors="surrogateescape").split("\n")
             )
         except (UnicodeDecodeError, OSError):
             pass  # Corrupted baseline — same stance as the sibling readers above
     changed = []
-    for line in current.splitlines():
+    for line in current.split("\n"):
         if line and line not in baseline_lines:
             parsed = parse_porcelain_line(line)
             if parsed:

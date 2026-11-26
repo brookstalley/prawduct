@@ -5363,7 +5363,8 @@ def _judge_flakes(project_dir: Path, flaky: list[dict], policy: str) -> list[dic
     from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
     from lib import gitstate as _gitstate_mod  # noqa: PLC0415 — lazy keeps top-level cheap
     rc, out, _ = _evidence_mod.run_git(
-        project_dir, "ls-files", "--cached", "--others", "--exclude-standard"
+        project_dir, "ls-files", "--cached", "--others", "--exclude-standard",
+        strip=False,
     )
     if rc == 0:
         files = set(_gitstate_mod.git_path_lines(out))

@@ -50,10 +50,11 @@ Sites already passing `-z` stay as they are; `-z` output is never quoted.
 - *Not process-wide `core.quotepath=false`* through git's environment config: the hook starts the
   product's own test suite as a child, which would inherit it. It would also leave quotes,
   backslashes and control characters quoted.
-- *Emptiness-only and exit-code-only reads are left alone* (13 sites): they read no name. The lint
+- *Emptiness-only and exit-code-only reads are left alone*: they read no name. The lint
   lists them with that reason.
-- *Display-only reads* (`learnings_compact.undo_refusals`, `learnings_migrate.dirty_legacy_files`)
-  are decoded too, because the owner reads those names to act on them.
+- *Display-only reads:* `learnings_compact.undo_refusals` is decoded, because the owner reads those
+  names to act on them. `learnings_migrate.dirty_legacy_files` is left raw (decided mid-build): its
+  pathspec names only the fixed ASCII legacy files, so git never quotes what it prints.
 
 **Decisions made mid-build (inferred, mine, open for the owner at the boundary review):**
 - *`gitstate.worktree_records` is not decoded.* Measured on git 2.54: `worktree list --porcelain`
@@ -76,6 +77,14 @@ Sites already passing `-z` stay as they are; `-z` output is never quoted.
 - *The lint counts a decoder passed uncalled* (`map(parse_porcelain_line, …)`) as decoding, as the
   entropy inventory counts an API passed uncalled.
 
+- *Boundary review fixes (rev-20261126T212656Z-f4781515):* `strip=False` on every name read through
+  a trimming runner, found by a new lint rule rather than by listing the review's five sites (the
+  class was wider than the sites it named); `diff_header_path` reads `a/X b/X` at its midpoint; `record_lint` pins the
+  diff prefixes; porcelain readers split on `\n`; the lint gains per-read counting, a trim rule, a
+  header-parser rule, a status-text rule and a companion for calls it cannot read; the decoder
+  test gains a generated domain (every ASCII character but upper case, which a case-insensitive
+  filesystem folds, plus awkward Unicode), since `hypothesis` is not a dependency.
+
 **Level:** High. The site table below was built by reading each of the 66 grep hits plus a search
 past the grep (2026-11-26); the fix per site is mechanical.
 
@@ -94,11 +103,11 @@ re-derive with the lint chunk 02 adds):
   `bin/test-reference-verify._changed_files`
 - porcelain: `critic_mode._get_uncommitted_code_files`, `coverage._working_tree_paths`,
   `gitstate.git_status_output`'s readers, `critic_consolidate.no_judgeable_wip` (all through
-  `parse_porcelain_line`), `risk._review_scope_paths`, `learnings_compact.undo_refusals`,
-  `learnings_migrate.dirty_legacy_files`
+  `parse_porcelain_line`), `risk._review_scope_paths`, `learnings_compact.undo_refusals`;
+  `learnings_migrate.dirty_legacy_files` left raw (Decisions)
 - log --name-only: `plan_status._log_commits`
 - ls-tree --name-only: `learnings_files.corpus_texts_at`
-- worktree list --porcelain: `gitstate.worktree_records`
+- worktree list --porcelain: `gitstate.worktree_records`, left raw (Decisions: git prints it raw)
 - git grep -l: `late_requirements.scan`
 - diff headers: `record_lint._added_lines` (drops a quoted name on purpose today)
 
@@ -117,7 +126,8 @@ re-derive with the lint chunk 02 adds):
     invalid UTF-8 bytes) the decode of git's own quoting of it, read from a real `git ls-files` in a
     temp repo, is the name; plain names unchanged; an unterminated or malformed escape returns the text.
   - Per reader class (name-only, ls-files, porcelain, log --name-only): a real temp repo holding
-    `skills/café.md` and `docs/say "hi".md`, and the reader's verdict names each file, seen red first.
+    one file named with a non-ASCII character and one named with a double quote, and the reader's
+    verdict names each file, seen red first.
 - **Acceptance criteria:** each chunk-01 reader, given those two files, returns or classifies them
   by their real names.
 - **Type:** code
@@ -128,7 +138,7 @@ re-derive with the lint chunk 02 adds):
 ### Chunk 02: The remaining readers, and a lint that keeps new reads on the owner
 
 - **Description:** route `risk`, `late_requirements`, `record_lint` (both reads), `learnings_files`,
-  `learnings_compact`, `learnings_migrate`, `gitstate.worktree_records`, `prawduct-hook _judge_flakes`
+  `learnings_compact`, `prawduct-hook _judge_flakes`
   and `bin/test-reference-verify`. Drop `risk`'s and the others' `-c core.quotepath=false` where the
   decode now covers it. Add the lint.
 - **Depends on:** Chunk 01

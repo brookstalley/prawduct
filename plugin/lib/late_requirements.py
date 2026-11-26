@@ -207,22 +207,25 @@ def scan(project_dir: Path, tree: "str | None" = None) -> "list[LateReq]":
     ignored ones not. Raises :class:`ScanError` when git cannot search, because
     an unread product must not read as one with no records."""
     pattern = r"^##[[:space:]]+late requirements[[:space:]]*#*[[:space:]]*$"
-    if tree is None:
-        args = ("grep", "-l", "-I", "-i", "-E", "--untracked", "-e", pattern, "--", "*.md")
-    else:
-        args = ("grep", "-l", "-I", "-i", "-E", "--full-name", "-e", pattern, tree, "--", "*.md")
-    rc, out, err = evidence.run_git(project_dir, *args)
+    where = ("--untracked",) if tree is None else ("--full-name",)
+    at = () if tree is None else (tree,)
+    rc, out, err = evidence.run_git(
+        project_dir, "grep", "-l", "-I", "-i", "-E", *where, "-e", pattern, *at, "--", "*.md",
+        strip=False,
+    )
     if rc == 1 and not err:
         return []
     if rc != 0:
         raise ScanError(err or f"git grep exited {rc}")
     found: list[LateReq] = []
-    for raw in sorted(line for line in out.split("\n") if line):
+    names = []
+    for raw in (line for line in out.split("\n") if line):
         # At a tree git prints `<tree>:<name>` and quotes the name alone, so the prefix comes
         # off before the name is decoded.
         if tree is not None and raw.startswith(f"{tree}:"):
             raw = raw[len(tree) + 1:]
-        rel = gitstate.unquote_git_path(raw)
+        names.append(gitstate.unquote_git_path(raw))
+    for rel in sorted(names):
         text = read_at(project_dir, rel, tree)
         if text is None:
             raise ScanError(f"could not read {rel}")

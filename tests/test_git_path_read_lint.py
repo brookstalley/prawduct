@@ -44,84 +44,134 @@ UNDECODED: dict[str, str] = {
 }
 
 
+#: Runners that trim git's output, and the keyword that stops it (``None``: always trims).
+#: Trimming takes the leading space off the first line: a porcelain status column, or a name
+#: that begins with a space. Module-local wrappers that trim are named by their file.
+TRIMMING: dict[str, "str | None"] = {"run_git": "strip", "_git_text": None}
+TRIMMING_IN_FILE: dict[str, frozenset[str]] = {
+    "lib/boundary_coverage.py": frozenset({"git", "_git"}),
+    "lib/git_hygiene.py": frozenset({"_git"}),
+    "lib/evidence_sync.py": frozenset({"_git"}),
+    "lib/stranded_work.py": frozenset({"_git"}),
+}
+
+#: `<file>::<function>` → why a function reading ``git_status_output``'s text needs no decoder.
+STATUS_TEXT_READERS: dict[str, str] = {
+    "bin/prawduct-hook::cmd_stop": "passes the text to git_has_session_changes and session_work_span",
+    "bin/prawduct-hook::_boundary_capture_git_anchors": (
+        "stores it byte-exact as the session baseline, compared later line by line with status "
+        "text taken the same way"),
+    "lib/gates.py::session_work_span": "passes the text to gitstate._get_session_changed_files",
+    "lib/gitstate.py::git_has_changes": "returns its first line, read for truthiness and shown as-is",
+}
+
+
 def _is_name_read(words: "set[str]") -> bool:
     """Whether a git argument list asks for output that prints path names."""
     return bool(
         words & {"--name-only", "--name-status", "ls-files", "ls-tree", "diff-tree"}
-        or ("grep" in words and "-l" in words)
+        or ("grep" in words and words & {"-l", "-L", "--files-with-matches", "--files-without-match"})
         or any(word.startswith("--porcelain") for word in words)
     )
 
 
-def _words(node: ast.AST) -> "set[str]":
-    """The string constants an argument list carries: a list or tuple literal's elements, or a
-    call's positional arguments and the list or tuple literals among them."""
-    items: list[ast.AST] = []
-    if isinstance(node, (ast.List, ast.Tuple)):
-        items = list(node.elts)
-    elif isinstance(node, ast.Call):
-        for arg in node.args:
-            items.extend(arg.elts if isinstance(arg, (ast.List, ast.Tuple)) else [arg])
+def _constants(items: "list[ast.AST]") -> "set[str]":
     return {i.value for i in items if isinstance(i, ast.Constant) and isinstance(i.value, str)}
 
 
-def _calls_a_decoder(function: ast.AST) -> bool:
-    """Whether ``function`` uses a decoder, called or passed uncalled (``map(parse, lines)``)."""
-    for node in ast.walk(function):
-        name = node.attr if isinstance(node, ast.Attribute) else node.id if isinstance(node, ast.Name) else ""
-        if name in DECODERS:
-            return True
-    return False
+def _name(node: ast.AST) -> str:
+    return node.attr if isinstance(node, ast.Attribute) else node.id if isinstance(node, ast.Name) else ""
 
 
-def name_reads(source: str) -> "dict[str, bool]":
-    """``{function: decoded}`` for each top-level function (or method) holding a name-printing
-    git read without `-z`. A nested function's read belongs to the function it sits in, which
-    is where its output is used."""
+class Facts:
+    """What one top-level function (or method) does with git names. A nested function's
+    reads belong to the function it sits in, which is where their output is used."""
+
+    def __init__(self) -> None:
+        self.reads = 0          # name-printing git argument lists without `-z`
+        self.decoders = 0       # references to a decoder, called or passed uncalled
+        self.trimmed = False    # a trimming runner reads names (with or without `-z`)
+        self.parses_headers = False   # it parses `diff --git` header lines
+        self.header_decoded = False   # ... through `gitstate.diff_header_path`
+        self.status_text = False      # it reads `git_status_output`'s text
+
+
+def scan(source: str, rel: str = "") -> "dict[str, Facts]":
     tree = ast.parse(source)
-    out: dict[str, bool] = {}
+    trimming = dict(TRIMMING) | {name: None for name in TRIMMING_IN_FILE.get(rel, ())}
+    if rel == "lib/stranded_work.py":
+        trimming["_git"] = "strip"
+    out: dict[str, Facts] = {}
 
-    def visit(scope: str, body: "list[ast.stmt]", owner: "ast.AST | None") -> None:
+    def record(key: str, node: ast.AST) -> None:
+        facts = out.setdefault(key, Facts())
+        if isinstance(node, (ast.List, ast.Tuple)):
+            words = _constants(node.elts)
+            if _is_name_read(words) and "-z" not in words:
+                facts.reads += 1
+        elif isinstance(node, ast.Call):
+            words = _constants(node.args)
+            for arg in node.args:
+                if isinstance(arg, (ast.List, ast.Tuple)):
+                    words |= _constants(arg.elts)
+            direct = _constants(node.args)
+            if _is_name_read(direct) and "-z" not in direct:
+                facts.reads += 1
+            runner = _name(node.func)
+            if runner in trimming and _is_name_read(words):
+                keyword = trimming[runner]
+                kept = any(k.arg == keyword and isinstance(k.value, ast.Constant) and k.value.value is False
+                           for k in node.keywords) if keyword else False
+                facts.trimmed = facts.trimmed or not kept
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith("diff --git"):
+            facts.parses_headers = True
+        name = _name(node)
+        if name in DECODERS:
+            facts.decoders += 1
+        if name == "diff_header_path":
+            facts.header_decoded = True
+        if name == "git_status_output":
+            facts.status_text = True
+
+    def visit(scope: str, body: "list[ast.stmt]", owner: bool) -> None:
         for stmt in body:
-            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)) and owner is None:
-                visit(f"{scope}{stmt.name}.", stmt.body, stmt)  # a new owner
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)) and not owner:
+                visit(f"{scope}{stmt.name}.", stmt.body, True)
                 continue
-            if isinstance(stmt, ast.ClassDef) and owner is None:
-                visit(f"{scope}{stmt.name}.", stmt.body, None)
+            if isinstance(stmt, ast.ClassDef) and not owner:
+                visit(f"{scope}{stmt.name}.", stmt.body, False)
                 continue
-            # Anything else, a nested function included, is read as part of its owner.
             for node in ast.walk(stmt):
-                words = _words(node)
-                if words and _is_name_read(words) and "-z" not in words:
-                    key = scope.rstrip(".") or "<module>"
-                    out[key] = _calls_a_decoder(owner) if owner is not None else False
+                record(scope.rstrip(".") or "<module>", node)
 
-    visit("", tree.body, None)
-    return out
+    visit("", tree.body, False)
+    return {key: facts for key, facts in out.items()
+            if facts.reads or facts.trimmed or facts.parses_headers or facts.status_text}
 
 
-def inventory() -> "dict[str, bool]":
-    found: dict[str, bool] = {}
+def inventory() -> "dict[str, Facts]":
+    found: dict[str, Facts] = {}
     for path in plugin_python_sources():
         rel = path.relative_to(PLUGIN).as_posix()
-        for function, decoded in name_reads(path.read_text(encoding="utf-8", errors="replace")).items():
-            found[f"{rel}::{function}"] = decoded
+        for function, facts in scan(path.read_text(encoding="utf-8", errors="replace"), rel).items():
+            found[f"{rel}::{function}"] = facts
     return found
 
 
 def test_the_scan_sees_each_spelling():
-    """The scan's own control: a literal list, a helper's arguments, a tuple built before the
-    call, a nested helper, `-z`, and a decoded read, each answered as it must be."""
+    """The scan's own control: each spelling of a read, `-z`, a decoder called or passed, a
+    function that decodes one of its two reads, a trimming runner, a header parser and a
+    status-text reader, each answered as it must be."""
     source = '''
 def raw_list(p):
     return subprocess.run(["git", "diff", "--name-only", "x"], cwd=p).stdout.splitlines()
 
 def helper_args(p):
-    return run_git(p, "ls-files", "--others")[1].splitlines()
+    return run_git(p, "ls-files", "--others", strip=False)[1].splitlines()
 
 def built_tuple(p):
     args = ("grep", "-l", "-e", "x")
-    return run_git(p, *args)
+    return run_git(p, *args, strip=False)
 
 def nested(p):
     def _git(*a):
@@ -129,27 +179,122 @@ def nested(p):
     return _git("ls-tree", "-r", "--name-only", "HEAD").stdout.splitlines()
 
 def with_z(p):
-    return run_git(p, "status", "--porcelain", "-z")
+    return run_git(p, "status", "--porcelain", "-z", strip=False)
 
 def decoded(p):
-    return gitstate.git_path_lines(run_git(p, "diff", "--name-only")[1])
+    return gitstate.git_path_lines(run_git(p, "diff", "--name-only", strip=False)[1])
 
 def decoded_by_map(p):
-    return list(map(gitstate.parse_porcelain_line, run_git(p, "status", "--porcelain")[1].split()))
+    return list(map(gitstate.parse_porcelain_line, run_git(p, "status", "--porcelain", strip=False)[1]))
+
+def one_of_two_decoded(p):
+    a = gitstate.git_path_lines(run_git(p, "diff", "--name-only", strip=False)[1])
+    return a, run_git(p, "ls-files", strip=False)[1].split("\\n")
+
+def trimmed(p):
+    return run_git(p, "ls-files", "-z")[1].split("\\0")
+
+def header_parser(out):
+    return [line for line in out.split("\\n") if line.startswith("diff --git ")]
+
+def status_reader(p):
+    return gitstate.git_status_output(p).split("\\n")
 
 def unrelated(p):
     return run_git(p, "rev-parse", "HEAD")
 '''
-    assert name_reads(source) == {
-        "raw_list": False, "helper_args": False, "built_tuple": False, "nested": False,
-        "decoded": True, "decoded_by_map": True,
+    found = {key: (f.reads, f.decoders, f.trimmed, f.parses_headers, f.status_text)
+             for key, f in scan(source).items()}
+    assert found == {
+        "raw_list": (1, 0, False, False, False),
+        "helper_args": (1, 0, False, False, False),
+        "built_tuple": (1, 0, False, False, False),
+        "nested": (1, 0, False, False, False),
+        "decoded": (1, 1, False, False, False),
+        "decoded_by_map": (1, 1, False, False, False),
+        "one_of_two_decoded": (2, 1, False, False, False),
+        "trimmed": (0, 0, True, False, False),
+        "header_parser": (0, 0, False, True, False),
+        "status_reader": (0, 0, False, False, True),
     }
 
 
 def test_every_name_read_is_decoded_or_listed():
+    """A function decodes each name read it makes (one decoder per read), or is listed with the
+    reason its reads use no name."""
     found = inventory()
-    # The scan reached the readers it exists for: the decoded ones are in its set.
-    assert found.get("lib/coverage.py::_coverage_changed_files") is True, sorted(found)
-    assert found.get("bin/prawduct-hook::_judge_flakes") is True, sorted(found)
-    undecoded = {key for key, decoded in found.items() if not decoded}
-    assert undecoded == set(UNDECODED), "\n".join(sorted(undecoded ^ set(UNDECODED)))
+    # The scan reached the readers it exists for.
+    assert found["lib/coverage.py::_coverage_changed_files"].decoders >= 2, sorted(found)
+    assert found["bin/prawduct-hook::_judge_flakes"].reads == 1, sorted(found)
+    short = {key for key, f in found.items() if f.reads > f.decoders}
+    assert short == set(UNDECODED), "\n".join(sorted(short ^ set(UNDECODED)))
+
+
+def test_no_name_read_is_trimmed():
+    """`evidence.run_git` trims git's output unless told `strip=False`, which takes the status
+    column's leading space off the first porcelain line and a leading space off a first name."""
+    trimmed = {key for key, f in inventory().items() if f.trimmed} - set(UNDECODED)
+    assert trimmed == set(), "\n".join(sorted(trimmed))
+
+
+def test_every_diff_header_parser_decodes_the_header():
+    found = inventory()
+    parsers = {key for key, f in found.items() if f.parses_headers}
+    assert "lib/record_lint.py::_parse_diff" in parsers, sorted(parsers)
+    undecoded = {key for key, f in found.items() if f.parses_headers and not f.header_decoded}
+    assert undecoded == {"lib/gitstate.py::diff_header_path"}, sorted(undecoded)
+
+
+def test_every_reader_of_status_text_decodes_or_is_listed():
+    """`gitstate.git_status_output` returns git's porcelain text undecoded; each function that
+    reads it decodes, or says why it needs no name."""
+    found = inventory()
+    readers = {key for key, f in found.items() if f.status_text}
+    assert readers, "the scan found no reader of git_status_output"
+    short = {key for key in readers if not found[key].decoders}
+    assert short == set(STATUS_TEXT_READERS), "\n".join(sorted(short ^ set(STATUS_TEXT_READERS)))
+
+
+#: Runner names a git call goes through. A call to one whose arguments hold no literal is
+#: invisible to the scan above unless something else accounts for it.
+_RUNNERS = frozenset({"run_git", "_git", "git", "_git_text", "_run_git_text", "_git_lines"})
+
+#: `<file>::<function>` → why its git call with no literal arguments reads no name unseen.
+_SHOW = "record_lint._git_text runs `git show <tree>:<path>` on a path it is given, and prints no name"
+DYNAMIC_CALLS: dict[str, str] = {
+    "lib/record_lint.py::_check_learnings_budget": _SHOW,
+    "lib/record_lint.py::budgets_at": _SHOW,
+}
+
+
+def _own_nodes(function: ast.AST) -> "list[ast.AST]":
+    """``function``'s nodes, without those of a function nested in it (judged on its own)."""
+    out, stack = [], list(ast.iter_child_nodes(function))
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue
+        out.append(node)
+        stack.extend(ast.iter_child_nodes(node))
+    return out
+
+
+def test_every_git_call_the_scan_cannot_read_is_accounted_for():
+    """The scan reads argument literals. A call whose arguments hold none is a wrapper that
+    forwards its caller's arguments (the caller's literals are scanned), or sits in a function
+    that builds its arguments as a literal list (scanned), or is listed."""
+    unseen: set[str] = set()
+    for path in plugin_python_sources():
+        rel = path.relative_to(PLUGIN).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        for function in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
+            forwards = function.args.vararg is not None
+            own = _own_nodes(function)
+            builds = any(isinstance(n, (ast.List, ast.Tuple)) and _constants(n.elts) for n in own)
+            for call in (n for n in own if isinstance(n, ast.Call)):
+                if _name(call.func) not in _RUNNERS:
+                    continue
+                literal = _constants(call.args) or any(isinstance(a, (ast.List, ast.Tuple)) for a in call.args)
+                if not literal and not forwards and not builds:
+                    unseen.add(f"{rel}::{function.name}")
+    assert unseen == set(DYNAMIC_CALLS), "\n".join(sorted(unseen ^ set(DYNAMIC_CALLS)))

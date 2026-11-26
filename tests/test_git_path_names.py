@@ -363,3 +363,85 @@ def test_test_reference_verify_changed_files_names_the_files(repo):
     commit_all(repo, "one")
     write(repo, NAMES[1:])
     assert set(mod._changed_files(repo, base)) == set(NAMES)
+
+
+# -- Diff headers -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("header", "name"), [
+    ("diff --git a/plain.md b/plain.md", "plain.md"),
+    ("diff --git a/notes/a b/x.md b/notes/a b/x.md", "notes/a b/x.md"),
+    ("diff --git a/old.md b/new.md", "new.md"),
+    ('diff --git "a/caf\\303\\251.md" "b/caf\\303\\251.md"', "café.md"),
+    ('diff --git "a/caf\\303\\251.md" b/plain.md', "plain.md"),
+    ('diff --git a/plain.md "b/caf\\303\\251.md"', "café.md"),
+    ('diff --git "a/we\\"ird.md" "b/we\\"ird.md"', 'we"ird.md'),
+])
+def test_a_diff_header_names_its_new_side(header, name):
+    assert gitstate.diff_header_path(header) == name
+
+
+@pytest.mark.parametrize("line", [
+    "diff --git x y", "+diff --git a/x b/x", 'diff --git "a/bad\\q.md" "b/bad\\q.md"', "diff --git a/x",
+])
+def test_a_line_that_is_not_a_readable_header_is_none(line):
+    assert gitstate.diff_header_path(line) is None
+
+
+def test_a_real_header_under_a_folder_ending_in_space_b_is_read_whole(repo):
+    """git prints `diff --git a/notes/a b/x.md b/notes/a b/x.md` unquoted (spaces are never
+    quoted); the name is the whole of each side."""
+    from lib import record_lint
+    base_tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
+    write(repo, ["notes/a b/x.md"])
+    commit_all(repo, "one")
+    head_tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
+    assert record_lint._added_lines(repo, base_tree, head_tree, ["notes/a b/x.md"]) == {
+        "notes/a b/x.md": [(1, "notes/a b/x.md")]}
+
+
+def test_a_users_diff_prefix_config_does_not_hide_the_header(repo):
+    """The header is read by its `a/` and `b/`; the diff pins them over `diff.noprefix`."""
+    from lib import record_lint
+    git(repo, "config", "diff.noprefix", "true")
+    base_tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
+    write(repo, ["docs/x.md"])
+    commit_all(repo, "one")
+    head_tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
+    assert record_lint._added_lines(repo, base_tree, head_tree, ["docs/x.md"]) == {
+        "docs/x.md": [(1, "docs/x.md")]}
+
+
+def test_no_judgeable_wip_reads_an_unstaged_first_line_whole(repo):
+    """An unstaged change prints ` M <name>`: the leading space is the status column, so output
+    trimmed of it shifts the first line's name by one character (`.prawduct/x.py` reads as
+    `prawduct/x.py`, a judgeable file)."""
+    from lib import critic_consolidate
+    state = repo / ".prawduct" / "x.py"
+    state.parent.mkdir()
+    state.write_text("a = 1\n")
+    commit_all(repo, "state")
+    state.write_text("a = 2\n")
+    assert git(repo, "status", "--porcelain").startswith(" M "), "no unstaged first line: no subject"
+    assert critic_consolidate.no_judgeable_wip(repo) is True
+    (repo / "src.py").write_text("x = 1\n")  # control: a judgeable change is seen
+    assert critic_consolidate.no_judgeable_wip(repo) is False
+
+
+def test_every_ascii_character_and_awkward_unicode_round_trips(repo):
+    """Generated over the domain rather than picked: one file per character of every
+    printable and control ASCII character a file name may hold (but upper case), and Unicode that
+    `str.splitlines` or git's quoting treat specially. git's quoting of each decodes to it."""
+    # Upper case is left out: a case-insensitive filesystem (APFS) makes `pQq` and `pqq` one
+    # file, and git quotes no letter.
+    chars = [chr(c) for c in range(1, 128) if chr(c) != "/" and not chr(c).isupper()]
+    chars += ["é", "日", " ", "\u0085", " ", "😀", "​"]
+    names = [f"gen/p{c}q.txt" for c in chars]
+    for name in names:
+        (repo / "gen").mkdir(exist_ok=True)
+        (repo / name).write_text("x")
+    out = git(repo, "ls-files", "--others")
+    assert set(gitstate.git_path_lines(out)) == set(names)
+    status = git(repo, "status", "--porcelain", "-uall")
+    parsed = [gitstate.parse_porcelain_line(line) for line in status.split("\n") if line]
+    assert {path for _s, _src, path in parsed} == set(names)

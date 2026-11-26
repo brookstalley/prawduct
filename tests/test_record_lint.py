@@ -264,9 +264,9 @@ class TestAddedLineScoping:
 
     def test_a_non_ascii_pathname_is_attributed_to_itself(self, tmp_path):
         """`core.quotepath` defaults on, and git then C-quotes the whole
-        `diff --git` header for a non-ASCII name. Without the flag the header
-        parser misses it and this record's added line lands on the PREVIOUS
-        file's findings — a finding naming a record that never held the text.
+        `diff --git` header for a non-ASCII name. Read raw, the header parser
+        misses it and this record's added line lands on the PREVIOUS file's
+        findings — a finding naming a record that never held the text.
 
         The two files and their order are the whole test: `a.md` sorts first and
         adds nothing lintable, so a misattributed `café.md` line surfaces as a
