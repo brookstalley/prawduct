@@ -279,8 +279,26 @@ class TestThePoolKeyIsHeldByAJobThatRunsNoTest:
         # repository is bounded by the token, as `verify-release.yml`'s no-publish rule is.
         doc = _load(TESTS_WORKFLOW)
         assert doc.get("permissions") == {"contents": "read"}, doc.get("permissions")
-        widened = [name for name, job in doc["jobs"].items() if "permissions" in job]
-        assert not widened, f"jobs override the workflow's read-only grant: {widened}"
+        # One job widens the grant, and only to a read: the plan job lists the push runs of a
+        # head, which is `actions: read`. It holds no pool key and runs no test.
+        widened = {name: job["permissions"] for name, job in doc["jobs"].items() if "permissions" in job}
+        assert widened == {"plan": {"contents": "read", "actions": "read"}}, widened
+
+    def test_the_workflows_own_token_is_in_one_step_of_the_plan_job(self):
+        # Red if the token reaches another job or step. It is no pool key, but the pool job
+        # runs a CLI it downloaded and the pytest job runs the tree's tests: neither is given
+        # even a read of the repository's runs.
+        doc = _load(TESTS_WORKFLOW)
+        holders = [
+            (name, step.get("run")) for name, job in doc["jobs"].items() for step in job.get("steps", [])
+            if any("github.token" in str(value) for value in (step.get("env") or {}).values())
+        ]
+        assert holders == [("plan", PLAN_STAGE)], holders
+        assert [s for s in _scalars(doc) if "github.token" in s] == ["${{ github.token }}"]
+        env = next(
+            step["env"] for step in doc["jobs"]["plan"]["steps"] if step.get("run") == PLAN_STAGE
+        )
+        assert env["GITHUB_TOKEN"] == "${{ github.token }}"
 
     def test_no_step_runs_pytest_but_through_the_runner(self):
         # Red if a step runs `pytest` itself. The runner owns where the suite runs; a
@@ -365,8 +383,10 @@ class TestAPullRequestThatRepeatsAPushIsSkipped:
     def test_the_plan_job_exists_only_for_a_pull_request_from_this_repository(self):
         # Red if the fork clause is dropped. A fork's pull request has no push run here, so a
         # skip would leave its tree with no verdict; and a job that exists for it runs the
-        # fork's own copy of the runner, which could answer "skip" for itself. The expression
-        # is read by GitHub from the event, so it is the one lock the fork's code cannot touch.
+        # fork's copy of the runner. With this file unmodified the expression is GitHub's own
+        # reading of the event, so an unmodified workflow never skips a fork's pull request.
+        # A pull request's workflow file is the merge commit's: a fork that edits this file
+        # decides its own run, and the diff shows it. This pins the file, not that diff.
         condition = _load(TESTS_WORKFLOW)["jobs"]["plan"].get("if")
         assert isinstance(condition, str), "the plan job must say where it exists"
         assert "github.event.pull_request.head.repo.full_name == github.repository" in condition
@@ -380,6 +400,7 @@ class TestAPullRequestThatRepeatsAPushIsSkipped:
         runs = [step for step in job["steps"] if "run" in step]
         assert [step["run"] for step in runs] == [PLAN_STAGE]
         assert runs[0]["env"] == {
+            "GITHUB_TOKEN": "${{ github.token }}",
             _runner().PR_HEAD_REPO: "${{ github.event.pull_request.head.repo.full_name }}",
             _runner().PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}",
         }
@@ -387,6 +408,18 @@ class TestAPullRequestThatRepeatsAPushIsSkipped:
         actions = [str(step["uses"]).split("@")[0] for step in job["steps"] if "uses" in step]
         assert actions == ["actions/checkout", "actions/setup-python"], actions
         assert not [s for s in _scalars(job) if "secrets" in s]
+
+    def test_a_failure_of_the_plan_job_is_not_a_failure_of_the_run(self):
+        # Red if `continue-on-error` is dropped. A checkout, a runner or the time limit failing
+        # the plan job would fail the run whatever the suite said, which turns a job that exists
+        # only to save a run into one that can cost a verdict its green.
+        job = _load(TESTS_WORKFLOW)["jobs"]["plan"]
+        assert job.get("continue-on-error") is True, job.get("continue-on-error")
+
+    def test_the_runner_asks_about_this_workflows_push_runs(self):
+        # The lookup names the workflow file; red if the file is renamed and the name is not,
+        # which would find no push run and run every pull request in full without a word.
+        assert _runner().WORKFLOW_FILE == TESTS_WORKFLOW.name
 
     def test_the_plan_job_checks_out_the_merge_commit_and_both_parents(self):
         # Red if the depth drops to 1: the second parent is then absent, git cannot answer, and
@@ -425,8 +458,15 @@ class TestAPullRequestThatRepeatsAPushIsSkipped:
         # rule, and the case where the pull request still runs.
         text = TESTS_WORKFLOW.read_text()
         trigger = text[text.index("\non:\n"):text.index("  push:\n  pull_request:")]
-        assert "never skips" in trigger and "fork" in trigger
-        assert "base moved" in trigger
+        flat = " ".join(line.strip().lstrip("#").strip() for line in trigger.splitlines())
+        flat = " ".join(flat.split())
+        for claim in (
+            "A fork's pull request is not skipped by this file as it stands",
+            "a fork that edits this file decides its own run",
+            "when the base moved and was not merged in",
+            "a commit pushed with a workflow's own token starts none, and a run can be cancelled",
+        ):
+            assert claim in flat, claim
         assert "different trees" not in trigger
 
 

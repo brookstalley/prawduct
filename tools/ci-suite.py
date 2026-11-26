@@ -40,18 +40,28 @@ pull request's run, and the push run's result on the same commit is the verdict.
 runs in full, and the table is the whole decision:
 
     not a pull request, or no head sha given         runs: there is no push run to rely on
-    the head is in another repository (a fork)       runs: no push run exists here for it, and the
-                                                     fork's own code would be what answered
+    the head is in another repository (a fork)       runs: no push run exists here for it
     the merge commit's second parent is not the      runs: the checkout is of some other head than
     head the event names                             the one the push run tested
     the merge result's tree differs from the head's  runs: the base moved and was not merged in, so
                                                      this run is the one that tests the merge
     git cannot answer                                runs
-    the trees are equal                              skips
+    the trees are equal, and GitHub lists a push     skips
+    run of this workflow for the head that is
+    queued, running, or finished green or red
+    the trees are equal, and GitHub lists no such    runs: the commit would have no verdict. A
+    run (none started, as for a commit pushed with   push run not yet registered when this asks
+    a workflow's own token; cancelled; the API       lands here too, which is the safe direction
+    does not answer; no token)                       and costs one run
 
 Every doubt runs the suite, so a wrong answer here costs a minute of CI and never a verdict. The
-workflow also keeps this job from existing for a fork's pull request, so that the fork's own copy
-of this file never gets to answer for itself; the fork test here is the second lock.
+workflow keeps this job from existing for a fork's pull request: an unmodified workflow never
+skips a fork's, and a fork that edits the workflow file decides its own run, which its diff shows.
+The fork test here is the second lock. The one request this stage makes asks GitHub's API for the
+push runs of the head and carries the workflow's own read-only token (`actions: read`), which is
+no key to the pool and is given to no other job. The stage exits 0 whatever it answers; the
+workflow's `continue-on-error` covers the failures the stage cannot catch (a checkout, a runner),
+so that the job's failure is never the run's.
 
 Anything not known to be an outage is a refusal: the two are told apart by the `verdict` the
 pool's envelope carries (`unavailable` is an outage; a `failed` test is the tree's result, never
@@ -130,6 +140,18 @@ ON_POOL, ON_JOB = "pool", "job"
 # repository and sha. The repository this runs in is `GITHUB_REPOSITORY`, which GitHub sets.
 PR_HEAD_REPO = "CI_SUITE_PR_HEAD_REPO"
 PR_HEAD_SHA = "CI_SUITE_PR_HEAD_SHA"
+# The workflow file whose `push` runs the `plan` stage asks about, and how long it waits for
+# GitHub's API. A run is a verdict while it is queued or running, or finished green or red; a
+# cancelled one, one that never started and a skipped one are not.
+WORKFLOW_FILE = "tests.yml"
+API_SECONDS = 20
+PUSH_RUN_PENDING = ("queued", "in_progress", "waiting", "requested", "pending")
+PUSH_RUN_VERDICTS = ("success", "failure")
+# What names the repository git reads, which a hook's child inherits from the hook's own.
+REPO_LOCATING_GIT_VARIABLES = (
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX",
+)
 # A git object name: a sha1 or sha256 hex digest. An empty answer is never two equal trees.
 OBJECT_NAME = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 # Console answers that mean "not now" rather than "not you": the server is failing, or busy.
@@ -512,15 +534,67 @@ def tests_stage(
 
 
 def _git(args: list[str]) -> str:
-    """One `git` answer from the repo root; it raises when git does not give one."""
-    done = subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=True)  # noqa: S603, S607 — list-form argv, no shell (project preference)
+    """One `git` answer from the repo root; it raises when git does not give one.
+
+    The variables that tell git which repository to read are dropped: a process started from a
+    git hook inherits them, and they would point this at the hook's repository, not `REPO_ROOT`.
+    """
+    env = {name: value for name, value in os.environ.items() if name not in REPO_LOCATING_GIT_VARIABLES}
+    done = subprocess.run(["git", *args], cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=True)  # noqa: S603, S607 — list-form argv, no shell (project preference)
     return done.stdout.strip().lower()
 
 
-def covered_by_push(env: Mapping[str, str], git: Callable[[list[str]], str] = _git) -> tuple[bool, str]:
+def _get_json(url: str, token: str) -> object:
+    """One GitHub API answer, parsed; it raises when there is none. A redirect is an error."""
+    request = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    )
+    with _open(request, timeout=API_SECONDS) as response:
+        return json.loads(response.read())
+
+
+def push_run_exists(env: Mapping[str, str], head_sha: str, fetch: Callable[[str, str], object] = _get_json) -> tuple[bool, str]:
+    """Whether a `push` run of this workflow exists for `head_sha` whose result will be a verdict.
+
+    A queued or running one counts, and so does a finished one that passed or failed. A cancelled
+    run, one that never started, none at all and an API that does not answer do not: the commit
+    would have no verdict anywhere. Commits pushed with a workflow's own token start no push run,
+    and a run can be cancelled by hand, which is why the push run is asked about and not assumed.
+    A push run still being registered when this asks is not found either, and that too answers
+    "runs": the safe direction, and a cost of one run.
+    """
+    token = env.get("GITHUB_TOKEN", "").strip()
+    repo = env.get("GITHUB_REPOSITORY", "").strip()
+    if not token or not repo or not OBJECT_NAME.fullmatch(head_sha):
+        return False, "the workflow could not ask GitHub for the push run"
+    api = (env.get("GITHUB_API_URL") or "https://api.github.com").rstrip("/")
+    query = urllib.parse.urlencode({"head_sha": head_sha, "event": "push", "per_page": 100})
+    url = f"{api}/repos/{repo}/actions/workflows/{WORKFLOW_FILE}/runs?{query}"
+    try:
+        answer = fetch(url, token)
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException, ValueError) as e:
+        return False, f"GitHub did not say whether a push run exists ({e})"
+    runs = answer.get("workflow_runs") if isinstance(answer, dict) else None
+    if not isinstance(runs, list):
+        return False, "GitHub's answer named no list of runs"
+    for run in runs:
+        if not isinstance(run, dict) or str(run.get("head_sha", "")).lower() != head_sha or run.get("event") != "push":
+            continue
+        if run.get("status") in PUSH_RUN_PENDING or (
+            run.get("status") == "completed" and run.get("conclusion") in PUSH_RUN_VERDICTS
+        ):
+            return True, f"a push run of {head_sha[:12]} is {run.get('status')}"
+    return False, f"no push run of {head_sha[:12]} that will give a verdict was found"
+
+
+def covered_by_push(
+    env: Mapping[str, str],
+    git: Callable[[list[str]], str] = _git,
+    fetch: Callable[[str, str], object] = _get_json,
+) -> tuple[bool, str]:
     """Whether this pull request's checkout is the tree its head's `push` run already tests, and
     why. Every doubt answers False: a run that did not need to happen costs a minute, and a run
-    that was skipped and did needed to costs a verdict."""
+    that was skipped and did need to costs a verdict."""
     head_sha = env.get(PR_HEAD_SHA, "").strip().lower()
     head_repo = env.get(PR_HEAD_REPO, "").strip().lower()
     repo = env.get("GITHUB_REPOSITORY", "").strip().lower()
@@ -540,17 +614,28 @@ def covered_by_push(env: Mapping[str, str], git: Callable[[list[str]], str] = _g
         return False, "git named no tree for the checkout or its head"
     if merged != head:
         return False, "the base has moved past the head, so the merge result is a tree no push run tested"
-    return True, f"the merge result is the tree of {head_sha[:12]}, which the push run tests"
+    # Last: the one step that leaves the machine, asked only once everything else says skip.
+    found, said = push_run_exists(env, head_sha, fetch)
+    if not found:
+        return False, said
+    return True, f"the merge result is the tree of {head_sha[:12]}, and {said}"
 
 
-def plan_stage(env: Mapping[str, str], *, report: Report, git: Callable[[list[str]], str] = _git) -> bool:
+def plan_stage(
+    env: Mapping[str, str],
+    *,
+    report: Report,
+    git: Callable[[list[str]], str] = _git,
+    fetch: Callable[[str, str], object] = _get_json,
+) -> bool:
     """The job that decides whether a pull request's run repeats a push's: True to skip the rest.
 
-    It holds no secret, runs no test and never fails: a stage that failed would fail the run
-    for a question whose every uncertain answer is to run.
+    It runs no test and holds only the workflow's read-only token. The stage itself never exits
+    non-zero, since every uncertain answer is to run; the workflow marks the job
+    `continue-on-error` for the failures the stage cannot catch (a checkout, a runner).
     """
     report.summary("### pytest suite: plan")
-    skip, why = covered_by_push(env, git)
+    skip, why = covered_by_push(env, git, fetch)
     if skip:
         report.notice(f"this run is skipped: {why}")
         report.summary(f"Skipped: {why}. The push run of the same commit is the verdict.")

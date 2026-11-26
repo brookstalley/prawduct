@@ -76,13 +76,18 @@ suite.
 is the reference for what follows. It has two stages that run tests, which are two jobs, and a
 small job in front of them that decides whether a pull request needs them at all:
 
-- **`plan`** exists only for a pull request from a branch of this repository. It asks whether the
-  merge commit's tree is the tree of the head the event names, which is so when the base was
-  merged into the branch before the PR opened. If it is, the push run of that same commit already
-  tested this tree, so the pull request's `pool`, `pytest` and `collector` jobs are skipped and
-  report as skipped. It holds no secret, installs nothing, and never fails the run. A fork's pull
-  request has no such job and always runs in full; so does any pull request whose base moved on
-  without being merged in, and any whose answer is in doubt.
+- **`plan`** exists only for a pull request from a branch of this repository. It skips the pull
+  request's `pool`, `pytest` and `collector` jobs (they report as skipped) when two things hold:
+  the merge commit's tree is the tree of the head the event names, which is so when the base was
+  merged into the branch before the PR opened; and GitHub lists a `push` run of this workflow for
+  that head that is queued, running, or finished green or red, so that run is the verdict. It
+  installs nothing and holds no pool key; its token is the workflow's own with `actions: read` added.
+  It runs in full instead when the base moved on without being merged in, when no such push run is
+  found (a commit pushed with a workflow's own token starts none; a run can be cancelled; a push run
+  not yet registered when the PR run asks lands here too), and whenever the answer is in doubt. A
+  fork's pull request has no `plan` job and runs in full, unless the fork edits the workflow file,
+  which its diff shows. The stage always exits 0 and the job is `continue-on-error`, so a failure of
+  `plan` itself does not fail the run and the jobs below it run.
 
 - **`pool`** holds the pool's key. It downloads the pool's own CLI build from the pool's console,
   runs `testament run --no-fallback`, and tells the next job whether the pool ran the suite. It

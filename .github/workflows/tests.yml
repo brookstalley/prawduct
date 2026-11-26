@@ -22,7 +22,8 @@
 #
 # **The suite runs on testament's pool when the workflow can use it, and on
 # GitHub's runner when it cannot.** `tools/ci-suite.py` decides, in two stages that
-# are the two jobs below, and its docstring holds the table. The `pool` job sends the
+# are the `pool` and `pytest` jobs below (a third stage, the `plan` job, first decides
+# whether a pull request needs either), and its docstring holds the table. The `pool` job sends the
 # tree to the pool: the same image and selection a developer's `testament run` uses,
 # so a CI verdict and a developer's are the same kind of fact. The `pytest` job then
 # runs the tests `.testament.toml` selects out (they read git history or a clone's
@@ -77,13 +78,17 @@ on:
   # and the tip are one tree, so the second run only repeated the first.
   #
   # So the `plan` job asks, for every pull request from a branch of this repository,
-  # whether the two trees are the same, and when they are every job of the pull
+  # whether the two trees are the same and whether GitHub lists a push run of the head
+  # that is running or finished green or red, and when both hold every job of the pull
   # request's run is skipped: the push run on the same commit shows its result on the
   # PR. The run still happens when the base moved and was not merged in (it is then
-  # the only run that tests the merge result), and whenever anything about the
-  # question is in doubt. A fork's pull request never skips: no push run happens here
-  # for it, its run is the one that must give the tree a verdict, and `plan` is not
-  # created for it, so a fork's own copy of the runner never answers for itself.
+  # the only run that tests the merge result), when no such push run exists (a commit
+  # pushed with a workflow's own token starts none, and a run can be cancelled), and
+  # whenever anything about the question is in doubt. A fork's pull request is not
+  # skipped by this file as it stands: no push run happens here for it, its run is the
+  # one that must give the tree a verdict, and `plan` is not created for it. A
+  # pull request's workflow file is the merge commit's, so a fork that edits this file
+  # decides its own run; the diff of the pull request shows it.
   # Nothing requires these checks (no branch protection or ruleset names one), and a
   # skipped job reports as skipped, which a requirement would accept as well.
   push:
@@ -100,13 +105,21 @@ permissions:
 jobs:
   plan:
     # Whether this pull request's run repeats the push run of its head. The `if` is
-    # read by GitHub from the event, so a fork's pull request has no such job and
-    # cannot answer for itself with its own copy of `tools/ci-suite.py`. The job holds
-    # no secret, installs nothing and runs no test; the runner's docstring has the
-    # table of what it decides, and every doubt in it runs the suite. The jobs below
-    # run unless this one says `true`, including when it failed or never existed (a
-    # push), so it can only ever save a run.
+    # GitHub's own reading of the event: with this file as it stands, a fork's pull
+    # request has no such job, so its copy of `tools/ci-suite.py` is never asked.
+    # The job holds no pool key, installs nothing and runs no test. Its token is the
+    # workflow's own, with `actions: read` added so that the stage can list the push
+    # runs of the head, and only the step that asks has it in its environment. The
+    # runner's docstring has the table of what it decides, and every doubt in it runs
+    # the suite. The jobs below run unless this one says `true`, and
+    # `continue-on-error` keeps a failure of this job (a checkout, a runner, the time
+    # limit) from failing the run: it then says nothing, and they run. So it can only
+    # ever save a run.
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -125,6 +138,7 @@ jobs:
         id: plan
         # Values from the event travel as environment values, never spliced into a command.
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           CI_SUITE_PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           CI_SUITE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python tools/ci-suite.py plan
