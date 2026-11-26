@@ -71,11 +71,19 @@ if str(_PLUGIN_ROOT) not in sys.path:
 #: - The author and committer identity, which the global config used to supply on a developer's
 #:   machine: a test making a commit needs one, and the runner never had one to give. It
 #:   outranks any `user.*` config, so a test needs no `-c user.email=...` of its own.
+#: - `lib.entropy.SEED_ENV` (:data:`ENTROPY_SEED_ENV`): :data:`TEST_ENTROPY_SEED`, so the random
+#:   token in an evidence fact's or a review's id is drawn from a seeded sequence instead of
+#:   `os.urandom`. testament refuses to reuse a result that read randomness, and nearly every
+#:   hook test mints a fact. Seeded ids stay distinct within a process and across processes
+#:   (`lib/entropy.py` says how). The name is spelled here rather than imported, so every test's
+#:   import closure does not grow by the module; `tests/test_entropy.py` holds the two equal.
 #:
 #: A helper that hands a child a SCRUBBED environment builds it with :func:`scrubbed_env`, which
 #: carries these; one that spreads `os.environ` already has them.
 TEST_NOW_EPOCH = 1767268800  # 2026-01-01T12:00:00Z
 TEST_NOW = f"@{TEST_NOW_EPOCH} +0000"
+ENTROPY_SEED_ENV = "PRAWDUCT_TEST_ONLY_ENTROPY_SEED"
+TEST_ENTROPY_SEED = "prawduct-tests"
 _GIT_XDG_CONFIG_HOME = Path(tempfile.mkdtemp(prefix="prawduct-tests-empty-xdg-config-"))
 atexit.register(shutil.rmtree, _GIT_XDG_CONFIG_HOME, ignore_errors=True)
 try:
@@ -100,6 +108,7 @@ TEST_ENV = {
 }
 if _clock is not None:
     TEST_ENV[_clock.FROZEN_ENV] = TEST_NOW
+TEST_ENV[ENTROPY_SEED_ENV] = TEST_ENTROPY_SEED
 os.environ.update(TEST_ENV)
 
 #: The PATH a scrubbed child gets: the system tools and git, wherever the machine keeps them.

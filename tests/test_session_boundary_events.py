@@ -60,7 +60,7 @@ if str(_ROOT) not in sys.path:
 
 from test_plugin_runtime import HOOKS_JSON, run_plugin_hook  # noqa: E402
 
-# The extensionless hook, loaded in-process for the one arm a subprocess cannot
+# The extensionless hook, loaded as a module for the one arm `run_plugin_hook` cannot
 # stage (a raise inside the boundary). Same SourceFileLoader idiom as
 # `test_stop_gate_error_posture.py`; shebang dispatch does not run at import.
 import importlib.machinery  # noqa: E402
