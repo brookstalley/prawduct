@@ -13,7 +13,12 @@ opt out, never in. Every value this module cannot read, and every value but
 exactly ``per_release``, is ``per_pr``, the stricter policy for a PR. For the
 release check ``per_release`` is the stricter one, so :func:`release_policy`
 lets a checkout's own ``per_release`` stand where the integration branch's tip
-cannot be read at all.
+cannot be read at all, or the read fails.
+
+Every combination of readings is made here, never by a caller: a live branch's
+PR (:func:`boundary_review_policy`), one revision (:func:`boundary_review_policy_at`),
+a merged branch (:func:`boundary_review_policy_of_merge`) and the release check
+(:func:`release_policy`, which never raises).
 """
 
 from __future__ import annotations
@@ -38,11 +43,15 @@ class Policy:
     """The boundary-review policy in force. ``value`` is :data:`PER_PR` or
     :data:`PER_RELEASE`; ``source`` names the revision it was read at (empty
     when none could be); ``note`` is empty or says, in a sentence, why a value
-    someone wrote is not the one in force."""
+    someone wrote is not the one in force. ``read_failed`` is True only on
+    :func:`release_policy`'s fallback, where reading the integration branch
+    raised: the value is then this checkout's, and the release gate cannot
+    answer under it (``boundary_coverage.release_gate``)."""
 
     value: str
     source: str
     note: str = ""
+    read_failed: bool = False
 
     @property
     def per_release(self) -> bool:
@@ -84,9 +93,7 @@ def boundary_review_policy(project_dir: Path, base_ref: "str | None" = None) -> 
     # Read only where a merge-base resolved, so base_ref is a real integration
     # branch: never the HEAD~1 fallback, which integration_base refuses.
     at_tip = _declared(coverage._state_in(project_dir, base_ref)) if base.merge_base else None
-    _state, working = read_scalar_yaml_key(
-        project_dir / ".prawduct" / "project-state.yaml", BOUNDARY_REVIEW_KEY
-    )
+    working = _working_declared(project_dir)
     source = f"merge-base {base.merge_base[:12]}" if base.merge_base else ""
     in_force = (
         PER_RELEASE if on_base == PER_RELEASE and at_tip == PER_RELEASE and working == PER_RELEASE
@@ -143,9 +150,54 @@ def boundary_review_policy_at(project_dir: Path, rev: str) -> Policy:
     return Policy(PER_PR, rev)
 
 
+def boundary_review_policy_of_merge(project_dir: Path, merge_base: str, tip: str) -> Policy:
+    """The policy a merged branch was judged under: :data:`PER_RELEASE` only when
+    both its merge-base and its tip declare it (each read by
+    :func:`boundary_review_policy_at`), for a caller asking of a branch that has
+    already merged, so the working tree has no say. The merge-base stops a branch
+    opting itself in; the tip lets it opt out. The note is the first revision's
+    that does not declare it."""
+    at_base = boundary_review_policy_at(project_dir, merge_base)
+    at_tip = boundary_review_policy_at(project_dir, tip)
+    if at_base.per_release and at_tip.per_release:
+        return Policy(PER_RELEASE, f"merge-base {merge_base[:12]} and tip {tip[:12]}")
+    refusing = at_tip if at_base.per_release else at_base
+    return Policy(PER_PR, refusing.source, refusing.note)
+
+
+def _working_declared(project_dir: Path) -> "str | None":
+    """What this checkout's ``project-state.yaml`` declares, or ``None``."""
+    _state, working = read_scalar_yaml_key(
+        Path(project_dir) / ".prawduct" / "project-state.yaml", BOUNDARY_REVIEW_KEY
+    )
+    return working
+
+
 def release_policy(project_dir: Path) -> Policy:
     """The policy the release check gates under: the one ``check-boundary-coverage
-    --gate`` and ``check-releasability`` both read.
+    --gate`` and ``check-releasability`` both read, so the two cannot disagree.
+
+    Never raises: a read that fails is answered by this checkout's own
+    declaration, :data:`PER_RELEASE` only when it declares it, the stricter
+    reading for a release check, with a note naming the failure and
+    ``read_failed`` set, so a ``per_release`` checkout's release gate refuses
+    as unevaluable rather than answering under a guess. See
+    :func:`_release_policy` for the reading itself."""
+    try:
+        return _release_policy(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- the release check must answer; the fallback is the stricter reading where this checkout declares per_release
+        try:
+            working = _working_declared(project_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- nothing readable declares per_release, so there is nothing to gate under
+            working = None
+        return Policy(PER_RELEASE if working == PER_RELEASE else PER_PR, "", (
+            f"the policy could not be read at the integration branch ({type(exc).__name__}: {exc}), "
+            f"so this checkout's declaration stands ({working if working in VALUES else PER_PR})"
+        ), read_failed=True)
+
+
+def _release_policy(project_dir: Path) -> Policy:
+    """:func:`release_policy`'s reading, which may raise.
 
     It is the integration branch's tip (:func:`boundary_review_policy_at` at
     ``coverage.repo_base_branch``), because that is what the PRs it holds were
@@ -160,9 +212,7 @@ def release_policy(project_dir: Path) -> Policy:
 
     project_dir = Path(project_dir)
     base, why = coverage.repo_base_branch(project_dir)
-    _state, working = read_scalar_yaml_key(
-        project_dir / ".prawduct" / "project-state.yaml", BOUNDARY_REVIEW_KEY
-    )
+    working = _working_declared(project_dir)
     if base and coverage._state_in(project_dir, base) is not None:
         policy = boundary_review_policy_at(project_dir, base)
         if not policy.per_release and working == PER_RELEASE and not policy.note:

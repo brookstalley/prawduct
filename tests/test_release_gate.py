@@ -16,8 +16,10 @@ review a ``critic-begin --span release`` dispatch consolidated through the store
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -27,10 +29,13 @@ from lib import release_readiness, review_lane  # noqa: E402
 from lib.core import GITIGNORE_ENTRIES  # noqa: E402
 from test_fix_tail_deferral import _merged as _tail_merged
 from test_release_batch_review import (
+    HOOK,
+    ROOT,
     _begin_release,
     _commit,
     _consolidate,
     _cut,
+    _env,
     _git,
     _hook,
     _lane,
@@ -65,6 +70,39 @@ def _released(repo: Path, *scopes: str) -> None:
 
 def _gate(repo: Path, tmp_path: Path, *extra: str) -> subprocess.CompletedProcess:
     return _hook(repo, tmp_path, "check-boundary-coverage", "--gate", *extra)
+
+
+def _unrelated_root(repo: Path, files: dict) -> str:
+    """A root commit holding ``files``, sharing no history with ``main``, built
+    with a scratch index so the checkout (and its ignored files) is untouched."""
+    env = {**os.environ, "GIT_INDEX_FILE": str(repo / ".git" / "scratch-index")}
+
+    def git(*args: str, stdin: "str | None" = None) -> str:
+        proc = subprocess.run(["git", *args], cwd=str(repo), capture_output=True, text=True,
+                              input=stdin, env=env, timeout=15)
+        assert proc.returncode == 0, proc.stderr
+        return proc.stdout.strip()
+
+    for rel, content in files.items():
+        blob = git("hash-object", "-w", "--stdin", stdin=content)
+        git("update-index", "--add", "--cacheinfo", f"100644,{blob},{rel}")
+    return git("commit-tree", git("write-tree"), "-m", "an unrelated root")
+
+
+def _gate_injected(repo: Path, tmp_path: Path, patch: str) -> subprocess.CompletedProcess:
+    """``check-boundary-coverage --gate`` in a child whose sitecustomize defines
+    ``boom`` (raises ``RuntimeError: injected``) and runs ``patch``."""
+    inject = tmp_path / "inject"
+    inject.mkdir(exist_ok=True)
+    (inject / "sitecustomize.py").write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(ROOT / 'plugin')!r})\n"
+        "def boom(*_a, **_k):\n    raise RuntimeError('injected')\n" + patch,
+        encoding="utf-8",
+    )
+    return subprocess.run([sys.executable, str(HOOK), "check-boundary-coverage", "--gate"],
+                          cwd=str(repo), capture_output=True, text=True, timeout=120,
+                          env={**_env(tmp_path, repo), "PYTHONPATH": str(inject)})
 
 
 @pytest.fixture
@@ -202,6 +240,51 @@ class TestTheGateExitTable:
         (entry,) = [e for e in json.loads(proc.stdout)["entries"] if e["commit"] == octopus]
         assert entry["classification"] == bc.BATCH_COVERED, entry
 
+    def test_an_unrelated_history_merge_is_owed_and_a_batch_review_credits_it(self, tmp_path):
+        """W1: a merge whose side shares no merge-base with the base (a subtree
+        import, `--allow-unrelated-histories`) reads `unknown`. The gate's remedy
+        dispatches a batch review that rates what it brought onto the base, so
+        that review must credit it, or running the remedy changes nothing and
+        the release is held for good."""
+        repo = _repo(tmp_path)
+        _cut(repo, "v1.0.0")
+        side = _unrelated_root(repo, {"src/vendor.py": "v = 1\n"})
+        _git(repo, "merge", "-q", "--no-ff", "--allow-unrelated-histories", "-m", "import vendor", side)
+        merge = _git(repo, "rev-parse", "HEAD")
+        proc = _gate(repo, tmp_path, "--json")
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        (entry,) = [e for e in json.loads(proc.stdout)["entries"] if e["commit"] == merge]
+        assert entry["classification"] == bc.UNKNOWN and "no merge-base" in entry["reason"], entry
+        assert _begin_release(repo, tmp_path).returncode == 0
+        _consolidate(repo, tmp_path)
+        proc = _gate(repo, tmp_path, "--json")
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        (entry,) = [e for e in json.loads(proc.stdout)["entries"] if e["commit"] == merge]
+        assert entry["classification"] == bc.BATCH_COVERED, entry
+
+    def test_a_policy_read_that_fails_is_exit_3_not_main_s_floor(self, tmp_path):
+        """The native review's `--gate` nit: a failure reading the policy must
+        never reach main()'s exit 1, which reads as `boundary-uncovered`. Under a
+        checkout declaring per_release the read's failure is named, exit 3."""
+        repo = _repo(tmp_path)
+        _released(repo, "a")
+        proc = _gate_injected(repo, tmp_path, "from lib import review_lane as m\n"
+                                              "m._release_policy = boom\n")
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        line = _refusal(proc.stderr, bc.GATE_UNEVALUABLE)
+        assert "could not be read at the integration branch (RuntimeError: injected)" in line, line
+        assert "Traceback" not in proc.stderr and bc.GATE_UNCOVERED not in proc.stderr
+
+    def test_a_fault_in_the_verdict_is_exit_3_not_main_s_floor(self, tmp_path):
+        repo = _repo(tmp_path)
+        _released(repo, "a")
+        proc = _gate_injected(repo, tmp_path, "from lib import boundary_coverage as m\n"
+                                              "m.release_gate = boom\n")
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        line = _refusal(proc.stderr, bc.GATE_UNEVALUABLE)
+        assert "the release gate could not be evaluated (RuntimeError: injected)" in line, line
+        assert "Traceback" not in proc.stderr
+
     def test_per_pr_passes_whatever_it_found(self, tmp_path):
         for name, shape in (("uncovered", lambda r: _released(r, "a")),
                             ("no-anchor", lambda r: _lane(r, "a"))):
@@ -295,6 +378,33 @@ class TestCheckReleasability:
         assert rc == 1, out + err
         assert "tail-deferred" in err and _refusal(err, bc.GATE_UNCOVERED)
         assert "releasable:" not in out
+
+    def test_a_policy_read_that_fails_refuses_and_names_the_failure(self, tmp_path, capsys, green_suite,
+                                                                   monkeypatch):
+        """W3: the release gate's fail-closed path for a crashed policy read. The
+        checkout declares per_release and a merge is unreviewed; the reading at
+        the integration branch raises. The release is refused as unevaluable,
+        naming the failure: neither a pass, nor a traceback, nor an answer given
+        under a guessed policy."""
+        repo = _repo(tmp_path)
+        _released(repo, "a")
+
+        def boom(_p):
+            raise RuntimeError("policy boom")
+
+        monkeypatch.setattr(review_lane, "_release_policy", boom)
+        rc, out, err = _releasability(repo, capsys)
+        assert rc == 1, out + err
+        line = _refusal(err, bc.GATE_UNEVALUABLE)
+        assert "the policy could not be read at the integration branch (RuntimeError: policy boom)" in line, line
+        assert "this checkout's declaration stands (per_release)" in line, line
+        assert bc.GATE_UNCOVERED not in err and "releasable: v1.1.0" not in out
+        # Control: a checkout declaring per_pr is not gated by the same failure.
+        per_pr = _repo(tmp_path / "per_pr", key=None)
+        _released(per_pr, "a")
+        rc, out, err = _releasability(per_pr, capsys)
+        assert rc == 0 and bc.GATE_UNEVALUABLE not in err, out + err
+        assert "could not be read at the integration branch" in err, err
 
     def test_per_pr_with_nothing_pending_classifies_nothing(self, tmp_path, capsys, green_suite, monkeypatch):
         """Control: under per_pr the no-pending branch is unchanged, and pays for

