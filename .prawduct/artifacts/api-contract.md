@@ -351,7 +351,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the base's own commit that release shipped, never the merge; with neither, no commit is walked and
   the report says so.
   Classes: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `release-bookkeeping`,
-  `inner-only`, `tail-deferred`, `uncovered`, `direct` or `unknown`, each with its reason.
+  `reverted`, `inner-only`, `tail-deferred`, `uncovered`, `direct` or `unknown`, each with its reason.
+  `reverted` (covered; added 2026-11-26, #1232) is an entry not otherwise covered every judgeable
+  file of whose change is back, at the base's tip, to its content where the release span starts
+  (the anchor, or the first parent of the oldest owed entry at or before it), so nothing of it ships.
   `batch-covered` is a commit (merge or single-parent) a boundary review on the base credits by
   `coverage_algebra.batch_review_covers` — it brackets the commit on the first-parent line, rated
   every judgeable file of the commit still changed across its interval, and no unresolved blocker

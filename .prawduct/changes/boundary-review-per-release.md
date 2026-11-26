@@ -42,7 +42,9 @@ and de-duplicated by commit, so a scope a pruned release withheld stays classifi
 lists the whole walk. A repo with neither anchor gets the fragment join alone, and the report says
 there was no anchor. A new covered class, `release-bookkeeping`, is a single-parent commit after the
 anchor whose judgeable changes are all files `release_version_files:` declared at the anchor: the
-reopen commit after a cut, which read `direct` before. A declaration added since the release never
+reopen commit after a cut, which read `direct` before. Another, `reverted`, is owed work whose
+every judgeable change is back, at the base's tip, to where the release span starts: nothing of it
+ships, so a release whose owed work was all reverted needs no batch review. A declaration added since the release never
 qualifies, and an undeclared repo's fallback layout never does. A
 merge whose branch changed nothing judgeable but whose merge commit edits a judgeable file now reads
 `uncovered`, not `no-judgeable`, because the walk reaches such merges. The count line names the
@@ -161,9 +163,10 @@ judgeable commit since your last release, including work committed on the integr
 without a change fragment, so expect more entries and a count line that names the release anchor.
 `--json` adds `anchor`, `no_anchor_reason`, each entry's `source` (`fragment`, `walk` or
 `both`; `walk-failed` when git could not list the commits since the anchor) and each entry's
-`blockers` (the unresolved blocking findings on a not-covered entry's own trees), and a new covered
-class, `release-bookkeeping`, for a commit that changes only the files `release_version_files:`
-declared at your last release. A merge whose fix tail the PR gate deferred reads `tail-deferred`,
+`blockers` (the unresolved blocking findings on a not-covered entry's own trees), and two new covered
+classes: `release-bookkeeping`, for a commit that changes only the files `release_version_files:`
+declared at your last release, and `reverted`, for owed work your integration branch has since
+put back as it was (`counts` gains both keys). A merge whose fix tail the PR gate deferred reads `tail-deferred`,
 not covered. Under `per_pr` neither command's exit code changes; `check-boundary-coverage --gate`
 is the blocking reading, exit 0 there.
 

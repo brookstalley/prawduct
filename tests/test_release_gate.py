@@ -345,6 +345,61 @@ class TestTheGateExitTable:
         assert got["gate"]["exit"] == 0
 
 
+class TestRevertedWork:
+    """The owner's 2026-11-26 ruling: owed work whose every judgeable change is
+    back to where the release span starts ships nothing, so it reads `reverted`
+    (covered) and holds no release. A partial revert, or a reverted change with
+    an open BLOCKING finding, stays owed."""
+
+    def _entries(self, repo: Path, tmp_path: Path) -> "tuple[subprocess.CompletedProcess, dict]":
+        proc = _gate(repo, tmp_path, "--json")
+        return proc, {e["commit"]: e for e in json.loads(proc.stdout)["entries"]}
+
+    def test_an_inner_only_merge_reverted_on_the_base_passes(self, tmp_path):
+        repo = _repo(tmp_path)
+        _cut(repo, "v1.0.0")
+        merge = _lane(repo, "a")
+        assert _gate(repo, tmp_path).returncode == 1  # control: owed before the revert
+        _git(repo, "rm", "-q", "src/a.py")
+        _git(repo, "commit", "-q", "-m", "revert a")
+        revert = _git(repo, "rev-parse", "HEAD")
+        proc, entries = self._entries(repo, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert {c: entries[c]["classification"] for c in (merge, revert)} == {
+            merge: bc.REVERTED, revert: bc.REVERTED}, entries
+        assert json.loads(proc.stdout)["counts"][bc.REVERTED] == 2
+        assert "2 reverted" in _gate(repo, tmp_path).stdout
+
+    def test_a_partial_revert_stays_owed(self, tmp_path):
+        repo = _repo(tmp_path)
+        _cut(repo, "v1.0.0")
+        base = _branch(repo, "a")
+        _commit(repo, {"src/a.py": "a = 1\n", "src/b.py": "b = 1\n", **_fragment("a")}, "a")
+        _review(repo, base, _tree(repo), _CHUNK)
+        merge = _merge(repo, "a")
+        _git(repo, "rm", "-q", "src/a.py")
+        _git(repo, "commit", "-q", "-m", "revert half of a")
+        proc, entries = self._entries(repo, tmp_path)
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        assert entries[merge]["classification"] == bc.INNER_ONLY, entries[merge]
+
+    def test_a_reverted_change_with_an_open_blocker_stays_owed(self, tmp_path):
+        repo = _repo(tmp_path)
+        _cut(repo, "v1.0.0")
+        base = _branch(repo, "a")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
+        blocker = _review(repo, base, _tree(repo), _CHUNK, blocking=True)
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"notes.md": "n\n"}, "base moves, nothing judgeable")
+        merge = _merge(repo, "a")
+        _git(repo, "rm", "-q", "src/a.py")
+        _git(repo, "commit", "-q", "-m", "revert a")
+        proc, entries = self._entries(repo, tmp_path)
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        assert entries[merge]["classification"] == bc.UNCOVERED, entries[merge]
+        assert [b["review_id"] for b in entries[merge]["blockers"]] == [blocker]
+
+
 class TestAMergedBranchBlockerClearsOnTheBase:
     """The route the gate names for a merge whose branch carries an unresolved
     BLOCKING finding (its PR gate was bypassed) terminates. The batch review

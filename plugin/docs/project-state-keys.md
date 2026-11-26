@@ -516,7 +516,7 @@ What a correct release can still meet, now that this blocks (each reads not cove
 | A pruned release's withheld scope, merged before the anchor | Yes | The release batch review, whose span then starts at that scope's first parent |
 | #1250's base-advance transfer (`pr-transferred`) | No, covered. A transfer whose suite condition failed reads `uncovered` and blocks | The batch review, or the suite run its reason names |
 | A boundary review recorded in another clone | Yes until synced | `prawduct-hook evidence sync` |
-| Owed work whose every change has since been reverted | Yes: the batch review refuses `no-subject` | The batch review of any other owed work credits it too; with none, `per_pr` on the integration branch for that release |
+| Owed work whose every change is back to where the release span starts (`reverted`) | No, covered: nothing of it ships. A partial revert stays owed | — |
 | No release anchor (no release file, no version tag) | Yes, `boundary-unevaluable` | Tag the commit your last release shipped (`git tag vX.Y.Z <commit>`) or cut with `cut-change-log`; with no release yet, opt in after the first |
 | The walk since the anchor failed (`walk-failed`), an unreadable or newer-schema store, a refused fragment, an unresolvable base | Yes, `boundary-unevaluable` | Fix what the reason names (update the plugin for newer facts, `base_branch:` for the base) |
 

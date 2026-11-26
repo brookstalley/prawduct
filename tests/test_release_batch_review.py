@@ -451,6 +451,38 @@ class TestTheBatchFixTail:
         _review(repo, reviewed, _tree(repo), CHUNK)
         assert _coverage(repo, tmp_path)[work]["classification"] == bc.DIRECT
 
+    def test_its_cost_follows_the_release_not_the_store(self, repo, monkeypatch):
+        """The tail is asked per owed single-parent commit, so its per-store work
+        is paid once per classification (one settlement index), and a boundary
+        review before the release anchor is never asked. Control: one after the
+        anchor is."""
+        _commit(repo, {"src/old.py": "o = 1\n"}, "old work")
+        before_anchor = _review(repo, _tree(repo, "HEAD~1"), _tree(repo), CUMULATIVE)
+        _cut(repo, "v1.0.0")
+        _commit(repo, {"src/w.py": "w = 1\n"}, "work after the release")
+        after_anchor = _review(repo, _tree(repo, "HEAD~1"), _tree(repo), CUMULATIVE)
+        _commit(repo, {"src/d.py": "d = 1\n"}, "direct work")
+        asked: list = []
+        built: list = []
+        real_blockers = coverage_algebra.batch_review_blockers
+
+        class Counted(coverage_algebra.Settlement):
+            def __init__(self, facts):
+                built.append(len(facts))
+                super().__init__(facts)
+
+        def blockers(facts, review, *a, **k):
+            asked.append(review.get("id"))
+            return real_blockers(facts, review, *a, **k)
+
+        monkeypatch.setattr(coverage_algebra, "Settlement", Counted)
+        monkeypatch.setattr(coverage_algebra, "batch_review_blockers", blockers)
+        report = bc.classify_pending(repo)
+        assert report.status == "ok" and len(report.entries) == 2, report
+        assert after_anchor in asked, asked
+        assert before_anchor not in asked, asked
+        assert len(built) == 1, built
+
 
 # ---------------------------------------------------------------------------
 # The control: no PR gate moves because a batch fact exists
@@ -599,15 +631,35 @@ class TestEveryRefusalIsNamed:
         self._refused(proc, bc.RELEASE_NO_ANCHOR, repo)
         assert "no first-parent commit on main adds a release file" in proc.stderr
 
-    def test_when_what_is_owed_changes_nothing_still_there(self, repo, tmp_path):
-        """A lane added `src/a.py` and work on the base removed it again: both
-        are owed, and nothing they changed still differs from where the span
-        starts, so a batch review would rate nothing. (Until Chunk 06 this was
-        the withheld-before-the-anchor case, which now dispatches: below.)"""
+    def test_when_what_was_owed_is_reverted_nothing_is_owed(self, repo, tmp_path):
+        """A lane added `src/a.py` and work on the base removed it again. Until
+        the owner's 2026-11-26 ruling both stayed owed and the dispatch refused
+        `no-subject`, with `per_pr` the only way out; now nothing of either
+        ships, so both read `reverted` (covered) and no review is needed."""
         _cut(repo, "v1.0.0")
         _lane(repo, "a")
         _git(repo, "rm", "-q", "src/a.py")
         _git(repo, "commit", "-q", "-m", "drop a again")
+        assert {e.classification for e in bc.classify_pending(repo).entries} == {bc.REVERTED}
+        proc = _begin_release(repo, tmp_path)
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        assert "already covered" in proc.stdout and not _manifest_written(repo)
+
+    def test_reverted_work_with_an_open_blocker_still_refuses_no_subject(self, repo, tmp_path):
+        """The refusal stays for what is still owed and has nothing left to
+        read: a merged branch's reverted change whose BLOCKING finding is
+        unresolved owes its verify pass, not a read."""
+        _cut(repo, "v1.0.0")
+        base = _branch(repo, "a")
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
+        _review(repo, base, _tree(repo), CHUNK, blocking=True)
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"notes.md": "n\n"}, "base moves, nothing judgeable")
+        merge = _merge(repo, "a")
+        _git(repo, "rm", "-q", "src/a.py")
+        _git(repo, "commit", "-q", "-m", "drop a again")
+        entry = {e.commit: e for e in bc.classify_pending(repo).entries}[merge]
+        assert entry.classification not in bc.COVERED and entry.blockers, entry
         proc = _begin_release(repo, tmp_path)
         self._refused(proc, bc.RELEASE_NO_SUBJECT, repo)
         assert "change no judgeable file that still differs from" in proc.stderr, proc.stderr
