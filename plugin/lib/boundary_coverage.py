@@ -240,6 +240,19 @@ def _has_span(fact: dict) -> bool:
     return all(isinstance(body.get(k), str) and body.get(k) for k in ("base_tree", "head_tree"))
 
 
+def _merged_blockers(*lists: list) -> list:
+    """Blocker lists joined, each ``(review_id, fid)`` once, first seen first."""
+    seen: set = set()
+    out: list = []
+    for blockers in lists:
+        for b in blockers:
+            key = (b.get("review_id"), b.get("fid"))
+            if key not in seen:
+                seen.add(key)
+                out.append(b)
+    return out
+
+
 class _Classifier:
     """One store read and one set of git answers, shared by every scope."""
 
@@ -351,16 +364,22 @@ class _Classifier:
         entry = self._classify_shape(commit, subject, parents, changed)
         if entry.classification in COVERED or not parents:
             return entry
+        # A shape reading blocked by its branch's own blockers is credited by no
+        # batch review until they are resolved: they may stand at a tree none of
+        # the entry's commits holds, which the batch's settlement never reads.
+        shape_blockers = list(entry.blockers)
         if len(parents) == 1:
             files = changed if changed is not None else self._judgeable(parents[0], commit)
         else:
             files = self._judgeable(parents[0], commit)
         trees = self._entry_trees(commit, parents[0])
         batch = self._batch(commit, parents[0], files, trees)
+        if batch is not None and batch[0] == "covered" and shape_blockers:
+            batch = ("blocked", batch[1], "the merged branch's own blocking finding is unresolved")
         if batch is not None and batch[0] == "covered":
             return Entry("", BATCH_COVERED, f"boundary review {batch[1]} on {self.base} spans it and "
                                             "rated its judgeable files", commit, subject)
-        if len(parents) == 1:
+        if len(parents) == 1 and not shape_blockers:
             tail = self._batch_tail(commit, parents[0], trees)
             if tail is not None:
                 return Entry("", BATCH_COVERED, f"a fix on {self.base} after boundary review {tail}: "
@@ -370,7 +389,8 @@ class _Classifier:
             entry.reason += (f"; boundary review {batch[1]} on {self.base} spans it, but "
                              f"{batch[2]} (fix it on {self.base} and run `/prawduct:critic "
                              "verify-resolutions` there)")
-        entry.blockers = coverage_algebra.entry_blockers(self.facts, trees or ())
+        entry.blockers = _merged_blockers(
+            shape_blockers, coverage_algebra.entry_blockers(self.facts, trees or ()))
         return entry
 
     def _entry_trees(self, commit: str, first_parent: str) -> "list[str] | None":
@@ -431,7 +451,8 @@ class _Classifier:
         # The merge commit's own content (a conflict resolution, or an edit made in
         # the merge) is in neither parent, so no review of the branch read it.
         resolved_here = self._merge_only_judgeable(commit)
-        overall = self._verdict(self.facts, span_base, span_head)
+        full = self._full_verdict(self.facts, span_base, span_head)
+        overall = full["status"]
         if (overall == "covered" and not resolved_here
                 and self._boundary_split(merge_base, tip, span_base, span_head)):
             return Entry("", PR_COVERED, "a boundary review covered the branch at its PR; only fix "
@@ -444,8 +465,13 @@ class _Classifier:
             return Entry("", INNER_ONLY, "the branch's coverage composes only through inner-stage reviews",
                          commit, subject)
         if overall == "blocked":
-            return Entry("", UNCOVERED, "an unresolved blocking finding stands on the branch's coverage",
-                         commit, subject)
+            # The verdict's own blockers, wherever their review stood: a review of
+            # an uncommitted tree records its blocker at a tree no commit holds,
+            # which the entry's commit trees (_entry_trees) never reach.
+            entry = Entry("", UNCOVERED, "an unresolved blocking finding stands on the branch's coverage",
+                          commit, subject)
+            entry.blockers = [dict(u) for u in full.get("unresolved") or []]
+            return entry
         transferred = self._transferred(merge_base, tip, span_base, span_head)
         if transferred is not None and transferred[0] != UNCOVERED:
             classification, reason = transferred

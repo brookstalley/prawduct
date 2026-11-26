@@ -369,6 +369,36 @@ class TestTheBatchCreditsWhatItRead:
         resolved = _coverage(repo, tmp_path)[merge]
         assert resolved["classification"] == bc.BATCH_COVERED and batch in resolved["reason"], resolved
 
+    def test_a_blocker_at_a_tree_no_commit_holds_is_still_owed(self, repo, tmp_path):
+        """A chunk review of UNCOMMITTED work records its blocker at a tree no
+        commit holds, so the entry's commit trees never reach it. The shape
+        reading's own blockers must: the clean batch review credits nothing,
+        the entry names the blocker (the verify pass's roll-call input), and a
+        resolution then lets the batch credit it."""
+        _cut(repo, "v1.0.0")
+        base = _branch(repo, "a")
+        _write(repo, "src/a.py", "a = 0  # draft\n")
+        _git(repo, "add", "-A")
+        draft = _git(repo, "write-tree")
+        blocker = _review(repo, base, draft, CHUNK, blocking=True)
+        _commit(repo, {"src/a.py": "a = 1\n", **_fragment("a")}, "a")
+        tip = _tree(repo)
+        _review(repo, draft, tip, VERIFY, extra={"verifies": blocker})
+        assert _git(repo, "log", "--all", "--format=%T").split().count(draft) == 0, \
+            "the fixture must keep the blocker on a tree no commit holds"
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, {"src/z.py": "z = 1\n"}, "base moves")
+        merge = _merge(repo, "a")
+        assert _begin_release(repo, tmp_path).returncode == 0
+        batch = _consolidate(repo, tmp_path)
+        after = _coverage(repo, tmp_path)[merge]
+        assert after["classification"] == bc.UNCOVERED, after
+        assert [(b["review_id"], b["fid"]) for b in after["blockers"]] == [(blocker, "R-1")], after
+        assert batch in after["reason"] and "own blocking finding is unresolved" in after["reason"], after
+        _resolve(repo, blocker)
+        resolved = _coverage(repo, tmp_path)[merge]
+        assert resolved["classification"] == bc.BATCH_COVERED and batch in resolved["reason"], resolved
+
     def test_verify_resolutions_dispatches_on_the_base_against_the_batch(self, repo, tmp_path):
         """The fix tail's route exists: after the batch blocker is fixed on the base,
         a verify pass anchors to the batch review and names its blocker."""
