@@ -109,6 +109,11 @@ def test_building_pointer_names_a_real_heading_of_the_determinism_doc():
     # the principle the sentence states is the one the doc opens with
     principle = "result depends only on what it exercises"
     assert principle in building and principle in doc
-    # every pattern the doc defines is a row of its table
-    for n in range(1, 9):
-        assert f"| P{n} |" in doc, f"{target} lacks a row for P{n}"
+    # every pattern the doc defines is a row of its table, and the count its prose
+    # states is the count of those rows
+    patterns = doc.split("\n## The patterns\n", 1)[1].split("\n## ", 1)[0]
+    rows = re.findall(r"^\| P(\d+) \|", patterns, re.M)
+    assert rows == [str(n) for n in range(1, 12)], f"{target} pattern rows: {rows}"
+    words = {"eleven": 11}
+    stated = re.search(r"The same (\w+) patterns recur", doc)
+    assert stated and words.get(stated.group(1)) == len(rows), stated

@@ -9,11 +9,14 @@ the causes; this probe relays them, so the owner can fix each one or declare it
 expected.
 
 **Offline, and no process.** Probes run at every session start in every governed
-repo. After each run testament writes a per-worktree snapshot of its cacheability
-rollup (testament #287) under its own state directory; this reads that file and
-nothing else, apart from one local ``git merge-base --is-ancestor``. Where
-testament is not used the directory does not exist and the probe returns at
-once.
+repo. After each run testament writes one snapshot per project and suite,
+``<project>.<suite>.json`` under its own state directory (testament #287), holding
+the coordinator's cacheability row as ``row``. The project is the ``name`` in this
+repo's ``.testament.toml``. A snapshot is per machine, not per worktree, so the
+envelope's ``commit`` being an ancestor of HEAD is what makes it this branch's.
+This reads the manifest, those files and nothing else, apart from one local
+``git merge-base --is-ancestor``. Where testament is not used the directory or the
+manifest does not exist and the probe returns at once.
 
 **One advisory per suite, its id following the set of causes.** Evidence is one
 ``suite kind site scope`` line per cause, sorted by its own text — never a count,
@@ -28,9 +31,13 @@ Kinds and scopes must be plain words and sites ``path:function`` tokens; anythin
 else is dropped. testament's ``hint`` and the project's ``why`` strings are never
 carried.
 
+**Each cause names its remedy.** ``owner_action`` gives, for each kind among the
+raised causes, its pattern in ``docs/test-determinism.md`` and a one-line remedy
+(:data:`REMEDIES`); a kind not in the map is sent to that page, never guessed at.
+
 **Could not look, rather than nothing to report,** when the snapshot is narrowed
-only, of an unknown version, unreadable, or about a commit outside this branch's
-history: an open advisory then stays open instead of resolving on data that is not
+only, of an unknown version, unreadable or holding no ``row``, or about a commit
+outside this branch's history, or when the manifest names no project: an open advisory then stays open instead of resolving on data that is not
 about this checkout.
 
 Registered at the composition root (``lib/probe_families.register_all``).
@@ -38,10 +45,12 @@ Registered at the composition root (``lib/probe_families.register_all``).
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 from . import evidence
@@ -60,6 +69,39 @@ _SITE_RE = re.compile(r"^[A-Za-z0-9_./-]{1,200}:[A-Za-z_][A-Za-z0-9_.<>]{0,120}$
 #: Causes named in the summary; the rest are counted.
 _SUMMARY_CAUSES = 3
 
+#: testament's cause kind -> (its pattern in prawduct's ``docs/test-determinism.md``,
+#: the remedy). Kinds testament reports that this leaves out (``host``,
+#: ``inputs_outside``) get :data:`_UNMAPPED_REMEDY`.
+REMEDIES: "dict[str, tuple[str, str]]" = {
+    "subprocess": (
+        "P9, P10",
+        "call the product's own entry point in-process, and start tool children through "
+        "one helper that isolates them and dates them from the suite's clock",
+    ),
+    "clock": (
+        "P3, P4, P11",
+        "read the time through one owner the suite pins, never in a fake or at import",
+    ),
+    "entropy": (
+        "P3, P4, P11",
+        "draw IDs and random values through one owner the suite replaces; seeding frees nothing",
+    ),
+    "file": (
+        "P10",
+        "read it from the tree or the test's temporary directory; if the file is the test's "
+        "subject, declare the test uncacheable",
+    ),
+    "socket": (
+        "Declaring a test uncacheable on purpose",
+        "stub the network call, or declare the test uncacheable when the network is its subject",
+    ),
+}
+
+_UNMAPPED_REMEDY = "no remedy is mapped for this kind; see prawduct's docs/test-determinism.md"
+
+#: The manifest testament reads at the project root, and so the project's name.
+_MANIFEST = ".testament.toml"
+
 
 def snapshot_dir() -> Path:
     """Where testament writes its cacheability snapshots (testament #287):
@@ -70,30 +112,57 @@ def snapshot_dir() -> Path:
     return base / "client" / "cacheability"
 
 
-def _snapshots(root: Path) -> "list[dict] | None":
-    """This worktree's snapshot envelopes, or ``None`` when one could not be read.
+def _project(root: Path) -> "str | None":
+    """The project testament files this repo's snapshots under: ``name`` in its
+    manifest. ``None`` when there is no manifest (testament is not used here), and
+    ``""`` when one exists but names no project, after saying why."""
+    try:
+        data = tomllib.loads((root / _MANIFEST).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        _note(f"{_MANIFEST} could not be read ({type(exc).__name__})")
+        return ""
+    name = data.get("name")
+    if not (isinstance(name, str) and name and "/" not in name and not name.startswith(".")):
+        _note(f"{_MANIFEST} names no project")
+        return ""
+    return name
 
-    The one home of "which files are this worktree's": an envelope whose
-    ``root`` is this worktree's resolved root. ``[]`` when testament has written
-    nothing here, which is the common case and costs one ``stat``.
+
+def _snapshots(root: Path) -> "list[dict] | None":
+    """This project's snapshot envelopes, or ``None`` when one could not be read.
+
+    The one home of "which files are this repo's": ``<project>.<suite>.json`` whose
+    ``project`` is the manifest's name (a file of project ``a.b`` matches ``a``'s
+    glob; its content tells them apart, as testament's own reader does). ``[]`` when
+    testament has written nothing here, which is the common case and costs one
+    ``stat``. Whether an envelope is about this branch is :func:`_current`'s question.
     """
     directory = snapshot_dir()
     if not directory.is_dir():
         return []
-    mine = str(root.resolve())
+    project = _project(root)
+    if project is None:
+        return []
+    if not project:
+        return None
     found: list[dict] = []
     try:
-        names = sorted(p for p in directory.iterdir() if p.suffix == ".json")
+        paths = sorted(directory.glob(f"{glob.escape(project)}.*.json"))
     except OSError as exc:
         _note(f"the snapshot directory {directory} could not be listed ({exc})")
         return None
-    for path in names:
+    for path in paths:
         try:
             envelope = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             _note(f"{path} could not be read ({type(exc).__name__})")
             return None
-        if isinstance(envelope, dict) and envelope.get("root") == mine:
+        if not (isinstance(envelope, dict) and isinstance(envelope.get("row"), dict)):
+            _note(f"{path} is not a cacheability snapshot")
+            return None
+        if envelope.get("project") == project:
             found.append(envelope)
     return found
 
@@ -159,43 +228,54 @@ def probe_uncacheable_tests(state: ProjectState, codebase: Codebase):
                 "this branch's history; run the suite here once"
             )
             return None
-        for row in envelope.get("rows") or []:
-            if not isinstance(row, dict):
-                continue
-            causes = _causes(row)
-            if not causes:
-                continue
-            suite = envelope.get("suite")
-            suite = suite if isinstance(suite, str) and _WORD_RE.match(suite) else "default"
-            named = "; ".join(
-                f"{kind} at {site} ({scope}-wide, sole blocker of {alone} test(s))"
-                for kind, site, scope, alone in causes[:_SUMMARY_CAUSES]
+        causes = _causes(envelope["row"])
+        if not causes:
+            continue
+        suite = envelope.get("suite")
+        suite = suite if isinstance(suite, str) and _WORD_RE.match(suite) else "default"
+        named = "; ".join(
+            f"{kind} at {site} ({scope}-wide, sole blocker of {alone} test(s))"
+            for kind, site, scope, alone in causes[:_SUMMARY_CAUSES]
+        )
+        more = len(causes) - _SUMMARY_CAUSES
+        candidates.append(
+            AdvisoryCandidate(
+                type=PROBE_TYPE,
+                evidence=tuple(sorted(
+                    f"{suite} {kind} {site} {scope}" for kind, site, scope, _a in causes
+                )),
+                trigger_summary=(
+                    f"testament cannot cache some of suite `{suite}`'s results, and "
+                    f"{len(causes)} cause(s) are each the only thing stopping it: {named}"
+                    + (f"; and {more} more" if more > 0 else "")
+                ),
+                owner_action=(
+                    "Decide, cause by cause, whether to fix it so those tests can be "
+                    "cached, or to declare it expected in testament's configuration, "
+                    "which stops it being reported. Fix first the cause that frees the "
+                    f"most tests; the summary leads with it. {_remedies(causes)} "
+                    "Dismissing this advisory hides it until the set of causes changes."
+                ),
+                # Owner-only: the decision is per cause and the summary names
+                # each one. `testament cacheability --offline` would show more,
+                # but it is not an allowlisted executable.
+                recommended_action="",
             )
-            more = len(causes) - _SUMMARY_CAUSES
-            candidates.append(
-                AdvisoryCandidate(
-                    type=PROBE_TYPE,
-                    evidence=tuple(sorted(
-                        f"{suite} {kind} {site} {scope}" for kind, site, scope, _a in causes
-                    )),
-                    trigger_summary=(
-                        f"testament cannot cache some of suite `{suite}`'s results, and "
-                        f"{len(causes)} cause(s) are each the only thing stopping it: {named}"
-                        + (f"; and {more} more" if more > 0 else "")
-                    ),
-                    owner_action=(
-                        "Decide, cause by cause, whether to fix it so those tests can be "
-                        "cached, or to declare it expected in testament's configuration, "
-                        "which stops it being reported. Dismissing this advisory hides it "
-                        "until the set of causes changes."
-                    ),
-                    # Owner-only: the decision is per cause and the summary names
-                    # each one. `testament cacheability --offline` would show more,
-                    # but it ships with #287 and is not an allowlisted executable.
-                    recommended_action="",
-                )
-            )
+        )
     return candidates
+
+
+def _remedies(causes: "list[tuple[str, str, str, int]]") -> str:
+    """One line per kind among ``causes``, in the order the kinds first appear (the
+    summary's): its pattern and remedy, or the pointer for a kind the map lacks."""
+    lines = []
+    for kind in dict.fromkeys(kind for kind, _site, _scope, _alone in causes):
+        if kind in REMEDIES:
+            pattern, remedy = REMEDIES[kind]
+            lines.append(f"{kind} ({pattern} in prawduct's docs/test-determinism.md): {remedy}.")
+        else:
+            lines.append(f"{kind}: {_UNMAPPED_REMEDY}.")
+    return "Remedies by kind: " + " ".join(lines)
 
 
 def register() -> None:
