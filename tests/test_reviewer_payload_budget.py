@@ -310,7 +310,14 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # `--chunks` line names all chunks under a `per-release lane` rationale, which the lane requires;
     # paid in place by cutting step 4's gloss on what the live-review refusal names (stderr owns
     # it). A READING; ceiling lowered with it.
-    "single-pass-inner": 5914,
+    # +108 on 2026-11-26 (fork-project-dir, #1253), DECLARED: SKILL.md's frontmatter gains the
+    # `git -C * <verb> *` grant for each git verb it already granted and a `--project-dir *` form
+    # of each bare hook grant (+104: a grant is a literal prefix, so a fork told to carry
+    # `--project-dir` cannot run without them), and step 0 / step 4 say how to carry it and that
+    # the report leads with the tree line (+4, net of cutting the #34164 gloss and the duplicated
+    # `--force` sentence). Priced against the SUM: ~108 tokens per fork review against a review of
+    # the wrong repository reported as "nothing to review", which the caller cannot see.
+    "single-pass-inner": 6022,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -466,7 +473,14 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # `--chunks` line names all chunks under a `per-release lane` rationale, which the lane requires;
     # paid in place by cutting step 4's gloss on what the live-review refusal names (stderr owns
     # it). A READING; ceiling lowered with it.
-    "single-pass-full": 10303,
+    # +108 on 2026-11-26 (fork-project-dir, #1253), DECLARED: SKILL.md's frontmatter gains the
+    # `git -C * <verb> *` grant for each git verb it already granted and a `--project-dir *` form
+    # of each bare hook grant (+104: a grant is a literal prefix, so a fork told to carry
+    # `--project-dir` cannot run without them), and step 0 / step 4 say how to carry it and that
+    # the report leads with the tree line (+4, net of cutting the #34164 gloss and the duplicated
+    # `--force` sentence). Priced against the SUM: ~108 tokens per fork review against a review of
+    # the wrong repository reported as "nothing to review", which the caller cannot see.
+    "single-pass-full": 10411,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -739,7 +753,14 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # `--chunks` line names all chunks under a `per-release lane` rationale, which the lane requires;
     # paid in place by cutting step 4's gloss on what the live-review refusal names (stderr owns
     # it). A READING; ceiling lowered with it.
-    "coordinator-fork": 10973,
+    # +108 on 2026-11-26 (fork-project-dir, #1253), DECLARED: SKILL.md's frontmatter gains the
+    # `git -C * <verb> *` grant for each git verb it already granted and a `--project-dir *` form
+    # of each bare hook grant (+104: a grant is a literal prefix, so a fork told to carry
+    # `--project-dir` cannot run without them), and step 0 / step 4 say how to carry it and that
+    # the report leads with the tree line (+4, net of cutting the #34164 gloss and the duplicated
+    # `--force` sentence). Priced against the SUM: ~108 tokens per fork review against a review of
+    # the wrong repository reported as "nothing to review", which the caller cannot see.
+    "coordinator-fork": 11081,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -795,7 +816,14 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # `--chunks` line names all chunks under a `per-release lane` rationale, which the lane requires;
     # paid in place by cutting step 4's gloss on what the live-review refusal names (stderr owns
     # it). A READING; ceiling lowered with it.
-    "coordinator-fork-inner": 6584,
+    # +108 on 2026-11-26 (fork-project-dir, #1253), DECLARED: SKILL.md's frontmatter gains the
+    # `git -C * <verb> *` grant for each git verb it already granted and a `--project-dir *` form
+    # of each bare hook grant (+104: a grant is a literal prefix, so a fork told to carry
+    # `--project-dir` cannot run without them), and step 0 / step 4 say how to carry it and that
+    # the report leads with the tree line (+4, net of cutting the #34164 gloss and the duplicated
+    # `--force` sentence). Priced against the SUM: ~108 tokens per fork review against a review of
+    # the wrong repository reported as "nothing to review", which the caller cannot see.
+    "coordinator-fork-inner": 6692,
     # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
     # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
@@ -837,11 +865,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5915,
-    "single-pass-full": 10304,
+    "single-pass-inner": 6023,
+    "single-pass-full": 10412,
     "dispatched-reviewer": 9776,
-    "coordinator-fork": 10974,
-    "coordinator-fork-inner": 6585,
+    "coordinator-fork": 11082,
+    "coordinator-fork-inner": 6693,
     "dispatched-reviewer-inner": 5387,
 }
 

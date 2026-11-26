@@ -149,10 +149,22 @@ in `docs/governance-telemetry.md`.
 
 The CLI groups by responsibility. Every subcommand is read-only unless marked mutating.
 
+- **Dispatcher option** — `--project-dir <absolute path>` (added 2026-11-26, #1253), accepted
+  after any subcommand and before a bare `--` (later tokens stay the passthrough command's), as
+  `--project-dir <p>` or `--project-dir=<p>`. `_dispatch` removes it before any command parses its
+  arguments, `chdir`s to the path and makes it the project dir over `CLAUDE_PROJECT_DIR` and the
+  cwd, so every command, PDT-WT9K included, sees one tree. A missing value, two different values or
+  a relative path is a usage error (exit 2); a path that does not exist, is not a git work tree, or
+  is a subdirectory of one rather than its toplevel exits 1. Each refusal names itself and runs
+  nothing. The same value twice is one tree. Hooks never pass it; the `context: fork` skills accept
+  it as an argument and pass it to each call, because a fork starts in the launch repo whoever
+  invokes it.
 - **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary, which also ingests the branch's notes and prints `N evidence fact(s) ingested from refs/notes/prawduct` when N > 0 — `--brief-only` skips both, mutating),
   `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force] [--chunks a,b]` (write dispatch manifest, mutating;
+  after argument parsing its first stdout line on every outcome is `PRAWDUCT: tree <toplevel> ·
+  <branch or (detached)> @ <sha12>`, the tree it judged (#1253);
   `--force` overrides the pre-dispatch refusals: exit-3 no-review-needed, exit-4 budget-exhausted,
   exit-7 stale test evidence and exit-9 credential shapes
   — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
@@ -1351,6 +1363,8 @@ external-consumer trigger in Versioning.
 - **stdin JSON** for harness event payloads.
 - **Argv is argv** — arguments passed as a list, never a shell string (see `security-model.md`);
   unknown flags rejected with a usage error (exit 2).
+- **One tree per invocation** — the project dir is resolved once, before dispatch: a valid
+  `--project-dir`, else the worktree toplevel of the cwd or the launch pin (STH-4K7N).
 - **Timestamps** in facts/events are ISO-8601 UTC.
 
 ## Security

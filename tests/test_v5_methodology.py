@@ -1453,7 +1453,11 @@ LAST_MEASURED_TOKENS = {
     # `--chunks` line names all chunks under a `per-release lane` rationale. Paid in place by
     # cutting step 4's gloss on what the live-review refusal names (its stderr owns it). A READING;
     # ceiling lowered with it.
-    "skills/critic/SKILL.md": 3265,
+    # +108 on 2026-11-26 (fork-project-dir, #1253), DECLARED: the `git -C * <verb> *` grants and
+    # the `--project-dir *` form of each bare hook grant (+104, frontmatter), and step 0 / step 4
+    # carrying `--project-dir` and leading the report with the tree line (+4, net of cutting the
+    # #34164 gloss and the duplicated `--force` sentence). Priced in `test_reviewer_payload_budget.py`.
+    "skills/critic/SKILL.md": 3373,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -2082,7 +2086,10 @@ LAST_MEASURED_TOKENS = {
     # asks a removal or sweep for the files it touched. building.md cut that list on 2026-11-22
     # because this file owned it, and this file never did. It is added here, the owning item.
     # A READING.
-    "methodology/delegation.md": 3008,
+    # +24 on 2026-11-26 (fork-project-dir, #1253): beside "a skill forks in the session's own
+    # directory", the one sentence saying a delegate in another repository passes `--project-dir`
+    # to each `/prawduct:*` skill. No clause here covered it, so nothing was cut. A READING.
+    "methodology/delegation.md": 3032,
 }
 
 
@@ -6638,7 +6645,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3226 -> 3248 (chunk-plan-order Chunk 02, #1141): exit 8's row — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 3248 -> 3279 (credential-placeholders Chunk 02): exit 9's row — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3279 -> 3266 (boundary-review-per-release round 6, R-4) with the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 3266, f"SKILL.md is ~{tokens} tokens, should be <3266"
+        # RAISED 3266 -> 3374 (fork-project-dir, #1253): `git -C` and `--project-dir` grants — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3374, f"SKILL.md is ~{tokens} tokens, should be <3374"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

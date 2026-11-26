@@ -1,6 +1,6 @@
 ---
 description: Post-sync advisory management — list, inspect, dismiss, undismiss, or resolve the advisories surfaced in the session briefing
-argument-hint: "list [--state=active|dismissed|resolved|all] [--feature=<name>] | show <id> | dismiss <id> [--reason \"...\"] | undismiss <id> | resolve <id>"
+argument-hint: "list [--state=active|dismissed|resolved|all] [--feature=<name>] | show <id> | dismiss <id> [--reason \"...\"] | undismiss <id> | resolve <id> — plus optional --project-dir <absolute toplevel>"
 user-invocable: true
 disable-model-invocation: false
 context: fork
@@ -27,7 +27,7 @@ All work goes through one command: `prawduct-hook advisory <subcommand>`. Do not
 ## How to use this skill
 
 1. Parse `$ARGUMENTS` into a subcommand + args. If empty, run `list` (active) as the default and show the result.
-2. Run the matching `prawduct-hook advisory ...` command and relay its output.
+2. Run the matching `prawduct-hook advisory ...` command and relay its output. This fork starts in the launch repo, so when `$ARGUMENTS` carries `--project-dir <dir>`, append it to every call and name `<dir>` as the store you read or changed.
 3. For `dismiss`/`undismiss`/`resolve`, confirm the id exists first if the user is unsure — run `list --state=all` and check. A `not found` result means the id is wrong or the advisory was already garbage-collected.
 4. Resolution normally happens automatically: run the advisory's `agent →` line (`recommended_action`), and the next sync clears it (the probe stops firing once the project-state fact is set). Prefer that path over manual `resolve`.
 5. **Every advisory addresses two readers, and the output labels which is which.** The `owner →` line is what the *person* decides, approves or supplies; the `agent →` line is the command *you* run. Relay the owner line to the user in your own words and never hand them a command to type — the commands are yours. An advisory with no `agent →` line is owner-only: there is nothing to run, and waiting on their answer is the correct next step, not a gap to fill.

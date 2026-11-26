@@ -21,8 +21,8 @@ Differences from the legacy ``tools/product-hook`` (the file-sync runtime):
 
 Governing invariant (design §2): reads/writes ONLY the governed repo's
 ``.prawduct/`` — the session's active git worktree, resolved by
-``get_project_dir`` (the worktree toplevel of cwd, or ``${CLAUDE_PROJECT_DIR}``
-when not in a same-repo worktree; STH-4K7N). No mutable state is shared between
+``get_project_dir`` (a caller's ``--project-dir``; else the worktree toplevel of
+cwd, or ``${CLAUDE_PROJECT_DIR}`` when not in a same-repo worktree; STH-4K7N). No mutable state is shared between
 *unrelated* repos through the plugin — the resolver's same-repo
 ``--git-common-dir`` guard preserves that.
 
@@ -78,6 +78,11 @@ def _host():
     return sys.modules["prawduct_host"]
 
 
+#: The tree a ``--project-dir`` option named, set once by ``_dispatch`` after it
+#: validates the value (``_apply_project_dir``); ``None`` when the caller named none.
+_PROJECT_DIR_OVERRIDE: "Path | None" = None
+
+
 def get_project_dir() -> Path:
     """Resolve the project dir to the session's active git worktree.
 
@@ -96,7 +101,12 @@ def get_project_dir() -> Path:
     handling (e.g. ``coverage-scaffold``). The host seam is the exception: it
     is loaded from beside this script, not from that ``lib``, and a tree
     without it is not a plugin, so its absence fails here (``main``'s error
-    floor reports it; a Stop then exits 1 and does not block)."""
+    floor reports it; a Stop then exits 1 and does not block).
+
+    A caller-named ``--project-dir`` wins over both (#1253): ``_dispatch`` has
+    already validated it and ``chdir``'d there, so every command sees one tree."""
+    if _PROJECT_DIR_OVERRIDE is not None:
+        return _PROJECT_DIR_OVERRIDE
     hint = _host().project_dir_hint()
     try:
         gitstate = _gitstate()
@@ -2252,6 +2262,17 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
 # =============================================================================
 
 
+def _critic_tree_line(project_dir: Path) -> str:
+    """``PRAWDUCT: tree <toplevel> · <branch or (detached)> @ <sha12>`` — the
+    tree a ``critic-begin`` run judged, named before anything else it says."""
+    gitstate = _gitstate()
+    if gitstate._git_toplevel(project_dir) is None:
+        return f"PRAWDUCT: tree {project_dir} · (not a git work tree)"
+    branch = gitstate.current_branch(project_dir) or "(detached)"
+    head = gitstate._git_head_sha(project_dir)[:12] or "(no commits)"
+    return f"PRAWDUCT: tree {project_dir} · {branch} @ {head}"
+
+
 def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     """Dispatch one Critic review: derive + write the manifest (code, never a
     model — kernel v3 D8) and set the critic-active marker so a session-mutating
@@ -2323,6 +2344,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     dispatch failure (reason on stderr). The scheme these cite is prawduct's own API contract — its
     Error Model section, in the framework repo rather than in yours.
 
+    After argument parsing, every outcome prints `_critic_tree_line` first.
+
     Also resets `.critic-partials/` before writing the fresh manifest —
     archive-first, and `critic_consolidate.remove_partials` states why (it is
     hygiene now, not correctness: partials carry review identity, so a leftover
@@ -2386,6 +2409,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
+    # First on stdout, on every outcome from here on (#1253): a caller that
+    # forgot `--project-dir` reads at once which tree this run judged, where it
+    # would otherwise read "no review needed" about a tree it never meant.
+    print(_critic_tree_line(project_dir))
+
     prawduct_dir = get_prawduct_dir(project_dir)
     if not prawduct_dir.is_dir():
         print("PRAWDUCT: not an onboarded repo — nothing to review or protect.")
@@ -2400,8 +2428,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         print(
             f"critic-begin: refusing — the shell is in {cwd_top} but the review "
             f"resolved to a different tree {project_dir}. Run /prawduct:critic from "
-            "inside the worktree that holds the work (EnterWorktree), or unset "
-            "CLAUDE_PROJECT_DIR — so the review can't silently target the wrong tree.",
+            "inside the worktree that holds the work (EnterWorktree), unset "
+            "CLAUDE_PROJECT_DIR, or name the tree with --project-dir <its "
+            "toplevel> — so the review can't silently target the wrong tree.",
             file=sys.stderr,
         )
         return 1
@@ -11549,6 +11578,7 @@ _USAGE = (
     "migrate-change-log [--default-type TYPE] [--apply]|"
     "change-record <scope>... [--json]|"
     "repo-disable [--local] [--apply] [--json]}"
+    " — any subcommand also takes --project-dir <absolute toplevel>, before a bare --"
 )
 
 
@@ -12587,9 +12617,10 @@ def _check_argument_shape(command: str, argv: list[str]) -> int:
     """0 to proceed; 2 when the invocation passed something the command cannot
     read. 2 is the hook's usage-error convention (see `_reject_unknown_args`).
 
-    Runs before anything else in `_dispatch`, including project-dir resolution:
-    a malformed invocation should do nothing at all, and "nothing ran" is the
-    sentence the caller most needs to be able to trust.
+    Runs before anything else in `_dispatch` but `--project-dir`'s removal
+    (`_pop_project_dir`), including project-dir resolution: a malformed
+    invocation should do nothing at all, and "nothing ran" is the sentence the
+    caller most needs to be able to trust.
     """
     if not argv:
         return 0
@@ -12632,6 +12663,111 @@ def _check_argument_shape(command: str, argv: list[str]) -> int:
     return 0
 
 
+# --- `--project-dir`: the caller names its tree (#1253) ----------------------
+# A `context: fork` skill invoked by a subagent that works in another repository
+# starts its shell in the session's launch repo, and its environment names
+# nothing of the caller; its arguments do reach it. So the caller names the repo,
+# and the fork passes the name to every `prawduct-hook` call. Accepted after any
+# subcommand (so the skills' `Bash(prawduct-hook <cmd>*)` grants still match) and
+# before a bare `--`, past which every token is the passthrough command's.
+_PROJECT_DIR_FLAG = "--project-dir"
+
+
+def _pop_project_dir(command: str, argv: list[str]) -> "tuple[str | None, list[str], int]":
+    """``(value, argv without the option, status)``; status 2 is a usage error,
+    already printed. Refuses a missing value, two different values and a
+    relative path: each is a caller who meant a tree and would otherwise get a
+    guessed one. The same value twice is one tree — a skill that forwards its
+    arguments verbatim and also appends the option passes it twice."""
+    value: "str | None" = None
+    rest: list[str] = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--":
+            rest.extend(argv[i:])
+            break
+        if arg != _PROJECT_DIR_FLAG and not arg.startswith(_PROJECT_DIR_FLAG + "="):
+            rest.append(arg)
+            i += 1
+            continue
+        if arg == _PROJECT_DIR_FLAG:
+            following = argv[i + 1] if i + 1 < len(argv) else ""
+            given = "" if following.startswith("-") else following
+            i += 2
+        else:
+            given = arg[len(_PROJECT_DIR_FLAG) + 1:]
+            i += 1
+        if not given:
+            print(
+                f"{command}: {_PROJECT_DIR_FLAG} requires a value — the absolute "
+                "path of a git work tree's toplevel. Nothing ran.",
+                file=sys.stderr,
+            )
+            return None, argv, 2
+        if value is not None and given != value:
+            print(
+                f"{command}: {_PROJECT_DIR_FLAG} names two trees ({value!r} and "
+                f"{given!r}) — name one. Nothing ran.",
+                file=sys.stderr,
+            )
+            return None, argv, 2
+        value = given
+    if value is not None and not os.path.isabs(value):
+        print(
+            f"{command}: {_PROJECT_DIR_FLAG} {value!r} is a relative path — give "
+            "the absolute path of the work tree's toplevel (a relative one would "
+            "resolve against whichever directory this shell started in). "
+            "Nothing ran.",
+            file=sys.stderr,
+        )
+        return None, argv, 2
+    return value, rest, 0
+
+
+def _apply_project_dir(command: str, value: str) -> int:
+    """Validate a named tree, ``chdir`` there and make it the project dir; 0, or
+    1 with the refusal printed. The path must BE a work tree's toplevel: a
+    subdirectory is refused rather than walked up, because the caller named a
+    repo and a silent walk-up is the guess this option exists to end. Fails
+    closed when ``lib/`` cannot be imported — authority never falls back to the
+    launch dir it was given to override."""
+    global _PROJECT_DIR_OVERRIDE
+    named = Path(value)
+    if not named.is_dir():
+        print(
+            f"{command}: {_PROJECT_DIR_FLAG} {value}: no such directory. Nothing ran.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        top = _gitstate()._git_toplevel(named)
+    except ImportError:
+        print(
+            f"{command}: {_PROJECT_DIR_FLAG} cannot be validated — the plugin's "
+            "lib/ did not import. Nothing ran.",
+            file=sys.stderr,
+        )
+        return 1
+    if top is None:
+        print(
+            f"{command}: {_PROJECT_DIR_FLAG} {value} is not a git work tree. "
+            "Nothing ran.",
+            file=sys.stderr,
+        )
+        return 1
+    if top != named.resolve():
+        print(
+            f"{command}: {_PROJECT_DIR_FLAG} {value} is inside the work tree {top}, "
+            "not its toplevel — name the toplevel itself. Nothing ran.",
+            file=sys.stderr,
+        )
+        return 1
+    os.chdir(top)
+    _PROJECT_DIR_OVERRIDE = top
+    return 0
+
+
 def _dispatch() -> int:
     if len(sys.argv) < 2:
         print(_USAGE, file=sys.stderr)
@@ -12644,11 +12780,21 @@ def _dispatch() -> int:
         print(f"{command}: {_RETIRED_COMMANDS[command]}", file=sys.stderr)
         return 1
 
+    # `--project-dir` is the dispatcher's, not the command's: removed here, so
+    # no subcommand parser sees it and the shape check judges what remains.
+    named_dir, remaining, status = _pop_project_dir(command, sys.argv[2:])
+    if status != 0:
+        return status
+    sys.argv[2:] = remaining
+
     # Before dispatch, and before anything else: a command that never receives
     # `argv` cannot refuse an argument, so the dispatcher refuses on its behalf.
     shape = _check_argument_shape(command, sys.argv[2:])
     if shape != 0:
         return shape
+
+    if named_dir is not None and _apply_project_dir(command, named_dir) != 0:
+        return 1
 
     project_dir = get_project_dir()
 
