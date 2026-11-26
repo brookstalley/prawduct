@@ -13,7 +13,9 @@ de-duplicated by commit (each entry's ``source`` says which set named it):
 The anchor (:func:`release_anchor`) is the nearer to the base's tip of: the newest
 first-parent commit adding a release file under ``.prawduct/releases/`` (the cut
 writes one), and the oldest first-parent commit containing the merge-base of the
-base and the newest version tag. With neither there is no anchor, the walk is
+base and the newest version tag. A candidate that reached the base through a
+merge's side parent (a back-merge) resolves to the base's own commit it released,
+never to the merge. With neither there is no anchor, the walk is
 skipped and the report says so; the fragment join is still given. The union keeps a scope a
 pruned release withheld (merged before the anchor, still pending) classified.
 
@@ -43,11 +45,12 @@ Each commit is classified as:
 - ``inner-only``: coverage composes, but only through inner-stage reviews.
 - ``uncovered``: nothing composes, or an open blocker stands on the path. When
   only the transfer's suite condition failed, the reason says so.
-- ``release-bookkeeping``: a commit with one parent whose judgeable changes are all
-  files the repo declares in ``release_version_files:``, read at its parent (the
-  release reopen's version bump). Covered. An undeclared repo's fallback layout
-  is a guess and never qualifies, and the declaration is read before the commit,
-  so a commit cannot declare its own files bookkeeping.
+- ``release-bookkeeping``: a commit with one parent, after the release anchor,
+  whose judgeable changes are all files the repo declares in
+  ``release_version_files:`` at that anchor (the release reopen's version bump).
+  Covered. An undeclared repo's fallback layout is a guess and never qualifies,
+  and the declaration must already have been in force at the release, so no
+  commit since it (this one, or one before it) can declare a file bookkeeping.
 - ``direct``: any other commit with one parent that changed a judgeable file. That
   is work committed on the base itself, or a squash merge; git cannot tell the
   two apart.
@@ -89,10 +92,13 @@ CLASSES = (NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED, RELEASE_BOOK
 COVERED = frozenset({NO_JUDGEABLE, PR_COVERED, PR_TRANSFERRED, BATCH_COVERED, RELEASE_BOOKKEEPING})
 
 #: Which set named an entry: the pending-fragment join, the walk since the
-#: release anchor, or both.
+#: release anchor, or both. ``walk-failed`` marks the one ``unknown`` entry that
+#: stands for a walk git could not run: it names no commit, and keeps the count
+#: short of fully covered.
 SOURCE_FRAGMENT = "fragment"
 SOURCE_WALK = "walk"
 SOURCE_BOTH = "both"
+SOURCE_WALK_FAILED = "walk-failed"
 
 #: How the release anchor was found.
 ANCHOR_RELEASE_FILE = "release-file"
@@ -115,9 +121,12 @@ class Entry:
 
     @property
     def label(self) -> str:
-        """The scope, or, for a walked commit no fragment names, its short name and subject."""
+        """The scope, or, for a walked commit no fragment names, its short name and
+        subject; for a walk that could not run, says so."""
         if self.scope:
             return self.scope
+        if self.source == SOURCE_WALK_FAILED:
+            return "(the walk since the release anchor)"
         return f'{(self.commit or "no commit")[:8]} "{self.subject}"'
 
     def as_dict(self) -> dict:
@@ -202,11 +211,14 @@ def _has_span(fact: dict) -> bool:
 class _Classifier:
     """One store read and one set of git answers, shared by every scope."""
 
-    def __init__(self, project_dir: Path, facts: list[dict], base: str):
+    def __init__(self, project_dir: Path, facts: list[dict], base: str, anchor: "str | None" = None):
         from . import gates  # noqa: PLC0415 — lazy, as the coverage callers in this package import it
 
         self.project_dir = project_dir
         self.base = base
+        #: The release anchor's commit: bookkeeping is read against it, so with
+        #: none no commit is release bookkeeping.
+        self.anchor = anchor
         self.facts = facts
         reviews = [f for f in facts if f.get("kind") == "review"]
         others = [f for f in facts if f.get("kind") != "review"]
@@ -302,10 +314,10 @@ class _Classifier:
             if not changed:
                 return Entry("", NO_JUDGEABLE, "a single-parent commit that changes no judgeable file",
                              commit, subject)
-            declared = self._declared_version_files(parents[0])
-            if declared and set(changed) <= declared:
-                return Entry("", RELEASE_BOOKKEEPING, "a single-parent commit changing only declared "
-                                                      f"release version file(s): {', '.join(changed)}",
+            if self._release_bookkeeping(commit, parents[0], changed):
+                return Entry("", RELEASE_BOOKKEEPING, "a single-parent commit after the release anchor "
+                                                      "changing only the version in release version "
+                                                      f"file(s) declared there: {', '.join(changed)}",
                              commit, subject)
             return Entry("", DIRECT, f"a single-parent commit changing {len(changed)} judgeable file(s): "
                                      "work committed on the base, or a squash merge", commit, subject)
@@ -368,8 +380,10 @@ class _Classifier:
         passed it by transfer. Asked only of an ``uncovered`` span, as the gate
         asks it.
 
-        The gate's recorded grant for exactly this span answers first
-        (``gates.recorded_transfer_grant``): the authority decided, and nothing
+        A gate's recorded grant for exactly this span answers first
+        (``gates.recorded_transfer_grant``: the PR gate's, or the Stop gate's,
+        which is the only record when both granted one span): the authority
+        decided, and nothing
         is re-checked. Only without one is the transfer re-decided, by the
         gate's own function (``gates.base_advance_transfer``), with the suite
         asked about the branch (its commits and tip), never this checkout.
@@ -382,7 +396,7 @@ class _Classifier:
         if grant is not None and self._verdict(self.facts, grant["prior_base"],
                                                grant["prior_head"]) == "covered":
             transfer = grant
-            carried = (f"the PR gate recorded its base-advance transfer grant {grant['grant_id']}, "
+            carried = (f"{grant['gate']} recorded its base-advance transfer grant {grant['grant_id']}, "
                        f"{grant['prior_base'][:12]}→{span_base[:12]}")
         else:
             commits = self._git("rev-list", f"{merge_base}..{tip}")
@@ -410,17 +424,70 @@ class _Classifier:
                                     f"its base, and only fix verification followed it ({carried})")
         return INNER_ONLY, f"the branch's coverage composes only through inner-stage reviews ({carried})"
 
-    def _declared_version_files(self, commit: str) -> "frozenset[str] | None":
-        """The paths ``release_version_files:`` declares in ``commit``'s tree, or None
-        when it declares none (the fallback layout is a guess, never a declaration).
-        Read at the PARENT of the commit being classified, so a commit cannot
-        declare its own changes bookkeeping."""
+    def _release_bookkeeping(self, commit: str, parent: str, changed: list) -> bool:
+        """Does a single-parent commit (``parent``, judgeable ``changed``) change
+        only the version in files the repo declared release version files AT THE
+        RELEASE ANCHOR?
+
+        The declaration is read at the anchor, not at the parent: one added after
+        the release (by this commit, or by an earlier metadata-only one) would let
+        any later commit name a source file a version file and read covered. So the
+        commit must follow the anchor (its parent is the anchor or descends from
+        it). And a declared file is credited only for its version
+        (:meth:`_version_only`): a manifest carries more than a version, and a
+        dependency or entry point changed beside the bump is work no review read.
+        With no anchor, or any git failure, the answer is no, which reads
+        ``direct``: not covered."""
+        if self.anchor is None:
+            return False
+        declared = self._declared_version_files(self.anchor)
+        if not declared or not set(changed) <= set(declared):
+            return False
+        rc, _out, _err = evidence.run_git(self.project_dir, "merge-base", "--is-ancestor",
+                                          self.anchor, parent)
+        return rc == 0 and all(self._version_only(declared[path], parent, commit) for path in changed)
+
+    def _version_only(self, spec, older: str, newer: str) -> bool:
+        """Does the declared file ``spec`` differ between two revisions in its
+        version alone? A ``bare`` file is its version, so it must stay one line;
+        a ``json`` or ``toml`` one must read a version on both sides and decode to
+        the same data once the declared key is set aside. Anything unreadable, or
+        a format this cannot decode, is no."""
+        before = self._git("show", f"{older}:{spec.path}")
+        after = self._git("show", f"{newer}:{spec.path}")
+        if before is None or after is None:
+            return False
+        if spec.fmt == "bare":
+            return bool(after) and "\n" not in after
+        import json  # noqa: PLC0415 — only a declared structured version file needs a decoder
+        import tomllib  # noqa: PLC0415
+
+        loader = {"json": json.loads, "toml": tomllib.loads}.get(spec.fmt)
+        if loader is None or not spec.key:
+            return False
+        try:
+            sides = [loader(before), loader(after)]
+        except ValueError:
+            return False
+        *parents, leaf = spec.key.split(".")
+        for data in sides:
+            for part in parents:
+                data = data.get(part) if isinstance(data, dict) else None
+            if not isinstance(data, dict) or data.pop(leaf, None) in (None, ""):
+                return False
+        return sides[0] == sides[1]
+
+    def _declared_version_files(self, commit: str) -> "dict | None":
+        """``{path: spec}`` for what ``release_version_files:`` declares in
+        ``commit``'s tree, or None when it declares none (the fallback layout is a
+        guess, never a declaration). Read at the release anchor
+        (:meth:`_release_bookkeeping`)."""
         if commit not in self._declared:
             from . import release_verification  # noqa: PLC0415 — lazy: it imports release_readiness
 
             text = self._git("show", f"{commit}:{_STATE_REL}")
             specs = release_verification._read_declaration(text) if text is not None else None
-            self._declared[commit] = frozenset(spec.path for spec in specs) if specs else None
+            self._declared[commit] = {spec.path: spec for spec in specs} if specs else None
         return self._declared[commit]
 
     def walk(self, anchor: str) -> "list[tuple[str, list, str, list]] | None":
@@ -533,7 +600,9 @@ def _classify_pending(project_dir: Path) -> Report:
     unreadable = _unreadable_store(read)
     if unreadable:
         return Report("unevaluable", base=base, reason=unreadable)
-    classifier = _Classifier(project_dir, read.get("facts", []), base)
+    anchor, no_anchor = _resolve_anchor(project_dir, base)
+    classifier = _Classifier(project_dir, read.get("facts", []), base,
+                             anchor.commit if anchor is not None else None)
     entries: list = []
     by_commit: dict = {}
     for scope in sorted(pending.scopes):
@@ -547,13 +616,13 @@ def _classify_pending(project_dir: Path) -> Report:
         entries.append(entry)
         if entry.commit:
             by_commit[entry.commit] = entry
-    anchor, no_anchor = _resolve_anchor(project_dir, base)
     if anchor is not None:
         walked = classifier.walk(anchor.commit)
         if walked is None:
             entries.append(Entry("", UNKNOWN, f"git could not list the first-parent commits on {base} "
-                                              f"since the release anchor {anchor.commit[:8]}",
-                                 source=SOURCE_WALK))
+                                              f"since the release anchor {anchor.commit[:8]}, so none "
+                                              "of them was classified",
+                                 source=SOURCE_WALK_FAILED))
         for commit, parents, subject, changed in walked or []:
             prior = by_commit.get(commit)
             if prior is not None:
@@ -572,31 +641,104 @@ def _version_key(name: str) -> "tuple | None":
     """An ordering key for a version-shaped name (``v3.10.0``, ``3.10.0``, a
     four-part or prerelease form: ``change_log.RELEASE_VALUE_RE`` after
     ``release_readiness.normalize_version``), else None. A prerelease sorts below
-    its release."""
+    its release, and prerelease identifiers compare as SemVer orders them: split
+    on dots, a numeric identifier by number and below any alphanumeric one, and a
+    shorter run below a longer one it begins (``rc.9`` < ``rc.10`` < ``rc.10.1``)."""
     from . import release_readiness  # noqa: PLC0415 — lazy, as above
 
     version = release_readiness.normalize_version(name)
     if not change_log.RELEASE_VALUE_RE.match(version):
         return None
     numbers, _, pre = version[1:].partition("-")
-    return tuple(int(part) for part in numbers.split(".")), (0, pre) if pre else (1, "")
+    release = tuple(int(part) for part in numbers.split("."))
+    if not pre:
+        return release, (1,)
+    return release, (0, tuple((0, int(part), "") if part.isdigit() else (1, 0, part)
+                              for part in pre.split(".")))
 
 
-def _release_file_candidate(git, base: str) -> "tuple[str, str] | None":
-    """``(commit, path)``: the newest first-parent commit on ``base`` adding a
-    release file (``.prawduct/releases/<version>.md``)."""
+#: How many side lines :func:`_released_on_line` follows back before giving up.
+#: Each hop moves strictly older on the base's first-parent line, so the bound
+#: only cuts off a pathological history, and giving up drops the candidate.
+_MAX_SIDE_HOPS = 64
+
+
+def _one_merge_base(git, one: str, other: str) -> "str | None":
+    """A common ancestor of ``one`` and ``other``, or None (no shared history, or
+    git could not answer). With several best merge-bases (criss-cross merges) it
+    is their own merge-base, an ancestor of every one of them, so the answer is
+    never newer than any: an anchor read from it can only widen the walk."""
+    bases = (git("merge-base", "--all", one, other) or "").split()
+    if len(bases) <= 1:
+        return bases[0] if bases else None
+    return git("merge-base", "--octopus", *bases) or None
+
+
+def _release_file_records(git, base: str) -> "list[tuple[str, list, str]] | None":
+    """``(commit, parents, path)`` for each first-parent commit on ``base`` whose
+    diff against its first parent adds a release file
+    (``.prawduct/releases/<version>.md``), newest first; None when git could not
+    answer. A merge is listed when its merged line brought the file in, too."""
     out = git("log", "--first-parent", "-m", "--diff-filter=A", "--no-renames", "--name-only",
-              "--format=%x1e%H", base, "--", f"{consumer_digest.RELEASES_DIR_REL}/")
+              "--format=%x1e%H %P", base, "--", f"{consumer_digest.RELEASES_DIR_REL}/")
     if out is None:
         return None
+    records = []
     for record in out.split("\x1e"):
-        commit, _, names = record.strip().partition("\n")
+        head, _, names = record.strip().partition("\n")
+        if not head:
+            continue
+        commit, *parents = head.split()
         for name in names.splitlines():
             parent, _, leaf = name.rpartition("/")
             if (parent == consumer_digest.RELEASES_DIR_REL and leaf.endswith(".md")
                     and _version_key(leaf[:-3]) is not None):
-                return commit, name
-    return None
+                records.append((commit, parents, name))
+                break
+    return records
+
+
+def _release_file_candidate(git, base: str, line: dict) -> "tuple[str, str] | None":
+    """``(anchor commit, reason)`` from the release files, or None.
+
+    A commit that adds the file itself is its own answer. A merge that brought the
+    file in through a side parent (a back-merge of ``main``, say) released nothing
+    of the base's own: the answer is the base's own first-parent commit that the
+    side line's adding commit released (:func:`_released_on_line`), which sits
+    before the merge, so work the base took before the merge is walked. Of every
+    record, the one whose answer is nearest the tip wins. Any git failure drops the
+    candidate, and the other candidate is then the older or the same."""
+    records = _release_file_records(git, base)
+    if records is None:
+        return None
+    best = None  # (index on the line, commit, reason)
+    for commit, parents, path in records:
+        position = line.get(commit)
+        if position is None:
+            return None
+        if best is not None and position > best[0]:
+            break  # every later record is older, and resolves older still
+        # (One at the best answer's own commit adds the file there: its reason wins.)
+        through = None
+        for side in parents[1:]:
+            listed = git("ls-tree", "--name-only", side, "--", path)
+            if listed is None:
+                return None
+            if listed:
+                through = side
+                break
+        if through is None:
+            best = (position, commit, f"{commit[:8]} adds the release file {path}")
+            continue
+        adder = git("log", "-1", "--format=%H", "--diff-filter=A", through, "--", path)
+        released = _released_on_line(git, base, adder) if adder else None
+        if released is None or released not in line:
+            return None
+        if best is None or line[released] < best[0]:
+            best = (line[released], released,
+                    f"{released[:8]} is the commit on {base} that {adder[:8]} released: its release "
+                    f"file {path} came in through a side parent of {commit[:8]}")
+    return (best[1], best[2]) if best else None
 
 
 def _tag_candidate(git) -> "tuple[str, str] | None":
@@ -620,8 +762,8 @@ def _tag_candidate(git) -> "tuple[str, str] | None":
 def _oldest_containing(git, base: str, tag_commit: str) -> "str | None":
     """The oldest first-parent commit on ``base`` that contains ``tag_commit``, an
     ancestor of ``base``. One on the first-parent line is its own answer; one
-    merged in from a side line (a gitflow back-merge) is answered by the merge
-    that brought it in."""
+    merged in from a side line is answered by the merge that brought it in, which
+    :func:`_released_on_line` follows back. None when git could not answer."""
     line = git("log", "--first-parent", "--format=%H %P", f"{tag_commit}..{base}")
     if line is None:
         return None
@@ -638,6 +780,29 @@ def _oldest_containing(git, base: str, tag_commit: str) -> "str | None":
     return None
 
 
+def _released_on_line(git, base: str, released: str) -> "str | None":
+    """The base's own first-parent commit that ``released`` (an ancestor of
+    ``base``) shipped: ``released`` itself when it is on the first-parent line.
+
+    One that arrived through a merge's side parent (a hotfix tag, or ``main``
+    merged back into the base) shipped none of the work the base took before that
+    merge, so the merge is not the answer: what the release shipped of the base's
+    own line is its merge-base with the merge's first parent, followed back the
+    same way until it lands on the line. Each hop is strictly older. None when git
+    could not answer, or the side line shares no history with the base's own."""
+    for _ in range(_MAX_SIDE_HOPS):
+        holder = _oldest_containing(git, base, released)
+        if holder is None or holder == released:
+            return holder
+        first = git("rev-parse", "--verify", "--quiet", f"{holder}^1")
+        if not first:
+            return None
+        released = _one_merge_base(git, first, released)
+        if released is None:
+            return None
+    return None
+
+
 def release_anchor(project_dir: Path, base: str) -> "Anchor | None":
     """The release anchor on ``base``: whichever is nearer the tip of
 
@@ -648,51 +813,63 @@ def release_anchor(project_dir: Path, base: str) -> "Anchor | None":
 
     B reads the merge-base so that a release tagged where the base never goes (a
     promotion merge of develop into ``main``) anchors on the base commit it
-    released. Where the base reaches the tag, the merge-base is the tag commit and
-    B is the oldest first-parent commit containing the tag. A newest tag on a line
-    that forked long ago (a hotfix branch) has an old merge-base, so B lands early
-    and widens the walk, the safe direction; A, when present, then wins by being
-    nearer. A tag sharing no history with the base gives no B. None when there is
-    neither candidate."""
+    released. Where the base reaches the tag, the merge-base is the tag commit.
+
+    Either candidate that reaches the base through a merge's side parent (a hotfix
+    tag or a release file on ``main``, merged back) resolves to the base's own
+    commit the release shipped (:func:`_released_on_line`), never to the merge:
+    work merged into the base before the back-merge was not released, and is walked.
+
+    A newest tag on a line that forked long ago (a hotfix branch) has an old
+    merge-base, so B lands early and widens the walk, the safe direction; A, when
+    present, then wins by being nearer. A tag sharing no history with the base
+    gives no B. None when there is neither candidate."""
     return _resolve_anchor(project_dir, base)[0]
 
 
 def _resolve_anchor(project_dir: Path, base: str) -> "tuple[Anchor | None, str | None]":
-    """``(anchor, None)``, or ``(None, why there is none)``. A candidate git could
-    not answer counts as absent: the other is then the older or the same, so a
-    failure only ever widens the walk, never narrows it."""
+    """``(anchor, None)``, or ``(None, why there is none)``.
+
+    Every git failure fails toward the wider walk. A candidate git could not
+    answer counts as absent, and the other is then the older or the same, because
+    the anchor is the nearer of the two. The two are ordered by their place on the
+    base's first-parent line, so without that line there is no anchor, which a
+    gate refuses."""
     def git(*args: str) -> "str | None":
         rc, out, _err = evidence.run_git(project_dir, *args)
         return out.strip() if rc == 0 else None
 
-    by_file = _release_file_candidate(git, base)
+    listed = git("rev-list", "--first-parent", base)
+    if listed is None:
+        return None, f"git could not list the first-parent line of {base}"
+    line = {sha: i for i, sha in enumerate(listed.split())}  # 0 is the tip
+
+    by_file = _release_file_candidate(git, base, line)
     tag = _tag_candidate(git)
-    released = git("merge-base", base, tag[1]) if tag is not None else None
-    if not released:
-        tag = None  # no common history with the base: nothing on it was released
-    chosen = None
-    if by_file is not None:
-        commit, path = by_file
-        # The nearer wins. B is the oldest commit containing the released commit,
-        # so it is nearer than the release file's commit only if that commit does
-        # not contain it; a tie goes to the release file.
-        tag_older = tag is not None and evidence.run_git(
-            project_dir, "merge-base", "--is-ancestor", released, commit)[0] == 0
-        if tag is None or tag_older:
-            via = f" (through its merge-base {released[:8]})" if tag and released != tag[1] else ""
-            note = f"; tag {tag[0]}{via} anchors older on this line" if tag else ""
-            chosen = (commit, ANCHOR_RELEASE_FILE, f"{commit[:8]} adds the release file {path}{note}")
-    if chosen is None and tag is not None:
-        commit = _oldest_containing(git, base, released)
-        if commit is not None:
+    by_tag = None
+    if tag is not None:
+        released = _one_merge_base(git, base, tag[1])
+        anchor = _released_on_line(git, base, released) if released else None
+        if anchor is not None and anchor in line:
             what = (f"tag {tag[0]}" if released == tag[1]
                     else f"{released[:8]}, its merge-base with tag {tag[0]}")
-            note = f"; nearer the tip than the release file {by_file[1]}" if by_file else ""
-            chosen = (commit, ANCHOR_TAG, f"{commit[:8]} is the oldest first-parent commit on {base} "
-                                          f"containing {what}{note}")
-    if chosen is None:
+            by_tag = (anchor, f"{anchor[:8]} is the oldest first-parent commit on {base} containing {what}"
+                      if anchor == released else
+                      f"{anchor[:8]} is the commit on {base} that {what} released: {what} came in "
+                      "through a merge's side parent, which released none of the work merged before it")
+
+    # The nearer the tip wins (the smaller index); a tie goes to the release file.
+    if by_file is not None and (by_tag is None or line[by_file[0]] <= line[by_tag[0]]):
+        note = ("" if not by_tag else f"; tag {tag[0]} anchors at the same commit"
+                if by_tag[0] == by_file[0] else f"; tag {tag[0]} anchors older on this line")
+        chosen = (by_file[0], ANCHOR_RELEASE_FILE, by_file[1] + note)
+    elif by_tag is not None:
+        note = "; nearer the tip than the release file" if by_file else ""
+        chosen = (by_tag[0], ANCHOR_TAG, by_tag[1] + note)
+    else:
         return None, (f"no first-parent commit on {base} adds a release file under "
-                      f"{consumer_digest.RELEASES_DIR_REL}/, and no version tag shares history with it")
+                      f"{consumer_digest.RELEASES_DIR_REL}/, and no version tag shares history with it "
+                      "(or git could not answer for one of them)")
     tree = git("rev-parse", f"{chosen[0]}^{{tree}}")
     if not tree:
         return None, f"git could not read the release anchor {chosen[0][:8]}'s tree"
@@ -714,17 +891,22 @@ def _unreadable_store(read: dict) -> "str | None":
     return None
 
 
-def classify_merge(project_dir: Path, commit: str) -> Entry:
+def classify_merge(project_dir: Path, commit: str, base: "str | None" = None) -> Entry:
     """Classify one commit on the base as :func:`classify_pending` would — for a
-    caller that knows the commit rather than the scope."""
-    base, why = coverage.repo_base_branch(project_dir)
-    if not base:
-        return Entry("", UNKNOWN, f"no integration base resolves: {why}", commit)
+    caller that knows the commit rather than the scope. ``base`` (default: the
+    repo's integration base) is the revision whose release anchor bookkeeping is
+    read against, so a past reopen commit reads as it did before the next release."""
+    if base is None:
+        base, why = coverage.repo_base_branch(project_dir)
+        if not base:
+            return Entry("", UNKNOWN, f"no integration base resolves: {why}", commit)
     read = evidence.read_facts(project_dir)
     unreadable = _unreadable_store(read)
     if unreadable:
         return Entry("", UNKNOWN, unreadable, commit)
-    return _Classifier(project_dir, read.get("facts", []), base).classify_commit(commit)
+    anchor = release_anchor(project_dir, base)
+    return _Classifier(project_dir, read.get("facts", []), base,
+                       anchor.commit if anchor is not None else None).classify_commit(commit)
 
 
 def count_line(report: Report) -> str:
@@ -739,10 +921,15 @@ def count_line(report: Report) -> str:
     if report.anchor is None:
         return (f"boundary coverage: {covered} of {total} release-pending scope(s) covered on "
                 f"{report.base}{detail}; no release anchor, so no commit since a release was walked")
+    anchor = f"release anchor {report.anchor.commit[:8]} ({report.anchor.source})"
+    by_fragment = sum(1 for e in report.entries if e.source == SOURCE_FRAGMENT)
+    if any(e.source == SOURCE_WALK_FAILED for e in report.entries):
+        return (f"boundary coverage: {covered} of {total} covered on {report.base}{detail}: the walk "
+                f"since {anchor} could not run, so no commit since it was classified; "
+                f"{by_fragment} by release-pending fragment")
     walked = sum(1 for e in report.entries if e.source in (SOURCE_WALK, SOURCE_BOTH))
     return (f"boundary coverage: {covered} of {total} covered on {report.base}{detail}: {walked} "
-            f"judgeable commit(s) since release anchor {report.anchor.commit[:8]} "
-            f"({report.anchor.source}), and {total - walked} more by release-pending fragment")
+            f"judgeable commit(s) since {anchor}, and {by_fragment} more by release-pending fragment")
 
 
 def render(report: Report) -> str:
@@ -750,7 +937,8 @@ def render(report: Report) -> str:
     if report.status != "ok":
         return f"check-boundary-coverage: could not evaluate — {report.reason}"
     lines = [
-        f"{e.classification:19} {e.scope or '(no fragment) ' + repr(e.subject)}  "
+        f"{e.classification:19} "
+        f"{e.label if e.scope or e.source == SOURCE_WALK_FAILED else '(no fragment) ' + repr(e.subject)}  "
         f"{(e.commit or '')[:8]}  {e.reason}"
         + ("" if e.classification in COVERED else "  [not covered]")
         for e in report.entries

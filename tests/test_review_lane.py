@@ -102,6 +102,31 @@ class TestReadFromTheIntegrationBranch:
         assert policy.source == ""
         assert "no integration branch" in policy.note
 
+    def test_a_branch_forked_while_the_base_opted_in_loses_it_when_the_base_reverts(self, tmp_path):
+        """The merge-base still says `per_release`, and so does the branch; the
+        integration branch has since gone back to `per_pr`. The tip narrows."""
+        repo = _repo(tmp_path, OPT_IN)
+        _feature(repo, OPT_IN + "other: 1\n")
+        assert review_lane.boundary_review_policy(repo).per_release, "control: before the revert"
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, "boundary_review: per_pr\n", "back to per_pr")
+        _git(repo, "checkout", "-q", "feat")
+        policy = review_lane.boundary_review_policy(repo)
+        assert policy.value == review_lane.PER_PR
+        assert "tip (main) no longer declares `boundary_review: per_release`" in policy.note, policy
+
+    def test_a_base_that_opted_in_after_the_fork_is_not_in_force_until_synced(self, tmp_path):
+        repo = _repo(tmp_path, "")
+        _feature(repo, OPT_IN)
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, OPT_IN, "main opts in")
+        _git(repo, "checkout", "-q", "feat")
+        policy = review_lane.boundary_review_policy(repo)
+        assert policy.value == review_lane.PER_PR
+        assert "sync the branch to take it" in policy.note, policy
+        _git(repo, "merge", "-q", "--no-edit", "main")
+        assert review_lane.boundary_review_policy(repo).per_release, "after the sync"
+
     def test_an_explicit_base_ref_is_the_one_read(self, tmp_path):
         repo = _repo(tmp_path, "")
         _git(repo, "checkout", "-q", "-b", "develop")
@@ -129,6 +154,18 @@ class TestOnlyExactlyPerReleaseOptsIn:
         assert policy.value == review_lane.PER_PR, typo
         assert f"`boundary_review: {typo}`" in policy.note
         assert "not a value prawduct reads" in policy.note
+
+    def test_a_typo_on_the_integration_branch_is_named_there(self, tmp_path):
+        """The checkout's own value is valid (here, absent); the typo is the
+        integration branch's, and the note says where it is."""
+        repo = _repo(tmp_path, "boundary_review: per_relase\n")
+        _feature(repo, "other: 1\n")
+        policy = review_lane.boundary_review_policy(repo)
+        assert policy.value == review_lane.PER_PR
+        assert policy.note == (
+            "`boundary_review: per_relase` on the integration branch is not a value prawduct "
+            "reads (per_pr or per_release), so per_pr is in force"
+        ), policy.note
 
     @pytest.mark.parametrize(
         "text", ["boundary_review:\n", "boundary_review: null\n", "boundary_review: ~\n"]
