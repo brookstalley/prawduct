@@ -64,8 +64,8 @@ RETIRED_FLAGS = ("--claim", "--claim-ttl")
 # degraded anyway.
 SCRUB_ONLY_OPS = ("import", "merge", "provision", "reconcile-labels")
 
-# The subset that is UNRECALLABLE, and therefore the one rail that binds every
-# model-invocable skill rather than just this one. `import` writes 100-250 real
+# The subset that is UNRECALLABLE, and therefore the one check that binds every
+# skill by name rather than just this one. `import` writes 100-250 real
 # issues and GitHub has no ordinary issue-delete; `merge` closes an issue. The
 # other two are additive and idempotent by construction — `reconcile_labels`
 # "corrects drift by adding what is missing, never by removing" — so onboard and
@@ -214,8 +214,8 @@ def test_scrub_ops_not_granted_in_backlog_skill():
 
     Scoped to this skill because it is the general-purpose, model-invocable
     backlog surface: nothing about *it* justifies a one-shot migration write, so
-    all four stay out and prompt (BKL-5N9W). The narrower cross-skill rail below
-    is the one that binds flows whose whole purpose is a setup write.
+    all four stay out and prompt (BKL-5N9W). The cross-skill check below binds
+    only the irreversible subset, by name.
     """
     patterns = _granted_patterns()
     leaked = [
@@ -232,47 +232,56 @@ def test_scrub_ops_not_granted_in_backlog_skill():
     )
 
 
-def test_no_model_invocable_skill_grants_an_irreversible_op():
-    """No skill the model can invoke may permit an UNRECALLABLE op — any spelling.
+def _names_irreversible_op(pattern: str) -> str | None:
+    """The irreversible op a `Bash(...)` grant names in full, in either spelling,
+    or None. Literal on purpose: a broad grant (`python3 *`, `git *`) admits these
+    too, and does not count (`.prawduct/owner-rulings.md`, 2026-11-26: an
+    allow-list cuts prompts for a competent model; it is not a security boundary,
+    so no rail enumerates what a wildcard can reach)."""
+    for op in IRREVERSIBLE_OPS:
+        for inv in _INVOCATIONS:
+            if re.search(rf"(?:^|\s){re.escape(inv)} {re.escape(op)}(?![\w-])", pattern.strip()):
+                return op
+    return None
 
-    This asks the semantic question, not the literal one, and it asks it of
-    every skill rather than one file. Both widenings were paid for. The first
-    version checked exact strings like ``Bash(prawduct-hook backlog import *)``
-    and was evadable by a *broader* wildcard, which re-grants the withheld set
-    while every test here stays green. The second was scoped to the backlog
-    skill alone, and missed janitor's ``Bash(python3 *)`` — a grant nobody reads
-    as a backlog grant, which nonetheless permits ``python3
-    plugin/bin/prawduct-hook backlog import``. The rail is about the OP, so the
-    check has to follow the op wherever it can be reached.
 
-    Scoped to ``IRREVERSIBLE_OPS`` rather than all four: onboard and doctor
-    grant ``provision``/``reconcile-labels`` deliberately, and those are additive
-    and idempotent. Enforcing the full set here would read as a security finding
-    when the real defect is the classification.
-
-    Skills a human must invoke by name are out of scope: the deliberate act the
-    prompt exists to force has already happened.
-    """
+def test_no_skill_grants_an_irreversible_op_by_name():
+    """No skill's `allowed-tools` names `backlog import`, `backlog merge` or
+    `backlog file-upstream` in a `Bash(...)` grant, so the one-shot migration
+    writes and the upstream filing always reach the person as a prompt where the
+    runbook asks for their yes (BKL-5N9W)."""
+    skills = sorted((PLUGIN / "skills").glob("*/SKILL.md"))
+    assert len(skills) >= 8, f"control: the skills were reached: {skills}"
     leaked: list[str] = []
-    for skill in sorted((PLUGIN / "skills").glob("*/SKILL.md")):
-        if not _model_invocable(skill):
-            continue
-        m = re.search(
-            r"^allowed-tools:\s*(.+)$", skill.read_text(encoding="utf-8"), re.MULTILINE
-        )
-        patterns = re.findall(r"Bash\(([^)]*)\)", m.group(1)) if m else []
-        for op in IRREVERSIBLE_OPS:
-            for inv in _INVOCATIONS:
-                command = f"{inv} {op} --repo owner/repo"
-                leaked += [
-                    f"{skill.parent.name}: `Bash({p})` permits `{command}`"
-                    for p in patterns
-                    if _grant_matches(p, command)
-                ]
+    for skill in skills:
+        m = re.search(r"^allowed-tools:\s*(.+)$", skill.read_text(encoding="utf-8"), re.MULTILINE)
+        for p in re.findall(r"Bash\(([^)]*)\)", m.group(1)) if m else []:
+            if (op := _names_irreversible_op(p)) is not None:
+                leaked.append(f"{skill.parent.name}: `Bash({p})` names `backlog {op}`")
     assert not leaked, (
-        "a model-invocable skill permits a high-consequence scrub op no-prompt — these "
-        "must prompt at the migration write (BKL-5N9W):\n  - " + "\n  - ".join(leaked)
+        "a skill grants an irreversible backlog op by name — leave it out so it "
+        "prompts (BKL-5N9W):\n  - " + "\n  - ".join(leaked)
     )
+
+
+def test_the_irreversible_op_check_reads_names_not_reach():
+    """The checker on both sides of its line: a grant naming the op, in either
+    spelling and with or without a star, is caught; a broad grant that merely
+    admits the op, and a neighbouring everyday op, are not."""
+    for named in ("prawduct-hook backlog import*", "prawduct-hook backlog import --repo *",
+                  "python3 plugin/bin/prawduct-hook backlog merge *",
+                  "prawduct-hook backlog file-upstream*"):
+        assert _names_irreversible_op(named), named
+    for unnamed in ("python3 *", "git *", "prawduct-hook backlog*",
+                    "prawduct-hook backlog file --*", "prawduct-hook backlog list*"):
+        assert _names_irreversible_op(unnamed) is None, unnamed
+
+
+def test_doctor_and_janitor_are_model_invocable():
+    """An agent may run both, not only a human typing the slash command
+    (`.prawduct/owner-rulings.md`, 2026-11-26)."""
+    for name in ("doctor", "janitor"):
+        assert _model_invocable(PLUGIN / "skills" / name / "SKILL.md"), name
 
 
 def test_no_retired_op_survives_in_the_skill_prose():
