@@ -258,8 +258,7 @@ coverage_required: false
 # static_content_prefixes:
 #   - design-system/
 
-# Learnings budgets: every rule is one line; core.md is capped and only the
-# owner raises it.
+# Learnings area budgets:
 # learnings_budgets:
 #   critic.md: {kb: 20, reason: "why this area needs more"}
 
@@ -268,6 +267,8 @@ operator_verification_required: false
 
 # Full review rounds a build-plan scope may buy past its cadence; null disables.
 review_round_budget: 6
+
+# boundary_review: per_release  # default per_pr
 
 # Dev builds only; false opts out of the paired native reviews.
 # native_review_pairing: false

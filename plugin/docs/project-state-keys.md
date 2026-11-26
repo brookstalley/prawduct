@@ -464,6 +464,33 @@ reading.
 Set to `null` to disable it entirely; raise it if this repo genuinely reviews more. A budget that
 gets `--force`d past every time is a budget set wrong.
 
+## boundary_review (opt-in)
+
+Where the boundary review runs. `per_pr`, the default, runs it at every PR. `per_release` is for a
+repo that releases often: eligible work takes its boundary review once per release batch instead
+of at its own PR. The review is moved, not skipped: the release check refuses the release until a
+boundary-stage review has read every merge since the last release, at its PR or in a release batch
+review.
+
+Eligible is derived, never declared: the branch's plan has at most three chunks, none declaring
+`Critic mode:` or `Type: cumulative-final`, nothing it changed is a risk surface, and it changes at
+most 10 judgeable files. That work's PR is covered by its inner review. In the same repo, a fix
+tail after a blocker-free review may merge before a review reads it, deferred to that release
+check; a tail on a risk surface still buys its verify round. BLOCKING findings clear only through
+`verify-resolutions`, at either point.
+
+The value in force is the integration branch's: a PR reads it at the merge-base, the release check
+at the branch's tip. So the branch that adds `per_release` is still judged `per_pr`. A branch may
+drop it, the stricter policy, never add it. Anything but exactly `per_release` (absent, null, a
+typo, another case) reads `per_pr`, as does a repo whose integration branch does not resolve.
+
+Until the release batch review and the blocking release check ship, `per_release` is read and
+changes nothing.
+
+```yaml
+boundary_review: per_release
+```
+
 ## native_review_pairing (development builds only, on by default)
 
 Only a development build of the plugin (a `-dev` version) reads this key. There, every
