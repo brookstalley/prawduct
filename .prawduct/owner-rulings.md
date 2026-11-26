@@ -659,3 +659,4 @@ and a confirmation before an irreversible, outward-facing act the person asked f
    measures the gain, as a separate change.
 3. An issue on testament proposes a `testament guide cacheable` page, its exact text shown to the owner before it
    is posted.
+   **2026-11-26, later:** "yes post" — filed as brookstalley/testament#1013.
