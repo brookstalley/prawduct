@@ -580,8 +580,9 @@ class _Classifier:
         """Does the declared file ``spec`` differ between two revisions in its
         version alone? A ``bare`` file is its version, so both sides must be one
         version-shaped line (:func:`_is_version`): a one-line rewrite into
-        anything else, or out of it, is a change no review read. A ``json`` or ``toml`` one must read a version on both sides and decode to
-        the same data once the declared key is set aside. Anything unreadable, or
+        anything else, or out of it, is a change no review read. A ``json`` or
+        ``toml`` one must hold a version-shaped string at the declared key on both
+        sides and decode to the same data once that key is set aside. Anything unreadable, or
         a format this cannot decode, is no."""
         before = self._git("show", f"{older}:{spec.path}")
         after = self._git("show", f"{newer}:{spec.path}")
@@ -603,7 +604,10 @@ class _Classifier:
         for data in sides:
             for part in parents:
                 data = data.get(part) if isinstance(data, dict) else None
-            if not isinstance(data, dict) or data.pop(leaf, None) in (None, ""):
+            value = data.pop(leaf, None) if isinstance(data, dict) else None
+            # Version-shaped on both sides, as a ``bare`` file must be: any other
+            # value at the key is a change no review read.
+            if not isinstance(value, str) or not _is_version(value.strip()):
                 return False
         return sides[0] == sides[1]
 

