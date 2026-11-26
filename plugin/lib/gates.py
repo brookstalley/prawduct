@@ -1050,7 +1050,7 @@ def base_advance_transfer(
     transfer across a base advance? The one decision function every reader of
     the transfer calls: the PR gate (:func:`_branch_coverage`), the Stop gate
     (:func:`_merge_base_verdict`), and the release's boundary-coverage op,
-    which calls it only when it finds no grant the PR gate recorded for the
+    which calls it only when it finds no grant either gate recorded for the
     merged span (:func:`recorded_transfer_grant`). A later re-decision can still
     differ from the gate's: its evidence is this clone's store, and grants and
     suite runs are clone-local.
@@ -2336,17 +2336,23 @@ def record_transfer_grant(
     return recorded
 
 
-#: The gate whose recorded grant decides a merge's transfer at the release: the
-#: PR gate, the authority over what merged. (The Stop gate's grant vouches for a
-#: session's working tree, not for the branch a PR merged.)
+#: The gates that record a base-advance transfer grant (:func:`record_transfer_grant`).
 _PR_GATE = "check-cumulative-critic"
+_STOP_GATE = "session-review-verdict"
+#: Whose recorded grant decides a merge's transfer at the release: either gate's,
+#: for exactly the merged span. Both decide by :func:`base_advance_transfer` and
+#: ask the suite about the span's head tree (the Stop gate's working tree is that
+#: tree when the spans match), and the record is keyed on the span alone, so when
+#: the two coincide (a clean tree at session end) only the first gate's fact
+#: exists: reading the PR gate's alone would miss a grant the PR gate also made.
+_GRANT_GATES = frozenset({_PR_GATE, _STOP_GATE})
 
 
 def recorded_transfer_grant(
     facts: "list[dict]", base_tree: str, head_tree: str
 ) -> "dict | None":
-    """The PR gate's recorded base-advance transfer grant for exactly the span
-    ``base_tree`` → ``head_tree``, or None. The reader of
+    """A gate's recorded base-advance transfer grant (``_GRANT_GATES``) for
+    exactly the span ``base_tree`` → ``head_tree``, or None. The reader of
     :func:`record_transfer_grant`'s facts, beside it so the shape has one home.
 
     A later reader of a merged branch (the release's boundary-coverage op) asks
@@ -2369,7 +2375,7 @@ def recorded_transfer_grant(
         body = fact.get("body")
         if not isinstance(body, dict) or body.get("guard") != _TRANSFER_GUARD:
             continue
-        if body.get("gate") != _PR_GATE:
+        if body.get("gate") not in _GRANT_GATES:
             continue
         interval, prior = body.get("interval"), body.get("prior_interval")
         if not isinstance(interval, dict) or not isinstance(prior, dict):
@@ -2381,6 +2387,7 @@ def recorded_transfer_grant(
             continue
         return {
             "grant_id": fact.get("id"),
+            "gate": body.get("gate"),
             "prior_base": prior_base,
             "prior_head": prior_head,
             "prior_fact_id": body.get("prior_fact_id"),
@@ -3098,7 +3105,7 @@ def _merge_base_verdict(
     # nothing.
     if record_grants:
         record_transfer_grant(
-            project_dir, facts, transfer, mb_tree, target, "session-review-verdict"
+            project_dir, facts, transfer, mb_tree, target, _STOP_GATE
         )
     return {
         "status": "covered",
@@ -4112,7 +4119,7 @@ def _branch_coverage(
                 transfer,
                 base_tree,
                 head_tree,
-                "check-cumulative-critic",
+                _PR_GATE,
             )
         return {
             "status": "transferred",

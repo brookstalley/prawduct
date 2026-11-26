@@ -15,9 +15,11 @@ review for eligible work is moved to the release, never skipped.
 
 ### Chunk 01: the boundary_review key, read from the integration branch
 `boundary_review:` in `project-state.yaml` takes `per_pr` (the default) or `per_release`, read by one
-reader, `review_lane.boundary_review_policy`. A PR's policy is the value at the merge-base with the
-integration branch, so the branch that adds `per_release` is still judged `per_pr`: a governance
-change cannot supply its own authority. A branch may drop the key, which is the stricter direction.
+reader, `review_lane.boundary_review_policy`. A PR's policy is `per_release` only when the merge-base
+with the integration branch, the integration branch's tip and the branch all say so, so the branch
+that adds `per_release` is still judged `per_pr` (a governance change cannot supply its own
+authority), and so is one forked before the integration branch went back to `per_pr`. A branch may
+drop the key, which is the stricter direction.
 The release check's reader reads it at the integration branch's tip. Anything but exactly
 `per_release` reads `per_pr`. The key is documented in `docs/project-state-keys.md` and hinted in
 the state template, and the NFR amendment is recorded beneath the clause, whose words stay as
@@ -32,17 +34,23 @@ tip of the newest first-parent commit adding a release file under `.prawduct/rel
 oldest first-parent commit containing the merge-base of the base and the newest version tag. The
 second serves repos that write no release files, including those that tag each release on a merge
 into `main` the integration branch never contains: the merge-base is the integration commit that
-was released. It then classifies every
+was released. A candidate that reached the integration branch through a merge's second parent (a
+hotfix tag, or `main` merged back with its release file) anchors on the integration branch's own
+commit that release shipped, never on the back-merge, so work merged before the back-merge is still
+walked; a candidate git cannot resolve falls back to the other, the older. It then classifies every
 first-parent commit after the anchor that changes a judgeable file, unioned with the fragment join
 and de-duplicated by commit, so a scope a pruned release withheld stays classified. One `git log`
 lists the whole walk. A repo with neither anchor gets the fragment join alone, and the report says
-there was no anchor. A new covered class, `release-bookkeeping`, is a single-parent commit whose
-judgeable changes are all files `release_version_files:` declares at its parent: the reopen commit
-after a cut, which read `direct` before. An undeclared repo's fallback layout never qualifies. A
+there was no anchor. A new covered class, `release-bookkeeping`, is a single-parent commit after the
+anchor whose judgeable changes are all files `release_version_files:` declared at the anchor: the
+reopen commit after a cut, which read `direct` before. A declaration added since the release never
+qualifies, and an undeclared repo's fallback layout never does. A
 merge whose branch changed nothing judgeable but whose merge commit edits a judgeable file now reads
 `uncovered`, not `no-judgeable`, because the walk reaches such merges. The count line names the
-anchor and how many commits the walk found. It is still advice, and `check-releasability`'s exit is
-unchanged.
+anchor and how many commits the walk found, or that the walk could not run. Prerelease tags order as
+SemVer does (`rc.10` above `rc.9`). The op also reads a base-advance transfer grant the Stop gate
+recorded for exactly the merged span, the one record when both gates granted it. It is still
+advice, and `check-releasability`'s exit is unchanged.
 
 ### Chunk 03: the release batch review, and the relax-only rule that credits it
 A release that defers boundary reviews needs a review that reads what was deferred, and a rule
@@ -97,8 +105,9 @@ owed to does not block yet; leave it unset. Nothing changes for a repo that does
 judgeable commit since your last release, including work committed on the integration branch
 without a change fragment, so expect more entries and a count line that names the release anchor.
 `--json` adds `anchor`, `no_anchor_reason` and each entry's `source` (`fragment`, `walk` or
-`both`), and a new covered class, `release-bookkeeping`, for a commit that changes only the files
-you declare in `release_version_files:`. Neither command's exit code changes.
+`both`; `walk-failed` when git could not list the commits since the anchor), and a new covered
+class, `release-bookkeeping`, for a commit that changes only the files `release_version_files:`
+declared at your last release. Neither command's exit code changes.
 
 `critic-begin --mode cumulative --span release`, run on your integration branch, reviews everything
 since your last release that no boundary review read, and `check-boundary-coverage` then reads that
