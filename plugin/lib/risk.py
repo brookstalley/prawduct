@@ -194,7 +194,8 @@ def _surfaces_at(project_dir: Path, rev: str) -> "tuple[list[str], str] | None":
     nothing, so the derived defaults apply, as they do in a working tree."""
     def show(rel: str) -> "str | None":
         done = subprocess.run(["git", "show", f"{rev}:{rel}"], cwd=project_dir,
-                              capture_output=True, text=True, check=False)
+                              capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", check=False)
         return done.stdout if done.returncode == 0 else None
 
     if subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}"],
