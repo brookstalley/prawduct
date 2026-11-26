@@ -79,7 +79,10 @@ the composition over all facts also `covered`, with wave 1's three inferences
    that adds a release file under `.prawduct/releases/` (prawduct's cut writes one; here that is
    `436f44d3 release: prep v3.10.0`), or (B) the oldest first-parent commit containing the newest
    version tag reachable from the base (classic gitflow back-merges and trunk repos). With neither,
-   there is no anchor: advice says so; a per_release gate refuses. Options weighed, from how
+   there is no anchor: advice says so; a per_release gate refuses. **Amended 2026-11-26 (owner ruling):** B is the oldest first-parent commit of the base
+   containing the merge-base of the base and the newest version tag, so a release tagged on a merge
+   commit the base never sees (the consumer repo tags `v2.22.0` on `main`) anchors on the develop
+   commit it released; where the tag is reachable the answer is unchanged. Options weighed, from how
    v3.10.0 was actually cut here:
    - **A, the release file.** Observable, already committed, written by the cut in both the
      whole-develop and the pruned path (Phase 1 lands on `develop` either way). Misses a repo that
@@ -114,7 +117,8 @@ the composition over all facts also `covered`, with wave 1's three inferences
    `diagnose_fix_churn`'s conditions **and** touches no risk surface. A tail on a risk surface
    still buys its verify round.
 
-6. **Run the pay test before Chunks 03-06.** #1232 says the consumer repo's counts decide whether
+6. **Run the pay test before Chunks 03-06.** *Run and ruled 2026-11-26: go on Chunks 03-06* (counts and
+   method in `.prawduct/owner-rulings.md`; read from the consumer repo's ledger and git, the op not run there). #1232 says the consumer repo's counts decide whether
    the lane pays. Wave 1's op cannot answer it there (it classifies pending fragments only, and that
    repo has two). *Recommend:* build Chunks 01-02, run Chunk 02's op in that repo (command under
    Verification Strategy), and take go/no-go on 03-06 from its per-merge counts.
