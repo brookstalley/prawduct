@@ -183,8 +183,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   base's tip), `dirty-tree`, `no-anchor`, `unevaluable` (the classification could not run),
   `no-subject` (what is owed changes nothing that still differs from the start); exit 3 when every
   release entry is already covered. `--force` overrides none of them, and the review round budget
-  never charges it. Any other `--span` value, or
-  `--span` with another mode, is exit 1),
+  never charges it. A plain `--mode cumulative` on the integration base's own branch with HEAD at
+  its tip derives `--span release` itself (added 2026-11-26, #1232, `boundary_coverage.integration_base_tip`)
+  and says so in a note; a derived span that refuses reads `the release batch review refused
+  (<code>)`. Any other `--span` value, or `--span` with another mode, is exit 1),
   `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
   and writes the optional `dispatched_at` review-fact body key when the mark is this review's —
@@ -367,10 +369,13 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `[not covered]`, names the anchor, and ends with a count line naming its denominator and the anchor. Exit 0
   whenever it answered, whatever it found; 2 on an unknown argument; 3 when it could not evaluate.
   `--json` keys: `status` (`ok` | `unevaluable`), `base`, `reason` (`null` when `ok`), `counts` (one
-  key per classification), `entries[]{scope, classification, reason, commit, subject, source}`
+  key per classification), `entries[]{scope, classification, reason, commit, subject, source, blockers}`
   (`source`: `fragment`, `walk` or `both`, or `walk-failed` on the one `unknown` entry standing
   for a walk git could not run, with no commit; a walked commit no fragment names has an empty `scope`;
-  two fragments one merge added share one entry, scopes joined by `, `), `anchor` (`{commit, tree,
+  two fragments one merge added share one entry, scopes joined by `, `; `blockers` (added
+  2026-11-26, #1232) lists the unresolved BLOCKING findings standing on a not-covered entry's own
+  trees as `{review_id, fid, title}`, empty when none, and a `verify-resolutions` pass on the
+  base names them in its roll-call), `anchor` (`{commit, tree,
   source, reason}`, `source` `release-file` | `tag`, or `null`), `no_anchor_reason` (why there is
   none, else `null`) and `refusals[]` (fragments the pending set refused, which are not classified).
   `--gate` (added 2026-11-26, #1232) is the release check's blocking reading, the verdict
