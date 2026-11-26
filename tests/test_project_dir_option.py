@@ -149,6 +149,24 @@ def test_the_same_tree_named_twice_is_one_tree(tmp_path, two_repos):
     assert B_ID in result.stdout and A_ID not in result.stdout
 
 
+def test_two_spellings_of_one_tree_are_one_tree(tmp_path, two_repos):
+    """A trailing slash is the same tree, and a refusal there would fail a
+    correct call whose two copies were spelled by different hands."""
+    a, b = two_repos
+    result = _run(tmp_path, a, a, "advisory", "list", "--project-dir", str(b), "--project-dir", str(b) + "/")
+    assert result.returncode == 0, result.stderr
+    assert B_ID in result.stdout and A_ID not in result.stdout
+
+
+def test_a_refusal_never_exits_with_critic_begin_s_scope_widened_code(tmp_path, two_repos):
+    """`critic-begin` exit 2 tells the critic fork to re-dispatch in a wider
+    mode, so a malformed `--project-dir` must not exit 2 there."""
+    a, _b = two_repos
+    result = _run(tmp_path, a, a, "critic-begin", "--mode", "chunk", "--project-dir", "relative/b")
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert "is a relative path" in result.stderr
+
+
 def test_the_equals_form_is_the_same_option(tmp_path, two_repos):
     a, b = two_repos
     result = _run(tmp_path, a, a, "advisory", "list", f"--project-dir={b}")
@@ -184,11 +202,11 @@ def test_a_critic_review_dispatches_against_the_named_tree(tmp_path, two_repos):
 @pytest.mark.parametrize(
     "shape, code, message",
     [
-        ("missing-at-end", 2, "requires a value"),
-        ("missing-before-flag", 2, "requires a value"),
-        ("empty-equals", 2, "requires a value"),
-        ("relative", 2, "is a relative path"),
-        ("two-trees", 2, "names two trees"),
+        ("missing-at-end", 1, "requires a value"),
+        ("missing-before-flag", 1, "requires a value"),
+        ("empty-equals", 1, "requires a value"),
+        ("relative", 1, "is a relative path"),
+        ("two-trees", 1, "names two trees"),
         ("nonexistent", 1, "no such directory"),
         ("subdirectory", 1, "not its toplevel"),
         ("not-a-repo", 1, "is not a git work tree"),
@@ -419,3 +437,42 @@ def test_the_coordinator_hands_the_tree_to_reviewers_and_consolidates_it():
     stop = stop.split("\n", 1)[0]
     assert "run `prawduct-hook critic-consolidate --project-dir [dir]` yourself" in stop
     assert "launch repo" in stop
+
+
+def test_the_coordinator_step_is_unconditional_under_the_option_and_names_a_fallback():
+    """Whether `[dir]` is 'another tree' is not the coordinator's call: with
+    `--project-dir` it always consolidates (idempotent), and the step says who
+    does it when the coordinator ends first."""
+    text = (SKILLS_DIR / "critic" / "coordinator.md").read_text()
+    stop = text[text.index("3. **Stop"):].split("\n", 1)[0]
+    assert stop.startswith("3. **Stop, unless your arguments carried `--project-dir`.**")
+    assert "idempotent" in stop
+    assert "if you end first, the builder runs it" in stop
+
+
+def test_skill_md_never_forbids_the_consolidate_coordinator_md_requires():
+    """SKILL.md is read first; a categorical 'no consolidate' there outranks
+    coordinator.md step 3 for a fork that obeys it."""
+    _front, body = _forked_skills()["critic"]
+    lines = [ln for ln in body.splitlines() if "no consolidate" in ln]
+    assert len(lines) == 2, lines
+    for ln in lines:
+        assert "no consolidate unless `--project-dir` was given: then `coordinator.md` step 3" in ln, ln
+
+
+@pytest.mark.parametrize("name", ["backlog", "advisory"])
+def test_a_write_skill_names_its_store_with_or_without_the_option(name):
+    """The #1253 caller is the one who FORGOT the option: naming the store only
+    inside the `--project-dir` branch leaves that caller a silent write."""
+    _front, body = _forked_skills()[name]
+    para = next(p for p in body.split("\n\n") if "--project-dir" in p and "Always name" in p)
+    always = para[para.index("Always name"):]
+    assert "when" not in always.split(".")[0].lower(), always
+
+
+def test_delegation_scopes_the_option_to_skills_that_take_it():
+    text = (ROOT / "methodology" / "delegation.md").read_text()
+    sentence = text[text.index("A delegate working in another repository"):].split(". ", 1)[0]
+    assert "each forked skill (critic, backlog, advisory)" in sentence
+    assert "every `prawduct-hook` call it runs itself" in sentence
+    assert "each `/prawduct:*` skill" not in sentence

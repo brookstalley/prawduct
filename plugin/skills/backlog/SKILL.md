@@ -10,7 +10,7 @@ allowed-tools: Read, Edit, Write, Grep, Glob, Bash(prawduct-hook plan resolve*),
 
 You manage the product's **structured backlog**. You run in a forked context, so the full backlog never pollutes the main session. The backlog has two backends — a markdown file, or GitHub Issues once the product has cut over — so **decide the backend first** (next section), then do the operation and return a concise result. **Never** delete items (archive instead) and **never** weaken existing content.
 
-**Another repository.** This fork starts in the launch repo. When the arguments carry `--project-dir <dir>`, act on `<dir>`: append the option to every `prawduct-hook` call, run git as `git -C <dir>`, anchor every Read/Edit/Write path there (`<dir>/.prawduct/backlog.md`, not the relative path), and name the file you wrote in your result.
+**Another repository.** This fork starts in the launch repo. When the arguments carry `--project-dir <dir>`, act on `<dir>`: append the option to every `prawduct-hook` call and anchor every Read/Edit/Write path there (`<dir>/.prawduct/backlog.md`, not the relative path). Always name the store a write landed in (the Issues repo, or the file's absolute path), so a caller in the wrong repo can see it.
 
 ## Backend routing — decide this first
 

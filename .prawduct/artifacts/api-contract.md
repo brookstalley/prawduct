@@ -153,10 +153,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   after any subcommand and before a bare `--` (later tokens stay the passthrough command's), as
   `--project-dir <p>` or `--project-dir=<p>`. `_dispatch` removes it before any command parses its
   arguments, `chdir`s to the path and makes it the project dir over `CLAUDE_PROJECT_DIR` and the
-  cwd, so every command, PDT-WT9K included, sees one tree. A missing value, two different values or
-  a relative path is a usage error (exit 2); a path that does not exist, is not a git work tree, or
-  is a subdirectory of one rather than its toplevel exits 1. Each refusal names itself and runs
-  nothing. The same value twice is one tree. Hooks never pass it; the `context: fork` skills accept
+  cwd, so every command, PDT-WT9K included, sees one tree. Every refusal exits 1, names itself and
+  runs nothing: a missing value, two different trees, a relative path, a path that does not exist,
+  is not a git work tree, or is a subdirectory rather than its toplevel. Not the usage error 2,
+  which `critic-begin` already reads as "scope widened, re-dispatch". The same tree twice, after
+  path normalisation, is one tree. Hooks never pass it; the `context: fork` skills accept
   it as an argument and pass it to each call, because a fork starts in the launch repo whoever
   invokes it.
 - **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary, which also ingests the branch's notes and prints `N evidence fact(s) ingested from refs/notes/prawduct` when N > 0 — `--brief-only` skips both, mutating),

@@ -23,7 +23,7 @@ governed_by:
   - artifact: api-contract
     dispositions:
       - "whole-surface semantic versioning; CLI subcommands carry no per-subcommand version → conforms: one new dispatcher-level option, minor-tier within the release"
-      - "exit codes are the contract → conforms: a malformed option is a usage error (2), a valid path that is not a work-tree toplevel exits 1; no existing code changes meaning"
+      - "exit codes are the contract → conforms: every refusal exits 1, never 2, which `critic-begin` already means as scope-widened (boundary review N2); no existing code changes meaning"
       - "additive-first evolution → conforms: a new option no subcommand defines today (`grep -- --project-dir` returns none); callers that omit it are unchanged"
 partition: serial — one chunk
 ---
@@ -65,9 +65,11 @@ argument and pass it to each `prawduct-hook` call, each `git -C`, and each file 
   is also the launch dir), and the harness-side fix (reported to Claude Code as feedback).
 
 **Decisions made mid-build (inferred, open for the owner at the boundary review):**
-- The same `--project-dir` value twice is one tree; two different values exit 2. The critic forwards
-  its arguments to `infer-critic-mode` and also appends the option, so a strict refusal would fire
-  on a correct call. `--project-dir=<p>` is the same option.
+- The same tree twice (after `os.path.normpath`) is one tree; two different trees are refused.
+  The critic forwards its arguments to `infer-critic-mode` and also appends the option, so a strict
+  refusal would fire on a correct call. `--project-dir=<p>` is the same option. Every refusal exits
+  1, never the usage error 2, because `critic-begin` already reads 2 as "scope widened, re-dispatch"
+  (boundary review, native N2).
 - Usage errors are refused before the shape check, path checks after it, so nothing runs before a
   git probe. Validation fails closed when `lib/` will not import, unlike the rest of dispatch.
 - No `CLAUDE_PROJECT_DIR` rewrite for child processes (it would be a host-variable write outside the

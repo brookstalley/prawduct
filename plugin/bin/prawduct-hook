@@ -12674,11 +12674,18 @@ _PROJECT_DIR_FLAG = "--project-dir"
 
 
 def _pop_project_dir(command: str, argv: list[str]) -> "tuple[str | None, list[str], int]":
-    """``(value, argv without the option, status)``; status 2 is a usage error,
+    """``(value, argv without the option, status)``; status 1 is a refusal,
     already printed. Refuses a missing value, two different values and a
     relative path: each is a caller who meant a tree and would otherwise get a
-    guessed one. The same value twice is one tree — a skill that forwards its
-    arguments verbatim and also appends the option passes it twice."""
+    guessed one. The same tree twice is one tree (compared after
+    ``os.path.normpath``, so ``/b`` and ``/b/`` agree) — a skill that forwards
+    its arguments verbatim and also appends the option passes it twice.
+
+    Exit 1, not the usage error 2 the Conventions name for an unknown flag:
+    `critic-begin` already gives 2 a meaning (scope widened, re-dispatch in the
+    mode it names), and a fork reading this refusal as that would review again
+    in another mode instead of stopping. `critic-begin`'s own unknown argument
+    is 1 for the same reason."""
     value: "str | None" = None
     rest: list[str] = []
     i = 0
@@ -12704,14 +12711,14 @@ def _pop_project_dir(command: str, argv: list[str]) -> "tuple[str | None, list[s
                 "path of a git work tree's toplevel. Nothing ran.",
                 file=sys.stderr,
             )
-            return None, argv, 2
-        if value is not None and given != value:
+            return None, argv, 1
+        if value is not None and os.path.normpath(given) != os.path.normpath(value):
             print(
                 f"{command}: {_PROJECT_DIR_FLAG} names two trees ({value!r} and "
                 f"{given!r}) — name one. Nothing ran.",
                 file=sys.stderr,
             )
-            return None, argv, 2
+            return None, argv, 1
         value = given
     if value is not None and not os.path.isabs(value):
         print(
@@ -12721,7 +12728,7 @@ def _pop_project_dir(command: str, argv: list[str]) -> "tuple[str | None, list[s
             "Nothing ran.",
             file=sys.stderr,
         )
-        return None, argv, 2
+        return None, argv, 1
     return value, rest, 0
 
 
