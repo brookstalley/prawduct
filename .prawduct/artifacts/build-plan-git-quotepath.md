@@ -42,7 +42,7 @@ deliverable. Success: every reader that uses a name sees the name as it is on di
 
 Sites already passing `-z` stay as they are; `-z` output is never quoted.
 
-**Decisions (inferred, mine, open for the owner at the boundary review):**
+**Decisions (inferred, mine; owner-confirmed 2026-11-26, `.prawduct/owner-rulings.md`, "(night)"):**
 - *Decode, not `-z` everywhere.* git's quoting is complete and reversible, and C-quoted output is
   line-safe (a newline in a name prints as `\n`). Decoding fixes the formats with no `-z` (`worktree
   list --porcelain` below git 2.36, `diff --git` headers) with the same function, and each site keeps

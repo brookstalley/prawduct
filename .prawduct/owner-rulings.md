@@ -714,3 +714,10 @@ three determinism patterns and the uncacheable-tests advisory) is merged.
 
 **2026-11-26 (evening, later still).** "Yes to your recommendation": PR #1265 (`chore/testament-cache-dogfood` →
 `develop`, one owner for id randomness and the hook's mock-git tests in-process) is merged.
+
+**2026-11-26 (night).** "Yes pr merge and record", answering two asks on PR #1267 (#1257):
+1. Merge PR #1267 (`fix/git-quotepath` → `develop`).
+2. Keep the build plan's three design decisions, owner-confirmed now, no longer only the builder's call:
+   git's quoting is decoded by one function in `lib/gitstate.py` rather than every read moving to `-z`;
+   `gitstate.worktree_records` is left raw, because git prints worktree paths unquoted; and there is no
+   single `gitstate` read function, because the lint holds every name read to the decoder.
