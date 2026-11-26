@@ -813,7 +813,7 @@ def test_the_pr_skill_relays_every_not_covered_entry_not_only_scoped_ones():
     """A walked commit has no scope, so "each scope line it marks" would let the
     agent drop exactly the work no fragment names (wave 1's invisible case)."""
     skill = (ROOT / "plugin" / "skills" / "pr" / "SKILL.md").read_text(encoding="utf-8")
-    guard = next(line for line in skill.splitlines() if "run `prawduct-hook check-boundary-coverage`" in line)
+    guard = next(line for line in skill.splitlines() if "run `prawduct-hook check-boundary-coverage --gate`" in line)
     assert "each entry it marks `[not covered]`" in guard, guard
     assert "scope line" not in guard, guard
 

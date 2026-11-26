@@ -813,7 +813,12 @@ LAST_MEASURED_TOKENS = {
     # dependency-scope bullet, naming only what a static read cannot judge. The bullet is pinned
     # identical in both carriers, and the detector's results arrive through record-lint, so nothing
     # another file owns was left to cut. A READING; ceiling raised with it.
-    "skills/critic/review-protocol.md": 4171,
+    # -1 on 2026-11-26 (boundary-review-per-release Chunk 06): the `cumulative` bullet and the
+    # Subject-and-oracle sentence name the release span (`Span: release from <commit>`, its
+    # `files_context`). Paid in place by cutting `final`'s wall-clock target and the PR-gate
+    # requirement (review-cycle.md and the PR skill own both) and the Modes line's aside on why
+    # nothing here restates goals-1-3.md. A READING; ceiling lowered with it.
+    "skills/critic/review-protocol.md": 4170,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -1200,6 +1205,12 @@ LAST_MEASURED_TOKENS = {
     # review runs only session files are free of the consolidation tree check. Paid in place by
     # pointing the protected-path list at `buildplan_refs.protected_path_violation`, which owns it,
     # and dropping the heading's restated question. A READING; ceiling lowered with it.
+    # 0 on 2026-11-26 (boundary-review-per-release Chunk 06): the release batch review's
+    # paragraph, the manifest's release `files_context`, and Mode Selection item 1's lane
+    # exception. Paid in place by cutting the resolve-base fallback list (the op and
+    # project-state-keys.md own it), the rendezvous gloss (`partial_path`/`started_path` own it),
+    # the scope-widened row's re-dispatch line (SKILL.md's exit table owns it), and the ten-round
+    # measurement (critic_consolidate owns it). A READING; ceiling unchanged.
     "skills/critic/review-cycle.md": 8257,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
@@ -1416,6 +1427,10 @@ LAST_MEASURED_TOKENS = {
     # to planning.md "Chunk state", which owns it. Priced in `test_reviewer_payload_budget.py`.
     # +31 on 2026-11-24 (credential-placeholders Chunk 02), DECLARED: the exit table gains exit 9
     # (credential lines the PR gate would refuse, on `cumulative`). Priced in `test_reviewer_payload_budget.py`.
+    # 0 on 2026-11-26 (boundary-review-per-release Chunk 06): step 4 names `--span release` and
+    # step 5 a release cumulative's `files_context`. Paid in place by cutting the designer-handoff
+    # step's "Inlined" aside (its own BEFORE `critic-begin` already says when it fires) and step
+    # 4's "(base/head trees)" gloss (the manifest owns it). A READING; ceiling unchanged.
     "skills/critic/SKILL.md": 3278,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
@@ -6007,7 +6022,8 @@ class TestCriticSkill:
         # RAISED 4062 -> 4071 (coherence-pass Chunk 01, 2026-11-16) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4071 -> 4111 (backlog-roi-wave2 Chunk 02, #847) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 4111 -> 4172 (test-determinism Chunk 02, 2026-11-24) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 4172, f"review-protocol.md is ~{tokens} tokens, should be <4172"
+        # LOWERED 4172 -> 4171 (boundary-review-per-release Chunk 06) with the reading.
+        assert tokens < 4171, f"review-protocol.md is ~{tokens} tokens, should be <4171"
 
 
 # =============================================================================

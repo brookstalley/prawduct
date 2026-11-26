@@ -71,12 +71,15 @@ Each commit is classified as:
   is work committed on the base itself, or a squash merge; git cannot tell the
   two apart.
 - ``unknown``: no commit on the base added the fragment (not merged yet, or the
-  fragment is untracked), or git could not answer.
+  fragment is untracked), git could not answer, or an octopus merge, which only
+  the batch rule can credit.
 
-It is ADVICE (architecture: advice fails soft). Every degradation lands on a
+The classification is ADVICE under ``boundary_review: per_pr`` (architecture:
+advice fails soft), and the answer a GATE reads under ``per_release``
+(:func:`release_gate`, which ``check-boundary-coverage --gate`` exits with and
+``check-releasability`` refuses on). So every degradation lands on a
 classification that says "not covered" (``unknown``/``uncovered``), never on
-``pr-covered``, because wave 2 turns this answer into a gate for a repo that defers
-its boundary review to the release.
+``pr-covered``, and a report that could not be read refuses the gate.
 
 Composition is :func:`coverage_algebra.coverage_verdict`'s, stage is
 :func:`critic_consolidate.stage_of_manifest`'s, the base-advance transfer is
@@ -324,9 +327,14 @@ class _Classifier:
         The commit's own shape answers first (:meth:`_classify_shape`). Only a
         commit that reads not covered there is asked of the boundary reviews on
         the base: the batch rule, then, for work committed on the base, the
-        batch fix tail. Both can only turn not covered into covered."""
+        batch fix tail. Both can only turn not covered into covered. An
+        ``unknown`` is asked too when it is an octopus merge: its shape cannot be
+        read branch by branch, but what it brought onto the base (its diff
+        against its first parent) is what a release batch review rates, so
+        without the batch rule a ``per_release`` release would be held by it
+        for good. Every other ``unknown`` is git failing, and stays one."""
         entry = self._classify_shape(commit, subject, parents, changed)
-        if entry.classification in COVERED or entry.classification == UNKNOWN:
+        if entry.classification in COVERED or (entry.classification == UNKNOWN and len(parents) <= 2):
             return entry
         if len(parents) == 1:
             files = changed if changed is not None else self._judgeable(parents[0], commit)
@@ -1057,11 +1065,15 @@ class ReleaseSubject:
     anchor: "Anchor | None" = None
     #: The release entries no boundary review covered.
     owed: list = field(default_factory=list)
-    #: Their changed files that still differ from the anchor: the review's subject.
+    #: Their changed files that still differ from :attr:`start`: the review's subject.
     files: list = field(default_factory=list)
-    #: Owed entries no review from the anchor can credit: no commit, or one at or
-    #: before the anchor (a scope a pruned release withheld).
+    #: Owed entries no review can credit: they name no commit (a fragment no
+    #: commit on the base added, or a walk git could not run).
     uncreditable: list = field(default_factory=list)
+    #: Where the review's interval starts, ``(commit, tree, reason)``: the
+    #: anchor, or older when an owed entry sits at or before it (a scope a
+    #: pruned release withheld), so the one review brackets every owed entry.
+    start: "tuple | None" = None
 
 
 def release_subject(project_dir: Path, *, clean: bool) -> ReleaseSubject:
@@ -1074,8 +1086,9 @@ def release_subject(project_dir: Path, *, clean: bool) -> ReleaseSubject:
     check walks), the tree is dirty (``dirty-tree``: the review reads committed
     ``HEAD``), the classification cannot be read (``unevaluable``), there is no
     release anchor (``no-anchor``: nothing to start the span from), or the owed
-    entries change no judgeable file that still differs from the anchor
-    (``no-subject``). Every entry covered is ``no-review-needed``
+    entries change no judgeable file that still differs from where the span
+    starts (``no-subject``). The span starts at the anchor, or at the first
+    parent of the oldest owed entry when one sits at or before it. Every entry covered is ``no-review-needed``
     (``nothing-owed``). Never raises: a fault is ``unevaluable``."""
     try:
         return _release_subject(project_dir, clean)
@@ -1128,22 +1141,42 @@ def _release_subject(project_dir: Path, clean: bool) -> ReleaseSubject:
         return ReleaseSubject(RELEASE_NO_REVIEW_NEEDED, RELEASE_NOTHING_OWED,
                               f"every release entry is already covered ({count_line(report)})",
                               base=base, anchor=anchor)
-    span = git("diff", "--name-only", "--no-renames", anchor.tree, "HEAD", "--")
-    if span is None:
-        return refused(RELEASE_UNEVALUABLE, f"git could not diff the release anchor {anchor.commit[:12]} "
-                                            "to HEAD", base=base, anchor=anchor)
-    in_span = set(span.splitlines())
-    files: list = []
+    # Each owed entry's first parent on the base's first-parent line. An entry at
+    # or before the anchor (a scope a pruned release withheld: merged before it,
+    # still pending) moves the interval's start back to the oldest such parent,
+    # so the review brackets it and the batch rule can credit it; a review that
+    # started at the anchor never could, and the release would be held forever.
+    line = git("rev-list", "--first-parent", "HEAD")
+    if line is None:
+        return refused(RELEASE_UNEVALUABLE, f"git could not list {base}'s first-parent line",
+                       base=base, anchor=anchor)
+    position = {sha: i for i, sha in enumerate(line.split())}  # 0 is the tip
+    start = (anchor.commit, anchor.tree, anchor.reason)
+    creditable: list = []
     uncreditable: list = []
     for entry in owed:
         parents = (git("rev-list", "--parents", "-n", "1", entry.commit) or "").split()[1:] if entry.commit else []
-        at_or_before_anchor = bool(entry.commit) and evidence.run_git(
-            project_dir, "merge-base", "--is-ancestor", entry.commit, anchor.commit)[0] == 0
-        if not parents or at_or_before_anchor:
+        if not parents or parents[0] not in position:
             uncreditable.append(entry)
             continue
+        creditable.append((entry, parents[0]))
+        if position[parents[0]] > position[start[0]]:
+            tree = git("rev-parse", f"{parents[0]}^{{tree}}")
+            if not tree:
+                return refused(RELEASE_UNEVALUABLE, f"git could not read {parents[0][:12]}'s tree",
+                               base=base, anchor=anchor)
+            start = (parents[0], tree, f"{parents[0][:12]} is the first parent of {entry.label}, an entry "
+                                       f"at or before the release anchor {anchor.commit[:12]} that no "
+                                       f"boundary review covered, so the span starts there ({anchor.reason})")
+    span = git("diff", "--name-only", "--no-renames", start[1], "HEAD", "--")
+    if span is None:
+        return refused(RELEASE_UNEVALUABLE, f"git could not diff {start[0][:12]} to HEAD",
+                       base=base, anchor=anchor)
+    in_span = set(span.splitlines())
+    files: list = []
+    for entry, parent in creditable:
         # What the commit brought onto the base: its diff against its first parent.
-        changed = git("diff", "--name-only", "--no-renames", parents[0], entry.commit, "--")
+        changed = git("diff", "--name-only", "--no-renames", parent, entry.commit, "--")
         if changed is None:
             return refused(RELEASE_UNEVALUABLE, f"git could not diff {entry.label}",
                            base=base, anchor=anchor)
@@ -1151,14 +1184,13 @@ def _release_subject(project_dir: Path, clean: bool) -> ReleaseSubject:
     if not coverage_algebra.judgeable_files(files):
         return refused(RELEASE_NO_SUBJECT, f"{len(owed)} release entr{'y' if len(owed) == 1 else 'ies'} "
                                            f"no boundary review covered ({', '.join(e.label for e in owed)}) "
-                                           "change no judgeable file that still differs from the release "
-                                           f"anchor {anchor.commit[:12]}, so a batch review would rate "
-                                           "nothing; an entry at or before the anchor needs a review of "
-                                           "its own span", base=base, anchor=anchor, owed=owed,
-                       uncreditable=uncreditable)
-    return ReleaseSubject(RELEASE_OK, "", f"{len(files)} file(s) owed a read since release anchor "
-                                          f"{anchor.commit[:12]}", base=base, anchor=anchor, owed=owed,
-                          files=files, uncreditable=uncreditable)
+                                           "change no judgeable file that still differs from "
+                                           f"{start[0][:12]}, where the span would start, so a batch "
+                                           "review would rate nothing", base=base, anchor=anchor,
+                       owed=owed, uncreditable=uncreditable, start=start)
+    return ReleaseSubject(RELEASE_OK, "", f"{len(files)} file(s) owed a read since {start[0][:12]}",
+                          base=base, anchor=anchor, owed=owed, files=files,
+                          uncreditable=uncreditable, start=start)
 
 
 def count_line(report: Report) -> str:
@@ -1182,6 +1214,75 @@ def count_line(report: Report) -> str:
     walked = sum(1 for e in report.entries if e.source in (SOURCE_WALK, SOURCE_BOTH))
     return (f"boundary coverage: {covered} of {total} covered on {report.base}{detail}: {walked} "
             f"judgeable commit(s) since {anchor}, and {by_fragment} more by release-pending fragment")
+
+
+#: The release gate's two refusal codes: ``check-boundary-coverage --gate``'s
+#: exit 1 and exit 3, and the prefix of ``check-releasability``'s refusal line.
+GATE_UNCOVERED = "boundary-uncovered"
+GATE_UNEVALUABLE = "boundary-unevaluable"
+
+
+@dataclass(frozen=True)
+class ReleaseGate:
+    """The release check's verdict on one report under one policy."""
+
+    exit: int  # 0 passes, 1 not covered, 3 could not answer
+    code: str  # GATE_UNCOVERED | GATE_UNEVALUABLE | "" when it passes
+    message: str  # the refusal, its remedy included; "" when it passes
+    #: The entries it refused over (exit 1), for a caller listing them.
+    owed: tuple = ()
+
+    def as_dict(self) -> dict:
+        return {"exit": self.exit, "code": self.code, "message": self.message}
+
+
+def release_gate(report: Report, policy) -> ReleaseGate:
+    """Does ``report`` hold the release, under ``policy``
+    (``review_lane.release_policy``)? The one answer ``check-boundary-coverage
+    --gate`` exits with and ``check-releasability`` refuses on (#1232).
+
+    Under ``per_pr`` it passes whatever the report says: the op stays advice.
+    Under ``per_release`` it fails closed, in this order: a report that could not
+    be evaluated, a pending fragment the pending set refused (it is unclassified),
+    or no release anchor (no commit since the last release was walked) is exit 3,
+    ``boundary-unevaluable``; any entry not covered is exit 1,
+    ``boundary-uncovered``; otherwise exit 0. Each refusal carries its remedy."""
+    if not getattr(policy, "per_release", False):
+        return ReleaseGate(0, "", "")
+    held = "and `boundary_review: per_release` refuses a release its check cannot answer"
+    if report.status != "ok":
+        return ReleaseGate(3, GATE_UNEVALUABLE, (
+            f"{GATE_UNEVALUABLE}: the release's boundary coverage could not be evaluated "
+            f"({report.reason}), {held}: fix what the reason names, then re-run"))
+    if report.refusals:
+        return ReleaseGate(3, GATE_UNEVALUABLE, (
+            f"{GATE_UNEVALUABLE}: {len(report.refusals)} release-pending fragment(s) the pending set "
+            f"refused are not classified ({'; '.join(report.refusals)}), {held}: fix each fragment, "
+            "then re-run"))
+    if report.anchor is None:
+        return ReleaseGate(3, GATE_UNEVALUABLE, (
+            f"{GATE_UNEVALUABLE}: there is no release anchor ({report.no_anchor_reason}), so no "
+            f"commit since the last release was walked, {held}: tag the {report.base} commit your "
+            "last release shipped with its version (`git tag vX.Y.Z <commit>`), or cut releases "
+            f"with `cut-change-log`, which commits a `{consumer_digest.RELEASES_DIR_REL}/` file; "
+            "a repo with no release yet keeps `per_pr` until its first"))
+    owed = tuple(e for e in report.entries if e.classification not in COVERED)
+    if not owed:
+        return ReleaseGate(0, "", "")
+    unreachable = [e.label for e in owed if not e.commit]
+    message = (
+        f"{GATE_UNCOVERED}: {len(owed)} of {len(report.entries)} release entr"
+        f"{'y' if len(report.entries) == 1 else 'ies'} on {report.base} no boundary review "
+        "covered, and `boundary_review: per_release` holds the release until one has read them: "
+        f"run the release batch review on {report.base}'s own checkout, at its tip, on a clean tree "
+        "(`/prawduct:critic cumulative`, dispatched as `critic-begin --mode cumulative --span "
+        f"release`); fix a blocker it raises on {report.base} and clear it with "
+        "`/prawduct:critic verify-resolutions`; then re-run")
+    if unreachable:
+        message += (f". {', '.join(unreachable)} name no commit, so no review can credit "
+                    f"{'it' if len(unreachable) == 1 else 'them'}: commit the fragment on "
+                    f"{report.base}, or fix the git failure the reason names")
+    return ReleaseGate(1, GATE_UNCOVERED, message, owed)
 
 
 def render(report: Report) -> str:

@@ -214,6 +214,30 @@ class TestThePrGate:
         assert rc == 1 and _NOTE not in err
         assert "fix churn" in err  # it IS churn; only the risk surface refused it
 
+    def test_a_branch_cannot_drop_its_own_risk_surface_to_defer(self, tmp_path, capsys):
+        """The self-authority hole `boundary_review:` is read around, for risk
+        surfaces: main declares `feature.py` one, and the branch rewrites
+        `risk_surfaces: []`. Read from this checkout alone, the tail deferred;
+        the integration branch still holds the surface, so it buys its round."""
+        repo = _repo(tmp_path, state_extra="risk_surfaces:\n  - feature.py\n")
+        _commit(repo, ".prawduct/project-state.yaml",
+                "base_branch: main\nboundary_review: per_release\nrisk_surfaces: []\n", "drop it")
+        _review(repo)
+        _commit(repo, "feature.py", "y = 3  # addressed R-1\n", "fix the warning")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1 and _NOTE not in err, err
+        assert "fix churn" in err  # it IS churn; only the held surface refused it
+
+    def test_a_surface_the_base_tip_added_after_the_fork_refuses(self, tmp_path, capsys):
+        repo, _rid = _deferring(tmp_path)
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, ".prawduct/project-state.yaml",
+                "base_branch: main\nboundary_review: per_release\nrisk_surfaces:\n  - feature.py\n",
+                "declare the surface")
+        _git(repo, "checkout", "-q", "feature")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1 and _NOTE not in err, err
+
     def test_an_anchor_review_predating_the_merge_base_does_not_anchor(self, tmp_path, capsys):
         """A review on main, at the merge-base, never saw this branch."""
         repo = tmp_path / "repo"

@@ -131,6 +131,11 @@ def _boundary_pattern_paths(prawduct_dir: Path) -> list[str]:
         content = path.read_text(encoding="utf-8")
     except OSError:
         return []
+    return _boundary_pattern_paths_in(content)
+
+
+def _boundary_pattern_paths_in(content: str) -> list[str]:
+    """:func:`_boundary_pattern_paths` over the file's text."""
     seen: list[str] = []
     for token in _BACKTICK_RE.findall(content):
         token = token.strip()
@@ -181,6 +186,65 @@ def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
         [*DERIVED_DEFAULT_SURFACES, *_boundary_pattern_paths(prawduct_dir)],
         SOURCE_DERIVED,
     )
+
+
+def _surfaces_at(project_dir: Path, rev: str) -> "tuple[list[str], str] | None":
+    """:func:`resolve_surfaces` as the committed tree at ``rev`` declares them,
+    or None when git cannot resolve ``rev``. A state file absent there declares
+    nothing, so the derived defaults apply, as they do in a working tree."""
+    def show(rel: str) -> "str | None":
+        done = subprocess.run(["git", "show", f"{rev}:{rel}"], cwd=project_dir,
+                              capture_output=True, text=True, check=False)
+        return done.stdout if done.returncode == 0 else None
+
+    if subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}"],
+                      cwd=project_dir, capture_output=True, check=False).returncode != 0:
+        return None
+    state = show(".prawduct/project-state.yaml")
+    status, declared = (read_block_sequence(state, "risk_surfaces") if state is not None
+                        else (YAML_ABSENT, ()))
+    if status == YAML_UNPARSEABLE:
+        return [], SOURCE_UNPARSEABLE
+    if status == YAML_DECLARED:
+        return list(declared), SOURCE_DECLARED
+    patterns = show(".prawduct/artifacts/boundary-patterns.md")
+    return ([*DERIVED_DEFAULT_SURFACES, *(_boundary_pattern_paths_in(patterns) if patterns else [])],
+            SOURCE_DERIVED)
+
+
+def paths_touch_held_risk_surface(
+    project_dir: Path, prawduct_dir: Path, paths: "list[str]", revs: "tuple[str, ...]"
+) -> tuple[bool, str]:
+    """:func:`paths_touch_risk_surface` for a decision that RELAXES a review
+    under ``boundary_review: per_release`` (#1232): the per-release lane's
+    eligibility and the fix-tail deferral. The one reader for both.
+
+    The surfaces are the UNION of what the working tree declares and what each
+    of ``revs`` (the merge-base with the integration branch, and its tip or the
+    merged branch's tip) declares, so a branch can add a risk surface and never
+    remove one: rewriting ``risk_surfaces:`` (``[]`` included) or
+    ``boundary-patterns.md`` on the branch cannot buy it the relaxation, the
+    self-authority hole ``boundary_review:`` itself is read around. A side
+    whose declaration does not parse, or a rev git cannot resolve, answers
+    touched: a relaxation that cannot be evaluated relaxes nothing."""
+    sides = [("this checkout", resolve_surfaces(prawduct_dir))]
+    for rev in dict.fromkeys(r for r in revs if r):
+        at = _surfaces_at(project_dir, rev)
+        if at is None:
+            return True, f"git could not read the risk surfaces at {rev[:12]}, so none is known to be untouched"
+        sides.append((f"{rev[:12]}", at))
+    surfaces: "list[str]" = []
+    for where, (listed, source) in sides:
+        if source == SOURCE_UNPARSEABLE:
+            return True, f"risk_surfaces: does not parse at {where}, so none is known to be untouched"
+        surfaces += [s for s in listed if s not in surfaces]
+    matches = surface_matches(paths, surfaces)
+    if not matches:
+        return False, f"no risk-surface paths (held by {', '.join(w for w, _ in sides)})"
+    path, surface = matches[0]
+    more = f" (+{len(matches) - 1} more)" if len(matches) > 1 else ""
+    held = next(w for w, (listed, _src) in sides if surface in listed)
+    return True, f"{path} matched risk surface {surface}{more} (declared at {held})"
 
 
 def surface_matches(

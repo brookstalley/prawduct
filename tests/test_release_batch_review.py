@@ -283,16 +283,41 @@ class TestTheBatchCreditsWhatItRead:
         got = _coverage(repo, tmp_path)[direct]
         assert got["classification"] == bc.DIRECT, got
 
-    def test_an_owed_entry_before_the_anchor_is_named_at_dispatch(self, repo, tmp_path):
-        """A pruned release withheld `w`; a lane merged after the anchor is owed too.
-        The dispatch runs for the lane and says it cannot credit `w`."""
-        _lane(repo, "w")
+    def test_only_an_entry_naming_no_commit_is_uncreditable(self, repo, monkeypatch):
+        """An entry with no commit on the base (a fragment no commit added, or a
+        walk git could not run) is the one no review can bracket; it is named,
+        and the rest of the subject still dispatches."""
         _cut(repo, "v1.0.0")
         _lane(repo, "a")
+        real = bc.classify_pending(repo)
+        ghost = bc.Entry("ghost", bc.UNKNOWN, "no first-parent commit added its fragment")
+        monkeypatch.setattr(bc, "classify_pending",
+                            lambda _p: bc.Report("ok", base=real.base, entries=[*real.entries, ghost],
+                                                 anchor=real.anchor))
+        subject = bc.release_subject(repo, clean=True)
+        assert subject.status == bc.RELEASE_OK, subject.reason
+        assert subject.uncreditable == [ghost]
+        assert coverage_algebra.judgeable_files(subject.files) == ["src/a.py"]
+        assert subject.start[0] == real.anchor.commit
+
+    def test_an_owed_entry_before_the_anchor_is_read_and_credited(self, repo, tmp_path):
+        """A pruned release withheld `w`; a lane merged after the anchor is owed too.
+        The span starts at `w`'s first parent, so one review rates both, and the
+        release check credits both. Until Chunk 06 the span started at the anchor
+        and `w` could never be credited: a per_release release held forever."""
+        w = _lane(repo, "w")
+        _cut(repo, "v1.0.0")
+        a = _lane(repo, "a")
         proc = _begin_release(repo, tmp_path)
         assert proc.returncode == 0, proc.stdout + proc.stderr
-        assert "cannot credit this review for w" in proc.stderr, proc.stderr
-        assert _manifest(repo)["files_reviewed"] == ["src/a.py"]
+        m = _manifest(repo)
+        assert m["base_commit"] == _git(repo, "rev-parse", f"{w}^1"), m["base_commit"]
+        assert m["span"] == "release" and "before the release anchor" in m["span_reason"], m["span_reason"]
+        assert sorted(m["files_reviewed"]) == ["src/a.py", "src/w.py"]
+        assert "cannot credit" not in proc.stderr, proc.stderr
+        _consolidate(repo, tmp_path)
+        got = _coverage(repo, tmp_path)
+        assert {got[w]["classification"], got[a]["classification"]} == {bc.BATCH_COVERED}, got
 
     def test_a_batch_blocker_holds_the_entries_until_verify_resolutions_resolves_it(self, repo, tmp_path):
         shapes = _released(repo)
@@ -462,14 +487,31 @@ class TestEveryRefusalIsNamed:
         self._refused(proc, bc.RELEASE_NO_ANCHOR, repo)
         assert "no first-parent commit on main adds a release file" in proc.stderr
 
-    def test_when_what_is_owed_sits_before_the_anchor(self, repo, tmp_path):
-        """A pruned release withheld scope `w`: merged before the anchor, still pending,
-        unchanged since. Nothing from the anchor can read it."""
-        _lane(repo, "w")
+    def test_when_what_is_owed_changes_nothing_still_there(self, repo, tmp_path):
+        """A lane added `src/a.py` and work on the base removed it again: both
+        are owed, and nothing they changed still differs from where the span
+        starts, so a batch review would rate nothing. (Until Chunk 06 this was
+        the withheld-before-the-anchor case, which now dispatches: below.)"""
         _cut(repo, "v1.0.0")
+        _lane(repo, "a")
+        _git(repo, "rm", "-q", "src/a.py")
+        _git(repo, "commit", "-q", "-m", "drop a again")
         proc = _begin_release(repo, tmp_path)
         self._refused(proc, bc.RELEASE_NO_SUBJECT, repo)
-        assert "w" in proc.stderr and "at or before the anchor" in proc.stderr
+        assert "change no judgeable file that still differs from" in proc.stderr, proc.stderr
+
+    def test_what_is_owed_before_the_anchor_alone_starts_the_span_there(self, repo, tmp_path):
+        """A pruned release withheld scope `w`: merged before the anchor, still
+        pending. Started at the anchor no review could bracket it and the
+        release would be held forever, so the span starts at `w`'s first parent."""
+        merge = _lane(repo, "w")
+        _cut(repo, "v1.0.0")
+        proc = _begin_release(repo, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        m = _manifest(repo)
+        assert m["base_commit"] == _git(repo, "rev-parse", f"{merge}^1")
+        assert m["files_reviewed"] == ["src/w.py"]
+        assert "before the release anchor" in proc.stderr, proc.stderr
 
     def test_with_nothing_owed_it_is_exit_3(self, repo, tmp_path):
         _cut(repo, "v1.0.0")
@@ -538,3 +580,31 @@ class TestTailDeferred:
         assert subject.status == bc.RELEASE_OK, subject
         assert shapes["pr"] in {e.commit for e in subject.owed}
         assert "src/pr.py" in subject.files
+
+
+# ---------------------------------------------------------------------------
+# The round budget never charges it (Chunk 06)
+# ---------------------------------------------------------------------------
+
+
+class TestTheRoundBudgetNeverChargesIt:
+    """A release batch review is the release's own step on the integration
+    branch, not a round on a scope's body of work: charged, a scope resolving on
+    the base could refuse it, holding a per_release release with `--force` the
+    only route."""
+
+    def test_a_release_span_is_cadence_and_takes_no_boundary_slot(self):
+        body_of = {"r1": {"mode": CUMULATIVE, "span": "release"}, "b1": {"mode": CUMULATIVE},
+                   "r2": {"mode": CUMULATIVE, "span": "release"}, "b2": {"mode": CUMULATIVE}}
+        # b1 keeps the scope's first-boundary slot; b2 is a charged repeat.
+        assert cc._cadence_round_ids(["r1", "b1", "r2", "b2"], body_of) == {"r1", "b1", "r2"}
+
+    def test_the_dispatch_passes_an_exhausted_budget(self, repo, tmp_path):
+        _commit(repo, {".prawduct/project-state.yaml": "review_round_budget: 1\n"}, "budget")
+        _released(repo)
+        head = _tree(repo)
+        for _ in range(2):  # the first takes the boundary slot, the second spends the budget
+            _review(repo, head, head, CUMULATIVE, extra={"scope": "x"})
+        proc = _begin_release(repo, tmp_path, "--scope", "x")
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert _manifest(repo)["span"] == "release"

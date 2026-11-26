@@ -23,8 +23,7 @@ drop the key, which is the stricter direction.
 The release check's reader reads it at the integration branch's tip. Anything but exactly
 `per_release` reads `per_pr`. The key is documented in `docs/project-state-keys.md` and hinted in
 the state template, and the NFR amendment is recorded beneath the clause, whose words stay as
-ratified. `per_release` is read and changes nothing yet: no gate, inference or review consults it
-until the later chunks of this scope land.
+ratified.
 
 ### Chunk 02: a release anchor, and every judgeable commit since it
 Wave 1's `check-boundary-coverage` found merges only through the fragments they added, so work
@@ -56,12 +55,13 @@ advice, and `check-releasability`'s exit is unchanged.
 A release that defers boundary reviews needs a review that reads what was deferred, and a rule
 that credits it without loosening any PR gate. `critic-begin --mode cumulative --span release`
 dispatches that review on the integration base's own checkout, at its tip, with a clean tree. Its
-interval is the release anchor to HEAD. It rates the changed files of every release entry no
+interval is the release anchor to HEAD (Chunk 06: or from the first parent of an owed entry
+older than the anchor). It rates the changed files of every release entry no
 boundary review covered and reads the rest of the span as `files_context`. The manifest records
 `span: release` with a `span_reason` naming the anchor. It refuses, naming the code and writing
 nothing, off the base or off its tip (`off-base`), on a dirty tree (`dirty-tree`), with no anchor
 (`no-anchor`), when the classification cannot run (`unevaluable`), or when the entries owed a read
-change nothing that still differs from the anchor (`no-subject`). It exits 3 when every entry is
+change nothing that still differs from where the span starts (`no-subject`). It exits 3 when every entry is
 already covered. `--force` overrides none of these.
 
 A release-span fact is never a coverage edge, even when it rated every file, so no PR gate verdict
@@ -112,13 +112,43 @@ verify close says the branch is not covered but passes, and `check-pr-hygiene` l
 it stands on. A tail on a risk surface, a file the review did not name, an open blocker, or an
 anchor review from before the merge-base still buys the verify round, and `per_pr` is unchanged.
 
+### Chunk 06: the release check blocks a per_release release
+The moved review and the deferred tail are owed to a check that now blocks. Under `per_release`,
+read at the integration branch's tip, `check-releasability` refuses the release with
+`boundary-uncovered:` while any entry `check-boundary-coverage` lists is not covered (an unreviewed
+merge, a `tail-deferred` tail, work committed on the base), naming each one and the release batch
+review that answers it, and with `boundary-unevaluable:` when the check cannot answer, a missing
+release anchor included. It asks on the no-pending path too, so work merged with no fragment
+cannot ship through "nothing to classify". `check-boundary-coverage --gate` exits 1 and 3 on the
+same verdict, prints the policy it read and why, and under `--json` adds `policy` and `gate`; under
+`per_pr` it exits 0 and the advice is unchanged, as is every exit of the bare op. Where the
+integration branch's state cannot be read at all, a checkout declaring `per_release` is held to
+it, the stricter reading for a release. The PR skill's release guard runs `--gate` and stops on
+either refusal.
+
+Four routes out that the gate would otherwise have closed: a release batch review's span starts at
+the oldest owed entry's first parent when that entry sits before the anchor (a scope a pruned
+release withheld), so it can be credited; the batch rule credits an octopus merge, which read
+`unknown` for good; the review round budget never charges a release batch review; and
+`review-stats` files it under its own `release` span (report schema 15), not `full`. The lane's
+eligibility and the fix-tail deferral now read risk surfaces as the integration branch holds them
+too (the merge-base and the tip), so a branch cannot rewrite its own `risk_surfaces:` to buy
+either. The review close names the lane's review where the lane holds, not a boundary
+`cumulative`. `project-state-keys.md` lists every class a correct release can still meet, whether
+it blocks, and the way out.
+
 ## Consumer note
 A new opt-in key, `boundary_review:` in `.prawduct/project-state.yaml` (see
-`/prawduct:methodology project-state`). `per_release` already changes which review inference asks
-for at an eligible branch's last chunk, and lets a blocker-free fix tail pass
-`check-cumulative-critic` (exit 0, `satisfied (fix tail deferred to the release)`) and the Stop
-gate unreviewed, but the release check that the moved review and the deferred tail are owed to
-does not block yet; leave it unset. Nothing changes for a repo that does not set it.
+`/prawduct:methodology project-state`). Nothing changes for a repo that does not set it. Set to
+`per_release` on your integration branch, an eligible branch's PR is covered by its inner review,
+a blocker-free fix tail may merge unreviewed (`check-cumulative-critic` exit 0, `satisfied (fix tail
+deferred to the release)`), and `check-releasability` then refuses the release
+(`boundary-uncovered:`) until a release batch review on the integration branch has read that work:
+`/prawduct:critic cumulative`, dispatched as `critic-begin --mode cumulative --span release`. It
+also refuses (`boundary-unevaluable:`) when it cannot answer, including when the repo has no
+release anchor yet: opt in after your first tagged or cut release. Read the key's entry in
+`project-state-keys.md` before opting in; it lists what can still hold a correct release and how
+to clear each.
 
 `check-boundary-coverage` (and the count line `check-releasability` prints) now also lists every
 judgeable commit since your last release, including work committed on the integration branch
@@ -127,7 +157,8 @@ without a change fragment, so expect more entries and a count line that names th
 `both`; `walk-failed` when git could not list the commits since the anchor), and a new covered
 class, `release-bookkeeping`, for a commit that changes only the files `release_version_files:`
 declared at your last release. A merge whose fix tail the PR gate deferred reads `tail-deferred`,
-not covered. Neither command's exit code changes.
+not covered. Under `per_pr` neither command's exit code changes; `check-boundary-coverage --gate`
+is the blocking reading, exit 0 there.
 
 `critic-begin --mode cumulative --span release`, run on your integration branch, reviews everything
 since your last release that no boundary review read, and `check-boundary-coverage` then reads that

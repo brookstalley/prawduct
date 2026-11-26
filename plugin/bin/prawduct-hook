@@ -2254,7 +2254,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     `--span release` (with `--mode cumulative` only) is the release batch
     review (#1232): run on the integration base's own checkout at its tip,
-    with a clean tree, it reviews release anchor → HEAD and rates only the
+    with a clean tree, it reviews release anchor → HEAD (from the oldest owed
+    entry's first parent when one sits before the anchor) and rates only the
     files of the release entries no boundary review covered
     (`critic_consolidate.begin_review` states the interval). Its refusals exit
     1 naming the code (`off-base`, `dirty-tree`, `no-anchor`, `unevaluable`,
@@ -7350,9 +7351,17 @@ def cmd_check_boundary_coverage(project_dir: Path, args: list[str] | None = None
     newer plugin wrote, or a fault inside the classification, which is named
     rather than raised), the exit-code scheme's "could not answer". The classification and its reasons
     live in ``lib.boundary_coverage``, reached lazily so the hook's top level
-    stays lib-free."""
+    stays lib-free.
+
+    ``--gate`` is the release check's blocking reading (#1232), with the policy
+    read at the integration branch's tip (``review_lane.release_policy``):
+    under ``per_release`` exit 1 when any entry is not covered
+    (``boundary-uncovered``) and 3 when it could not answer, a missing release
+    anchor included (``boundary-unevaluable``), each on stderr with its remedy;
+    under ``per_pr`` exit 0, the advice unchanged. Either way it prints the
+    policy it read and why, and ``--json`` adds ``policy`` and ``gate``."""
     argv = list(args or [])
-    rejected = _reject_unknown_args("check-boundary-coverage", argv, {"--json"})
+    rejected = _reject_unknown_args("check-boundary-coverage", argv, {"--json", "--gate"})
     if rejected is not None:
         return rejected
     as_json = "--json" in argv
@@ -7362,6 +7371,27 @@ def cmd_check_boundary_coverage(project_dir: Path, args: list[str] | None = None
     from lib import boundary_coverage  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
 
     report = boundary_coverage.classify_pending(project_dir)
+    if "--gate" in argv:
+        from lib import review_lane  # noqa: PLC0415 — lazy, as above
+
+        policy = review_lane.release_policy(project_dir)
+        gate = boundary_coverage.release_gate(report, policy)
+        if as_json:
+            print(json.dumps({
+                **report.as_dict(),
+                "policy": {"value": policy.value, "source": policy.source, "note": policy.note},
+                "gate": gate.as_dict(),
+            }, indent=2, sort_keys=True))
+            return gate.exit
+        print(boundary_coverage.render(report),
+              file=sys.stdout if report.status == "ok" else sys.stderr)
+        read_at = f" (read at {policy.source})" if policy.source else ""
+        print(f"boundary_review: {policy.value}{read_at}"
+              + (f" — {policy.note}" if policy.note else "")
+              + ("" if policy.per_release else "; the release check does not block on this"))
+        if gate.message:
+            print(gate.message, file=sys.stderr)
+        return gate.exit
     if as_json:
         print(json.dumps(report.as_dict(), indent=2, sort_keys=True))
     elif report.status == "ok":
@@ -11439,7 +11469,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 #    That is the only reason the sentences above talk around it.
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--session-model <id>] [--scope <s>] [--chunks <id>[,<id>...]] [--force]|critic-end|critic-discard|"
+    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--session-model <id>] [--scope <s>] [--chunks <id>[,<id>...]] [--span release] [--force]|critic-end|critic-discard|"
     "critic-restore <review-id>|critic-consolidate|validate-partial <path>|"
     "native-review prepare <review-id> <session-checkout>|native-review record <review-id> [--text-file <path>]|native-review show [<review-id>]|"
     "subagent-stop|"
@@ -11465,7 +11495,7 @@ _USAGE = (
     "check-pr-doc-only|check-change-log-entry|check-branch-pushed [<branch>]|"
     "check-pr-hygiene [--json]|check-pr-body [<body file>] [--template <path>] [--json]|"
     "check-releasability [--release vX.Y.Z]|"
-    "check-boundary-coverage [--json]|"
+    "check-boundary-coverage [--json] [--gate]|"
     "check-plugin-active [--path P] [--context onboard|doctor|migrate] [--json]|"
     "check-learnings-pairing [deprecated, inert]|"
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "

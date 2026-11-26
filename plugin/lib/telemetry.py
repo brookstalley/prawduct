@@ -75,7 +75,10 @@ from .timewindow import in_window, is_usable_bound
 #: review's runs (#1130), reported apart from every Critic aggregate.
 #: Bumped to 14 when `native_review` gained `by_stage`: inner and boundary
 #: native runs, whose pooled median described neither (#1166).
-REPORT_SCHEMA_VERSION = 14
+#: Bumped to 15 when `by_span` gained `release`: a release batch review
+#: (`critic-begin --span release`, #1232), which read as `full` and filed its
+#: anchor sentence among the full spans' decline codes.
+REPORT_SCHEMA_VERSION = 15
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -84,11 +87,13 @@ REPORT_SCHEMA_VERSION = 14
 #: ``None``, rendered "(unrecorded)": "not measured" must not read as a stage.
 _STAGES = ("inner", "boundary")
 
-#: A cumulative's two spans, as `critic-begin` records them. Unlike a stage, a
-#: missing span IS known: no cumulative was bounded before the field existed,
-#: so a cumulative event without one reviewed the whole bundle and reads `full`
-#: (its reason `unrecorded`). Other modes have no span and are not grouped.
-_SPANS = ("bounded", "full")
+#: A cumulative's three spans, as `critic-begin` records them: `release` is the
+#: release batch review, which reads from the release anchor, not a branch's
+#: bundle. Unlike a stage, a missing span IS known: no cumulative was bounded
+#: before the field existed, so a cumulative event without one reviewed the
+#: whole bundle and reads `full` (its reason `unrecorded`). Other modes have no
+#: span and are not grouped.
+_SPANS = ("bounded", "full", "release")
 
 #: Ledger kind -> the tally it feeds. Exact kinds, never a `learning.` prefix
 #: match: a future kind this report has no column for must surface as
@@ -793,7 +798,7 @@ def aggregate_review_stats(
         by_scope.setdefault(row["scope"], []).append(row)
         by_stage.setdefault(row["stage"], []).append(row)
         if row["mode"] == "cumulative":
-            by_span["bounded" if row["span"] == "bounded" else "full"].append(row)
+            by_span[row["span"] if row["span"] in ("bounded", "release") else "full"].append(row)
 
     top_files, files_attributed_total = _top_files(rows)
     return {

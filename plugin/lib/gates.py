@@ -4068,9 +4068,10 @@ def fix_tail_deferral(
        blocked prefix; this one also refuses a blocker recorded by a review the
        composition never walked (one at the tip itself, say), because a
        BLOCKING finding never defers.
-    4. **No tail path is a risk surface** (:func:`risk.paths_touch_risk_surface`,
-       every path the tail changes, judgeable or not): a tail on a risk surface
-       still buys its verify round.
+    4. **No tail path is a risk surface** (:func:`risk.paths_touch_held_risk_surface`,
+       every path the tail changes, judgeable or not, against the surfaces this
+       checkout, the merge-base and the base's tip declare, so a branch cannot
+       remove one): a tail on a risk surface still buys its verify round.
 
     Returns None when it does not defer, including whenever something could not
     be read (a relaxation that cannot be evaluated relaxes nothing). Otherwise
@@ -4134,7 +4135,13 @@ def _fix_tail_deferral(project_dir, facts, base_tree, tip_tree, merge_base, verd
     tail = evidence.tree_diff(project_dir, anchor_tree, tip_tree)
     if tail is None:
         return None
-    touched, _why = risk.paths_touch_risk_surface(gitstate.get_prawduct_dir(project_dir), tail)
+    # Risk surfaces as the integration branch held them too (the merge-base,
+    # and the base's tip or the merged branch's tip), so a branch cannot
+    # rewrite its own surfaces to buy the deferral.
+    held_at = (merge_base, coverage._resolve_base_branch(project_dir)[0] if tip == "HEAD" else tip)
+    touched, _why = risk.paths_touch_held_risk_surface(
+        project_dir, gitstate.get_prawduct_dir(project_dir), tail, held_at
+    )
     if touched:
         return None
 

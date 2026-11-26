@@ -176,8 +176,14 @@ same set in executable running order, and is the document to work from when actu
    line. The op reads the grant the PR gate recorded, or re-decides from the branch's suite runs.
    Grants and suite runs stay in the clone that recorded them, so a release cut from another clone
    can read such a merge as `uncovered`; its reason says so. The reopen commit that bumps only the
-   declared version files reads `release-bookkeeping`, also covered. Those lines are
-   advice and never change its exit. Read each NOTE as work no boundary review read, before it ships. Full branch-by-branch
+   declared version files reads `release-bookkeeping`, also covered. Here, under `boundary_review:
+   per_pr` (the default), those lines are advice and never change its exit. Read each NOTE as work
+   no boundary review read, before it ships. A repo that declares `boundary_review: per_release`
+   (this one does not) gets a refusal instead: `boundary-uncovered:` until a release batch review
+   (`critic-begin --mode cumulative --span release` on the integration branch at its tip) has read
+   every entry not covered, nothing pending or not, and `boundary-unevaluable:` when the check
+   cannot answer, a missing release anchor included (`plugin/docs/project-state-keys.md`
+   `boundary_review` lists what can still meet it and the way out). Full branch-by-branch
    handling is Phase 0 of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.
 1. **Merge `develop` → `main`.**
 2. **Bump the version** in `plugin/.claude-plugin/plugin.json` `version` **and** `plugin/VERSION` **and** `pyproject.toml`

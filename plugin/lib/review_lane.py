@@ -10,7 +10,10 @@ branch forked and at its tip now: a branch that adds ``per_release`` is still
 supply its own authority, and a branch forked while the integration branch said
 ``per_release`` loses the lane when the integration branch drops it. A branch may
 opt out, never in. Every value this module cannot read, and every value but
-exactly ``per_release``, is ``per_pr``, the stricter policy.
+exactly ``per_release``, is ``per_pr``, the stricter policy for a PR. For the
+release check ``per_release`` is the stricter one, so :func:`release_policy`
+lets a checkout's own ``per_release`` stand where the integration branch's tip
+cannot be read at all.
 """
 
 from __future__ import annotations
@@ -138,3 +141,42 @@ def boundary_review_policy_at(project_dir: Path, rev: str) -> Policy:
     if declared is not None and declared not in VALUES:
         return Policy(PER_PR, rev, _unknown_note(declared, f"at {rev}"))
     return Policy(PER_PR, rev)
+
+
+def release_policy(project_dir: Path) -> Policy:
+    """The policy the release check gates under: the one ``check-boundary-coverage
+    --gate`` and ``check-releasability`` both read.
+
+    It is the integration branch's tip (:func:`boundary_review_policy_at` at
+    ``coverage.repo_base_branch``), because that is what the PRs it holds were
+    judged against. For the release check ``per_release`` is the stricter
+    reading, so where the tip cannot be read at all (no integration base, or no
+    ``project-state.yaml`` git can show there) this checkout's own declaration
+    stands: a repo that declares ``per_release`` is not let past its release
+    check by an unreadable ref. Where the tip reads, a checkout declaring
+    ``per_release`` that the tip does not is told so in the note, and is not
+    gated: the PRs it would hold were judged ``per_pr``."""
+    from . import coverage  # noqa: PLC0415
+
+    project_dir = Path(project_dir)
+    base, why = coverage.repo_base_branch(project_dir)
+    _state, working = read_scalar_yaml_key(
+        project_dir / ".prawduct" / "project-state.yaml", BOUNDARY_REVIEW_KEY
+    )
+    if base and coverage._state_in(project_dir, base) is not None:
+        policy = boundary_review_policy_at(project_dir, base)
+        if not policy.per_release and working == PER_RELEASE and not policy.note:
+            return Policy(PER_PR, base, (
+                f"this checkout declares `{BOUNDARY_REVIEW_KEY}: {PER_RELEASE}` and {base}'s tip "
+                f"does not, so the release check reads {PER_PR}: the PRs it would hold were "
+                f"judged {PER_PR}"
+            ))
+        return policy
+    where = f"at {base}" if base else f"(no integration base resolves: {why})"
+    if working == PER_RELEASE:
+        return Policy(PER_RELEASE, "the working tree", (
+            f"no project-state.yaml reads {where}, so this checkout's "
+            f"`{BOUNDARY_REVIEW_KEY}: {PER_RELEASE}` is in force: the release check fails closed"
+        ))
+    # Nobody declared per_release anywhere this can read, so there is nothing to explain.
+    return Policy(PER_PR, "")

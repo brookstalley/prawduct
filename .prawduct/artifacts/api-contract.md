@@ -173,15 +173,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `native_review` wrapper, and a dev cumulative that does not pair says why in a note;
   `--span release`, with `--mode cumulative` only (added 2026-11-26, #1232), is the release batch
   review: run on the integration base's own checkout at its tip with a clean tree, its interval is
-  the release anchor → HEAD, `files_reviewed` is the changed files of every release entry
-  `check-boundary-coverage` reads not covered that still differ from the anchor, and the rest of
+  the release anchor → HEAD (from the oldest owed entry's first parent instead when one sits at or
+  before the anchor, 2026-11-26), `files_reviewed` is the changed files of every release entry
+  `check-boundary-coverage` reads not covered that still differ from that start, and the rest of
   the span is `files_context`; the manifest and fact record `span: release` and a `span_reason`
   naming the anchor, and the fact is never a coverage edge (only the release check's
   `batch_review_covers` credits it). Refused with exit 1 and `--span release refused (<code>)`
   on stderr, before anything is written: `off-base` (not the base's checkout, or HEAD is not the
   base's tip), `dirty-tree`, `no-anchor`, `unevaluable` (the classification could not run),
-  `no-subject` (what is owed changes nothing that still differs from the anchor); exit 3 when every
-  release entry is already covered. `--force` overrides none of them. Any other `--span` value, or
+  `no-subject` (what is owed changes nothing that still differs from the start); exit 3 when every
+  release entry is already covered. `--force` overrides none of them, and the review round budget
+  never charges it. Any other `--span` value, or
   `--span` with another mode, is exit 1),
   `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
@@ -330,9 +332,13 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   scan of something), `unparsed[]` and `unruled[]` (test files in a language with no rules yet).
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
   `check-branch-pushed` (0/1/**3**),
-  `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
+  `check-releasability [--release vX.Y.Z]` (under `boundary_review: per_release`, read at the
+  integration branch's tip, it also refuses with exit 1 on `check-boundary-coverage --gate`'s
+  verdict, nothing pending or not: `boundary-uncovered:` naming each entry not covered and the
+  release batch review, or `boundary-unevaluable:`; added 2026-11-26, #1232),
+  `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
-  **`check-boundary-coverage [--json]`** (read-only, advisory; owner `lib/boundary_coverage.py`)
+  **`check-boundary-coverage [--json] [--gate]`** (read-only, advisory without `--gate`; owner `lib/boundary_coverage.py`)
   classifies first-parent commits on the integration base: the one that added each release-pending
   scope's fragment, unioned with every commit after the **release anchor** that changes a judgeable
   file, one entry per commit. The anchor is the nearer the tip of the newest first-parent commit
@@ -367,6 +373,15 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   two fragments one merge added share one entry, scopes joined by `, `), `anchor` (`{commit, tree,
   source, reason}`, `source` `release-file` | `tag`, or `null`), `no_anchor_reason` (why there is
   none, else `null`) and `refusals[]` (fragments the pending set refused, which are not classified).
+  `--gate` (added 2026-11-26, #1232) is the release check's blocking reading, the verdict
+  `check-releasability` refuses on (`boundary_coverage.release_gate`), under the policy read at
+  the integration branch's tip (`review_lane.release_policy`). Under `per_release`: exit 1 when any
+  entry is not covered (`boundary-uncovered:` on stderr, with the release batch review as its
+  remedy), 3 when it could not answer — unevaluable, a fragment the pending set refused, or no
+  release anchor (`boundary-unevaluable:`, with its route) — else 0. Under `per_pr`: exit 0, the
+  advice unchanged. Either way stdout adds a `boundary_review: <value> (read at <ref>)` line with
+  the policy's note, and `--gate --json` adds `policy` (`{value, source, note}`) and `gate`
+  (`{exit, code, message}`) to the keys above. The bare op's exits do not change.
   **`check-pr-hygiene [--json]`** (read-only; owner `lib/pr_gate.py`) answers over merge-base…HEAD of
   the checked-out branch, the base from the resolver `resolve-base` uses. Named results:
   `credential-shape` (refuses: a line the branch ADDS matches the plugin's one credential denylist,
@@ -951,7 +966,9 @@ would have said, because the argument is only convincing in the concrete.
   traceback)* — folded into 0 it prints a coverage count over a pending set or a store it never read, so
   a release reads "all covered" off nothing; folded into 1 it would give advice a failing exit it
   never has, since every answered run exits 0 whatever it found. It is advice, so 3 blocks nothing
-  that reads it as advice; it is the "could not answer" the scheme reserves.
+  that reads it as advice; it is the "could not answer" the scheme reserves. `--gate` keeps that
+  meaning under `per_release`, where it BLOCKS (2026-11-26): a release check that cannot answer
+  refuses the release.
 - `check-pr-hygiene` (2026-11-11), *no base or no merge-base* — folded into 0 it reports a clean
   branch off an interval it never had; folded into 1 it claims a refusing result it never computed.
   A single result it could not read is `unchecked` in the output, not a third exit, unless that

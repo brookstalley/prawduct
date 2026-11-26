@@ -127,7 +127,8 @@ STAGE_VALUES = frozenset({STAGE_INNER, STAGE_BOUNDARY})
 #: A ``cumulative``'s span: the delta since the last boundary review, or the
 #: whole bundle (``begin_review``; ``gates.boundary_frontier`` decides), or a
 #: release batch on the integration base (``critic-begin --span release``:
-#: release anchor → HEAD, rating only the merges no boundary review read).
+#: release anchor → HEAD, or from an older owed entry's first parent, rating
+#: only the merges no boundary review read).
 SPAN_BOUNDED = "bounded"
 SPAN_FULL = "full"
 SPAN_RELEASE = coverage_algebra.RELEASE_SPAN
@@ -614,6 +615,23 @@ _RIDES_BOUNDARY_REVIEW_LEAD = (
 )
 
 
+def _rides_lane_review_lead() -> str:
+    """The same lead when the review still owed is the per-release lane's
+    (``critic_mode.OWED_LANE``): under ``boundary_review: per_release`` an
+    eligible plan's boundary moved to the release, so no ``cumulative`` is
+    coming, and the lane's whole-branch ``chunk`` starts from the tree this
+    review covered once it is a commit. Built on call: ``critic_mode`` is
+    imported lazily, as everywhere in this module."""
+    from . import critic_mode  # noqa: PLC0415 — lazy; critic_mode imports this module lazily too
+
+    return (
+        f"This plan still owes {critic_mode.LANE_REVIEW_NAME}, which starts from the"
+        " tree this review just covered once that tree is a commit. So commit it as"
+        " it stands, then fix what is worth fixing and commit that too: that review"
+        " covers the fix, not a round of its own. Don't run `verify-resolutions` for it. "
+    )
+
+
 #: What fixing a non-blocking item costs, and how to find out before paying it.
 #:
 #: Shared by every zero-blocking close that still carries something a builder
@@ -1089,6 +1107,8 @@ def _next_action_core(
         lead = (
             _RIDES_BOUNDARY_REVIEW_LEAD
             if rides_next_review == critic_mode.OWED_BOUNDARY
+            else _rides_lane_review_lead()
+            if rides_next_review == critic_mode.OWED_LANE
             else _RIDES_NEXT_REVIEW_LEAD
         )
         fix_tail = ""
@@ -2903,7 +2923,7 @@ def _round_budget_verdict(
     ``{"status": "exhausted", ...the same keys}``,
     ``{"status": "disabled"}`` when the repo set the budget to ``null``, or
     ``{"status": "unavailable", "reason"}``. ``incoming`` is the dispatch being
-    asked about, as a fact body's ``mode`` and ``chunks``. When it is itself a
+    asked about, as a fact body's ``mode``, ``chunks`` and ``span``. When it is itself a
     cadence step (:func:`_cadence_round_ids`), ``incoming_is_cadence`` is true
     and the verdict is never ``exhausted``.
 
@@ -3037,6 +3057,12 @@ def _cadence_round_ids(review_ids: "list[str]", body_of: dict) -> "set[str]":
     step can be shown to have bought it. A ``chunk`` review like that is
     charged, so name the chunk with ``--chunks``. Every later round is charged
     as before.
+
+    **A release batch review is never charged** (``span: release``, #1232):
+    it is the release's own step, run on the integration branch, not a round
+    on any scope's body of work, and refusing it would hold a ``per_release``
+    release with ``--force`` its only route. It takes no scope's boundary slot
+    either, so the scope's own first boundary review stays free.
     """
     from . import buildplan_refs, plan_status  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
@@ -3047,6 +3073,9 @@ def _cadence_round_ids(review_ids: "list[str]", body_of: dict) -> "set[str]":
         body = body_of.get(rid) or {}
         mode = mode_token_of(body.get("mode"))
         if mode not in FULL_ROUND_MODES:
+            continue
+        if body.get("span") == SPAN_RELEASE:
+            cadence.add(rid)
             continue
         named = {
             buildplan_refs._normalize_chunk_id(c)
@@ -4027,10 +4056,11 @@ def begin_review(
     - ``cumulative`` with ``span_request == "release"`` (``critic-begin --span
       release``, the release batch review, #1232) — on the integration base's
       own checkout at its tip, with a clean tree: base = the release anchor
-      (``boundary_coverage.release_anchor``), head = ``HEAD`` (``span: release``,
+      (``boundary_coverage.release_anchor``), or the first parent of the oldest
+      owed entry when one sits at or before it, head = ``HEAD`` (``span: release``,
       ``span_reason`` naming the anchor). ``files_reviewed`` is the subject: the
       changed files of every release entry no boundary review covered that still
-      differ from the anchor (``boundary_coverage.release_subject``); the rest of
+      differ from that start (``boundary_coverage.release_subject``); the rest of
       the span rides as ``files_context``. Never an edge
       (``coverage_algebra.review_edges``); the release check credits it through
       ``coverage_algebra.batch_review_covers``. Refused before any manifest is
@@ -4038,7 +4068,7 @@ def begin_review(
       base or behind/ahead of its tip (``off-base``), on a dirty tree
       (``dirty-tree``), with no release anchor (``no-anchor``), when the
       classification cannot be read (``unevaluable``), or when the entries owed a
-      read change nothing that still differs from the anchor (``no-subject``);
+      read change nothing that still differs from the start (``no-subject``);
       ``no-review-needed`` (exit 3) when every entry is already covered. ``force``
       overrides none of these: a release review with no subject would rate nothing.
     - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;
@@ -4407,26 +4437,27 @@ def begin_review(
                 "kind": f"release-{subject.code}",
                 "reason": f"--span release refused ({subject.code}): {subject.reason}",
             }
-        anchor = subject.anchor
-        base_commit, base_tree = anchor.commit, anchor.tree
+        base_commit, base_tree, span_reason = subject.start
         head_commit = dispatch_commit
         head_tree = capture["head_tree"]
         base_reviewed = base_commit
         head_anchor = "committed HEAD"
-        span, span_reason = SPAN_RELEASE, anchor.reason
+        span = SPAN_RELEASE
         release_files = set(subject.files)
         notes.append(
             f"this is a release batch review of {subject.base}: it rates the "
             f"{len(subject.owed)} release entr{'y' if len(subject.owed) == 1 else 'ies'} no boundary "
-            f"review covered ({', '.join(e.label for e in subject.owed)}) from the release anchor "
-            f"{anchor.commit[:12]} to HEAD, and reads the rest of the span as context"
+            f"review covered ({', '.join(e.label for e in subject.owed)}) from "
+            + (f"the release anchor {base_commit[:12]}" if base_commit == subject.anchor.commit
+               else f"{base_commit[:12]}, before the release anchor {subject.anchor.commit[:12]}, "
+                    "where the oldest of them starts")
+            + " to HEAD, and reads the rest of the span as context"
         )
         if subject.uncreditable:
             notes.append(
                 "the release check cannot credit this review for "
                 f"{', '.join(e.label for e in subject.uncreditable)}: "
-                "each sits at or before the release anchor or names no commit, so no review "
-                "from the anchor brackets it"
+                "each names no commit on the base's first-parent line, so no review brackets it"
             )
     elif mode_token == "cumulative":
         from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
@@ -5051,6 +5082,7 @@ def begin_review(
             incoming={
                 "mode": MODE_TOKEN_TO_VERBOSE[mode_token],
                 "chunks": list(declared_chunks),
+                "span": span,
             },
         )
         if budget["status"] == "unavailable":
@@ -7129,7 +7161,8 @@ def _plan_owes_a_later_review(
     fact: "dict | None" = None,
 ) -> "str | None":
     """Which review the branch's plan owes after the one just consolidated —
-    ``critic_mode.OWED_LATER_CHUNK`` or ``OWED_BOUNDARY`` — or ``None``.
+    ``critic_mode.OWED_LATER_CHUNK`` or ``OWED_BOUNDARY``, or ``OWED_LANE``
+    where the boundary owed is the per-release lane's ``chunk`` — or ``None``.
 
     The close's half of the interval-extension deferral: the review just
     written covers its tree with no blocker (the caller only asks on a
@@ -7159,7 +7192,13 @@ def _plan_owes_a_later_review(
             critic_mode.binding_progress(project_dir, binding),
             chain,
         )
-        return owed[0] if owed else None
+        if not owed:
+            return None
+        if owed[0] == critic_mode.OWED_BOUNDARY and critic_mode.lane_eligibility(
+            project_dir, prawduct_dir, binding, critic_mode.binding_progress(project_dir, binding)
+        ).eligible:
+            return critic_mode.OWED_LANE
+        return owed[0]
     except (OSError, ValueError):
         return None
 

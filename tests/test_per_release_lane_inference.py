@@ -277,6 +277,21 @@ class TestEachConditionFlipsItBack:
             tmp_path, "risk surface", state_extra="risk_surfaces:\n  - src/chunk_02.py\n"
         )
 
+    def test_a_branch_cannot_drop_its_own_risk_surface(self, tmp_path):
+        """main declares `src/chunk_02.py` a risk surface; the branch rewrites
+        `risk_surfaces: []`. The short-plan shape reads this checkout, so it
+        holds; the lane reads the integration branch too, so it does not."""
+        _lane_repo(tmp_path, state_extra="risk_surfaces:\n  - src/chunk_02.py\n")
+        _write(tmp_path, ".prawduct/project-state.yaml",
+               "base_branch: main\nrisk_surfaces: []\nboundary_review: per_release\n")
+        _commit(tmp_path, "chore: drop the risk surface")
+        lane = _eligibility(tmp_path)
+        assert not lane.eligible, lane.reason
+        assert "src/chunk_02.py matched risk surface src/chunk_02.py" in lane.reason, lane.reason
+        assert infer_mode(tmp_path, None)[0] == "cumulative"
+        # The per_pr short-plan deferral is unchanged: it still reads this checkout.
+        assert _deferral(tmp_path).defers
+
     def test_four_chunks(self, tmp_path):
         _assert_not_lane(
             tmp_path, "the plan has 4 chunks", chunks=4, committed=("01", "02", "03", "04")
@@ -383,6 +398,38 @@ class TestAfterTheLanesReview:
         assert "cumulative" not in lane[1], lane
         assert per_pr is not None and per_pr[1].endswith("it infers the cumulative"), per_pr
         assert "so the boundary `cumulative` is every chunk's review" in per_pr[1], per_pr
+
+    def test_the_close_names_the_lanes_review_not_a_cumulative(self, tmp_path):
+        """The review close's ride-along lead (the extension deferral's twin):
+        under the lane the review still owed is the lane's `chunk`, so it never
+        promises a boundary `cumulative`; per_pr keeps its words."""
+        from test_short_plan_deferral import _short_plan_branch  # noqa: PLC0415
+
+        owed = {}
+        for name, extra in (("lane", "boundary_review: per_release\n"), ("per_pr", "")):
+            repo = tmp_path / name
+            repo.mkdir()
+            _short_plan_branch(repo, committed=("01", "02"), plan_committed=True, state_extra=extra)
+            head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+            captured = evidence.capture_tree(repo)
+            assert evidence.append_fact(repo, "review", "rev-03", {
+                "mode": _MODE_CHUNK, "chunks": ["03"], "head_commit": head,
+                "dispatch_commit": head,
+                "base_tree": _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip(),
+                "head_tree": captured["tree"], "files_changed": ["src/wip.py"],
+                "files_reviewed": ["src/wip.py"], "findings": [],
+                "counts": {"blocking": 0, "warning": 0, "note": 0},
+            })["status"] == "appended"
+            facts = evidence.read_facts(repo)["facts"]
+            fact = next(f for f in facts if f.get("id") == "rev-03")
+            owed[name] = critic_consolidate._plan_owes_a_later_review(repo, repo / ".prawduct", facts, fact)
+        assert owed == {"lane": critic_mode.OWED_LANE, "per_pr": critic_mode.OWED_BOUNDARY}, owed
+        lane = critic_consolidate.next_action_line("rev-x", 0, 1, 0, rides_next_review=owed["lane"])
+        lead = lane.split(" 0 blocking")[0]  # the ride-along lead, before the shared close
+        assert lead.startswith(f"This plan still owes {critic_mode.LANE_REVIEW_NAME}"), lane
+        assert "cumulative" not in lead, lead
+        per_pr = critic_consolidate.next_action_line("rev-x", 0, 1, 0, rides_next_review=owed["per_pr"])
+        assert "This plan still owes its boundary `cumulative`" in per_pr, per_pr
 
     def test_a_committed_fix_infers_the_lane_chunk_not_a_cumulative(self, tmp_path):
         repo = self._reviewed(tmp_path / "lane", "per_release")

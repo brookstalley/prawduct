@@ -1616,6 +1616,11 @@ def declares_boundary_cumulative(prawduct_dir: Path, plan) -> bool:
 #: the advice names the review that will, so the two stay distinguishable.
 OWED_LATER_CHUNK = "later-chunk"
 OWED_BOUNDARY = "boundary"
+#: Not an answer :func:`review_owed_after` gives: the review close's reading of
+#: :data:`OWED_BOUNDARY` where the per-release lane holds, so the review owed is
+#: :data:`LANE_REVIEW_NAME`, not a ``cumulative`` (``critic_consolidate``'s
+#: ``_plan_owes_a_later_review``).
+OWED_LANE = "lane"
 
 
 def review_owed_after(
@@ -2413,7 +2418,9 @@ def lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> L
       names a boundary review;
     - the short-plan shape holds (:func:`_short_plan_shape`: no chunk declares
       ``Critic mode:``, the branch is not the base, nothing it changed is a
-      risk surface). The shape, not :func:`short_plan_deferral`'s ``defers``,
+      risk surface), and nothing it changed is a risk surface as the
+      integration branch declares them either (:func:`risk.paths_touch_held_risk_surface`,
+      at the merge-base and the tip: a branch can add a surface, never remove one). The shape, not :func:`short_plan_deferral`'s ``defers``,
       because that also answers "not finished", and a plan the lane's review
       just finished must stay in the lane — or the first fix after that review
       would infer the very ``cumulative`` the lane moved;
@@ -2436,7 +2443,7 @@ def lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> L
 
 def _lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> LaneEligibility:
     """:func:`lane_eligibility`'s body, cheapest condition first."""
-    from . import review_lane  # noqa: PLC0415 — lazy, as this module's other lib imports are
+    from . import coverage, review_lane  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
     total = progress.total
     if total <= 0 or plan is None or plan.plan_path is None:
@@ -2463,6 +2470,17 @@ def _lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> 
         return LaneEligibility(
             False, "git could not list the paths this branch changed, so its size is unknown"
         )
+    # The shape read risk surfaces from this checkout, which the branch can
+    # rewrite. The lane is a relaxation, so it also needs them untouched as the
+    # integration branch declares them, where the branch forked and at its tip.
+    merge_base = coverage.integration_base(project_dir, base_branch).merge_base
+    if not merge_base:
+        return LaneEligibility(False, f"no merge-base with {base_branch} resolves")
+    touched, why = risk.paths_touch_held_risk_surface(
+        project_dir, prawduct_dir, paths, (merge_base, base_branch)
+    )
+    if touched:
+        return LaneEligibility(False, f"a changed path is a risk surface — {why}")
     judgeable = [p for p in paths if coverage_algebra.is_judgeable_path(p)]
     if len(judgeable) > LANE_MAX_JUDGEABLE_FILES:
         return LaneEligibility(

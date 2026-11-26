@@ -482,10 +482,37 @@ check; a tail on a risk surface still buys its verify round. BLOCKING findings c
 The value in force is the integration branch's: a PR needs it at both the merge-base and the
 branch's tip, the release check at the tip. So the branch that adds `per_release` is still judged
 `per_pr`, and so is one forked before the branch dropped it. A branch may drop it, never add it. Anything but exactly `per_release` (absent, null, a
-typo, another case) reads `per_pr`, as does a repo whose integration branch does not resolve.
+typo, another case) reads `per_pr`. A PR in a repo whose integration branch does not resolve is
+`per_pr`; the release check there takes this checkout's own value, the stricter reading for it.
+The lane and the deferral read risk surfaces the same way: `risk_surfaces:` and
+`boundary-patterns.md` as the integration branch holds them too, so a branch can add a surface,
+never remove one.
 
-Until the release batch review and the blocking release check ship, `per_release` is read and
-changes nothing.
+**The release check blocks.** `check-releasability` refuses a `per_release` release, nothing
+pending or not, with `boundary-uncovered:` while any entry `check-boundary-coverage` lists is not
+covered, and `boundary-unevaluable:` when it cannot answer; `check-boundary-coverage --gate` exits
+1 and 3 on the same verdict (0 under `per_pr`, where both stay advice). The route out of
+`boundary-uncovered` is the release batch review: on the integration branch's own checkout, at its
+tip, with a clean tree, `/prawduct:critic cumulative` dispatched as `critic-begin --mode cumulative
+--span release`. It rates what no boundary review read since the release anchor, or since the
+oldest such entry when one sits before the anchor, and a blocker it raises is fixed there and
+cleared by `verify-resolutions`.
+
+What a correct release can still meet, now that this blocks (each reads not covered unless said):
+
+| Class | Blocks? | Route out |
+|---|---|---|
+| Squash merge (`direct`) | Yes, unless its PR review spans exactly the trees it landed (`batch-covered`) | The release batch review |
+| Work committed on the base, a hotfix (`direct`) | Yes | The release batch review |
+| A reopen commit's version bump | Only when `release_version_files:` was not declared at the anchor (`direct`) | Declare it (it counts from the next release); the batch review this time |
+| Octopus merge (`unknown`) | Yes | The release batch review, which credits it like any merge |
+| A fragment no commit on the base added (untracked, or its branch unmerged): `unknown`, no commit | Yes, and no review can credit it | Commit or merge it, or delete a stray one |
+| A pruned release's withheld scope, merged before the anchor | Yes | The release batch review, whose span then starts at that scope's first parent |
+| #1250's base-advance transfer (`pr-transferred`) | No, covered. A transfer whose suite condition failed reads `uncovered` and blocks | The batch review, or the suite run its reason names |
+| A boundary review recorded in another clone | Yes until synced | `prawduct-hook evidence sync` |
+| Owed work whose every change has since been reverted | Yes: the batch review refuses `no-subject` | The batch review of any other owed work credits it too; with none, `per_pr` on the integration branch for that release |
+| No release anchor (no release file, no version tag) | Yes, `boundary-unevaluable` | Tag the commit your last release shipped (`git tag vX.Y.Z <commit>`) or cut with `cut-change-log`; with no release yet, opt in after the first |
+| The walk since the anchor failed (`walk-failed`), an unreadable or newer-schema store, a refused fragment, an unresolvable base | Yes, `boundary-unevaluable` | Fix what the reason names (update the plugin for newer facts, `base_branch:` for the base) |
 
 ```yaml
 boundary_review: per_release
