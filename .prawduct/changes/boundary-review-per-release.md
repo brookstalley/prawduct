@@ -42,14 +42,17 @@ and de-duplicated by commit, so a scope a pruned release withheld stays classifi
 lists the whole walk. A repo with neither anchor gets the fragment join alone, and the report says
 there was no anchor. A new covered class, `release-bookkeeping`, is a single-parent commit after the
 anchor whose judgeable changes are all files `release_version_files:` declared at the anchor: the
-reopen commit after a cut, which read `direct` before. Another, `reverted`, is owed work whose
-every judgeable change is back, at the base's tip, to where the release span starts: nothing of it
-ships, so a release whose owed work was all reverted needs no batch review. A declaration added since the release never
-qualifies, and an undeclared repo's fallback layout never does. A
+reopen commit after a cut, which read `direct` before. What those files now hold is not read. A
+declaration added since the release never qualifies, and an undeclared repo's fallback layout never
+does. Another covered class, `reverted`, is owed work whose every judgeable change is back, at the
+base's tip, to its content both at the release anchor and where the release span starts, or a merge
+that brought no judgeable change onto the base because its branch's changes were already there:
+nothing of it ships, so a release whose owed work was all reverted needs no batch review. A
 merge whose branch changed nothing judgeable but whose merge commit edits a judgeable file now reads
 `uncovered`, not `no-judgeable`, because the walk reaches such merges. The count line names the
-anchor and how many commits the walk found, or that the walk could not run. Prerelease tags order as
-SemVer does (`rc.10` above `rc.9`). The op also reads a base-advance transfer grant the Stop gate
+anchor and how many commits the walk found, or that the walk could not run. A prerelease tag
+(`-rc.N`, `-dev.N`) is never a release anchor: only a release file the cut committed can make a
+prerelease one. The op also reads a base-advance transfer grant the Stop gate
 recorded for exactly the merged span, the one record when both gates granted it. It is still
 advice, and `check-releasability`'s exit is unchanged.
 
@@ -163,7 +166,7 @@ classes: `release-bookkeeping`, for a commit that changes only the files `releas
 declared at your last release, and `reverted`, for owed work your integration branch has since
 put back as it was (`counts` gains both keys). A merge whose fix tail the PR gate deferred reads `tail-deferred`,
 not covered. Under `per_pr` neither command's exit code changes; `check-boundary-coverage --gate`
-is the blocking reading, exit 0 there.
+is the blocking reading, exit 0 there unless the check could not evaluate (3, as the bare op).
 
 `/prawduct:critic cumulative`, run on your integration branch's own checkout at its tip, reviews
 everything since your last release that no boundary review read, and `check-boundary-coverage` then reads that

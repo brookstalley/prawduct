@@ -247,9 +247,16 @@ W9) found M2 to M6 recorded only in docstrings.
   lane, or the first fix after that review would bring back the cumulative the lane moved. A later
   widening of `short_plan_deferral` (#1247 seam 2) is not inherited by the lane; change both.
 - **M15, `reverted`** (owner ruling 2026-11-26, R-4): an owed entry whose every judgeable file is,
-  at the base tip, back to its content at the release span's start is covered. Where the span starts
-  before the anchor, an entry reverting a change shipped between that start and the anchor also reads
-  `reverted` (the batch rule's condition 2 shares this). Veto-able.
+  at the base tip, back to its content BOTH at the release span's start and at the release anchor is
+  covered: nothing of it ships. Where the span starts before the anchor, an entry reverting a change
+  shipped between that start and the anchor matches the start but not the anchor, so it stays owed
+  (round-5 W3 and native 1, reversing this decision's first reading, which credited it). An entry
+  whose first-parent diff was read and holds no judgeable file (a merge named only by its fragment,
+  whose branch's changes were already on the base) is `reverted` too; an unread diff stays owed
+  (round-5 W1). Recorded beneath the NFR's 2026-11-25 amendment ("Clarified: 2026-11-26").
+  Open (round 5): the batch rule's condition 2 still reads against the review's own interval, so a
+  release batch review starting before the anchor credits such a revert `batch-covered` without its
+  file in the subject. Veto-able.
 - **M16, the batch fix tail asks only boundary reviews at or after the span start.** A verify-only
   tail from an older review no longer credits a later commit; it reads `direct` and the release
   batch review reads it, the safe direction. Veto-able.
