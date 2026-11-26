@@ -674,3 +674,10 @@ and a confirmation before an irreversible, outward-facing act the person asked f
 
 **2026-11-26 (later).** "yes to all recs" — PR #1254 (`fix/agent-runnable-doctor-janitor` → `develop`, agents can run doctor
 and janitor; grant-reach rails retired) is merged.
+
+**2026-11-26 (afternoon).** "Yes to all recommendations", answering two asks on PR #1258 (#1232):
+1. Merge PR #1258 (`feature/boundary-review-per-release` → `develop`).
+2. Keep every inferred design call in the build plan (M10–M21), M15's second clause included. That clause
+   relaxes the release gate: an entry whose read diff brought no judgeable file onto the base is `reverted`
+   and covered without a review, because nothing of it ships. It is owner-confirmed now, no longer only the
+   builder's call.
