@@ -507,8 +507,9 @@ class TestThisRepositorysHistory:
         """Decision 2's worked case: `436f44d3 release: prep v3.10.0` adds the
         release file, and the walk from a fixed point after it (the base as it
         stood on 2026-11-25, so a later release cannot move the answer) reaches the
-        reopen commit as release bookkeeping. `v3.10.0` is tagged on main and never
-        reachable from develop; the reachable tag (`v1.8.1`) is older on the line."""
+        reopen commit as release bookkeeping. `v3.10.0` is tagged on main, never
+        reachable from develop: promotions here are single-parent commits, so its
+        merge-base with develop is v2.0.1's commit, far older on the line."""
         anchor = bc.release_anchor(ROOT, "4dffd694152233daab3d2e960481e3e5327da102")
         assert anchor is not None and anchor.commit.startswith("436f44d3"), anchor
         assert anchor.source == bc.ANCHOR_RELEASE_FILE and "v3.10.0.md" in anchor.reason, anchor
@@ -795,6 +796,53 @@ class TestTheReleaseAnchor:
         assert "v1.0.0" in anchor.reason
         assert [e.commit for e in bc.classify_pending(repo).entries] == [after]
 
+    def test_a_merge_promoted_release_anchors_on_the_develop_commit_it_released(self, repo):
+        """The consumer repo's shape: develop is merged into `main` and the tag sits
+        on that merge, which the base never contains. The merge-base of the base and
+        the tag is the develop commit released; work after it is walked."""
+        _git(repo, "checkout", "-q", "-b", "develop", "main")
+        _commit(repo, {"src/a.py": "a = 1\n", ".prawduct/changes/.gitkeep": ""}, "feature on develop")
+        released = _commit(repo, {"src/b.py": "b = 1\n"}, "last commit before the release")
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "release 2.22.0", "develop")
+        _git(repo, "tag", "-a", "v2.22.0", "-m", "v2.22.0")
+        _git(repo, "checkout", "-q", "develop")
+        after = _commit(repo, {"src/c.py": "c = 1\n"}, "after the release")
+        anchor = bc.release_anchor(repo, "develop")
+        assert (anchor.commit, anchor.source) == (released, bc.ANCHOR_TAG), anchor
+        assert "merge-base with tag v2.22.0" in anchor.reason, anchor
+        # The tag is out of the base's reach: a reachable-only reading finds nothing.
+        assert _git(repo, "tag", "--merged", "develop") == ""
+        _write(repo, ".prawduct/project-state.yaml", "base_branch: develop\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "state")
+        assert [e.commit for e in bc.classify_pending(repo).entries] == [after]
+
+    def test_a_hotfix_tag_forked_long_ago_anchors_early_and_a_release_file_wins(self, repo):
+        """The newest version tag can sit on a line that forked long ago (a hotfix
+        branch). Its merge-base is old, so B anchors early, which only widens the
+        walk; a release file nearer the tip wins."""
+        _git(repo, "checkout", "-q", "-b", "hotfix", "main")
+        _commit(repo, {"src/hot.py": "h = 1\n"}, "hotfix")
+        _git(repo, "tag", "v9.0.1")
+        _git(repo, "checkout", "-q", "main")
+        _merged(repo, "work")
+        assert bc.release_anchor(repo, "main").commit == _git(repo, "rev-list", "--max-parents=0", "main")
+        cut = _cut(repo, "v1.0.0", ship=("work",))
+        anchor = bc.release_anchor(repo, "main")
+        assert (anchor.commit, anchor.source) == (cut, bc.ANCHOR_RELEASE_FILE), anchor
+
+    def test_a_tag_sharing_no_history_with_the_base_gives_no_anchor(self, repo):
+        _git(repo, "checkout", "-q", "--orphan", "elsewhere")
+        _git(repo, "rm", "-rqf", ".")
+        _commit(repo, {"other.txt": "o\n"}, "unrelated root")
+        _git(repo, "tag", "v5.0.0")
+        _git(repo, "checkout", "-q", "main")
+        assert bc.release_anchor(repo, "main") is None
+        # And it must not shadow a release file: the unrelated tag is no candidate.
+        cut = _cut(repo, "v1.0.0")
+        assert bc.release_anchor(repo, "main").commit == cut
+
     def test_a_tag_on_the_first_parent_line_is_its_own_anchor(self, repo):
         tagged = _commit(repo, {"plugin/VERSION": "1.0.0\n", ".prawduct/changes/.gitkeep": ""}, "1.0.0")
         _git(repo, "tag", "v1.0.0")
@@ -830,7 +878,7 @@ class TestTheReleaseAnchor:
         cut = _cut(repo, "v1.0.0", ship=("early",))
         anchor = bc.release_anchor(repo, "main")
         assert (anchor.commit, anchor.source) == (cut, bc.ANCHOR_RELEASE_FILE), anchor
-        assert "tag v0.9.0 is older" in anchor.reason
+        assert "tag v0.9.0 anchors older" in anchor.reason
 
     def test_a_tied_anchor_goes_to_the_release_file(self, repo):
         cut = _cut(repo, "v1.0.0")

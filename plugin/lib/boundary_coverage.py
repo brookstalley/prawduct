@@ -12,9 +12,9 @@ de-duplicated by commit (each entry's ``source`` says which set named it):
 
 The anchor (:func:`release_anchor`) is the nearer to the base's tip of: the newest
 first-parent commit adding a release file under ``.prawduct/releases/`` (the cut
-writes one), and the oldest first-parent commit containing the newest version tag
-reachable from the base. With neither there is no anchor, the walk is skipped and
-the report says so; the fragment join is still given. The union keeps a scope a
+writes one), and the oldest first-parent commit containing the merge-base of the
+base and the newest version tag. With neither there is no anchor, the walk is
+skipped and the report says so; the fragment join is still given. The union keeps a scope a
 pruned release withheld (merged before the anchor, still pending) classified.
 
 Each commit is classified as:
@@ -582,10 +582,12 @@ def _release_file_candidate(git, base: str) -> "tuple[str, str] | None":
     return None
 
 
-def _tag_candidate(git, base: str) -> "tuple[str, str] | None":
-    """``(tag, commit)``: the newest version-shaped tag reachable from ``base``."""
-    out = git("for-each-ref", f"--merged={base}",
-              "--format=%(refname:strip=2)%00%(objectname)%00%(*objectname)", "refs/tags")
+def _tag_candidate(git) -> "tuple[str, str] | None":
+    """``(tag, commit)``: the newest version-shaped tag by version order, whether or
+    not the base can reach it (a release tagged on a promotion merge on ``main`` is
+    never in the integration branch's history)."""
+    out = git("for-each-ref", "--format=%(refname:strip=2)%00%(objectname)%00%(*objectname)",
+              "refs/tags")
     if not out:
         return None
     best = None
@@ -599,9 +601,10 @@ def _tag_candidate(git, base: str) -> "tuple[str, str] | None":
 
 
 def _oldest_containing(git, base: str, tag_commit: str) -> "str | None":
-    """The oldest first-parent commit on ``base`` that contains ``tag_commit``.
-    A tag on the first-parent line is its own answer; a tag merged in from a side
-    line (a gitflow back-merge) is answered by the merge that brought it in."""
+    """The oldest first-parent commit on ``base`` that contains ``tag_commit``, an
+    ancestor of ``base``. One on the first-parent line is its own answer; one
+    merged in from a side line (a gitflow back-merge) is answered by the merge
+    that brought it in."""
     line = git("log", "--first-parent", "--format=%H %P", f"{tag_commit}..{base}")
     if line is None:
         return None
@@ -619,10 +622,21 @@ def _oldest_containing(git, base: str, tag_commit: str) -> "str | None":
 
 
 def release_anchor(project_dir: Path, base: str) -> "Anchor | None":
-    """The release anchor on ``base``: whichever is nearer the tip of (A) the newest
-    first-parent commit adding a release file under ``.prawduct/releases/`` and (B)
-    the oldest first-parent commit containing the newest version tag reachable from
-    ``base``. None when there is neither."""
+    """The release anchor on ``base``: whichever is nearer the tip of
+
+    - (A) the newest first-parent commit adding a release file under
+      ``.prawduct/releases/``, and
+    - (B) the oldest first-parent commit containing the merge-base of ``base`` and
+      the newest version tag (by version order, over every version-shaped tag).
+
+    B reads the merge-base so that a release tagged where the base never goes (a
+    promotion merge of develop into ``main``) anchors on the base commit it
+    released. Where the base reaches the tag, the merge-base is the tag commit and
+    B is the oldest first-parent commit containing the tag. A newest tag on a line
+    that forked long ago (a hotfix branch) has an old merge-base, so B lands early
+    and widens the walk, the safe direction; A, when present, then wins by being
+    nearer. A tag sharing no history with the base gives no B. None when there is
+    neither candidate."""
     return _resolve_anchor(project_dir, base)[0]
 
 
@@ -635,27 +649,33 @@ def _resolve_anchor(project_dir: Path, base: str) -> "tuple[Anchor | None, str |
         return out.strip() if rc == 0 else None
 
     by_file = _release_file_candidate(git, base)
-    tag = _tag_candidate(git, base)
+    tag = _tag_candidate(git)
+    released = git("merge-base", base, tag[1]) if tag is not None else None
+    if not released:
+        tag = None  # no common history with the base: nothing on it was released
     chosen = None
     if by_file is not None:
         commit, path = by_file
-        # The nearer wins. The tag's anchor is the oldest commit containing it, so
-        # it is nearer than the release file's commit only if that commit does not
-        # contain the tag; a tie goes to the release file.
+        # The nearer wins. B is the oldest commit containing the released commit,
+        # so it is nearer than the release file's commit only if that commit does
+        # not contain it; a tie goes to the release file.
         tag_older = tag is not None and evidence.run_git(
-            project_dir, "merge-base", "--is-ancestor", tag[1], commit)[0] == 0
+            project_dir, "merge-base", "--is-ancestor", released, commit)[0] == 0
         if tag is None or tag_older:
-            note = f"; tag {tag[0]} is older on this line" if tag else ""
+            via = f" (through its merge-base {released[:8]})" if tag and released != tag[1] else ""
+            note = f"; tag {tag[0]}{via} anchors older on this line" if tag else ""
             chosen = (commit, ANCHOR_RELEASE_FILE, f"{commit[:8]} adds the release file {path}{note}")
     if chosen is None and tag is not None:
-        commit = _oldest_containing(git, base, tag[1])
+        commit = _oldest_containing(git, base, released)
         if commit is not None:
+            what = (f"tag {tag[0]}" if released == tag[1]
+                    else f"{released[:8]}, its merge-base with tag {tag[0]}")
             note = f"; nearer the tip than the release file {by_file[1]}" if by_file else ""
             chosen = (commit, ANCHOR_TAG, f"{commit[:8]} is the oldest first-parent commit on {base} "
-                                          f"containing tag {tag[0]}{note}")
+                                          f"containing {what}{note}")
     if chosen is None:
         return None, (f"no first-parent commit on {base} adds a release file under "
-                      f"{consumer_digest.RELEASES_DIR_REL}/, and no version tag is reachable from it")
+                      f"{consumer_digest.RELEASES_DIR_REL}/, and no version tag shares history with it")
     tree = git("rev-parse", f"{chosen[0]}^{{tree}}")
     if not tree:
         return None, f"git could not read the release anchor {chosen[0][:8]}'s tree"

@@ -324,8 +324,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   classifies first-parent commits on the integration base: the one that added each release-pending
   scope's fragment, unioned with every commit after the **release anchor** that changes a judgeable
   file, one entry per commit. The anchor is the nearer the tip of the newest first-parent commit
-  adding `.prawduct/releases/<version>.md` and the oldest first-parent commit containing the newest
-  version tag reachable from the base; with neither, no commit is walked and the report says so.
+  adding `.prawduct/releases/<version>.md` and the oldest first-parent commit containing the
+  merge-base of the base and the newest version tag (so a tag on a promotion merge the base never
+  contains still anchors); with neither, no commit is walked and the report says so.
   Classes: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `release-bookkeeping`,
   `inner-only`, `uncovered`, `direct` or `unknown`, each with its reason. `pr-transferred` is a branch that synced
   its base after its PR's boundary review and that the PR gate passed by its base-advance transfer

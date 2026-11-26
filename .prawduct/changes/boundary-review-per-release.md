@@ -29,8 +29,10 @@ Wave 1's `check-boundary-coverage` found merges only through the fragments they 
 committed on the base without a fragment was invisible to it, and a release check that blocks on
 its answer would have passed that work unread. The op now finds the release anchor, the nearer the
 tip of the newest first-parent commit adding a release file under `.prawduct/releases/` and the
-oldest first-parent commit containing the newest version tag reachable from the base (the second
-serves repos that back-merge tags and write no release files). It then classifies every
+oldest first-parent commit containing the merge-base of the base and the newest version tag. The
+second serves repos that write no release files, including those that tag each release on a merge
+into `main` the integration branch never contains: the merge-base is the integration commit that
+was released. It then classifies every
 first-parent commit after the anchor that changes a judgeable file, unioned with the fragment join
 and de-duplicated by commit, so a scope a pruned release withheld stays classified. One `git log`
 lists the whole walk. A repo with neither anchor gets the fragment join alone, and the report says
