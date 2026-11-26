@@ -53,8 +53,9 @@ advice, and `check-releasability`'s exit is unchanged.
 
 ### Chunk 03: the release batch review, and the relax-only rule that credits it
 A release that defers boundary reviews needs a review that reads what was deferred, and a rule
-that credits it without loosening any PR gate. `critic-begin --mode cumulative --span release`
-dispatches that review on the integration base's own checkout, at its tip, with a clean tree. Its
+that credits it without loosening any PR gate. `/prawduct:critic cumulative` dispatches that review
+on the integration base's own checkout, at its tip, with a clean tree, where `critic-begin --mode
+cumulative` derives the release span (`--span release` is the explicit form). Its
 interval is the release anchor to HEAD (Chunk 06: or from the first parent of an owed entry
 older than the anchor). It rates the changed files of every release entry no
 boundary review covered and reads the rest of the span as `files_context`. The manifest records
@@ -70,7 +71,7 @@ review's do, so it can block a span standing on those trees, never cover one. Th
 check credits it through a new pure rule, `coverage_algebra.batch_review_covers`: an entry is
 `batch-covered` when a boundary review on the base brackets it on the first-parent line, rated every
 judgeable file of the entry still changed across its interval, and no unresolved blocker stands at
-its two trees. Wave 1's batch rule is the special case of a review that rated every file. The rule
+its two trees or at the entry's own (a merged branch's). Wave 1's batch rule is the special case of a review that rated every file. The rule
 now applies to work committed on the base as well as to merges. A squash merge whose PR review
 spans exactly the trees it landed reads `batch-covered`, where it read `direct`. A fix committed on
 the base after such a review is `batch-covered` when `verify-resolutions` and free edges alone
@@ -126,10 +127,12 @@ integration branch's state cannot be read at all, a checkout declaring `per_rele
 it, the stricter reading for a release. The PR skill's release guard runs `--gate` and stops on
 either refusal.
 
-Four routes out that the gate would otherwise have closed: a release batch review's span starts at
+Five routes out that the gate would otherwise have closed: a release batch review's span starts at
 the oldest owed entry's first parent when that entry sits before the anchor (a scope a pruned
 release withheld), so it can be credited; the batch rule credits an octopus merge, which read
-`unknown` for good; the review round budget never charges a release batch review; and
+`unknown` for good; a merged branch's unresolved blocker, which no batch review clears, is named in
+the roll-call of a `verify-resolutions` pass on the integration branch, so its resolution clears it
+and the release passes; the review round budget never charges a release batch review; and
 `review-stats` files it under its own `release` span (report schema 15), not `full`. The lane's
 eligibility and the fix-tail deferral now read risk surfaces as the integration branch holds them
 too (the merge-base and the tip), so a branch cannot rewrite its own `risk_surfaces:` to buy
@@ -144,8 +147,11 @@ A new opt-in key, `boundary_review:` in `.prawduct/project-state.yaml` (see
 a blocker-free fix tail may merge unreviewed (`check-cumulative-critic` exit 0, `satisfied (fix tail
 deferred to the release)`), and `check-releasability` then refuses the release
 (`boundary-uncovered:`) until a release batch review on the integration branch has read that work:
-`/prawduct:critic cumulative`, dispatched as `critic-begin --mode cumulative --span release`. It
-also refuses (`boundary-unevaluable:`) when it cannot answer, including when the repo has no
+`/prawduct:critic cumulative` on its own checkout at its tip with a clean tree, where `critic-begin
+--mode cumulative` derives the release span (`--span release` is the explicit form). A merge whose
+branch still carries an unresolved BLOCKING finding stays held after that review: fix it on the
+integration branch and run `/prawduct:critic verify-resolutions` there, whose roll-call names it.
+It also refuses (`boundary-unevaluable:`) when it cannot answer, including when the repo has no
 release anchor yet: opt in after your first tagged or cut release. Read the key's entry in
 `project-state-keys.md` before opting in; it lists what can still hold a correct release and how
 to clear each.
@@ -153,14 +159,15 @@ to clear each.
 `check-boundary-coverage` (and the count line `check-releasability` prints) now also lists every
 judgeable commit since your last release, including work committed on the integration branch
 without a change fragment, so expect more entries and a count line that names the release anchor.
-`--json` adds `anchor`, `no_anchor_reason` and each entry's `source` (`fragment`, `walk` or
-`both`; `walk-failed` when git could not list the commits since the anchor), and a new covered
+`--json` adds `anchor`, `no_anchor_reason`, each entry's `source` (`fragment`, `walk` or
+`both`; `walk-failed` when git could not list the commits since the anchor) and each entry's
+`blockers` (the unresolved blocking findings on a not-covered entry's own trees), and a new covered
 class, `release-bookkeeping`, for a commit that changes only the files `release_version_files:`
 declared at your last release. A merge whose fix tail the PR gate deferred reads `tail-deferred`,
 not covered. Under `per_pr` neither command's exit code changes; `check-boundary-coverage --gate`
 is the blocking reading, exit 0 there.
 
-`critic-begin --mode cumulative --span release`, run on your integration branch, reviews everything
-since your last release that no boundary review read, and `check-boundary-coverage` then reads that
+`/prawduct:critic cumulative`, run on your integration branch's own checkout at its tip, reviews
+everything since your last release that no boundary review read, and `check-boundary-coverage` then reads that
 work `batch-covered`. You do not need it while `boundary_review` is `per_pr`. A squash merge whose
 PR review read exactly what it landed now reads `batch-covered` instead of `direct`.

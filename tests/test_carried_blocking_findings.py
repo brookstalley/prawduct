@@ -221,6 +221,24 @@ def test_without_a_count_the_anchor_is_the_one_the_caller_chose():
     assert [c["review_id"] for c in chosen] == ["rev-P"]
 
 
+def test_the_release_checks_owed_blockers_follow_either_path():
+    """On the integration base a merged branch's blocker is owed by the release
+    check, not by the composition or the anchor (`release_owed_blockers`).
+    Both paths append it after their own, never twice, never the pass's own."""
+    facts = [_review("rev-A", "t0", "t1", [_blocking("R-1")]),
+             _review("rev-branch", "b0", "b1", [_blocking("R-9", "the branch's")])]
+    owed = _counted(("rev-branch", "R-9", "the branch's"), ("rev-B", "R-2", "own"))
+    branch = {"review_id": "rev-branch", "fid": "R-9", "title": "the branch's"}
+
+    anchor_alone = cc.carried_blocking(facts, "t1", "rev-B", owed=owed)
+    assert [(c["review_id"], c["fid"]) for c in anchor_alone] == [("rev-A", "R-1"), ("rev-branch", "R-9")]
+    assert cc.carried_blocking(facts, "t1", "rev-B", [], owed=owed) == [branch]
+    twice = cc.carried_blocking(facts, "t1", "rev-B", owed[:1], owed=owed)
+    assert twice == [branch], twice
+    # Control: without it, neither path names the branch's blocker.
+    assert cc.carried_blocking(facts, "t1", "rev-B", []) == []
+
+
 # --- the sentence the builder and the reviewer both read --------------------
 
 def test_next_action_refuses_to_say_the_review_is_over(tmp_path):

@@ -180,8 +180,9 @@ same set in executable running order, and is the document to work from when actu
    per_pr` (the default), those lines are advice and never change its exit. Read each NOTE as work
    no boundary review read, before it ships. A repo that declares `boundary_review: per_release`
    (this one does not) gets a refusal instead: `boundary-uncovered:` until a release batch review
-   (`critic-begin --mode cumulative --span release` on the integration branch at its tip) has read
-   every entry not covered, nothing pending or not, and `boundary-unevaluable:` when the check
+   (`/prawduct:critic cumulative` on the integration branch's own checkout at its tip with a clean
+   tree, where `critic-begin --mode cumulative` derives the release span; `--span release` is the
+   explicit form) has read every entry not covered, nothing pending or not, and `boundary-unevaluable:` when the check
    cannot answer, a missing release anchor included (`plugin/docs/project-state-keys.md`
    `boundary_review` lists what can still meet it and the way out). Full branch-by-branch
    handling is Phase 0 of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.

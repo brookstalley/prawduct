@@ -1362,6 +1362,23 @@ def batch_review_blockers(facts: list[dict], review: dict,
     return _unresolved_at_nodes(facts, resolution_index(facts), nodes)
 
 
+def entry_blockers(facts: list[dict], entry_trees: "Iterable[str]") -> list[dict]:
+    """The unresolved blocking findings standing at ``entry_trees`` alone (the
+    trees of a release entry and of every commit it brought onto the base), over
+    every review and resolution fact, a release batch review's included.
+
+    The blockers a release entry owes a resolution whatever review would credit
+    it: :func:`batch_review_covers` refuses over them, and they are not the
+    batch review's own, so a ``verify-resolutions`` pass anchored to that review
+    names them only when it is told them (``critic_consolidate.release_owed_
+    blockers``, its roll-call's second input on the integration base)."""
+    nodes = {t for t in entry_trees if isinstance(t, str) and t}
+    if not nodes:
+        return []
+    facts = [f for f in facts if f.get("kind") in VERDICT_INPUT_KINDS]
+    return _unresolved_at_nodes(facts, resolution_index(facts), nodes)
+
+
 def batch_review_covers(
     facts: list[dict],
     review: dict,

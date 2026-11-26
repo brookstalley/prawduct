@@ -4175,7 +4175,8 @@ def fix_tail_deferral_note(deferral: dict) -> str:
         f"{deferral['fact_id']} ({deferral['warning']} warning + {deferral['note']} "
         f"note finding(s), 0 unresolved BLOCKING). The release check "
         f"(`prawduct-hook check-boundary-coverage`) reads it `tail-deferred` "
-        f"until a release batch review (`critic-begin --span release`) has read it."
+        f"until a release batch review (`/prawduct:critic cumulative` on the integration "
+        f"branch's own checkout at its tip, with a clean tree) has read it."
     )
 
 

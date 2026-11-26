@@ -673,6 +673,31 @@ class TestTheSpanIsDerivedAtTheBaseTip:
         assert "--span release refused" not in err and cc.RELEASE_SPAN_DERIVED_NOTE in err, err
         assert not _manifest_written(repo)
 
+    @pytest.mark.parametrize("pinned_at_tip", [True, False])
+    def test_the_dispatch_and_the_subject_ask_one_predicate(self, repo, monkeypatch, pinned_at_tip):
+        """Where a plain `cumulative` derives the release span and where the
+        release subject refuses `off-base` are one answer,
+        `boundary_coverage.integration_base_tip`. Pinned against the checkout's
+        real state (at-tip on a feature branch, off-base at the base's real tip),
+        both readers follow the pin, so a copy of the test in either one fails."""
+        _released(repo)
+        if pinned_at_tip:
+            _branch(repo, "feature")
+            _commit(repo, {"src/feature.py": "f = 1\n"}, "feature work")
+            answer = bc.BaseTip("main", on_branch=True)
+        else:
+            answer = bc.BaseTip("main", bc.RELEASE_OFF_BASE, "a pinned answer")
+        monkeypatch.setattr(bc, "integration_base_tip", lambda _p: answer)
+        subject = bc.release_subject(repo, clean=True)
+        result = cc.begin_review(repo, "cumulative", force=True)
+        derived = (str(result.get("kind", "")).startswith("release-")
+                   or result.get("span") == cc.SPAN_RELEASE
+                   or (result.get("status") == "ok" and _manifest(repo).get("span") == cc.SPAN_RELEASE))
+        assert derived is pinned_at_tip, result
+        assert (subject.code != bc.RELEASE_OFF_BASE) is pinned_at_tip, subject
+        if not pinned_at_tip:
+            assert subject.reason == "a pinned answer", subject
+
 
 class TestTailDeferred:
     def test_it_is_not_covered_and_a_release_review_owes_it_a_read(self, repo, monkeypatch):
