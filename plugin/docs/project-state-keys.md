@@ -430,7 +430,7 @@ chunk's first review in any other mode. The budget ends a review loop, and those
 Counted, they ran out any plan with more chunks than the budget before its boundary review (owner ruling
 2026-11-23). At the ceiling a dispatch that is itself one of them still runs. Its chunks are the ones it will
 name, `--chunks` or the proposal. A later review of a chunk, a second `cumulative`, and a review naming no chunk
-are counted. A release batch review (`critic-begin --span release`) is never counted and takes no scope's boundary
+are counted. A release batch review (`span: release`) is never counted and takes no scope's boundary
 slot: it is the release's own step on the integration branch, and counting it would leave `--force` as the only
 route past a held `per_release` release (owner ruling 2026-11-26).
 
@@ -494,12 +494,13 @@ never remove one.
 pending or not, with `boundary-uncovered:` while any entry `check-boundary-coverage` lists is not
 covered, and `boundary-unevaluable:` when it cannot answer; `check-boundary-coverage --gate` exits
 1 and 3 on the same verdict (0 under `per_pr`, where both stay advice). The route out of
-`boundary-uncovered` is the release batch review: on the integration branch's own checkout, at its
-tip, with a clean tree, a `/prawduct:critic cumulative` whose dispatch is `prawduct-hook
-critic-begin --mode cumulative --span release`. Without `--span release`, a cumulative there
-reviews the empty merge-base→tip interval, exits 3 and credits nothing. It rates what no boundary review read since the release anchor, or since the
-oldest such entry when one sits before the anchor, and a blocker it raises is fixed there and
-cleared by `verify-resolutions`.
+`boundary-uncovered` is the release batch review: `/prawduct:critic cumulative` on the integration
+branch's own checkout at its tip with a clean tree, where `critic-begin --mode cumulative` derives
+the release span (`--span release` is the explicit form). It rates what no boundary review read
+since the release anchor, or since the oldest such entry when one sits before the anchor. A blocker
+it raises is fixed there and cleared by `verify-resolutions`, and so is a merged branch's
+unresolved blocker, which the refusal names and no batch review clears: the verify pass on that
+checkout names it in its roll-call.
 
 What a correct release can still meet, now that this blocks (each reads not covered unless said):
 

@@ -46,8 +46,10 @@ Each commit is classified as:
   head tree at or after the commit), it rated every judgeable file of the commit
   still changed across its interval, and no unresolved blocker stands at its
   trees or at the commit's own (a merged branch's: a blocker the PR gate was
-  bypassed over is resolved, never outlived). A release batch review (``critic-begin --span release``) rates only the
-  not-covered entries' files, so it is credited here and never composes as an
+  bypassed over is resolved, never outlived, by a ``verify-resolutions`` pass on
+  the base whose roll-call names it: :func:`release_owed_blockers`). A release
+  batch review (``/prawduct:critic cumulative`` at the base's tip, ``span:
+  release``) rates only the not-covered entries' files, so it is credited here and never composes as an
   edge. Also the **batch fix tail**: a commit on the base after such a review,
   covered when ``verify-resolutions`` and free edges alone compose the review's
   head tree to a first-parent tree at or after the commit, and the review's
@@ -141,6 +143,11 @@ class Entry:
     #: ``fragment``, ``walk`` or ``both`` in a report; empty for a commit asked
     #: about directly (:func:`classify_merge`).
     source: str = ""
+    #: The unresolved blocking findings standing at the entry's own trees (a
+    #: merged branch's reviews), for an entry not covered: no batch review
+    #: credits it over them, and a resolution, recorded by ``verify-resolutions``
+    #: on the base, is what clears them (:func:`release_owed_blockers`).
+    blockers: list = field(default_factory=list)
 
     @property
     def label(self) -> str:
@@ -160,6 +167,8 @@ class Entry:
             "commit": self.commit,
             "subject": self.subject,
             "source": self.source,
+            "blockers": [{k: b.get(k) for k in ("review_id", "fid", "title") if k in b}
+                         for b in self.blockers],
         }
 
 
@@ -359,7 +368,9 @@ class _Classifier:
                                                 "and the review's blockers are resolved", commit, subject)
         if batch is not None:
             entry.reason += (f"; boundary review {batch[1]} on {self.base} spans it, but "
-                             f"{batch[2]} (fix it and run `/prawduct:critic verify-resolutions`)")
+                             f"{batch[2]} (fix it on {self.base} and run `/prawduct:critic "
+                             "verify-resolutions` there)")
+        entry.blockers = coverage_algebra.entry_blockers(self.facts, trees or ())
         return entry
 
     def _entry_trees(self, commit: str, first_parent: str) -> "list[str] | None":
@@ -1084,7 +1095,7 @@ RELEASE_OK = "ok"
 RELEASE_NO_REVIEW_NEEDED = "no-review-needed"
 RELEASE_REFUSED = "refused"
 
-#: Why ``critic-begin --span release`` refuses, each named in its reason.
+#: Why a release batch review dispatch refuses, each named in its reason.
 RELEASE_OFF_BASE = "off-base"
 RELEASE_DIRTY = "dirty-tree"
 RELEASE_NO_ANCHOR = "no-anchor"
@@ -1092,6 +1103,113 @@ RELEASE_UNEVALUABLE = "unevaluable"
 RELEASE_NO_SUBJECT = "no-subject"
 #: The code of the no-review-needed answer.
 RELEASE_NOTHING_OWED = "nothing-owed"
+
+
+@dataclass(frozen=True)
+class BaseTip:
+    """Whether this checkout is the integration base's own branch with ``HEAD``
+    at that base's tip (:func:`integration_base_tip`): ``code`` is empty there,
+    else ``off-base`` or ``unevaluable`` with ``reason`` naming why."""
+
+    base: "str | None"
+    code: str = ""
+    reason: str = ""
+    #: The checkout is the base's own branch, at its tip or not.
+    on_branch: bool = False
+
+    @property
+    def at_tip(self) -> bool:
+        return self.base is not None and not self.code
+
+
+def integration_base_tip(project_dir: Path) -> BaseTip:
+    """THE answer to "is this checkout the integration base at its tip?", the
+    one state where merge-base…``HEAD`` is empty for want of any branch, so the
+    one place a release batch review can be taken and its head be a commit the
+    release check walks. Two readers ask it: :func:`release_subject` refuses
+    off it, and ``critic_consolidate.begin_review`` derives the release span on
+    it for a plain ``cumulative``, so the two cannot disagree about where the
+    release review runs.
+
+    The base is ``coverage.repo_base_branch``'s; a remote-tracking base
+    (``origin/main``) is checked out as its local name, and ``HEAD`` must be
+    that base's tip, so a local branch ahead of or behind its remote is off it.
+    No base is ``unevaluable``; a git failure reads off the base, never on it."""
+    from . import gitstate  # noqa: PLC0415 — lazy, as this module's other readers are
+
+    def git(*args: str) -> "str | None":
+        rc, out, _err = evidence.run_git(project_dir, *args)
+        return out.strip() if rc == 0 else None
+
+    base, why = coverage.repo_base_branch(project_dir)
+    if not base:
+        return BaseTip(None, RELEASE_UNEVALUABLE, f"no integration base resolves: {why}")
+    branch = gitstate.current_branch(project_dir)
+    local = base
+    for remote in (git("remote") or "").split():
+        if base.startswith(f"{remote}/"):
+            local = base[len(remote) + 1:]
+            break
+    if branch != local:
+        return BaseTip(base, RELEASE_OFF_BASE, (
+            f"a release batch review runs on the integration base {base}'s own checkout, and this "
+            f"one is on {branch or 'a detached HEAD'}"))
+    head, tip = git("rev-parse", "HEAD"), git("rev-parse", f"{base}^{{commit}}")
+    if not head or head != tip:
+        return BaseTip(base, RELEASE_OFF_BASE, (
+            f"HEAD {(head or '?')[:12]} is not {base}'s tip {(tip or '?')[:12]}: push or pull until "
+            "they agree, so the review reads the line the release check walks"), on_branch=True)
+    return BaseTip(base, on_branch=True)
+
+
+def release_owed_blockers(project_dir: Path, facts: "list[dict] | None" = None) -> list[dict]:
+    """The unresolved blocking findings the release check holds a ``per_release``
+    release over that no review on the base raised: those standing at the own
+    trees of a release entry no boundary review covered (``Entry.blockers``: a
+    merged branch's, whose PR gate was bypassed). Deduplicated, in entry order.
+
+    The second input of a ``verify-resolutions`` roll-call on the integration
+    base (``critic_consolidate.carried_blocking``'s ``owed``). That pass anchors
+    to the release batch review, the newest review on the base, and composes
+    nothing from the base's own merge-base, so without this its roll-call never
+    names a merged branch's blocker, nothing resolves it, and the release is
+    held for good. ``BLOCKING findings clear only through verify-resolutions``,
+    so this is how that route reaches them.
+
+    ``[]`` off the base's own branch (at its tip or ahead of it, as after the
+    fix is committed and before it is pushed), under ``per_pr`` (no release gate
+    counts them, so naming them would manufacture a round), when ``facts`` holds
+    no unresolved blocker at all (the cheap answer, asked first), or when the
+    classification cannot be read: the release check refuses on its own then, so
+    an omission here can hold a release longer, never pass it. Never raises."""
+    if facts is not None:
+        resolved = coverage_algebra.resolution_index(facts)
+        if not any(coverage_algebra.unresolved_blocking(f, resolved)
+                   for f in facts if f.get("kind") == "review"):
+            return []
+    from . import review_lane  # noqa: PLC0415 — lazy, as this module's other readers are
+
+    try:
+        if not integration_base_tip(project_dir).on_branch:
+            return []
+        if not review_lane.release_policy(project_dir).per_release:
+            return []
+        report = classify_pending(project_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- a roll-call input; the release check refuses on its own, so an omission holds a release longer and never passes one
+        return []
+    if report.status != "ok":
+        return []
+    out: list = []
+    seen: set = set()
+    for entry in report.entries:
+        if entry.classification in COVERED:
+            continue
+        for blocker in entry.blockers:
+            key = (blocker.get("review_id"), blocker.get("fid"))
+            if key not in seen:
+                seen.add(key)
+                out.append(dict(blocker))
+    return out
 
 
 @dataclass
@@ -1117,7 +1235,8 @@ class ReleaseSubject:
 
 
 def release_subject(project_dir: Path, *, clean: bool) -> ReleaseSubject:
-    """The subject of a release batch review (``critic-begin --span release``),
+    """The subject of a release batch review (``critic-begin --mode cumulative`` at
+    the base's tip, which derives ``--span release``),
     asked from the checkout that would dispatch it. ``clean`` is whether the
     working tree equals ``HEAD`` (the dispatch's tree capture answers it).
 
@@ -1138,8 +1257,6 @@ def release_subject(project_dir: Path, *, clean: bool) -> ReleaseSubject:
 
 
 def _release_subject(project_dir: Path, clean: bool) -> ReleaseSubject:
-    from . import gitstate  # noqa: PLC0415 — lazy, as this module's other readers are
-
     def git(*args: str) -> "str | None":
         rc, out, _err = evidence.run_git(project_dir, *args)
         return out.strip() if rc == 0 else None
@@ -1147,24 +1264,10 @@ def _release_subject(project_dir: Path, clean: bool) -> ReleaseSubject:
     def refused(code: str, reason: str, **kw) -> ReleaseSubject:
         return ReleaseSubject(RELEASE_REFUSED, code, reason, **kw)
 
-    base, why = coverage.repo_base_branch(project_dir)
-    if not base:
-        return refused(RELEASE_UNEVALUABLE, f"no integration base resolves: {why}")
-    branch = gitstate.current_branch(project_dir)
-    local = base
-    for remote in (git("remote") or "").split():
-        if base.startswith(f"{remote}/"):
-            local = base[len(remote) + 1:]
-            break
-    if branch != local:
-        return refused(RELEASE_OFF_BASE, f"a release batch review runs on the integration base {base}'s "
-                                         f"own checkout, and this one is on {branch or 'a detached HEAD'}",
-                       base=base)
-    head, tip = git("rev-parse", "HEAD"), git("rev-parse", f"{base}^{{commit}}")
-    if not head or head != tip:
-        return refused(RELEASE_OFF_BASE, f"HEAD {(head or '?')[:12]} is not {base}'s tip {(tip or '?')[:12]}: "
-                                         "push or pull until they agree, so the review reads the line "
-                                         "the release check walks", base=base)
+    where = integration_base_tip(project_dir)
+    if not where.at_tip:
+        return refused(where.code, where.reason, base=where.base)
+    base = where.base
     if not clean:
         return refused(RELEASE_DIRTY, "the working tree differs from HEAD: a release batch review reads "
                                       "committed HEAD, so commit or set the changes aside first", base=base)
@@ -1319,12 +1422,24 @@ def release_gate(report: Report, policy) -> ReleaseGate:
         f"{GATE_UNCOVERED}: {len(owed)} of {len(report.entries)} release entr"
         f"{'y' if len(report.entries) == 1 else 'ies'} on {report.base} no boundary review "
         "covered, and `boundary_review: per_release` holds the release until one has read them: "
-        f"run the release batch review on {report.base}'s own checkout, at its tip, on a clean tree: "
-        "a `/prawduct:critic cumulative` whose dispatch is `prawduct-hook critic-begin --mode "
-        "cumulative --span release` (one dispatched without `--span release` reviews the empty "
-        "merge-base→tip interval, exits 3 and credits nothing, so this refusal stands); fix a "
-        f"blocker it raises on {report.base} and clear it with "
-        "`/prawduct:critic verify-resolutions`; then re-run")
+        f"run the release batch review, `/prawduct:critic cumulative`, on {report.base}'s own "
+        "checkout at its tip with a clean tree, where its dispatch `prawduct-hook critic-begin "
+        "--mode cumulative` derives the release span (`prawduct-hook critic-begin --mode "
+        "cumulative --span release` is the explicit form); fix a blocker it raises on "
+        f"{report.base} and clear it with `/prawduct:critic verify-resolutions` there; then re-run")
+    blocked = [e for e in owed if e.blockers]
+    if blocked:
+        # A merged branch's blocker is not the batch review's, so the batch never
+        # clears it; the verify pass on the base names it in its roll-call
+        # (release_owed_blockers), which is the one route that resolves it.
+        named = [f"{b.get('review_id')} {b.get('fid')}" for e in blocked for b in e.blockers]
+        one = len(blocked) == 1
+        message += (
+            f". {', '.join(e.label for e in blocked)} also {'carries' if one else 'carry'} an "
+            f"unresolved blocking finding on {'its' if one else 'their'} own trees "
+            f"({', '.join(named[:3])}{' …' if len(named) > 3 else ''}), a merged branch's, which "
+            f"no batch review clears: fix it on {report.base}'s own checkout and run "
+            "`/prawduct:critic verify-resolutions` there, whose roll-call names it")
     if unreachable:
         message += (f". {', '.join(unreachable)} name no commit, so no review can credit "
                     f"{'it' if len(unreachable) == 1 else 'them'}: commit the fragment on "

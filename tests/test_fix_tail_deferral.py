@@ -124,7 +124,11 @@ class TestThePrGate:
         # The review, the tail's files and the release check that owes them a read.
         assert f"since review {rid}" in note and "feature.py" in note, note
         assert "check-boundary-coverage" in note and "`tail-deferred`" in note, note
-        assert "critic-begin --span release" in note, note
+        # The release batch review by the invocation every remedy names: a plain
+        # `/prawduct:critic cumulative` at the integration branch's tip derives
+        # the release span, so the note no longer spells the `--span` flag.
+        assert ("release batch review (`/prawduct:critic cumulative` on the integration "
+                "branch's own checkout at its tip") in note, note
         answer = gates.branch_coverage_verdict(repo)
         assert answer["status"] == "deferred", answer
         assert answer["deferral"]["fact_id"] == rid

@@ -850,7 +850,8 @@ def cost_lead(
 def carried_blocking(facts: list[dict], base_tree: "str | None",
                      this_review_id: "str | None",
                      counted: "list[dict] | None" = None,
-                     *, anchor_id: "str | None" = None) -> list[dict]:
+                     *, anchor_id: "str | None" = None,
+                     owed: "list[dict] | None" = None) -> list[dict]:
     """Blocking findings this verify pass inherits and has NOT resolved: every
     blocker the gate still counts at the tree the pass anchors on, given
     ``counted``; the anchor's own unresolved blockers when it is not.
@@ -904,6 +905,13 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     BLOCKING is carried: warnings stay reachable through ``disposition``
     against their own review id.
 
+    **``owed`` is the release check's question, asked on the integration base**
+    (:func:`release_owed_blockers`): the blockers standing on a release entry's
+    own trees, a merged branch's, which neither the composition at the anchor's
+    tree nor the anchor itself names, because no review on the base raised them.
+    They are appended after the rest, on either path, so the pass that verifies
+    the fix on the base is told them and its resolution facts can clear them.
+
     Returns ``[]`` when there is nothing to carry, which is the honest answer
     rather than a defensive one. Entries are ``{"review_id", "fid", "title",
     "files", "scope", "closure", "members"}`` (keys present when the finding had
@@ -914,18 +922,26 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     """
     keys = ("fid", "title", "files")
     scope_keys = ("scope", "closure", "members")
-    if counted is not None:
-        recorded = evidence.findings_index({"facts": facts})
-        out = []
-        for c in counted:
-            if c.get("review_id") == this_review_id:
+    recorded = evidence.findings_index({"facts": facts}) if (counted is not None or owed) else {}
+
+    def listed(entries: "list[dict]", out: "list[dict]") -> "list[dict]":
+        """``entries`` (as the composition or the release check lists them)
+        appended to ``out``, past the pass's own review and any already there."""
+        held = {(e.get("review_id"), e.get("fid")) for e in out}
+        for c in entries:
+            key = (c.get("review_id"), c.get("fid"))
+            if c.get("review_id") == this_review_id or key in held:
                 continue
+            held.add(key)
             entry = {"review_id": c.get("review_id")}
             entry.update({k: c.get(k) for k in keys if k in c})
-            finding = recorded.get((c.get("review_id"), c.get("fid"))) or {}
+            finding = recorded.get(key) or {}
             entry.update({k: finding[k] for k in scope_keys if k in finding})
             out.append(entry)
         return out
+
+    if counted is not None:
+        return listed(owed or [], listed(counted, []))
     reviews = evidence.facts_of_kind({"facts": facts}, "review")
     # The pass as the link rule sees it: its id places it in store order
     # (strictly-before excludes it and anything recorded after it), its base
@@ -937,15 +953,14 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     anchor = coverage_algebra.prior_review(
         reviews, {"id": this_review_id, "body": probe_body}
     )
-    if anchor is None or anchor.get("id") == this_review_id:
-        return []
-    resolved = coverage_algebra.resolution_index(facts)
     out = []
-    for finding in coverage_algebra.unresolved_blocking(anchor, resolved):
-        entry = {"review_id": anchor.get("id")}
-        entry.update({k: finding.get(k) for k in keys + scope_keys if k in finding})
-        out.append(entry)
-    return out
+    if anchor is not None and anchor.get("id") != this_review_id:
+        resolved = coverage_algebra.resolution_index(facts)
+        for finding in coverage_algebra.unresolved_blocking(anchor, resolved):
+            entry = {"review_id": anchor.get("id")}
+            entry.update({k: finding.get(k) for k in keys + scope_keys if k in finding})
+            out.append(entry)
+    return listed(owed or [], out)
 
 
 def gate_counted_blockers(
@@ -967,6 +982,19 @@ def gate_counted_blockers(
         project_dir, facts, base_tree, resolved=resolved, read=read
     )
     return answer["blockers"] if answer.get("status") == "ok" else None
+
+
+def release_owed_blockers(project_dir: Path, facts: list[dict]) -> list[dict]:
+    """The ``owed`` :func:`carried_blocking` takes:
+    ``boundary_coverage.release_owed_blockers``, the blockers the release check
+    holds a ``per_release`` release over on a merged branch's own trees, asked
+    only on the integration base's own branch (``[]`` everywhere else). The
+    second adapter beside :func:`gate_counted_blockers`, asked by the same four
+    readers, so the roll-call, the actionable count, the ``NOT DONE`` line and
+    the derived cache record name the same blockers."""
+    from . import boundary_coverage  # noqa: PLC0415 — lazy; it imports gates and the release readers
+
+    return boundary_coverage.release_owed_blockers(project_dir, facts)
 
 
 def uncertified_clause(mode: str, open_chunks: "list[str]") -> str:
@@ -1545,6 +1573,7 @@ def dispatch_directives(
     counted: "list[dict] | None" = None,
     *,
     anchor_id: "str | None" = None,
+    owed: "list[dict] | None" = None,
 ) -> list[str]:
     """The directives a reviewer of this dispatch reads before assessing, in
     their order. The one renderer: ``critic-begin`` prints this list last in its
@@ -1579,7 +1608,8 @@ def dispatch_directives(
     ``counted`` is :func:`gate_counted_blockers`' answer at the manifest's
     ``base_tree``: the roll-call names every blocker the gate still counts
     there, an earlier round's included (:func:`carried_blocking`). ``None`` is
-    the anchor alone — ``anchor_id`` when the dispatch chose it.
+    the anchor alone — ``anchor_id`` when the dispatch chose it. ``owed`` is
+    :func:`release_owed_blockers`' answer, named after either.
     """
     verbose_mode = manifest["mode"]
     is_verify = verbose_mode == MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
@@ -1592,7 +1622,7 @@ def dispatch_directives(
         roll_call = account_for_prior_blockers_directive(
             carried_blocking(
                 facts, manifest.get("base_tree"), manifest.get("id"), counted,
-                anchor_id=anchor_id,
+                anchor_id=anchor_id, owed=owed,
             )
         )
         if roll_call:
@@ -3946,31 +3976,6 @@ def _validate_native_review(block) -> "tuple[bool, str]":
     return True, ""
 
 
-def _at_integration_base_tip(project_dir: Path) -> bool:
-    """Whether the checkout is the integration base's own branch with ``HEAD``
-    at that base's tip, the one state where merge-base…HEAD is empty for want
-    of any branch (``begin_review`` derives the release span there). The same
-    test the release subject opens with (``boundary_coverage.release_subject``,
-    ``off-base``), asked first so a feature branch never reaches the release
-    classification; ``False`` whenever git cannot answer, which keeps the plain
-    ``cumulative``."""
-    base, _why = coverage.repo_base_branch(project_dir)
-    branch = gitstate.current_branch(project_dir)
-    if not base or not branch:
-        return False
-    rc, remotes, _err = evidence.run_git(project_dir, "remote")
-    local = base
-    for remote in (remotes.split() if rc == 0 else []):
-        if base.startswith(f"{remote}/"):
-            local = base[len(remote) + 1:]
-            break
-    if branch != local:
-        return False
-    rc_head, head, _e1 = evidence.run_git(project_dir, "rev-parse", "HEAD")
-    rc_tip, tip, _e2 = evidence.run_git(project_dir, "rev-parse", f"{base}^{{commit}}")
-    return rc_head == 0 and rc_tip == 0 and bool(head) and head == tip
-
-
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -4086,7 +4091,7 @@ def begin_review(
       ``full`` token) asks for the whole bundle.
     - ``cumulative`` with ``span_request == "release"`` (``critic-begin --span
       release``, the release batch review, #1232; a ``cumulative`` asked with no
-      span derives it where :func:`_at_integration_base_tip` holds) — on the integration base's
+      span derives it where ``boundary_coverage.integration_base_tip`` holds) — on the integration base's
       own checkout at its tip, with a clean tree: base = the release anchor
       (``boundary_coverage.release_anchor``), or the first parent of the oldest
       owed entry when one sits at or before it, head = ``HEAD`` (``span: release``,
@@ -4140,8 +4145,13 @@ def begin_review(
     # empty, so a plain one would answer exit 3 ("no review needed") while the
     # release check still holds the release; no model has to know to pass
     # `--span release` for the remedy that check names to reach it.
+    # The base-tip test is boundary_coverage's, the one the release subject
+    # refuses off, so the two cannot disagree about where the release review runs.
+    from . import boundary_coverage  # noqa: PLC0415 — lazy; it imports gates and the release readers
+
     span_derived = (
-        mode_token == "cumulative" and span_request is None and _at_integration_base_tip(project_dir)
+        mode_token == "cumulative" and span_request is None
+        and boundary_coverage.integration_base_tip(project_dir).at_tip
     )
     if span_derived:
         span_request = SPAN_RELEASE
@@ -4375,6 +4385,9 @@ def begin_review(
     # `verify_prior_id` naming that anchor so both readers mean one review.
     counted_blockers: "list[dict] | None" = None
     verify_prior_id: "str | None" = None
+    # The release check's blockers on a merged branch's own trees, which the
+    # roll-call also names on the integration base (`release_owed_blockers`).
+    owed_blockers: "list[dict]" = []
 
     base_extended_from: "str | None" = None
     # A `cumulative`'s span (bounded-cumulative design): `bounded` reviews the
@@ -4454,8 +4467,6 @@ def begin_review(
                 "work is the unreviewed interval."
             )
     elif mode_token == "cumulative" and span_request == SPAN_RELEASE:
-        from . import boundary_coverage  # noqa: PLC0415 — lazy; it imports gates and the release readers
-
         subject = boundary_coverage.release_subject(project_dir, clean=bool(capture["clean"]))
         if subject.status == boundary_coverage.RELEASE_NO_REVIEW_NEEDED:
             recorded = _record_no_review_needed(
@@ -4752,6 +4763,7 @@ def begin_review(
         counted_blockers = gate_counted_blockers(
             project_dir, store_facts, base_tree, read=read_store()
         )
+        owed_blockers = release_owed_blockers(project_dir, store_facts)
         # One counter for both exits below: the blockers the gate still counts at
         # the anchor's tree, the anchor's own included (`carried_blocking` with no
         # review of its own to exclude), or the anchor's unresolved blockers when
@@ -4761,7 +4773,8 @@ def begin_review(
         # because the free-interval refusal also requires no judgeable file.
         actionable = len(
             carried_blocking(
-                store_facts, base_tree, None, counted_blockers, anchor_id=verify_prior_id
+                store_facts, base_tree, None, counted_blockers, anchor_id=verify_prior_id,
+                owed=owed_blockers,
             )
         )
         pending_blocking = actionable
@@ -5304,7 +5317,7 @@ def begin_review(
     # the fork reviews inline and its copy is the printed one.
     directives = dispatch_directives(
         manifest, read_store().get("facts") or [], counted_blockers,
-        anchor_id=verify_prior_id,
+        anchor_id=verify_prior_id, owed=owed_blockers,
     )
     if manifest["reviewer_model"] is not None:
         manifest["dispatch_directives"] = directives
@@ -7391,6 +7404,7 @@ def branch_review_record(
                 prawduct_dir.parent, gate_facts, body.get("base_tree"), read=gate_read
             ),
             anchor_id=body.get(coverage_algebra.VERIFIES_KEY),
+            owed=release_owed_blockers(prawduct_dir.parent, usable),
         )
         if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
         else []
@@ -9013,6 +9027,7 @@ def _consolidate(
                 resolved=merge_base, read=store,
             ),
             anchor_id=manifest.get(coverage_algebra.VERIFIES_KEY),
+            owed=release_owed_blockers(project_dir, store.get("facts") or []),
         )
         if is_verify
         else []
