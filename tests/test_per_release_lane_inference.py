@@ -105,8 +105,7 @@ def _eligibility(repo: Path) -> critic_mode.LaneEligibility:
 def _deferral(repo: Path) -> critic_mode.ShortPlanDeferral:
     binding = work_unit.resolve(repo)
     progress = critic_mode.binding_progress(repo, binding)
-    d = critic_mode.short_plan_deferral(repo, repo / ".prawduct", binding, progress, read_built=True)
-    return critic_mode.with_lane(repo, repo / ".prawduct", binding, progress, d)
+    return critic_mode.short_plan_deferral(repo, repo / ".prawduct", binding, progress, read_built=True)
 
 
 def _flat(text: str) -> str:
@@ -207,6 +206,24 @@ class TestAnEligibleLastChunkAnswersChunk:
         _lane_repo(tmp_path / "per_pr", key=None)
         mode, why = infer_mode(tmp_path / "per_pr", "chunk")
         assert mode == "cumulative" and why.startswith("explicit-args chunk redirected:"), why
+
+    def test_an_explicit_final_keeps_its_token_and_says_so(self, tmp_path):
+        """An explicit `final` (all seven goals) is not turned into the lane's
+        `chunk` (goals 1-3): that would silently downgrade the operator's
+        request. It runs over the lane's interval, and the rationale, which
+        `mode_chosen_by` records, names the `final` as what runs, never claims
+        the lane's `chunk` covers the PR."""
+        _lane_repo(tmp_path)
+        mode, why = infer_mode(tmp_path, "final")
+        assert mode == "final", why
+        assert why.startswith("explicit-args final (per-release lane, not redirected): "), why
+        assert (
+            f"covered by the `final` you asked for, run over the interval of {critic_mode.LANE_REVIEW_NAME}"
+            in why
+        ), why
+        assert f"covered by {critic_mode.LANE_REVIEW_NAME} and" not in why, why
+        # Control: an explicit `chunk` IS the lane's review, and says so.
+        assert f"covered by {critic_mode.LANE_REVIEW_NAME} and" in infer_mode(tmp_path, "chunk")[1]
 
     def test_the_lane_dispatch_names_every_chunk_and_is_not_refused(self, tmp_path):
         """The rationale's `--chunks` is what keeps a `chunk` dispatch proposing
@@ -392,7 +409,10 @@ class TestAfterTheLanesReview:
                 repo, repo / ".prawduct", binding, progress
             )
         lane, per_pr = answers["lane"], answers["per_pr"]
-        assert lane is not None and lane[0] == critic_mode.OWED_BOUNDARY, lane
+        # The owner names the lane's review in its KIND (`OWED_LANE`), so no
+        # reader re-asks the lane to tell it from the per-PR boundary.
+        assert lane is not None and lane[0] == critic_mode.OWED_LANE, lane
+        assert per_pr is not None and per_pr[0] == critic_mode.OWED_BOUNDARY, per_pr
         assert lane[1].endswith(f"it infers {critic_mode.LANE_REVIEW_NAME}"), lane
         assert f"so {critic_mode.LANE_REVIEW_NAME} is every chunk's review" in lane[1], lane
         assert "cumulative" not in lane[1], lane
@@ -571,3 +591,342 @@ class TestPerPrStepTextIsUnchanged:
             assert declared[1].replace(f"{name}-declared", "X") == absent[1].replace(
                 f"{name}-absent", "X"
             ), name
+
+
+# ---------------------------------------------------------------------------
+# Where the lane was in play and declined, the per-PR answer says why
+# ---------------------------------------------------------------------------
+
+_DECLINED = "the per-release lane does not take this branch: "
+
+
+class TestTheDeclinedLaneSaysWhy:
+    """Under per_release a branch the lane declines pays the boundary round the
+    owner moved; every answer naming that round says why. Under per_pr the
+    same answers are unchanged, word for word (`_assert_not_lane` and
+    `TestPerPrStepTextIsUnchanged` pin the rest)."""
+
+    def test_rule_2_names_the_reason_and_per_pr_is_unchanged(self, tmp_path):
+        _lane_repo(tmp_path / "lane", extra_files=8)
+        mode, why = infer_mode(tmp_path / "lane", None)
+        assert mode == "cumulative" and why.startswith("rule-2 cumulative:"), why
+        assert f"; {_DECLINED}the branch changes 11 judgeable files" in why, why
+        _lane_repo(tmp_path / "per_pr", extra_files=8, key=None)
+        control = infer_mode(tmp_path / "per_pr", None)
+        assert control[0] == "cumulative" and _DECLINED not in control[1], control
+        assert why.split("; " + _DECLINED, 1)[0] == control[1], (why, control)
+
+    #: What a crashed predicate reads as, after the declined prefix.
+    _CRASHED = "the per-release lane could not be evaluated (RuntimeError: lane exploded)"
+
+    @staticmethod
+    def _boom(monkeypatch) -> None:
+        def boom(*_a, **_k):
+            raise RuntimeError("lane exploded")
+
+        monkeypatch.setattr(critic_mode, "_lane_eligibility", boom)
+
+    def test_rule_2_names_a_crashed_lane_not_an_ineligible_one(self, tmp_path, monkeypatch):
+        _lane_repo(tmp_path)
+        self._boom(monkeypatch)
+        mode, why = infer_mode(tmp_path, None)
+        assert mode == "cumulative" and why.startswith("rule-2 cumulative:"), why
+        assert why.endswith(f"; {_DECLINED}{self._CRASHED}"), why
+
+    def test_an_unreachable_lane_interval_says_the_cumulative_stands(self, tmp_path, monkeypatch):
+        """The lane takes the branch but its `chunk` interval cannot reach the
+        unreviewed commits, so the boundary `cumulative` stands, and says so
+        rather than reading like a branch the lane never took."""
+        _lane_repo(tmp_path)
+        assert _eligibility(tmp_path).eligible
+        monkeypatch.setattr(critic_mode, "_reaches_committed_work", lambda _start: False)
+        mode, why = infer_mode(tmp_path, None)
+        assert mode == "cumulative" and why.startswith("rule-2 cumulative:"), why
+        assert why.endswith(
+            "; the per-release lane takes this branch, but its `chunk` interval cannot reach "
+            "the unreviewed commits, so the boundary `cumulative` stands"
+        ), why
+
+    def test_rule_4_names_the_reason_and_per_pr_is_unchanged(self, tmp_path):
+        """One commit ahead (rule 2 needs two), so the clean-tree redirect
+        answers; the one chunk declares `Type: cumulative-final`, which the
+        lane declines."""
+        final = {"01": "- **Type:** cumulative-final"}
+        _lane_repo(tmp_path / "lane", chunks=1, committed=("01",), chunk_fields=final)
+        mode, why = infer_mode(tmp_path / "lane", None)
+        assert mode == "cumulative" and why.startswith("rule-4 cumulative:"), why
+        assert why.endswith(
+            f"; {_DECLINED}the last chunk declares `Type: cumulative-final`, which names a "
+            "boundary review"
+        ), why
+        _lane_repo(tmp_path / "per_pr", chunks=1, committed=("01",), chunk_fields=final, key=None)
+        control = infer_mode(tmp_path / "per_pr", None)
+        assert control[0] == "cumulative" and _DECLINED not in control[1], control
+        assert why.split("; " + _DECLINED, 1)[0] == control[1], (why, control)
+
+    def test_rule_4_names_a_crashed_lane(self, tmp_path, monkeypatch):
+        _lane_repo(tmp_path, chunks=1, committed=("01",))
+        self._boom(monkeypatch)
+        mode, why = infer_mode(tmp_path, None)
+        assert mode == "cumulative" and why.startswith("rule-4 cumulative:"), why
+        assert why.endswith(f"; {_DECLINED}{self._CRASHED}"), why
+
+    def test_an_explicit_redirect_names_the_reason_and_per_pr_is_unchanged(self, tmp_path):
+        _lane_repo(tmp_path / "lane", extra_files=8)
+        mode, why = infer_mode(tmp_path / "lane", "chunk")
+        assert mode == "cumulative" and why.startswith("explicit-args chunk redirected:"), why
+        assert why.endswith(
+            f"; {_DECLINED}the branch changes 11 judgeable files (the per-release lane takes "
+            f"at most {critic_mode.LANE_MAX_JUDGEABLE_FILES})"
+        ), why
+        _lane_repo(tmp_path / "per_pr", extra_files=8, key=None)
+        control = infer_mode(tmp_path / "per_pr", "chunk")
+        assert control[0] == "cumulative" and _DECLINED not in control[1], control
+        assert why.split("; " + _DECLINED, 1)[0] == control[1], (why, control)
+
+    def test_an_explicit_redirect_names_a_crashed_lane(self, tmp_path, monkeypatch):
+        _lane_repo(tmp_path)
+        self._boom(monkeypatch)
+        for token in ("chunk", "final"):
+            mode, why = infer_mode(tmp_path, token)
+            assert mode == "cumulative", (token, why)
+            assert why.startswith(f"explicit-args {token} redirected:"), why
+            assert why.endswith(f"; {_DECLINED}{self._CRASHED}"), why
+
+    def test_the_deferral_rationale_names_the_reason(self, tmp_path):
+        _lane_repo(tmp_path / "lane", committed=("01", "02"), in_flight="03", extra_files=8)
+        d = _deferral(tmp_path / "lane")
+        assert d.defers and d.lane is False, d
+        assert d.lane_note.startswith(f"{_DECLINED}the branch changes 11 judgeable files"), d
+        mode, why = infer_mode(tmp_path / "lane", None)
+        assert mode == critic_mode.MODE_DEFERRED and f"; {d.lane_note}. " in why, why
+        _lane_repo(
+            tmp_path / "per_pr", committed=("01", "02"), in_flight="03", extra_files=8, key=None
+        )
+        d_pr = _deferral(tmp_path / "per_pr")
+        assert d_pr.defers and d_pr.lane is False and d_pr.lane_note == "", d_pr
+        control = infer_mode(tmp_path / "per_pr", None)
+        assert control[0] == critic_mode.MODE_DEFERRED and _DECLINED not in control[1], control
+        assert why.replace(f"; {d.lane_note}", "") == control[1], (why, control)
+
+    def test_the_deferral_rationale_names_a_crashed_lane(self, tmp_path, monkeypatch):
+        _lane_repo(tmp_path, committed=("01", "02"), in_flight="03")
+        self._boom(monkeypatch)
+        d = _deferral(tmp_path)
+        assert d.defers and d.lane is False and d.lane_note == f"{_DECLINED}{self._CRASHED}", d
+        mode, why = infer_mode(tmp_path, None)
+        assert mode == critic_mode.MODE_DEFERRED and f"; {_DECLINED}{self._CRASHED}. " in why, why
+
+    def test_the_stop_gates_boundary_block_names_the_reason(self, tmp_path):
+        prawduct = _lane_repo(
+            tmp_path / "lane", committed=("01", "02"), in_flight="03", extra_files=8
+        )
+        _arm_stop(prawduct)
+        result = _run_stop(tmp_path / "lane")
+        assert result.returncode == 2, result.stderr
+        assert _PER_PR_LAST in result.stderr
+        assert (
+            "The per-release lane does not take this branch: the branch changes 11 judgeable files"
+            in _flat(result.stderr)
+        ), result.stderr
+        prawduct = _lane_repo(
+            tmp_path / "per_pr", committed=("01", "02"), in_flight="03", extra_files=8, key=None
+        )
+        _arm_stop(prawduct)
+        control = _run_stop(tmp_path / "per_pr")
+        assert control.returncode == 2, control.stderr
+        assert _PER_PR_LAST in control.stderr
+        assert "per-release lane" not in _flat(control.stderr)
+
+    def test_the_stop_gates_non_final_warning_names_the_reason(self, tmp_path):
+        prawduct = _lane_repo(tmp_path / "lane", committed=(), in_flight="01", extra_files=10)
+        _arm_stop(prawduct)
+        result = _run_stop(tmp_path / "lane")
+        assert result.returncode == 0, result.stderr
+        assert all(literal in result.stderr for literal in _PER_PR_NON_FINAL), result.stderr
+        assert (
+            "The per-release lane does not take this branch: the branch changes 11 judgeable files"
+            in _flat(result.stderr)
+        ), result.stderr
+
+
+# ---------------------------------------------------------------------------
+# One owner says which review is owed; no reader re-asks the lane
+# ---------------------------------------------------------------------------
+
+
+class TestTheLaneHasOneAsker:
+    def test_only_the_owners_ask_lane_eligibility(self):
+        """`review_owed_after` returns `OWED_LANE` and `short_plan_deferral`
+        fills `lane`, so a reader branches on the answer and never re-derives
+        it (the class the boundary review found: three re-askers, one of them
+        already a bug). Every call site of `lane_eligibility` in the plugin."""
+        import ast
+
+        from conftest import plugin_python_sources  # noqa: PLC0415
+
+        sources = plugin_python_sources()
+        assert HOOK in sources, "the scan must reach the hook"
+        callers: set = set()
+        for path in sources:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for node in ast.walk(fn):
+                    if isinstance(node, ast.Call):
+                        f = node.func
+                        name = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", None)
+                        if name == "lane_eligibility":
+                            callers.add(f"{path.name}:{fn.name}")
+        assert callers == {
+            "critic_mode.py:short_plan_deferral",
+            "critic_mode.py:review_owed_after",
+            "critic_mode.py:_lane_interval",
+        }, callers
+        assert not hasattr(critic_mode, "with_lane")
+
+    def test_the_deferral_carries_the_lane_without_a_second_step(self, tmp_path):
+        _lane_repo(tmp_path / "lane", committed=("01", "02"), in_flight="03")
+        assert _deferral(tmp_path / "lane").lane is True
+        _lane_repo(tmp_path / "per_pr", committed=("01", "02"), in_flight="03", key=None)
+        assert _deferral(tmp_path / "per_pr").lane is False
+
+    def test_the_close_returns_the_kind_it_is_handed(self, monkeypatch):
+        """The review close reads `review_owed_after`'s KIND and nothing else:
+        handed `OWED_BOUNDARY` while the lane would say it holds, it keeps the
+        per-PR boundary, and never asks the lane. Red while it re-asks
+        `lane_eligibility` to turn a boundary into the lane."""
+        from types import SimpleNamespace
+
+        asked: list = []
+
+        def eligible(*_a, **_k):
+            asked.append(1)
+            return critic_mode.LaneEligibility(True, "patched eligible", (), in_play=True)
+
+        monkeypatch.setattr(critic_mode, "lane_eligibility", eligible)
+        plan = SimpleNamespace(plan_path=Path("plan.md"), is_claim=True)
+        monkeypatch.setattr(work_unit, "resolve", lambda _d: plan)
+        progress = critic_mode.PlanProgress(3, 2, "03", ("03",), {}, False, {})
+        monkeypatch.setattr(critic_mode, "binding_progress", lambda *_a, **_k: progress)
+        for kind in (critic_mode.OWED_BOUNDARY, critic_mode.OWED_LANE, critic_mode.OWED_LATER_CHUNK):
+            monkeypatch.setattr(
+                critic_mode, "review_owed_after", lambda *_a, _k=kind, **_kw: (_k, "owed")
+            )
+            assert critic_consolidate._plan_owes_a_later_review(Path("."), Path(".prawduct")) == kind
+        assert asked == [], "the close re-asked the lane"
+
+    def test_the_extension_deferral_words_the_kind_it_is_handed(self, tmp_path, monkeypatch):
+        """The extension deferral's wording follows the kind: on a per_release
+        fixture the lane takes, an `OWED_BOUNDARY` answer still reads as the
+        per-PR boundary (it infers the cumulative), and `OWED_LANE` as the
+        lane's review. Red while it re-asks `lane_eligibility` on a boundary."""
+        from test_short_plan_deferral import _short_plan_branch  # noqa: PLC0415
+
+        repo = tmp_path / "lane"
+        repo.mkdir()
+        _short_plan_branch(repo, committed=("01", "02"), plan_committed=True,
+                           state_extra="boundary_review: per_release\n")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        captured = evidence.capture_tree(repo)
+        assert evidence.append_fact(repo, "review", "rev-03", {
+            "mode": _MODE_CHUNK, "chunks": ["03"], "head_commit": head, "dispatch_commit": head,
+            "base_tree": _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip(),
+            "head_tree": captured["tree"], "files_changed": ["src/wip.py"],
+            "files_reviewed": ["src/wip.py"], "findings": [],
+            "counts": {"blocking": 0, "warning": 0, "note": 0},
+        })["status"] == "appended"
+        _write(repo, "src/wip.py", "# a warning, fixed\n")
+        binding = work_unit.resolve(repo)
+        progress = critic_mode.binding_progress(repo, binding)
+        # Precondition: the lane holds here, so a re-asker WOULD reword a boundary.
+        assert critic_mode.lane_eligibility(repo, repo / ".prawduct", binding, progress).eligible
+        worded = {}
+        for kind in (critic_mode.OWED_BOUNDARY, critic_mode.OWED_LANE):
+            monkeypatch.setattr(
+                critic_mode, "review_owed_after", lambda *_a, _k=kind, **_kw: (_k, "the plan owes it")
+            )
+            worded[kind] = critic_mode.extension_deferral_owed(
+                repo, repo / ".prawduct", binding, progress
+            )
+        boundary, lane = worded[critic_mode.OWED_BOUNDARY], worded[critic_mode.OWED_LANE]
+        assert boundary is not None and boundary[1].endswith("it infers the cumulative"), boundary
+        assert lane is not None and lane[1].endswith(f"it infers {critic_mode.LANE_REVIEW_NAME}"), lane
+
+    def test_one_decision_reads_the_lane_once(self, tmp_path, monkeypatch, capsys):
+        """The git work behind the lane (the policy at two revisions, the path
+        listing, risk surfaces at two more) is paid once per decision: one
+        inference, one review close, one Stop. Red for inference without
+        `_one_lane_read`, where the deferral and the lane's `chunk` each ask;
+        red for a close or a Stop that re-asks."""
+        import importlib.machinery
+        import importlib.util
+
+        calls: list = []
+        real = critic_mode._lane_eligibility
+
+        def counting(*a, **k):
+            calls.append(1)
+            return real(*a, **k)
+
+        monkeypatch.setattr(critic_mode, "_lane_eligibility", counting)
+
+        _lane_repo(tmp_path / "clean")
+        assert infer_mode(tmp_path / "clean", None)[0] == "chunk"
+        assert len(calls) == 1, calls
+        calls.clear()
+        assert infer_mode(tmp_path / "clean", "chunk")[0] == "chunk"
+        assert len(calls) == 1, calls
+        # Two inferences are two decisions: the second reads again, so a
+        # branch that grows past a bound leaves the lane at the next one.
+        calls.clear()
+        infer_mode(tmp_path / "clean", None)
+        infer_mode(tmp_path / "clean", None)
+        assert len(calls) == 2, calls
+        # Inside an outer scope an inference joins it, and leaving the outer
+        # scope leaves no read behind for the next decision.
+        calls.clear()
+        with critic_mode._one_lane_read():
+            infer_mode(tmp_path / "clean", None)
+            infer_mode(tmp_path / "clean", None)
+        assert len(calls) == 1, calls
+        assert critic_mode._LANE_READ.get() is None
+
+        from test_short_plan_deferral import _short_plan_branch  # noqa: PLC0415
+
+        repo = tmp_path / "close"
+        repo.mkdir()
+        _short_plan_branch(repo, committed=("01", "02"), plan_committed=True,
+                           state_extra="boundary_review: per_release\n")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        captured = evidence.capture_tree(repo)
+        assert evidence.append_fact(repo, "review", "rev-03", {
+            "mode": _MODE_CHUNK, "chunks": ["03"], "head_commit": head, "dispatch_commit": head,
+            "base_tree": _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip(),
+            "head_tree": captured["tree"], "files_changed": ["src/wip.py"],
+            "files_reviewed": ["src/wip.py"], "findings": [],
+            "counts": {"blocking": 0, "warning": 0, "note": 0},
+        })["status"] == "appended"
+        facts = evidence.read_facts(repo)["facts"]
+        fact = next(f for f in facts if f.get("id") == "rev-03")
+        calls.clear()
+        assert critic_consolidate._plan_owes_a_later_review(
+            repo, repo / ".prawduct", facts, fact
+        ) == critic_mode.OWED_LANE
+        assert len(calls) == 1, calls
+
+        # The Stop, in-process so the count reaches it: the lane branch's last
+        # chunk in flight, whose block names the lane's step.
+        loader = importlib.machinery.SourceFileLoader("prawduct_hook_lane_reads", str(HOOK))
+        hook = importlib.util.module_from_spec(
+            importlib.util.spec_from_loader("prawduct_hook_lane_reads", loader)
+        )
+        loader.exec_module(hook)
+        prawduct = _lane_repo(tmp_path / "stop", committed=("01", "02"), in_flight="03")
+        _arm_stop(prawduct)
+        capsys.readouterr()
+        calls.clear()
+        assert hook.cmd_stop(tmp_path / "stop", {}) == 2
+        assert critic_mode.LANE_REVIEW_NAME in _flat(capsys.readouterr().err)
+        assert len(calls) == 1, calls

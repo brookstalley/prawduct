@@ -3021,7 +3021,16 @@ def session_fix_tail_deferral(
     Asked only once :func:`session_review_verdict` reads ``uncovered``, never
     inside it: the session-start briefing reads that verdict too. None when it
     does not defer or anything could not be read; ``why`` gets the predicate's
-    could-not-evaluate sentence (:func:`fix_tail_deferral`)."""
+    could-not-evaluate sentence (:func:`fix_tail_deferral`).
+
+    The policy is asked first, before the store read, the merge-base, the tree
+    capture and the composition: condition 1 is the cheap one, and in a
+    ``per_pr`` repo it is the whole answer, so every uncovered Stop there must
+    not pay the rest to learn it."""
+    from . import review_lane  # noqa: PLC0415 — lazy, as in _fix_tail_deferral
+
+    if not review_lane.boundary_review_policy(project_dir).per_release:
+        return None
     read = evidence.read_facts(project_dir)
     if _store_precheck(read) is not None:
         return None

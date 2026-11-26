@@ -369,6 +369,76 @@ class TestTheStopGate:
         assert _NOTE_BODY not in " ".join(result.stderr.split())
 
 
+    def test_per_pr_asks_the_policy_before_paying_for_the_span(self, tmp_path, monkeypatch):
+        """Every uncovered Stop asks the deferral. In a per_pr repo condition 1
+        (the policy) is the whole answer, so the store read, the merge-base and
+        the composition it would otherwise run must not happen. Control: a
+        per_release repo does reach them. Red while the policy is asked only
+        inside `fix_tail_deferral`, after that work."""
+        from lib import evidence
+
+        calls: list = []
+        real = evidence.read_facts
+
+        def counting(*a, **k):
+            calls.append(a)
+            return real(*a, **k)
+
+        monkeypatch.setattr(evidence, "read_facts", counting)
+        per_pr = self._in_flight(tmp_path / "per_pr", key=None)
+        assert gates.session_fix_tail_deferral(per_pr) is None
+        assert calls == [], calls
+        per_release = self._in_flight(tmp_path / "per_release")
+        assert gates.session_fix_tail_deferral(per_release) is not None
+        assert calls, "the per_release control never reached the store read"
+
+
+# ---------------------------------------------------------------------------
+# Risk surfaces read at a revision go through the bounded git runner
+# ---------------------------------------------------------------------------
+
+
+class TestRiskSurfacesAtARevision:
+    def test_every_git_call_is_bounded_and_a_hang_reads_unknown(self, tmp_path, monkeypatch):
+        """`risk._surfaces_at` runs on the PR gate's, the Stop gate's and
+        inference's path (the lane and the fix-tail deferral). Every git call it
+        makes carries a timeout, and a call that times out is "could not read",
+        which the relaxation reads as touched, never a raise or a hang. Red
+        under a private `subprocess.run` with no timeout."""
+        from lib import risk
+
+        repo = _repo(tmp_path)
+        assert risk._surfaces_at(repo, "main") is not None  # control: it reads
+        seen: list = []
+
+        def hung(cmd, *a, **k):
+            seen.append((cmd, k.get("timeout")))
+            raise subprocess.TimeoutExpired(cmd, k.get("timeout") or 0)
+
+        monkeypatch.setattr(subprocess, "run", hung)
+        assert risk._surfaces_at(repo, "main") is None
+        assert seen and all(timeout for _cmd, timeout in seen), seen
+        touched, why = risk.paths_touch_held_risk_surface(
+            repo, repo / ".prawduct", ["feature.py"], ("main",)
+        )
+        assert touched and "git could not read the risk surfaces at main" in why, why
+
+    def test_the_shared_runner_hands_file_content_back_verbatim(self, tmp_path):
+        """`_surfaces_at` reads file content through `evidence.run_git(...,
+        strip=False)`: a file is content, not a porcelain line, and its edges
+        (a leading indent, a trailing newline) are part of it. Control: the
+        default strips, which is right for a sha and wrong for a file."""
+        from lib import evidence
+
+        repo = _repo(tmp_path)
+        content = "  risk_surfaces:\n  - src/\n\n"
+        _commit(repo, "edges.yaml", content, "edges")
+        rc, out, _err = evidence.run_git(repo, "show", "HEAD:edges.yaml", strip=False)
+        assert (rc, out) == (0, content), out
+        rc, out, _err = evidence.run_git(repo, "show", "HEAD:edges.yaml")
+        assert (rc, out) == (0, content.strip()), out
+
+
 # ---------------------------------------------------------------------------
 # The release op: the same predicate, asked of a merged span
 # ---------------------------------------------------------------------------
