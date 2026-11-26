@@ -339,7 +339,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-releasability [--release vX.Y.Z]` (under `boundary_review: per_release`, read at the
   integration branch's tip, it also refuses with exit 1 on `check-boundary-coverage --gate`'s
   verdict, nothing pending or not: `boundary-uncovered:` naming each entry not covered and the
-  release batch review, or `boundary-unevaluable:`; added 2026-11-26, #1232),
+  release batch review, or `boundary-unevaluable:`; under `per_pr` only on a `tail-deferred`
+  entry, classified with nothing pending when `per_release` was declared since the release
+  anchor; added 2026-11-26, #1232),
   `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
   **`check-boundary-coverage [--json] [--gate]`** (read-only, advisory without `--gate`; owner `lib/boundary_coverage.py`)
@@ -390,8 +392,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   remedy), 3 when it could not answer — a failed policy read, unevaluable, a fragment the pending
   set refused, no release anchor, or a walk since the anchor git could not run
   (`boundary-unevaluable:`, with its route) — else 0. Under `per_pr`: 3 when the report is
-  unevaluable (`boundary-unevaluable:`, as the bare op's 3), else exit 0 whatever it found, the
-  advice unchanged. Either way stdout adds a `boundary_review: <value> (read at <ref>)` line with
+  unevaluable (`boundary-unevaluable:`, as the bare op's 3), 1 when it holds a `tail-deferred`
+  entry (`boundary-uncovered:`: a tail merged unread under `per_release` does not ship unread
+  once the policy goes back), else exit 0 whatever it found, the advice unchanged. Either way stdout adds a `boundary_review: <value> (read at <ref>)` line with
   the policy's note, and `--gate --json` adds `policy` (`{value, source, note}`) and `gate`
   (`{exit, code, message}`) to the keys above. The bare op's exits do not change.
   **`check-pr-hygiene [--json]`** (read-only; owner `lib/pr_gate.py`) answers over merge-base…HEAD of

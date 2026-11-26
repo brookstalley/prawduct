@@ -2570,12 +2570,15 @@ def _lane_eligibility(project_dir: Path, prawduct_dir: Path, plan, progress) -> 
         )
     # The shape read risk surfaces from this checkout, which the branch can
     # rewrite. The lane is a relaxation, so it also needs them untouched as the
-    # integration branch declares them, where the branch forked and at its tip.
+    # integration branch declares them, where the branch forked and at its tip:
+    # the repo's integration branch (`review_lane.integration_revs`), never only
+    # a stacked unit's own base, which an unmerged branch can rewrite.
     merge_base = coverage.integration_base(project_dir, base_branch).merge_base
-    if not merge_base:
-        return declined(f"no merge-base with {base_branch} resolves")
+    held_base, held_tip = review_lane.integration_revs(project_dir)
+    if not merge_base or not held_base:
+        return declined(f"no merge-base with {base_branch if not merge_base else held_tip} resolves")
     touched, why = risk.paths_touch_held_risk_surface(
-        project_dir, prawduct_dir, paths, (merge_base, base_branch)
+        project_dir, prawduct_dir, paths, (merge_base, base_branch, held_base, held_tip)
     )
     if touched:
         return declined(f"a changed path is a risk surface — {why}")

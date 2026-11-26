@@ -211,6 +211,51 @@ class TestTheReleaseDispatch:
         assert m["signals"].endswith(f" · Span: release from {anchor.commit[:12]}")
         assert "release batch review of main" in proc.stderr
 
+    def test_a_subject_only_owed_against_the_anchor_dispatches_and_says_what_to_rate(self, repo, tmp_path):
+        """Round 6 R-1 and native candidate 5: a pruned release withheld `w`, so the
+        span starts at `w`'s first parent; `w` changed `src/app.py`, which shipped,
+        and work after the anchor put it back. Across the interval nothing
+        judgeable changed, yet `src/app.py` differs from what the release shipped,
+        so both entries are owed and `release_subject` names it. The dispatch must
+        not refuse it as a free interval. R-3: the reviewer is told, on the
+        signals line it is handed, to rate it against the anchor, with the diff."""
+        _branch(repo, "w")
+        _commit(repo, {"src/app.py": "x = 'w'\n", **_fragment("w")}, "w")
+        merge = _merge(repo, "w")
+        anchor = _cut(repo, "v1.0.0")
+        head = _commit(repo, {"src/app.py": "x = 0\n"}, "put src/app.py back")
+        subject = bc.release_subject(repo, clean=True)
+        assert (subject.status, subject.start[0]) == (bc.RELEASE_OK, _git(repo, "rev-parse", f"{merge}^1"))
+        assert coverage_algebra.judgeable_files(subject.files) == ["src/app.py"]
+        proc = _begin_release(repo, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        m = _manifest(repo)
+        assert "src/app.py" in m["files_reviewed"] and m["judgeable_files"] == 1
+        assert (m["release_anchor"], m["files_since_anchor"]) == (anchor, ["src/app.py"])
+        rule = f"rate src/app.py against the release anchor {anchor[:12]}"
+        assert rule in m["signals"] and f"`git diff {anchor[:12]} {head[:12]} -- src/app.py`" in m["signals"]
+        assert rule in " ".join(proc.stderr.split()), proc.stderr
+
+    def test_a_renamed_file_s_old_path_is_not_sent_to_be_rated_against_the_anchor(self, repo, tmp_path):
+        """Native candidate 7: the subject reads renames off, so the interval does
+        too; with rename detection on, the old path read as unchanged across the
+        interval and the reviewer was told to rate a deleted file against the
+        anchor. Control: the subject still names both paths."""
+        _cut(repo, "v1.0.0")
+        _branch(repo, "mv")
+        _git(repo, "mv", "src/app.py", "src/moved.py")
+        _commit(repo, _fragment("mv"), "move app")
+        _merge(repo, "mv")
+        proc = _begin_release(repo, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert coverage_algebra.judgeable_files(bc.release_subject(repo, clean=True).files) == [
+            "src/app.py", "src/moved.py"]
+        m = _manifest(repo)
+        assert {"src/app.py", "src/moved.py"} <= set(m["files_changed"]), m["files_changed"]
+        assert {"src/app.py", "src/moved.py"} <= set(m["files_reviewed"]), m["files_reviewed"]
+        assert "files_since_anchor" not in m and "release anchor" not in m["signals"]
+        assert "differ from what the last release shipped" not in proc.stderr, proc.stderr
+
     def test_its_fact_is_never_an_edge_even_with_every_file_rated(self, repo, tmp_path):
         """Everything after the anchor is owed (no PR-covered merge), so the subject
         is every judgeable file and the fact would be a valid edge but for its span."""
@@ -255,6 +300,48 @@ class TestTheBatchCreditsWhatItRead:
         assert proc.returncode == 3, proc.stdout + proc.stderr
         assert "every release entry is already covered" in proc.stdout
 
+    def test_a_name_git_would_quote_is_rated_and_credited_by_its_raw_spelling(self, repo, tmp_path):
+        """Native review round 6, candidate 1: review facts hold raw names
+        (`evidence.tree_diff` reads `-z`), so every path list the release reads
+        must too. Read without `-z`, git C-quotes a non-ASCII name or one holding
+        `"`, the subject drops it, the batch rule never finds it rated, and the
+        release is held for good. A lane and a commit on the base, each with
+        such a name; the control (`src/plain.py`) is credited either way."""
+        _cut(repo, "v1.0.0")
+        base = _branch(repo, "odd")
+        _commit(repo, {"src/café.py": "c = 1\n", "src/plain.py": "p = 1\n", **_fragment("odd")}, "odd")
+        _review(repo, base, _tree(repo), CHUNK)
+        lane = _merge(repo, "odd")
+        direct = _commit(repo, {'src/q"x.py': "q = 1\n"}, "direct work on main")
+        proc = _begin_release(repo, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert sorted(_manifest(repo)["files_reviewed"]) == sorted(
+            ["src/café.py", "src/plain.py", 'src/q"x.py'])
+        fid = _consolidate(repo, tmp_path)
+        got = _coverage(repo, tmp_path)
+        for commit in (lane, direct):
+            assert got[commit]["classification"] == bc.BATCH_COVERED, got[commit]
+            assert fid in got[commit]["reason"]
+
+    def test_a_review_that_never_rated_a_quoted_name_is_not_credited_for_it(self, repo, tmp_path):
+        """The fail-open half of candidate 1: the batch rule asks only for files
+        still changed across the review's interval, which it reads off the
+        fact's raw `files_changed`. A C-quoted entry file matches none of them,
+        so it was never asked for, and a review that rated only `src/plain.py`
+        credited a merge that also changed `src/café.py`. Control: rating both
+        credits it."""
+        anchor_tree = _tree(repo, _cut(repo, "v1.0.0"))
+        base = _branch(repo, "odd")
+        _commit(repo, {"src/café.py": "c = 1\n", "src/plain.py": "p = 1\n", **_fragment("odd")}, "odd")
+        _review(repo, base, _tree(repo), CHUNK)
+        lane = _merge(repo, "odd")
+        _review(repo, anchor_tree, _tree(repo), CUMULATIVE, reviewed=["src/plain.py"],
+                extra={"span": "release"})
+        assert _coverage(repo, tmp_path)[lane]["classification"] == bc.INNER_ONLY
+        _review(repo, anchor_tree, _tree(repo), CUMULATIVE, reviewed=["src/plain.py", "src/café.py"],
+                extra={"span": "release"})
+        assert _coverage(repo, tmp_path)[lane]["classification"] == bc.BATCH_COVERED
+
     def test_a_merge_after_the_batch_review_is_not_credited_by_it(self, repo, tmp_path):
         _released(repo)
         assert _begin_release(repo, tmp_path).returncode == 0
@@ -293,12 +380,36 @@ class TestTheBatchCreditsWhatItRead:
         ghost = bc.Entry("ghost", bc.UNKNOWN, "no first-parent commit added its fragment")
         monkeypatch.setattr(bc, "classify_pending",
                             lambda _p: bc.Report("ok", base=real.base, entries=[*real.entries, ghost],
-                                                 anchor=real.anchor))
+                                                 anchor=real.anchor, line=real.line))
         subject = bc.release_subject(repo, clean=True)
         assert subject.status == bc.RELEASE_OK, subject.reason
         assert subject.uncreditable == [ghost]
         assert coverage_algebra.judgeable_files(subject.files) == ["src/a.py"]
         assert subject.start[0] == real.anchor.commit
+
+    def test_the_subject_is_read_off_the_classification_never_re_derived(self, repo, monkeypatch):
+        """Round 6 R-5: each owed entry's parents, what it brought onto the base
+        and the first-parent line have one home, the classification's report.
+        The subject asks git nothing about any entry's commit; the control is
+        the report it reads, which names them."""
+        shapes = _released(repo)
+        report = bc.classify_pending(repo)
+        owed = {e.commit for e in report.entries if e.classification not in bc.COVERED}
+        assert owed >= {shapes["a"], shapes["b"], shapes["direct"]}, "the control: owed entries exist"
+        monkeypatch.setattr(bc, "classify_pending", lambda _p: report)
+        asked: list = []
+        real = evidence.run_git
+
+        def recording(project_dir, *args, **kw):
+            asked.append(args)
+            return real(project_dir, *args, **kw)
+
+        monkeypatch.setattr(evidence, "run_git", recording)
+        subject = bc.release_subject(repo, clean=True)
+        assert subject.status == bc.RELEASE_OK, subject.reason
+        assert asked, "the subject still asks git where HEAD is"
+        named = [a for a in asked if owed & set(a) or "rev-list" in a]
+        assert not named, named
 
     def test_an_owed_entry_before_the_anchor_is_read_and_credited(self, repo, tmp_path):
         """A pruned release withheld `w`; a lane merged after the anchor is owed too.
@@ -545,6 +656,31 @@ class TestNoGateMoves:
         verdict = coverage_algebra.coverage_verdict(
             facts, t2, t2, lambda a, b: evidence.tree_diff(repo, a, b))
         assert verdict["status"] == "blocked", verdict
+
+    @pytest.mark.parametrize("anchored", ["release", "plain"])
+    def test_a_verify_pass_on_a_fix_branch_verifying_the_batch_holds_that_branch(
+            self, repo, anchored):
+        """Native review round 6, candidate 2: the excuse is for a branch FORKED
+        at the release-scoped review's tree, never for one passing through it. A
+        fix branch cut from the base's tip runs verify-resolutions against the
+        release batch review (so the pass is release-scoped), which records a
+        BLOCKING finding at the fix's tree T1; a doc-only commit T2 follows, a
+        free edge. A clean chunk review of the same interval gives the gate a
+        clean path (without one, the blocked edge's own guard already reads
+        blocked), merge-base → T1 → T2, and the blocker at T1 must count.
+        Control (`plain`): the same pass verifying an ordinary review."""
+        _cut(repo, "v1.0.0")
+        tip = _tree(repo)
+        verified = _review(repo, _tree(repo, "main~1"), tip, CUMULATIVE,
+                           extra={"span": "release"} if anchored == "release" else None)
+        _branch(repo, "fix/x")
+        _commit(repo, {"src/app.py": "x = 1\n"}, "the fix")
+        t1 = _tree(repo)
+        _review(repo, tip, t1, CHUNK)
+        _review(repo, tip, t1, VERIFY, blocking=True, extra={coverage_algebra.VERIFIES_KEY: verified})
+        _commit(repo, {"README.md": "docs\n"}, "a doc-only commit: a free edge")
+        assert not coverage_algebra.judgeable_files(evidence.tree_diff(repo, t1, _tree(repo)))
+        assert gates.branch_coverage_verdict(repo)["status"] == "blocked"
 
 
 # ---------------------------------------------------------------------------

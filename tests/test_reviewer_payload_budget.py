@@ -306,7 +306,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # Severity section gains the good-faith cap, net of in-place cuts (see its LAST_MEASURED_TOKENS
     # entry). Priced against the SUM: ~78 tokens per review against a WARNING or BLOCKING raised on
     # a bad-faith premise, each a fix round spent on a defense the owner ruled out.
-    "single-pass-inner": 5927,
+    # -13 on 2026-11-26 (boundary-review-per-release round 6, R-4): SKILL.md's exit-8 row says the
+    # `--chunks` line names all chunks under a `per-release lane` rationale, which the lane requires;
+    # paid in place by cutting step 4's gloss on what the live-review refusal names (stderr owns
+    # it). A READING; ceiling lowered with it.
+    "single-pass-inner": 5914,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -458,7 +462,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # Severity section gains the good-faith cap, net of in-place cuts (see its LAST_MEASURED_TOKENS
     # entry). Priced against the SUM: ~56 tokens per review against a WARNING or BLOCKING raised on
     # a bad-faith premise, each a fix round spent on a defense the owner ruled out.
-    "single-pass-full": 10316,
+    # -13 on 2026-11-26 (boundary-review-per-release round 6, R-4): SKILL.md's exit-8 row says the
+    # `--chunks` line names all chunks under a `per-release lane` rationale, which the lane requires;
+    # paid in place by cutting step 4's gloss on what the live-review refusal names (stderr owns
+    # it). A READING; ceiling lowered with it.
+    "single-pass-full": 10303,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -727,7 +735,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # Severity section gains the good-faith cap, net of in-place cuts (see its LAST_MEASURED_TOKENS
     # entry). Priced against the SUM: ~56 tokens per review against a WARNING or BLOCKING raised on
     # a bad-faith premise, each a fix round spent on a defense the owner ruled out.
-    "coordinator-fork": 10986,
+    # -13 on 2026-11-26 (boundary-review-per-release round 6, R-4): SKILL.md's exit-8 row says the
+    # `--chunks` line names all chunks under a `per-release lane` rationale, which the lane requires;
+    # paid in place by cutting step 4's gloss on what the live-review refusal names (stderr owns
+    # it). A READING; ceiling lowered with it.
+    "coordinator-fork": 10973,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -779,7 +791,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # Severity section gains the good-faith cap, net of in-place cuts (see its LAST_MEASURED_TOKENS
     # entry). Priced against the SUM: ~78 tokens per review against a WARNING or BLOCKING raised on
     # a bad-faith premise, each a fix round spent on a defense the owner ruled out.
-    "coordinator-fork-inner": 6597,
+    # -13 on 2026-11-26 (boundary-review-per-release round 6, R-4): SKILL.md's exit-8 row says the
+    # `--chunks` line names all chunks under a `per-release lane` rationale, which the lane requires;
+    # paid in place by cutting step 4's gloss on what the live-review refusal names (stderr owns
+    # it). A READING; ceiling lowered with it.
+    "coordinator-fork-inner": 6584,
     # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
     # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
@@ -821,11 +837,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5928,
-    "single-pass-full": 10317,
+    "single-pass-inner": 5915,
+    "single-pass-full": 10304,
     "dispatched-reviewer": 9776,
-    "coordinator-fork": 10987,
-    "coordinator-fork-inner": 6598,
+    "coordinator-fork": 10974,
+    "coordinator-fork-inner": 6585,
     "dispatched-reviewer-inner": 5387,
 }
 

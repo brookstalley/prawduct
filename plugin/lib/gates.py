@@ -4048,6 +4048,7 @@ def fix_tail_deferral(
     verdict_fn,
     *,
     tip: str = "HEAD",
+    base_tip: "str | None" = None,
     why: "list[str] | None" = None,
 ) -> "dict | None":
     """May the uncovered span ``base_tree`` → ``tip_tree`` merge now, its fix
@@ -4056,7 +4057,7 @@ def fix_tail_deferral(
     and the Stop gate ask it of a live branch (``tip`` is ``HEAD``; the Stop
     gate's ``tip_tree`` is the working tree), and the release's
     boundary-coverage op asks it of a merged branch (``tip`` is the merge's
-    second parent), so all three read one span one way.
+    second parent, ``base_tip`` its first), so all three read one span one way.
 
     A DEFERRAL, never coverage: nothing composes over the tail, and the release
     check reads it not covered (``tail-deferred``) until a release batch review
@@ -4064,8 +4065,9 @@ def fix_tail_deferral(
 
     1. **The policy is ``per_release``**, read where a governance change cannot
        supply its own authority: for a live branch
-       :func:`review_lane.boundary_review_policy` (the merge-base and the
-       working tree); for a merged one, both the merge-base and the tip.
+       :func:`review_lane.boundary_review_policy` (the merge-base with the
+       repo's integration branch, its tip, and the working tree); for a merged
+       one, the merge-base, the merge's first parent and the tip.
     2. **The tail is fix churn** by :func:`coverage.diagnose_fix_churn`: an
        anchor review taken on this branch after the merge-base, coverage
        composing base → anchor with no blocker, and every judgeable file of the
@@ -4079,7 +4081,8 @@ def fix_tail_deferral(
        BLOCKING finding never defers.
     4. **No tail path is a risk surface** (:func:`risk.paths_touch_held_risk_surface`,
        every path the tail changes, judgeable or not, against the surfaces this
-       checkout, the merge-base and the base's tip declare, so a branch cannot
+       checkout, the merge-base and the base's tip declare, the repo's
+       integration branch included for a stacked unit, so a branch cannot
        remove one): a tail on a risk surface still buys its verify round.
 
     Returns None when it does not defer, including whenever something could not
@@ -4094,7 +4097,7 @@ def fix_tail_deferral(
     """
     try:
         return _fix_tail_deferral(
-            project_dir, facts, base_tree, tip_tree, merge_base, verdict_fn, tip
+            project_dir, facts, base_tree, tip_tree, merge_base, verdict_fn, tip, base_tip
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a relaxation that cannot be evaluated relaxes nothing
         if why is not None:
@@ -4102,14 +4105,16 @@ def fix_tail_deferral(
         return None
 
 
-def _fix_tail_deferral(project_dir, facts, base_tree, tip_tree, merge_base, verdict_fn, tip):
+def _fix_tail_deferral(project_dir, facts, base_tree, tip_tree, merge_base, verdict_fn, tip,
+                       base_tip=None):
     """:func:`fix_tail_deferral`'s body, which may raise; see it for the contract."""
     from . import review_lane, risk  # noqa: PLC0415 — lazy: only a per_release repo reaches past condition 1
 
     if tip == "HEAD":
         if not review_lane.boundary_review_policy(project_dir).per_release:
             return None
-    elif not review_lane.boundary_review_policy_of_merge(project_dir, merge_base, tip).per_release:
+    elif not review_lane.boundary_review_policy_of_merge(project_dir, merge_base, tip,
+                                                         base_tip).per_release:
         return None
 
     churn = coverage.diagnose_fix_churn(
@@ -4143,9 +4148,12 @@ def _fix_tail_deferral(project_dir, facts, base_tree, tip_tree, merge_base, verd
     if tail is None:
         return None
     # Risk surfaces as the integration branch held them too (the merge-base,
-    # and the base's tip or the merged branch's tip), so a branch cannot
-    # rewrite its own surfaces to buy the deferral.
-    held_at = (merge_base, coverage._resolve_base_branch(project_dir)[0] if tip == "HEAD" else tip)
+    # and the base's tip or the merged branch's tip and the merge's first
+    # parent), so a branch cannot rewrite its own surfaces to buy the deferral.
+    # A live branch also reads the repo's integration branch, never only a
+    # stacked unit's own base, which an unmerged branch can rewrite.
+    held_at = ((merge_base, *review_lane.integration_revs(project_dir)) if tip == "HEAD"
+               else (merge_base, base_tip, tip))
     touched, _why = risk.paths_touch_held_risk_surface(
         project_dir, gitstate.get_prawduct_dir(project_dir), tail, held_at
     )

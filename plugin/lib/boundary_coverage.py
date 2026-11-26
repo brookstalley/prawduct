@@ -155,6 +155,10 @@ class Entry:
     source: str = ""
     #: The commit's parents, first parent first, as the classification read them.
     parents: list = field(default_factory=list, repr=False)
+    #: Every path the commit brought onto the base (its diff against its first
+    #: parent, raw names, renames off), set on a report's entries that name a
+    #: commit and its parents, for :func:`release_subject`; None when unread.
+    brought: "list | None" = field(default=None, repr=False)
 
     @property
     def label(self) -> str:
@@ -203,6 +207,9 @@ class Report:
     anchor: "Anchor | None" = None
     #: Why there is no anchor (so no walk), when there is none on an ``ok`` report.
     no_anchor_reason: "str | None" = None
+    #: ``(commit, tree)`` along the base's first-parent line, newest first, as
+    #: the classification read it; None when unread. Not serialised.
+    line: "list | None" = field(default=None, repr=False)
 
     def counts(self) -> dict:
         tally = {name: 0 for name in CLASSES}
@@ -283,6 +290,9 @@ class _Classifier:
         #: tree (:meth:`_shipping_at`); ``False`` until the anchor's tree is read.
         self._anchor_tree: "str | None | bool" = False
         self._shipping: dict = {}
+        #: Per first-parent commit, every path it brought onto the base (raw
+        #: names): the walk's log fills it, :meth:`brought` the rest.
+        self._brought: dict = {}
 
     def _shipping_at(self, head_tree: str) -> "set | None":
         """The paths that differ at ``head_tree`` from the release anchor's tree:
@@ -294,7 +304,8 @@ class _Classifier:
         if not self._anchor_tree:
             return None if self.anchor else set()
         if head_tree not in self._shipping:
-            self._shipping[head_tree] = _changed_since_either(self._git, (self._anchor_tree,), head_tree)
+            self._shipping[head_tree] = _changed_since_either(self.project_dir, (self._anchor_tree,),
+                                                              head_tree)
         return self._shipping[head_tree]
 
     def _git(self, *args: str) -> "str | None":
@@ -310,10 +321,19 @@ class _Classifier:
         return self._full_verdict(facts, base_tree, head_tree)["status"]
 
     def _judgeable(self, older: str, newer: str) -> "list[str] | None":
-        out = self._git("diff", "--name-only", "--no-renames", older, newer, "--")
-        if out is None:
+        changed = evidence.tree_diff(self.project_dir, older, newer, renames=False)
+        if changed is None:
             return None
-        return [p for p in out.splitlines() if p and coverage_algebra.is_judgeable_path(p)]
+        return [p for p in changed if coverage_algebra.is_judgeable_path(p)]
+
+    def brought(self, commit: str, first_parent: str) -> "list[str] | None":
+        """Every path ``commit`` brought onto the base, its diff against
+        ``first_parent`` (raw names, renames off): the walk's reading when it
+        listed the commit, else one diff; None when git could not answer."""
+        if commit not in self._brought:
+            self._brought[commit] = evidence.tree_diff(self.project_dir, first_parent, commit,
+                                                       renames=False)
+        return self._brought[commit]
 
     def first_parent(self) -> "list[tuple[str, str]] | None":
         """``(commit, tree)`` along the base's first-parent line, newest first."""
@@ -499,7 +519,7 @@ class _Classifier:
         deferral_why: list = []
         deferral = self._gates.fix_tail_deferral(
             self.project_dir, self.facts, span_base, span_head, merge_base,
-            self._full_verdict, tip=tip, why=deferral_why,
+            self._full_verdict, tip=tip, base_tip=first, why=deferral_why,
         )
         if deferral is not None:
             return Entry("", TAIL_DEFERRED, (
@@ -606,22 +626,17 @@ class _Classifier:
 
         One log reads every commit's parents, subject and changed paths. `-m` with
         `--first-parent` diffs a merge against its first parent, which is what the
-        merge brought onto the base."""
-        rc, out, _err = evidence.run_git(
-            self.project_dir, "log", "--first-parent", "-m", "--no-renames", "--name-only",
-            "--format=%x1e%H%x1f%P%x1f%s", f"{anchor}..{self.base}", "--",
-        )
-        if rc != 0:
+        merge brought onto the base. Every path it lists is remembered as what
+        the commit brought (:meth:`brought`)."""
+        records = _log_records(self.project_dir, "--first-parent", "-m", "--no-renames",
+                               "--format=%x1e%H%x1f%P%x1f%s", f"{anchor}..{self.base}", "--")
+        if records is None:
             return None
         found = []
-        for record in out.split("\x1e"):
-            head, _, names = record.partition("\n")
-            if not head.strip():
-                continue
+        for head, names in records:
             commit, parents, subject = (head.split("\x1f") + ["", ""])[:3]
-            changed = list(dict.fromkeys(
-                p for p in names.splitlines() if p and coverage_algebra.is_judgeable_path(p)
-            ))
+            self._brought.setdefault(commit, list(dict.fromkeys(names)))
+            changed = list(dict.fromkeys(p for p in names if coverage_algebra.is_judgeable_path(p)))
             if changed:
                 found.append((commit, parents.split(), subject, changed))
         found.reverse()
@@ -631,10 +646,11 @@ class _Classifier:
         """Judgeable files the merge's tree holds in a state neither parent had: the
         combined diff (`--cc`) lists exactly those. An unreadable answer counts as
         one, so the merge reads not covered rather than covered."""
-        out = self._git("diff-tree", "--cc", "--no-commit-id", "--name-only", "-r", commit)
-        if out is None:
+        rc, out, _err = evidence.run_git(self.project_dir, "diff-tree", "--cc", "--no-commit-id",
+                                         "--name-only", "-r", "-z", commit, strip=False)
+        if rc != 0:
             return ["<git could not read the merge's combined diff>"]
-        return [p for p in out.splitlines() if p and coverage_algebra.is_judgeable_path(p)]
+        return [p for p in out.split("\0") if p and coverage_algebra.is_judgeable_path(p)]
 
     def _boundary_split(self, merge_base: str, tip: str, span_base: str, span_head: str) -> bool:
         trees = self._git("log", "--format=%T", f"{merge_base}..{tip}")
@@ -788,7 +804,7 @@ class _Classifier:
                                  if e.commit and e.parents and e.parents[0] in position])
             if start is None:
                 return
-            differs = _changed_since_either(self._git, (start[1], anchor.tree), tip_tree)
+            differs = _changed_since_either(self.project_dir, (start[1], anchor.tree), tip_tree)
             if differs is None:
                 return
             at = (f"{start[0][:12]}, where the release span starts" if start[0] == anchor.commit
@@ -801,7 +817,9 @@ class _Classifier:
                 if entry.parents[0] not in position:
                     continue
                 if entry.commit not in files_of:
-                    files_of[entry.commit] = self._judgeable(entry.parents[0], entry.commit)
+                    brought = self.brought(entry.commit, entry.parents[0])
+                    files_of[entry.commit] = (None if brought is None else
+                                              [p for p in brought if coverage_algebra.is_judgeable_path(p)])
                 files = files_of[entry.commit]
                 if files is None or any(f in differs for f in files):
                     continue
@@ -818,9 +836,10 @@ class _Classifier:
                 return
 
 
-def _changed_since_either(git, olders, newer: str) -> "set | None":
-    """Every path that differs at ``newer`` from any of ``olders`` (trees or
-    commits); None when git could not answer one of the diffs.
+def _changed_since_either(project_dir: Path, olders, newer: str) -> "set | None":
+    """Every path that differs at ``newer`` from any of ``olders`` (full tree or
+    commit ids), raw names as review facts hold them (``evidence.tree_diff``,
+    renames off); None when git could not answer one of the diffs.
 
     The one reading of "nothing of it ships" (M15, owner ruling 2026-11-26,
     R-4): a file back at a span's start ships nothing only when it also matches
@@ -830,11 +849,33 @@ def _changed_since_either(git, olders, newer: str) -> "set | None":
     and :meth:`_Classifier._batch` (the batch rule's condition 2) all ask it."""
     changed: set = set()
     for older in dict.fromkeys(o for o in olders if o):
-        out = git("diff", "--name-only", "--no-renames", older, newer, "--")
-        if out is None:
+        diff = evidence.tree_diff(project_dir, older, newer, renames=False)
+        if diff is None:
             return None
-        changed.update(p for p in out.splitlines() if p)
+        changed.update(diff)
     return changed
+
+
+def _log_records(project_dir: Path, *args: str) -> "list[tuple[str, list]] | None":
+    """``(header, paths)`` for each commit ``git log --name-only -z <args>``
+    lists, in log order; None when git could not answer. ``args`` carry a
+    ``--format`` opening each record with ``%x1e``, and end with ``--`` and
+    any pathspec. Paths are RAW: without
+    ``-z`` git C-quotes a non-ASCII name or one holding ``"``, which then
+    matches no review fact's ``files_reviewed`` (``evidence.tree_diff`` reads
+    ``-z``), and a release holding such a file is held for good."""
+    rc, out, _err = evidence.run_git(project_dir, "log", "--name-only", "-z", *args, strip=False)
+    if rc != 0:
+        return None
+    records = []
+    for record in out.split("\x1e"):
+        head, sep, rest = record.partition("\0")
+        if not sep or not head.strip():
+            continue
+        # The header ends at its NUL; git separates it from the paths with one newline.
+        rest = rest[1:] if rest.startswith("\n") else rest
+        records.append((head, [p for p in rest.split("\0") if p]))
+    return records
 
 
 def _span_start(anchor: "Anchor", position: dict, tree_of, owed: list) -> "tuple | None":
@@ -919,8 +960,14 @@ def _classify_pending(project_dir: Path) -> Report:
             entries.append(entry)
             by_commit[commit] = entry
         classifier.credit_reverted(entries, anchor)
+    # What each entry brought onto the base, read once here (the walk's own log
+    # lists every walked commit's), so the release batch review's subject
+    # (:func:`release_subject`) is read off this report, never re-derived.
+    for entry in entries:
+        if entry.commit and entry.parents:
+            entry.brought = classifier.brought(entry.commit, entry.parents[0])
     return Report("ok", base=base, entries=entries, refusals=list(pending.refusals),
-                  anchor=anchor, no_anchor_reason=no_anchor)
+                  anchor=anchor, no_anchor_reason=no_anchor, line=classifier.first_parent())
 
 
 def _version_key(name: str) -> "tuple | None":
@@ -960,22 +1007,19 @@ def _one_merge_base(git, one: str, other: str) -> "str | None":
     return git("merge-base", "--octopus", *bases) or None
 
 
-def _release_file_records(git, base: str) -> "list[tuple[str, list, str]] | None":
+def _release_file_records(project_dir: Path, base: str) -> "list[tuple[str, list, str]] | None":
     """``(commit, parents, path)`` for each first-parent commit on ``base`` whose
     diff against its first parent adds a release file
     (``.prawduct/releases/<version>.md``), newest first; None when git could not
     answer. A merge is listed when its merged line brought the file in, too."""
-    out = git("log", "--first-parent", "-m", "--diff-filter=A", "--no-renames", "--name-only",
-              "--format=%x1e%H %P", base, "--", f"{consumer_digest.RELEASES_DIR_REL}/")
-    if out is None:
+    raw = _log_records(project_dir, "--first-parent", "-m", "--diff-filter=A", "--no-renames",
+                       "--format=%x1e%H %P", base, "--", f"{consumer_digest.RELEASES_DIR_REL}/")
+    if raw is None:
         return None
     records = []
-    for record in out.split("\x1e"):
-        head, _, names = record.strip().partition("\n")
-        if not head:
-            continue
+    for head, names in raw:
         commit, *parents = head.split()
-        for name in names.splitlines():
+        for name in names:
             parent, _, leaf = name.rpartition("/")
             if (parent == consumer_digest.RELEASES_DIR_REL and leaf.endswith(".md")
                     and _version_key(leaf[:-3]) is not None):
@@ -984,7 +1028,7 @@ def _release_file_records(git, base: str) -> "list[tuple[str, list, str]] | None
     return records
 
 
-def _release_file_candidate(git, base: str, line: dict) -> "tuple[str, str] | None":
+def _release_file_candidate(project_dir: Path, git, base: str, line: dict) -> "tuple[str, str] | None":
     """``(anchor commit, reason)`` from the release files, or None.
 
     A commit that adds the file itself is its own answer. A merge that brought the
@@ -994,7 +1038,7 @@ def _release_file_candidate(git, base: str, line: dict) -> "tuple[str, str] | No
     before the merge, so work the base took before the merge is walked. Of every
     record, the one whose answer is nearest the tip wins. Any git failure drops the
     candidate, and the other candidate is then the older or the same."""
-    records = _release_file_records(git, base)
+    records = _release_file_records(project_dir, base)
     if records is None:
         return None
     best = None  # (index on the line, commit, reason)
@@ -1135,7 +1179,7 @@ def _resolve_anchor(project_dir: Path, base: str) -> "tuple[Anchor | None, str |
         return None, f"git could not list the first-parent line of {base}"
     line = {sha: i for i, sha in enumerate(listed.split())}  # 0 is the tip
 
-    by_file = _release_file_candidate(git, base, line)
+    by_file = _release_file_candidate(project_dir, git, base, line)
     tag = None
     by_tag = None
     # The newest release tag RELATED to the base: one sharing no history with it
@@ -1324,10 +1368,6 @@ def release_subject(project_dir: Path, *, clean: bool) -> ReleaseSubject:
 
 
 def _release_subject(project_dir: Path, clean: bool) -> ReleaseSubject:
-    def git(*args: str) -> "str | None":
-        rc, out, _err = evidence.run_git(project_dir, *args)
-        return out.strip() if rc == 0 else None
-
     def refused(code: str, reason: str, **kw) -> ReleaseSubject:
         return ReleaseSubject(RELEASE_REFUSED, code, reason, **kw)
 
@@ -1351,44 +1391,45 @@ def _release_subject(project_dir: Path, clean: bool) -> ReleaseSubject:
         return ReleaseSubject(RELEASE_NO_REVIEW_NEEDED, RELEASE_NOTHING_OWED,
                               f"every release entry is already covered ({count_line(report)})",
                               base=base, anchor=anchor)
-    # Each owed entry's first parent on the base's first-parent line. An entry at
+    # Each owed entry's first parent on the base's first-parent line, both as
+    # the classification read them. An entry at
     # or before the anchor (a scope a pruned release withheld: merged before it,
     # still pending) moves the interval's start back to the oldest such parent,
     # so the review brackets it and the batch rule can credit it; a review that
     # started at the anchor never could, and the release would be held forever.
-    line = git("rev-list", "--first-parent", "HEAD")
-    if line is None:
+    # HEAD is the base's tip (:func:`integration_base_tip`), so the report's line
+    # is HEAD's.
+    if not report.line:
         return refused(RELEASE_UNEVALUABLE, f"git could not list {base}'s first-parent line",
                        base=base, anchor=anchor)
-    position = {sha: i for i, sha in enumerate(line.split())}  # 0 is the tip
+    position = {sha: i for i, (sha, _tree) in enumerate(report.line)}  # 0 is the tip
+    tree_of = dict(report.line)
     creditable: list = []
     uncreditable: list = []
     for entry in owed:
-        parents = (git("rev-list", "--parents", "-n", "1", entry.commit) or "").split()[1:] if entry.commit else []
-        if not parents or parents[0] not in position:
+        if not entry.commit or not entry.parents or entry.parents[0] not in position:
             uncreditable.append(entry)
             continue
-        creditable.append((entry, parents[0]))
-    start = _span_start(anchor, position, lambda c: git("rev-parse", f"{c}^{{tree}}"), creditable)
+        creditable.append((entry, entry.parents[0]))
+    start = _span_start(anchor, position, tree_of.get, creditable)
     if start is None:
         return refused(RELEASE_UNEVALUABLE, "git could not read the tree where the span would start",
                        base=base, anchor=anchor)
     # What still ships: a file back at the span start's content still differs
     # from what the last release shipped when work between that start and the
     # anchor changed it, so it is owed a read too (M15).
-    in_span = _changed_since_either(git, (start[1], anchor.tree), "HEAD")
+    in_span = _changed_since_either(project_dir, (start[1], anchor.tree), report.line[0][1])
     if in_span is None:
         return refused(RELEASE_UNEVALUABLE, f"git could not diff {start[0][:12]} or the release "
                                             f"anchor {anchor.commit[:12]} to HEAD",
                        base=base, anchor=anchor)
     files: list = []
-    for entry, parent in creditable:
+    for entry, _parent in creditable:
         # What the commit brought onto the base: its diff against its first parent.
-        changed = git("diff", "--name-only", "--no-renames", parent, entry.commit, "--")
-        if changed is None:
+        if entry.brought is None:
             return refused(RELEASE_UNEVALUABLE, f"git could not diff {entry.label}",
                            base=base, anchor=anchor)
-        files.extend(f for f in changed.splitlines() if f in in_span and f not in files)
+        files.extend(f for f in entry.brought if f in in_span and f not in files)
     if not coverage_algebra.judgeable_files(files):
         return refused(RELEASE_NO_SUBJECT, f"{len(owed)} release entr{'y' if len(owed) == 1 else 'ies'} "
                                            f"no boundary review covered ({', '.join(e.label for e in owed)}) "
@@ -1445,15 +1486,56 @@ class ReleaseGate:
         return {"exit": self.exit, "code": self.code, "message": self.message}
 
 
+#: The release gate's remedy: the release batch review, its derived dispatch, and
+#: its blockers' route. One home for both of :func:`release_gate`'s refusals.
+_REMEDY = (
+    "run the release batch review, `/prawduct:critic cumulative`, on {base}'s own "
+    "checkout at its tip with a clean tree, where its dispatch `prawduct-hook critic-begin "
+    "--mode cumulative` derives the release span (`prawduct-hook critic-begin --mode "
+    "cumulative --span release` is the explicit form); fix a blocker it raises on "
+    "{base} and clear it with `/prawduct:critic verify-resolutions` there; then re-run")
+
+
+def deferral_possible(project_dir: Path) -> bool:
+    """Could a commit the walk since the release anchor finds be ``tail-deferred``?
+    Only when ``per_release`` was declared on the base at the anchor or since
+    (``review_lane.per_release_since``): a deferral needs the policy at the
+    merge's first parent. With no anchor there is no walk, so False. Any read
+    that fails is True, so a ``per_pr`` release check classifies rather than
+    skips (``release_readiness``, with nothing release-pending)."""
+    from . import review_lane  # noqa: PLC0415 — lazy, as this module's other readers are
+
+    base, _why = coverage.repo_base_branch(project_dir)
+    if not base:
+        return True
+    anchor, _no = _resolve_anchor(project_dir, base)
+    return anchor is not None and review_lane.per_release_since(project_dir, base, anchor.commit)
+
+
+def held_tails(report: Report) -> tuple:
+    """The ``tail-deferred`` entries of an ``ok`` report: fix tails the PR gate
+    let merge unread under ``per_release``, which the release check holds
+    whatever the policy now (:func:`release_gate`), and which a plain
+    ``cumulative`` at the base's tip therefore reviews as the release batch
+    review under ``per_pr`` too (``critic_consolidate.begin_review``)."""
+    if report.status != "ok":
+        return ()
+    return tuple(e for e in report.entries if e.classification == TAIL_DEFERRED)
+
+
 def release_gate(report: Report, policy) -> ReleaseGate:
     """Does ``report`` hold the release, under ``policy``
     (``review_lane.release_policy``)? The one answer ``check-boundary-coverage
     --gate`` exits with and ``check-releasability`` refuses on (#1232).
 
-    Under ``per_pr`` it passes whatever the report found, the op staying advice,
-    but a report that could not be evaluated is exit 3, ``boundary-unevaluable``,
-    as the bare op's is: a pass would read as "every entry covered" off a
-    check that never ran. Under ``per_release`` it fails closed, in this order: a policy whose read
+    Under ``per_pr`` it passes whatever else the report found, the op staying
+    advice, but a report that could not be evaluated is exit 3,
+    ``boundary-unevaluable``, as the bare op's is: a pass would read as "every
+    entry covered" off a check that never ran. One entry still holds it there:
+    a fix tail the PR gate deferred under ``per_release`` (``tail-deferred``)
+    merged unread only because the base said so then, so going back to
+    ``per_pr`` does not ship it unread (:func:`held_tails`); exit 1,
+    ``boundary-uncovered``, whose remedy is the same release batch review. Under ``per_release`` it fails closed, in this order: a policy whose read
     failed (``policy.read_failed``: the value is this checkout's fallback, so the
     check cannot say which policy the merged PRs were judged under), a report
     that could not be evaluated, a pending fragment the pending set refused (it
@@ -1466,7 +1548,13 @@ def release_gate(report: Report, policy) -> ReleaseGate:
             return ReleaseGate(3, GATE_UNEVALUABLE, (
                 f"{GATE_UNEVALUABLE}: the release's boundary coverage could not be evaluated "
                 f"({report.reason}): fix what the reason names, then re-run"))
-        return ReleaseGate(0, "", "")
+        tails = held_tails(report)
+        if not tails:
+            return ReleaseGate(0, "", "")
+        return ReleaseGate(1, GATE_UNCOVERED, (
+            f"{GATE_UNCOVERED}: {len(tails)} fix tail(s) on {report.base} merged unread, deferred "
+            "under `boundary_review: per_release` to this release check, and `per_pr` does not ship "
+            f"them unread: {_REMEDY.format(base=report.base)}"), tails)
     held = "and `boundary_review: per_release` refuses a release its check cannot answer"
     if getattr(policy, "read_failed", False):
         return ReleaseGate(3, GATE_UNEVALUABLE, (
@@ -1502,11 +1590,7 @@ def release_gate(report: Report, policy) -> ReleaseGate:
         f"{GATE_UNCOVERED}: {len(owed)} of {len(report.entries)} release entr"
         f"{'y' if len(report.entries) == 1 else 'ies'} on {report.base} no boundary review "
         "covered, and `boundary_review: per_release` holds the release until one has read them: "
-        f"run the release batch review, `/prawduct:critic cumulative`, on {report.base}'s own "
-        "checkout at its tip with a clean tree, where its dispatch `prawduct-hook critic-begin "
-        "--mode cumulative` derives the release span (`prawduct-hook critic-begin --mode "
-        "cumulative --span release` is the explicit form); fix a blocker it raises on "
-        f"{report.base} and clear it with `/prawduct:critic verify-resolutions` there; then re-run")
+        + _REMEDY.format(base=report.base))
     if unreachable:
         message += (f". {', '.join(unreachable)} name no commit, so no review can credit "
                     f"{'it' if len(unreachable) == 1 else 'them'}: commit the fragment on "

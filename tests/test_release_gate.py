@@ -142,6 +142,7 @@ class TestTheGateExitTable:
     | per_release | no anchor | 3 boundary-unevaluable | 0 |
     | per_release | unevaluable / refused fragment | 3 boundary-unevaluable | 3 / 0 |
     | per_pr | answered, whatever it found | 0 | unchanged |
+    | per_pr | a tail deferred under per_release | 1 boundary-uncovered | unchanged |
     | per_pr | unevaluable | 3 boundary-unevaluable | 3 |"""
 
     def test_an_unreviewed_lane_merge_is_exit_1_naming_the_batch_review(self, tmp_path):
@@ -250,6 +251,29 @@ class TestTheGateExitTable:
         proc = _gate(repo, tmp_path)
         assert proc.returncode == 1, proc.stdout + proc.stderr
         assert "tail-deferred" in proc.stdout and _refusal(proc.stderr, bc.GATE_UNCOVERED)
+
+    def test_per_pr_still_refuses_a_tail_deferred_under_per_release(self, tmp_path):
+        """Native review round 6, candidate 3: a tail merged unreviewed only
+        because the base said per_release. The base then goes back to per_pr
+        (that PR tightens review, so nothing stops it), and the release would
+        ship the tail no review read. Under per_pr the release check still
+        refuses it, and its remedy, the release batch review, credits it."""
+        repo, merge = _tail_merged(tmp_path)
+        _git(repo, "tag", "v1.0.0", f"{merge}^1")
+        (repo / ".prawduct" / "changes").mkdir(parents=True, exist_ok=True)
+        _commit(repo, {".prawduct/project-state.yaml": "base_branch: main\nboundary_review: per_pr\n"},
+                "back to per_pr")
+        proc = _gate(repo, tmp_path)
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        line = _refusal(proc.stderr, bc.GATE_UNCOVERED)
+        assert "deferred under `boundary_review: per_release`" in line, line
+        assert "boundary_review: per_pr (read at main)" in proc.stdout
+        # The remedy reaches a pass: a plain cumulative at the tip derives the release span.
+        begun = _hook(repo, tmp_path, "critic-begin", "--mode", "cumulative")
+        assert begun.returncode == 0, begun.stdout + begun.stderr
+        assert _manifest(repo)["span"] == "release"
+        _consolidate(repo, tmp_path)
+        assert _gate(repo, tmp_path).returncode == 0
 
     def test_an_octopus_merge_is_owed_and_a_batch_review_credits_it(self, tmp_path):
         """Read branch by branch it is `unknown`, which nothing used to credit, so
@@ -463,7 +487,7 @@ class TestRevertedWork:
             "from lib import boundary_coverage as m\n"
             "_credit = m._Classifier.credit_reverted\n"
             "def credit(self, entries, anchor):\n"
-            "    self._judgeable = lambda older, newer: None\n"
+            "    self.brought = lambda commit, first_parent: None\n"
             "    return _credit(self, entries, anchor)\n"
             "m._Classifier.credit_reverted = credit\n"))
         assert proc.returncode == 1, proc.stdout + proc.stderr
@@ -583,6 +607,20 @@ class TestCheckReleasability:
         assert "tail-deferred" in err and _refusal(err, bc.GATE_UNCOVERED)
         assert "releasable:" not in out
 
+    def test_per_pr_a_tail_deferred_under_per_release_still_refuses(self, tmp_path, capsys, green_suite):
+        """Candidate 3 at check-releasability: nothing pending (the tail's branch
+        wrote no fragment), and the base has gone back to per_pr since the tail
+        merged. Per_release was in force since the release anchor, so the check
+        classifies, and refuses."""
+        repo, merge = _tail_merged(tmp_path)
+        _git(repo, "tag", "v1.0.0", f"{merge}^1")
+        (repo / ".prawduct" / "changes").mkdir(parents=True, exist_ok=True)
+        _commit(repo, {".prawduct/project-state.yaml": "base_branch: main\nboundary_review: per_pr\n"},
+                "back to per_pr")
+        rc, out, err = _releasability(repo, capsys)
+        assert rc == 1, out + err
+        assert "tail-deferred" in err and _refusal(err, bc.GATE_UNCOVERED)
+
     def test_a_policy_read_that_fails_refuses_and_names_the_failure(self, tmp_path, capsys, green_suite,
                                                                    monkeypatch):
         """W3: the release gate's fail-closed path for a crashed policy read. The
@@ -687,6 +725,27 @@ class TestTheDescriptionsAgree:
         (bullet,) = [ln for ln in protocol.splitlines() if ln.startswith("- **`cumulative`**")]
         assert "`Span: release from <commit>`" in bullet
         assert "A bounded or release cumulative's `files_context`" in protocol
+
+    def test_every_surface_says_per_pr_still_refuses_a_deferred_tail(self):
+        """Round 6 R-2 and candidate 3: under per_pr `--gate` exits 3 on an
+        unevaluable report and 1 on a `tail-deferred` entry, so no surface
+        describing the op may still say it exits 0 there whatever it found,
+        and each names the exception."""
+        for rel, text, says in (
+                ("project-state-keys.md", _key_section(), "a `tail-deferred` tail (merged unread under "
+                                                          "`per_release`) still refuses, exit 1"),
+                ("api-contract.md", _read(".prawduct/artifacts/api-contract.md"),
+                 "1 when it holds a `tail-deferred` entry"),
+                ("pr/SKILL.md", _read("plugin/skills/pr/SKILL.md"),
+                 "except a tail deferred under `per_release`, which still blocks (exit 1)"),
+                ("the fragment", _read(".prawduct/changes/boundary-review-per-release.md"),
+                 "1 on a `tail-deferred` tail")):
+            flat = " ".join(text.split())
+            for stale in ("(0 under `per_pr`, where both stay advice)", "it is advice: exit 0 whatever it found",
+                          "`per_pr` it exits 0 and the advice is unchanged",
+                          "as the bare op's 3), else exit 0 whatever it found"):
+                assert stale not in flat, (rel, stale)
+            assert says in flat, (rel, says)
 
     def test_no_surface_still_says_per_release_does_not_block(self):
         """Chunk 01's temporary wording, retired when this chunk made it false."""

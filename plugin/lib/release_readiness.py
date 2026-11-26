@@ -614,7 +614,7 @@ def _heading_first_warning(decl: consumer_digest.Declaration, read: consumer_dig
     ]
 
 
-def _boundary_coverage_lines(project_dir: Path) -> "list[tuple[str, bool]]":
+def _boundary_coverage_lines(project_dir: Path, report=None) -> "list[tuple[str, bool]]":
     """``(line, to_stderr)`` for check-releasability's boundary-coverage advice,
     the ``per_pr`` reading (:func:`_boundary_coverage_check` asks which applies).
 
@@ -623,11 +623,11 @@ def _boundary_coverage_lines(project_dir: Path) -> "list[tuple[str, bool]]":
     ``NOTE:`` per entry not covered (a scope, or a commit the walk since the release
     anchor found), and one when the op could not evaluate. NOTE is
     advice's prefix, and every line is advice: `check-boundary-coverage` is the
-    detail."""
+    detail. ``report`` is the classification when the caller already holds it."""
     from . import boundary_coverage  # noqa: PLC0415 — lazy: it imports the consolidator
 
     try:
-        report = boundary_coverage.classify_pending(project_dir)
+        report = report or boundary_coverage.classify_pending(project_dir)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice beside a release gate: any fault in it is reported as a NOTE and must never become the gate's exit
         return [(f"NOTE: boundary-coverage: could not evaluate — {type(exc).__name__}: {exc}.", True)]
     if report.status != "ok":
@@ -651,7 +651,8 @@ def _boundary_coverage_check(project_dir: Path, pending: bool) -> "tuple[list[tu
 
     Under ``per_pr`` (the policy ``review_lane.release_policy`` reads at the
     integration branch's tip) the lines are :func:`_boundary_coverage_lines`'
-    advice and nothing refuses. Under ``per_release`` the verdict is
+    advice, and only a fix tail deferred under ``per_release``
+    (``tail-deferred``) refuses, by ``boundary_coverage.release_gate``. Under ``per_release`` the verdict is
     ``boundary_coverage.release_gate``'s, the one ``check-boundary-coverage
     --gate`` exits with: an entry not covered refuses as
     ``boundary-uncovered:``, an answer it could not give (a missing release
@@ -660,13 +661,26 @@ def _boundary_coverage_check(project_dir: Path, pending: bool) -> "tuple[list[tu
     (``release_policy`` never raises; under a ``per_release`` checkout the
     gate then refuses as unevaluable), so this check and ``--gate`` agree.
     ``pending`` is whether anything is release-pending: under ``per_pr`` a
-    release with nothing pending prints no advice, so nothing is classified."""
+    release with nothing pending prints no advice, so nothing is classified
+    unless ``per_release`` was in force since the release anchor
+    (``boundary_coverage.deferral_possible``), when a deferred tail may be held."""
     from . import boundary_coverage, review_lane  # noqa: PLC0415 — lazy: they import the consolidator
 
     policy = review_lane.release_policy(project_dir)
     note = [(f"NOTE: boundary-coverage: {policy.note}.", True)] if policy.note else []
     if not policy.per_release:
-        return (_boundary_coverage_lines(project_dir) + note if pending else []), False
+        try:
+            if not pending and not boundary_coverage.deferral_possible(project_dir):
+                return [], False
+            report = boundary_coverage.classify_pending(project_dir)
+            gate = boundary_coverage.release_gate(report, policy)
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- per_pr advice beside a release gate: any fault in it is reported as a NOTE and must never become the gate's exit
+            return [(f"NOTE: boundary-coverage: could not evaluate — {type(exc).__name__}: {exc}.", True)] + note, False
+        lines = _boundary_coverage_lines(project_dir, report) + note if pending else []
+        if gate.exit == 1:
+            lines.append((f"{gate.message}.", True))
+            lines += [(f"  {e.label} is {e.classification} — {e.reason}", True) for e in gate.owed]
+        return lines, gate.exit == 1
     report = boundary_coverage.classify_pending(project_dir)
     gate = boundary_coverage.release_gate(report, policy)
     lines = [(f"  {boundary_coverage.count_line(report)}.", False)] if report.status == "ok" else []

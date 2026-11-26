@@ -481,8 +481,8 @@ tail after a blocker-free review may merge before a review reads it, deferred to
 check; a tail on a risk surface still buys its verify round. BLOCKING findings clear only through
 `verify-resolutions`, at either point.
 
-The value in force is the integration branch's: a PR needs it at both the merge-base and the
-branch's tip, the release check at the tip. So the branch that adds `per_release` is still judged
+The value in force is the repo's integration branch's, never a stacked unit's base: a PR needs
+it at both the merge-base and that branch's tip, the release check at the tip. So the branch that adds `per_release` is still judged
 `per_pr`, and so is one forked before the branch dropped it. A branch may drop it, never add it. Anything but exactly `per_release` (absent, null, a
 typo, another case) reads `per_pr`. A PR in a repo whose integration branch does not resolve is
 `per_pr`; the release check there takes this checkout's own value, the stricter reading for it.
@@ -493,7 +493,9 @@ never remove one.
 **The release check blocks.** `check-releasability` refuses a `per_release` release, nothing
 pending or not, with `boundary-uncovered:` while any entry `check-boundary-coverage` lists is not
 covered, and `boundary-unevaluable:` when it cannot answer; `check-boundary-coverage --gate` exits
-1 and 3 on the same verdict (0 under `per_pr`, where both stay advice). The route out of
+1 and 3 on the same verdict. Under `per_pr` both stay advice, except that `--gate` exits 3 on a
+report it could not evaluate, and a `tail-deferred` tail (merged unread under `per_release`) still
+refuses, exit 1. The route out of
 `boundary-uncovered` is the release batch review: `/prawduct:critic cumulative` on the integration
 branch's own checkout at its tip with a clean tree, where `critic-begin --mode cumulative` derives
 the release span (`--span release` is the explicit form). It rates what no boundary review read

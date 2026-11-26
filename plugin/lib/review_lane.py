@@ -15,6 +15,11 @@ release check ``per_release`` is the stricter one, so :func:`release_policy`
 lets a checkout's own ``per_release`` stand where the integration branch's tip
 cannot be read at all, or the read fails.
 
+The integration branch is the REPO's (``coverage.repo_base_branch``), never a
+stacked unit's own ``base:``: read at the unit's base, a branch adding
+``per_release`` unmerged would authorise every unit cut from it
+(:func:`integration_revs`, which the relaxations' held risk surfaces read too).
+
 Every combination of readings is made here, never by a caller: a live branch's
 PR (:func:`boundary_review_policy`), one revision (:func:`boundary_review_policy_at`),
 a merged branch (:func:`boundary_review_policy_of_merge`) and the release check
@@ -71,6 +76,22 @@ def _unknown_note(raw: str, where: str) -> str:
     )
 
 
+def integration_revs(project_dir: Path) -> "tuple[str | None, str | None]":
+    """``(merge-base, integration branch)``: where a relaxation reads what the
+    integration branch declares. The branch is ``coverage.repo_base_branch``'s,
+    the repo's, never a stacked unit's own ``base:`` (``_resolve_base_branch``),
+    which an unmerged branch can rewrite; the merge-base is
+    ``coverage.integration_base``'s, which refuses the ``HEAD~1`` fallback.
+    ``(None, branch)`` when no merge-base resolves, ``(None, None)`` with no
+    integration branch."""
+    from . import coverage  # noqa: PLC0415 — lazy, as coverage's own evidence imports are
+
+    base_ref, _why = coverage.repo_base_branch(Path(project_dir))
+    if not base_ref:
+        return None, None
+    return coverage.integration_base(Path(project_dir), base_ref).merge_base, base_ref
+
+
 def boundary_review_policy(project_dir: Path, base_ref: "str | None" = None) -> Policy:
     """The policy a branch's PR is judged under.
 
@@ -80,14 +101,16 @@ def boundary_review_policy(project_dir: Path, base_ref: "str | None" = None) -> 
     Each can only narrow: the merge-base stops a branch opting itself in, the
     tip stops a branch forked while the integration branch said ``per_release``
     keeping the lane after it went back to ``per_pr``, and the working tree lets
-    a branch opt out. ``base_ref`` is the caller's already-resolved base;
-    ``None`` resolves it here.
+    a branch opt out. The integration branch is the repo's
+    (:func:`integration_revs`), so a unit stacked on an unmerged branch cannot
+    take that branch's opt-in. ``base_ref`` names another one explicitly;
+    ``None`` reads the repo's.
     """
     from . import coverage  # noqa: PLC0415 — lazy, as coverage's own evidence imports are
 
     project_dir = Path(project_dir)
     if base_ref is None:
-        base_ref, _why = coverage._resolve_base_branch(project_dir)
+        base_ref, _why = coverage.repo_base_branch(project_dir)
     base = coverage.integration_base(project_dir, base_ref)
     on_base = _declared(base.state)
     # Read only where a merge-base resolved, so base_ref is a real integration
@@ -150,19 +173,48 @@ def boundary_review_policy_at(project_dir: Path, rev: str) -> Policy:
     return Policy(PER_PR, rev)
 
 
-def boundary_review_policy_of_merge(project_dir: Path, merge_base: str, tip: str) -> Policy:
+def boundary_review_policy_of_merge(project_dir: Path, merge_base: str, tip: str,
+                                    base_tip: "str | None" = None) -> Policy:
     """The policy a merged branch was judged under: :data:`PER_RELEASE` only when
-    both its merge-base and its tip declare it (each read by
+    its merge-base, its tip and ``base_tip`` (the merge's first parent: the
+    integration branch's tip the PR gate read) all declare it (each read by
     :func:`boundary_review_policy_at`), for a caller asking of a branch that has
     already merged, so the working tree has no say. The merge-base stops a branch
-    opting itself in; the tip lets it opt out. The note is the first revision's
-    that does not declare it."""
-    at_base = boundary_review_policy_at(project_dir, merge_base)
-    at_tip = boundary_review_policy_at(project_dir, tip)
-    if at_base.per_release and at_tip.per_release:
-        return Policy(PER_RELEASE, f"merge-base {merge_base[:12]} and tip {tip[:12]}")
-    refusing = at_tip if at_base.per_release else at_base
-    return Policy(PER_PR, refusing.source, refusing.note)
+    opting itself in; the tip lets it opt out; the base's tip is the one the live
+    PR gate also asked (:func:`boundary_review_policy`), so the two readings
+    agree. The note is the first revision's that does not declare it."""
+    revs = [merge_base, *([base_tip] if base_tip else []), tip]
+    for rev in revs:
+        at = boundary_review_policy_at(project_dir, rev)
+        if not at.per_release:
+            return Policy(PER_PR, at.source, at.note)
+    return Policy(PER_RELEASE, f"merge-base {merge_base[:12]}"
+                               + (f", the base's tip {base_tip[:12]}" if base_tip else "")
+                               + f" and tip {tip[:12]}")
+
+
+def per_release_since(project_dir: Path, base: str, since: str) -> bool:
+    """Was ``per_release`` declared on ``base``'s first-parent line at ``since``
+    or at any first-parent commit after it that changed ``project-state.yaml``?
+    The declaration at every commit in between is one of those, so False means
+    no merge since ``since`` was judged ``per_release`` by the PR gate, which
+    also asks the integration branch's tip. Any read that fails is True: the
+    caller then classifies rather than skips."""
+    from . import coverage, evidence  # noqa: PLC0415
+
+    rc, out, _err = evidence.run_git(
+        Path(project_dir), "log", "--first-parent", "--format=%H", f"{since}..{base}", "--",
+        ".prawduct/project-state.yaml",
+    )
+    if rc != 0:
+        return True
+    for rev in [since, *out.split()]:
+        text = coverage._state_in(Path(project_dir), rev)
+        if text is None and rev == since:
+            continue  # no state file at the release: nothing declared there
+        if _declared(text) == PER_RELEASE:
+            return True
+    return False
 
 
 def _working_declared(project_dir: Path) -> "str | None":

@@ -127,6 +127,24 @@ class TestReadFromTheIntegrationBranch:
         _git(repo, "merge", "-q", "--no-edit", "main")
         assert review_lane.boundary_review_policy(repo).per_release, "after the sync"
 
+    @pytest.mark.parametrize("main_declares", [False, True], ids=["stack-opts-in", "control"])
+    def test_a_stacked_unit_cannot_opt_in_through_its_unit_base(self, tmp_path, monkeypatch, main_declares):
+        """Native review round 6, candidate 4: a unit stacked on `stack` (its
+        plan's `base:`) used to read the policy at `stack`, so `stack` adding
+        `per_release` unmerged authorised every unit cut from it. A branch may
+        opt out of per_release, never in: the reading is at the repo's
+        integration branch. Control: main declaring it puts the stack in force."""
+        repo = _repo(tmp_path, OPT_IN if main_declares else "")
+        _git(repo, "checkout", "-q", "-b", "stack")
+        _commit(repo, OPT_IN, "stack opts in")
+        _feature(repo, OPT_IN + "other: 1\n")
+        monkeypatch.setattr(coverage, "_bound_plan_base", lambda _p: "stack")
+        assert coverage._resolve_base_branch(repo)[0] == "stack", "fixture: the unit's own base"
+        policy = review_lane.boundary_review_policy(repo)
+        assert policy.per_release is main_declares, policy
+        if not main_declares:
+            assert "cannot opt itself in" in policy.note, policy
+
     def test_an_explicit_base_ref_is_the_one_read(self, tmp_path):
         repo = _repo(tmp_path, "")
         _git(repo, "checkout", "-q", "-b", "develop")

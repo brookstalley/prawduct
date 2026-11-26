@@ -137,9 +137,9 @@ SPAN_RELEASE = coverage_algebra.RELEASE_SPAN
 SPAN_VALUES = frozenset({SPAN_BOUNDED, SPAN_FULL, SPAN_RELEASE})
 #: Said on every dispatch whose release span was derived rather than asked for.
 RELEASE_SPAN_DERIVED_NOTE = (
-    "this checkout is the integration base at its tip under `boundary_review: per_release`, "
-    "where a `cumulative` is the release batch review (`--span release` is derived here, "
-    "not needed)"
+    "this checkout is the integration base at its tip, and the release check reads a release "
+    "batch review here (`boundary_review: per_release`, or a fix tail deferred under it), so a "
+    "`cumulative` is that review (`--span release` is derived here, not needed)"
 )
 STAGE_OF_MODE = {
     "chunk": STAGE_INNER,
@@ -2520,7 +2520,20 @@ def signals_line(manifest: dict) -> str:
         line += " · Span: full"
     elif span == SPAN_RELEASE:
         line += f" · Span: release from {str(manifest.get('base_commit') or '?')[:12]}"
+        since = manifest.get("files_since_anchor")
+        if since:
+            line += "; " + since_anchor_rule(manifest.get("release_anchor"), manifest.get("head_commit"), since)
     return line
+
+
+def since_anchor_rule(anchor: "str | None", head: "str | None", files: "list[str]") -> str:
+    """The instruction for a release batch review's subject files that are back
+    at the span start's content but differ from the release anchor: what to
+    rate them against, with the exact diff. One home for the dispatch note and
+    the signals line every reviewer is handed."""
+    anchor, head = str(anchor or "?")[:12], str(head or "HEAD")[:12]
+    return (f"rate {', '.join(files)} against the release anchor {anchor}, not the span's "
+            f"start (`git diff {anchor} {head} -- {' '.join(files)}`)")
 
 
 def _dispatch_chunk_type(prawduct_dir: Path, lint: dict) -> "str | None":
@@ -4122,16 +4135,19 @@ def begin_review(
     # release; no model has to know to pass `--span release` for the remedy that
     # check names to reach it. The base-tip test is boundary_coverage's, the one
     # the release subject refuses off, so the two cannot disagree about where
-    # the release review runs. Only under `per_release` (the release check's own
-    # policy reader): under `per_pr` no gate reads a release batch review, so a
-    # derived one would be a refusal or a full review nothing uses, and the
-    # plain `cumulative` answers as it always did.
+    # the release review runs. Only where the release check reads one: under
+    # `per_release` (the release check's own policy reader), or under `per_pr`
+    # while it holds a fix tail deferred under `per_release`
+    # (`boundary_coverage.held_tails`). Elsewhere under `per_pr` no gate reads a
+    # release batch review, so a derived one would be a refusal or a full review
+    # nothing uses, and the plain `cumulative` answers as it always did.
     from . import boundary_coverage, review_lane  # noqa: PLC0415 — lazy; they import gates and the release readers
 
     span_derived = (
         mode_token == "cumulative" and span_request is None
         and boundary_coverage.integration_base_tip(project_dir).at_tip
-        and review_lane.release_policy(project_dir).per_release
+        and (review_lane.release_policy(project_dir).per_release
+             or bool(boundary_coverage.held_tails(boundary_coverage.classify_pending(project_dir))))
     )
     if span_derived:
         span_request = SPAN_RELEASE
@@ -4811,12 +4827,25 @@ def begin_review(
             f for f in (prior_body.get("files_oracle") or []) if isinstance(f, str)
         ]
 
-    files_changed = evidence.tree_diff(project_dir, base_tree, head_tree)
+    # A release batch review reads renames off, as its subject was read
+    # (`boundary_coverage.release_subject`): a renamed file is its old path and its
+    # new one there, so here too, or the old path reads as unchanged across the
+    # interval. Its fact is never an edge, so the edge check's rename reading is
+    # not asked of it.
+    files_changed = (evidence.tree_diff(project_dir, base_tree, head_tree) if release_files is None
+                     else evidence.tree_diff(project_dir, base_tree, head_tree, renames=False))
     if files_changed is None:
         return {
             "status": "error",
             "reason": f"cannot diff {base_tree[:12]}..{head_tree[:12]}",
         }
+    # What the dispatch's refusals judge. For a release batch review that is its
+    # subject too: a file back at the span start's content but not at the
+    # release anchor's shows no change across the interval and is still owed a
+    # read, and `release_subject` already decided there is one, so an interval
+    # with no judgeable change is no reason to refuse it.
+    since_anchor = [f for f in release_files or [] if f not in files_changed]
+    judged = files_changed + since_anchor
     if not files_changed and interval_origin == BASE_AT_HEAD_COVERED:
         # Nothing is unreviewed: the last blocker-free review covers HEAD, so the
         # coverage gate already composes this state and no review is owed. That
@@ -4847,7 +4876,7 @@ def begin_review(
             "notes": notes,
             "recorded": recorded,
         }
-    if not files_changed and mode_token != "verify-resolutions":
+    if not judged and mode_token != "verify-resolutions":
         return {
             "status": "error",
             "reason": (
@@ -4882,7 +4911,7 @@ def begin_review(
 
     if (
         not force
-        and not coverage_algebra.judgeable_files(files_changed)
+        and not coverage_algebra.judgeable_files(judged)
         and not pending_blocking
     ):
         # Record the firing. The norm this control ships under ("a control
@@ -4994,14 +5023,12 @@ def begin_review(
         # anchor (M15), shows no change across the interval: it is rated all the
         # same, against the anchor, and the note says so.
         files_reviewed = [f for f in files_changed if f in release_files]
-        since_anchor = [f for f in release_files if f not in files_changed]
         if since_anchor:
             files_reviewed += since_anchor
             notes.append(
-                f"{len(since_anchor)} subject file(s) ({', '.join(since_anchor)}) are back at "
-                f"{base_commit[:12]}'s content but differ from what the last release shipped: rate "
-                f"each against the release anchor (`git diff {subject.anchor.commit[:12]} HEAD -- "
-                f"{' '.join(since_anchor)}`)"
+                f"{len(since_anchor)} subject file(s) are back at {base_commit[:12]}'s content but "
+                "differ from what the last release shipped: "
+                + since_anchor_rule(subject.anchor.commit, head_commit, since_anchor)
             )
     if files_reviewed is None:
         files_reviewed = list(files_changed)
@@ -5042,8 +5069,10 @@ def begin_review(
             f for f in files_changed if f not in files_reviewed and f not in files_oracle
         ]
 
+    # `judged`: a release subject file owed only against the anchor is rated, so it
+    # counts toward the roster (a risk surface among them buys the coordinator).
     roster, roster_chosen_by = _derive_roster(
-        mode_token, files_changed, prawduct_dir, project_dir=project_dir, head_tree=head_tree
+        mode_token, judged, prawduct_dir, project_dir=project_dir, head_tree=head_tree
     )
     review_id = mint_review_id()
 
@@ -5257,6 +5286,11 @@ def begin_review(
         manifest["bounded_from"] = bounded_from
         manifest["span_reason"] = span_reason
         manifest["files_context"] = files_context
+    if since_anchor:
+        # Rated against the release anchor, not the interval's base; the signals
+        # line every reviewer is handed says so (`signals_line`).
+        manifest["release_anchor"] = subject.anchor.commit
+        manifest["files_since_anchor"] = since_anchor
     if verify_anchor is not None:
         # The review this verify pass anchored to, by id, so its fact says
         # which review it verifies. The interval's base tree cannot: another
@@ -5272,7 +5306,7 @@ def begin_review(
     from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
 
     manifest["stage"] = stage_of(mode_token)
-    manifest["judgeable_files"] = len(coverage_algebra.judgeable_files(files_changed))
+    manifest["judgeable_files"] = len(coverage_algebra.judgeable_files(judged))
     manifest["chunk_type"] = _dispatch_chunk_type(prawduct_dir, lint)
     # Rendered from the three fields above, so the coordinator copies a line
     # rather than composing one.
@@ -5823,6 +5857,8 @@ def validate_manifest(data) -> tuple[bool, str]:
     # same reason as the oracle: a reviewer walks it.
     if data.get("files_context") is not None and not _str_list(data.get("files_context")):
         return False, "'files_context' must be a list of non-empty strings or null"
+    if data.get("files_since_anchor") is not None and not _str_list(data.get("files_since_anchor")):
+        return False, "'files_since_anchor' must be a list of non-empty strings or null"
     # The chunks the review names and the code's proposal (ST8). Optional, as a
     # manifest restored from before the fields still consolidates (its fact then
     # carries the bare `chunk` it was written with, which
@@ -5850,7 +5886,7 @@ def validate_manifest(data) -> tuple[bool, str]:
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals", "dispatch_tree", "reviewer_model",
-                "bounded_from", "span_reason", coverage_algebra.VERIFIES_KEY):
+                "bounded_from", "span_reason", "release_anchor", coverage_algebra.VERIFIES_KEY):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"

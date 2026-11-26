@@ -7371,8 +7371,9 @@ def cmd_check_boundary_coverage(project_dir: Path, args: list[str] | None = None
     under ``per_release`` exit 1 when any entry is not covered
     (``boundary-uncovered``) and 3 when it could not answer, a missing release
     anchor included (``boundary-unevaluable``), each on stderr with its remedy;
-    under ``per_pr`` exit 0 whatever it found and 3 when the report could not
-    be evaluated, as the bare op, the advice unchanged. A gate that cannot answer
+    under ``per_pr`` exit 0 whatever else it found, 1 for a fix tail deferred
+    under ``per_release`` (``boundary_coverage.held_tails``), and 3 when the
+    report could not be evaluated, as the bare op. A gate that cannot answer
     (a failed policy read under a ``per_release`` checkout, or a fault in the
     verdict) is 3, never main()'s floor of 1. Either way it prints the
     policy it read and why, and ``--json`` adds ``policy`` and ``gate``."""
@@ -7410,7 +7411,7 @@ def cmd_check_boundary_coverage(project_dir: Path, args: list[str] | None = None
         read_at = f" (read at {policy.source})" if policy.source else ""
         print(f"boundary_review: {policy.value}{read_at}"
               + (f" — {policy.note}" if policy.note else "")
-              + ("" if policy.per_release else "; the release check does not block on this"))
+              + ("" if policy.per_release or gate.exit else "; the release check does not block on this"))
         if gate.message:
             print(gate.message, file=sys.stderr)
         return gate.exit

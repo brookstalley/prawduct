@@ -86,8 +86,9 @@ VERDICT_INPUT_KINDS = frozenset({"review", "resolution"})
 #: release``): anchor tree → the base's HEAD tree, rating only the files of the
 #: merges no boundary review read. Such a fact is never an edge
 #: (:func:`review_edges`); only :func:`batch_review_covers` credits it, and its
-#: blockers settle only a span ending at its head tree (:func:`_counts_at`), as
-#: do those of the verify passes that verify it (:func:`is_release_scoped`).
+#: blockers settle every span standing on its head tree but one forked there
+#: (:func:`_counts_at`), as do those of the verify passes that verify it
+#: (:func:`is_release_scoped`).
 RELEASE_SPAN = "release"
 
 
@@ -781,8 +782,8 @@ def review_edges(facts: list[dict]) -> list[dict]:
             # happens to be every judgeable file: its subject was chosen by the
             # release classification, not by the interval, and what credits it
             # is `batch_review_covers`, which is relax-only. Its findings still
-            # stand at its trees (`_unresolved_at_nodes`), for a span ending at its
-            # head tree (`_counts_at`), so it can block, never cover.
+            # stand at its trees (`_unresolved_at_nodes`), for any span but one
+            # forked at its head tree (`_counts_at`), so it can block, never cover.
             continue
         if src == dst:
             # Degenerate interval: contributes nothing to *connectivity* that
@@ -1024,19 +1025,22 @@ def _verify_anchor_id(facts: list[dict], nodes: "set[str]") -> "str | None":
     return newest
 
 
-def _counts_at(fact: dict, target: "str | None", reviews: "Callable[[], list[dict]]") -> bool:
-    """Does ``fact``'s blocker settle a span ending at ``target``?
+def _counts_at(fact: dict, base: "str | None", target: "str | None",
+               reviews: "Callable[[], list[dict]]") -> bool:
+    """Does ``fact``'s blocker settle the span ``base`` → ``target``?
 
     Every fact's does, except a release-scoped review's (:func:`is_release_scoped`:
-    the release batch review, or a verify pass verifying it) when the span ends
-    anywhere but the tree it reviewed. Such a review is taken on the integration
-    base, and its blocker says the base there is not fit to RELEASE: it is owed
-    by the release check (:func:`batch_review_blockers`, which counts it always)
-    and by the base at that tree, where the verify pass
-    that clears it composes to (its roll-call composes merge-base tree → the
-    tree it anchors on, which is this one). A feature branch forked at that tree
-    stands on it as its merge-base and ends at its own tip, so it is not held
-    for code it never touched.
+    the release batch review, or a verify pass verifying it) on a span that
+    STARTS at the tree it reviewed and ends anywhere else: a feature branch
+    forked there, which stands on it as its merge-base and is not held for code
+    it never touched. Such a review is taken for the release, and its blocker
+    says the tree is not fit to RELEASE: it is owed by the release check
+    (:func:`batch_review_blockers`, which counts it always) and by a span ending
+    at that tree, where the verify pass that clears it composes to (its
+    roll-call composes merge-base tree → the tree it anchors on, which is this
+    one). A span that merely passes through the tree, such as a fix branch whose
+    verify pass against the release batch review raised a blocker at the fix,
+    is carrying that tree's code, so it counts there.
 
     ``target`` ``None`` counts every fact: the release check's settlement.
     ``reviews`` gives the store's review facts, asked only for a fact that
@@ -1044,7 +1048,8 @@ def _counts_at(fact: dict, target: "str | None", reviews: "Callable[[], list[dic
     if target is None:
         return True
     body = fact.get("body") or {}
-    if body.get("head_tree") == target:
+    head = body.get("head_tree")
+    if head == target or head != base:
         return True
     if not is_release_batch(fact) and body.get(VERIFIES_KEY) is None:
         return True
@@ -1053,10 +1058,11 @@ def _counts_at(fact: dict, target: "str | None", reviews: "Callable[[], list[dic
 
 def _unresolved_at_nodes(
     facts: list[dict], resolved: set[tuple[str, str]], nodes: "set[str]",
-    target: "str | None" = None, *, at_nodes: "list[dict] | None" = None,
+    target: "str | None" = None, *, base: "str | None" = None,
+    at_nodes: "list[dict] | None" = None,
 ) -> list[dict]:
     """Every unresolved blocking finding recorded at a tree on the path, of the
-    facts whose blockers settle a span ending at ``target`` (:func:`_counts_at`).
+    facts whose blockers settle the span ``base`` → ``target`` (:func:`_counts_at`).
     ``at_nodes`` is :func:`_facts_at_nodes`' answer when the caller already
     holds it (a :class:`Settlement`'s index), in store order.
 
@@ -1088,7 +1094,7 @@ def _unresolved_at_nodes(
                 memo.append([f for f in facts if f.get("kind") == "review"])
             return memo[0]
 
-        at = [f for f in at if _counts_at(f, target, reviews)]
+        at = [f for f in at if _counts_at(f, base, target, reviews)]
     anchor = _verify_anchor_id(at, nodes)
     entries = []
     for fact in at:
@@ -1147,9 +1153,10 @@ def coverage_verdict(
     a blocker blocks either way.
 
     A release-scoped review's blocker (the release batch review's, or a verify
-    pass's verifying it: :func:`is_release_scoped`) settles only a span ending
-    at the tree it reviewed (:func:`_counts_at`): it gates the release check and
-    the base, never a branch built on top of that tree.
+    pass's verifying it: :func:`is_release_scoped`) settles every span standing
+    on the tree it reviewed except one starting there (:func:`_counts_at`): it
+    gates the release check, the base and a branch carrying that tree's code,
+    never a branch forked from it.
 
     A blocker the verdict does NOT list is not open, whatever its resolution
     facts say: one recorded at a tree no composed path stands on (a clean
@@ -1172,7 +1179,7 @@ def coverage_verdict(
     def _settle(path: list[dict]) -> dict:
         """``covered`` unless a tree on ``path`` still carries a blocker."""
         unresolved = _unresolved_at_nodes(
-            facts, resolved, _path_nodes(base_tree, path), target_tree
+            facts, resolved, _path_nodes(base_tree, path), target_tree, base=base_tree
         )
         if unresolved:
             return {"status": "blocked", "path": path, "unresolved": unresolved}
@@ -1358,7 +1365,8 @@ def excused_gap_verdict(
                     smallest = gap
                 continue
             path = forward[f] + [{"kind": "gap", **gap}] + backward[r]
-            unresolved = _unresolved_at_nodes(facts, resolved, _path_nodes(base_tree, path), target_tree)
+            unresolved = _unresolved_at_nodes(facts, resolved, _path_nodes(base_tree, path), target_tree,
+                                              base=base_tree)
             if not unresolved:
                 return {
                     "status": "covered", "path": _attribute_free_steps(path, diff_fn),

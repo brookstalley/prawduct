@@ -19,7 +19,9 @@ reader, `review_lane.boundary_review_policy`. A PR's policy is `per_release` onl
 with the integration branch, the integration branch's tip and the branch all say so, so the branch
 that adds `per_release` is still judged `per_pr` (a governance change cannot supply its own
 authority), and so is one forked before the integration branch went back to `per_pr`. A branch may
-drop the key, which is the stricter direction.
+drop the key, which is the stricter direction. The integration branch is the repo's, never a
+stacked unit's own `base:`, so a branch adding `per_release` unmerged authorises nothing cut from it;
+the lane and the fix-tail deferral read the held risk surfaces there too.
 The release check's reader reads it at the integration branch's tip. Anything but exactly
 `per_release` reads `per_pr`. The key is documented in `docs/project-state-keys.md` and hinted in
 the state template, and the NFR amendment is recorded beneath the clause, whose words stay as
@@ -130,7 +132,9 @@ review that answers it, and with `boundary-unevaluable:` when the check cannot a
 release anchor included. It asks on the no-pending path too, so work merged with no fragment
 cannot ship through "nothing to classify". `check-boundary-coverage --gate` exits 1 and 3 on the
 same verdict, prints the policy it read and why, and under `--json` adds `policy` and `gate`; under
-`per_pr` it exits 0 and the advice is unchanged, as is every exit of the bare op. Where the
+`per_pr` it exits 0 with the advice unchanged, as is every exit of the bare op, except 3 on a report
+it could not evaluate and 1 on a `tail-deferred` tail, which merged unread under `per_release` and
+so still refuses once the policy goes back. Where the
 integration branch's state cannot be read at all, a checkout declaring `per_release` is held to
 it, the stricter reading for a release. The PR skill's release guard runs `--gate` and stops on
 either refusal.
@@ -168,8 +172,10 @@ without a change fragment, so expect more entries and a count line that names th
 classes: `release-bookkeeping`, for a commit that changes only the files `release_version_files:`
 declared at your last release, and `reverted`, for owed work your integration branch has since
 put back as it was (`counts` gains both keys). A merge whose fix tail the PR gate deferred reads `tail-deferred`,
-not covered. Under `per_pr` neither command's exit code changes; `check-boundary-coverage --gate`
-is the blocking reading, exit 0 there unless the check could not evaluate (3, as the bare op).
+not covered. Under `per_pr` neither command's exit code changes, unless a fix tail was deferred
+while `per_release` was in force: both then refuse until the release batch review reads it.
+`check-boundary-coverage --gate` is the blocking reading, exit 0 there otherwise unless the check
+could not evaluate (3, as the bare op).
 
 `/prawduct:critic cumulative`, run on your integration branch's own checkout at its tip, reviews
 everything since your last release that no boundary review read, and `check-boundary-coverage` then reads that

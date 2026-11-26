@@ -309,6 +309,30 @@ class TestEachConditionFlipsItBack:
         # The per_pr short-plan deferral is unchanged: it still reads this checkout.
         assert _deferral(tmp_path).defers
 
+    @pytest.mark.parametrize("main_holds", [True, False], ids=["main-holds-it", "control"])
+    def test_a_stacked_unit_s_base_cannot_drop_a_surface_main_holds(self, tmp_path, monkeypatch, main_holds):
+        """Native review round 6, candidate 4: a unit stacked on `stack` (its
+        plan's `base:`), which rewrote `risk_surfaces: []` unmerged. The lane
+        reads the held surfaces at the repo's integration branch, never at the
+        unit's base. Control: main never declaring it, the stacked branch is in
+        the lane, so the fixture reaches eligibility."""
+        _lane_repo(tmp_path, state_extra="risk_surfaces:\n  - src/chunk_02.py\n" if main_holds else "")
+        _git(tmp_path, "checkout", "-q", "-b", "stack", "main")
+        _write(tmp_path, ".prawduct/project-state.yaml",
+               "base_branch: main\nrisk_surfaces: []\nboundary_review: per_release\n")
+        _commit(tmp_path, "chore: drop the risk surface")
+        _git(tmp_path, "checkout", "-q", "feature/lane")
+        _git(tmp_path, "rebase", "-q", "stack")
+        from lib import coverage  # noqa: PLC0415
+
+        monkeypatch.setattr(coverage, "_bound_plan_base", lambda _p: "stack")
+        lane = _eligibility(tmp_path)
+        if main_holds:
+            assert not lane.eligible, lane.reason
+            assert "src/chunk_02.py matched risk surface src/chunk_02.py" in lane.reason, lane.reason
+        else:
+            assert lane.eligible, lane.reason
+
     def test_a_risk_surface_renamed_away(self, tmp_path):
         """Native finding 3 (round 5): git's rename detection lists only the new
         path, so a branch moving a risk surface away read untouched and took the
@@ -771,6 +795,22 @@ class TestTheDeclinedLaneSaysWhy:
 # ---------------------------------------------------------------------------
 # One owner says which review is owed; no reader re-asks the lane
 # ---------------------------------------------------------------------------
+
+
+class TestTheExitEightRowAgreesWithTheLane:
+    def test_the_row_lets_a_lane_review_name_every_chunk_as_the_code_offers(self):
+        """Round 6 R-4: the lane's review must name every open built chunk, and
+        exit 8's refusal offers that line itself (`--chunks <all>` "if this
+        review is all of their work"); the SKILL's row said to name only the
+        chunk you built. The row now names the lane's case, as the code does."""
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        reason = critic_consolidate._chunks_ambiguous_reason(
+            SimpleNamespace(chunks=["01", "02"], evidence={}))
+        assert "`--chunks 01,02`" in reason and "`--chunks 01`" in reason, reason
+        skill = (ROOT / "skills" / "critic" / "SKILL.md").read_text(encoding="utf-8")
+        (row,) = [ln for ln in skill.splitlines() if ln.strip().startswith("| **8** |")]
+        assert "`per-release lane` rationale" in row and "never pass both" not in row, row
 
 
 class TestTheLaneHasOneAsker:

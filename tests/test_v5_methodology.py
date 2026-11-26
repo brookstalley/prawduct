@@ -1226,6 +1226,9 @@ LAST_MEASURED_TOKENS = {
     # -15 on 2026-11-26 (boundary-review-per-release): the release batch review's paragraph no
     # longer routes a merged branch's blocker through the verify pass, a route the owner's ruling
     # retired. A READING; ceiling unchanged.
+    # 0 on 2026-11-26 (boundary-review-per-release round 6, R-3): the manifest key list names
+    # `files_since_anchor`/`release_anchor`. Paid in place by cutting `dispatch_tree`'s gloss (its
+    # writer's comment owns it). A READING; ceiling unchanged.
     "skills/critic/review-cycle.md": 8242,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
@@ -1446,7 +1449,11 @@ LAST_MEASURED_TOKENS = {
     # step 5 a release cumulative's `files_context`. Paid in place by cutting the designer-handoff
     # step's "Inlined" aside (its own BEFORE `critic-begin` already says when it fires) and step
     # 4's "(base/head trees)" gloss (the manifest owns it). A READING; ceiling unchanged.
-    "skills/critic/SKILL.md": 3278,
+    # -13 on 2026-11-26 (boundary-review-per-release round 6, R-4): the exit-8 row says the
+    # `--chunks` line names all chunks under a `per-release lane` rationale. Paid in place by
+    # cutting step 4's gloss on what the live-review refusal names (its stderr owns it). A READING;
+    # ceiling lowered with it.
+    "skills/critic/SKILL.md": 3265,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -6630,7 +6637,8 @@ class TestCriticSkillRoutesByMode:
         # LOWERED 3232 -> 3226 (backlog-roi-wave2 Chunk 04, #723) with the reading — see LAST_MEASURED_TOKENS.
         # RAISED 3226 -> 3248 (chunk-plan-order Chunk 02, #1141): exit 8's row — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 3248 -> 3279 (credential-placeholders Chunk 02): exit 9's row — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3279, f"SKILL.md is ~{tokens} tokens, should be <3279"
+        # LOWERED 3279 -> 3266 (boundary-review-per-release round 6, R-4) with the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 3266, f"SKILL.md is ~{tokens} tokens, should be <3266"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

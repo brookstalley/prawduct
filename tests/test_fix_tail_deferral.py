@@ -234,6 +234,31 @@ class TestThePrGate:
         assert rc == 1 and _NOTE not in err, err
         assert "fix churn" in err  # it IS churn; only the held surface refused it
 
+    @pytest.mark.parametrize("main_holds", [True, False], ids=["main-holds-it", "control"])
+    def test_a_stacked_unit_s_base_cannot_drop_a_surface_main_holds(self, tmp_path, capsys, monkeypatch,
+                                                                   main_holds):
+        """Native review round 6, candidate 4, for the held risk surfaces: a unit
+        stacked on `stack` (its plan's `base:`), which rewrote `risk_surfaces: []`
+        unmerged. Read at `stack` (the merge-base with it and its tip) the surface
+        is gone, and the tail deferred; the integration branch still holds it,
+        so the tail buys its round. Control: with main never declaring it, the
+        same stacked tail defers, so the fixture reaches the deferral."""
+        state = "base_branch: main\nboundary_review: per_release\n"
+        repo = _repo(tmp_path, state_extra="risk_surfaces:\n  - feature.py\n" if main_holds else "")
+        _git(repo, "checkout", "-q", "-b", "stack", "main")
+        _commit(repo, ".prawduct/project-state.yaml", state + "risk_surfaces: []\n", "drop it")
+        _git(repo, "checkout", "-q", "feature")
+        _git(repo, "rebase", "-q", "stack")
+        monkeypatch.setattr(gates.coverage, "_bound_plan_base", lambda _p: "stack")
+        _review(repo, base_rev="stack")
+        _commit(repo, "feature.py", "y = 3  # addressed R-1\n", "fix the warning")
+        rc, out, err = _run_gate(repo, capsys)
+        if main_holds:
+            assert rc == 1 and _NOTE not in err, err
+            assert "fix churn" in err  # it IS churn; only the held surface refused it
+        else:
+            assert rc == 0 and _DEFERRED_OUT in out, out + err
+
     def test_a_tail_renaming_a_risk_surface_away_buys_its_verify_round(self, tmp_path, capsys):
         """Native finding 3 (round 5): with git's rename detection on, the tail's
         diff lists only the new path, so a surface renamed away read untouched
@@ -507,6 +532,20 @@ class TestTheReleaseOp:
     def test_per_pr_reads_uncovered(self, tmp_path):
         repo, merge = _merged(tmp_path, key=None)
         assert bc.classify_merge(repo, merge).classification == bc.UNCOVERED
+
+    def test_a_tail_merged_after_the_base_dropped_per_release_was_not_deferred(self, tmp_path):
+        """Native review round 6, candidate 6: the branch forked while main said
+        per_release and kept it, but main went back to per_pr before the merge,
+        so the live PR gate (which also reads the base's tip) did not defer the
+        tail. The merged reading asks the merge's first parent too, so the
+        release check does not name a deferral the PR gate never made."""
+        repo, _rid = _deferring(tmp_path)
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, ".prawduct/project-state.yaml", "base_branch: main\nboundary_review: per_pr\n",
+                "back to per_pr")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge feature", "feature")
+        entry = bc.classify_merge(repo, _git(repo, "rev-parse", "HEAD"))
+        assert entry.classification == bc.UNCOVERED, entry
 
     def test_a_merged_tail_with_an_open_blocker_reads_uncovered(self, tmp_path):
         repo = _repo(tmp_path)
