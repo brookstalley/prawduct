@@ -338,7 +338,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   file, one entry per commit. The anchor is the nearer the tip of the newest first-parent commit
   adding `.prawduct/releases/<version>.md` and the oldest first-parent commit containing the
   merge-base of the base and the newest version tag (so a tag on a promotion merge the base never
-  contains still anchors); with neither, no commit is walked and the report says so.
+  contains still anchors); a candidate reached through a merge's second parent (a back-merge) anchors on
+  the base's own commit that release shipped, never the merge; with neither, no commit is walked and
+  the report says so.
   Classes: `no-judgeable`, `pr-covered`, `pr-transferred`, `batch-covered`, `release-bookkeeping`,
   `inner-only`, `tail-deferred`, `uncovered`, `direct` or `unknown`, each with its reason.
   `batch-covered` is a commit (merge or single-parent) a boundary review on the base credits by
@@ -348,18 +350,20 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   free edges compose to; a `critic-begin --span release` review is credited only this way.
   `tail-deferred` (not covered) is a fix tail the PR gate deferred to the release. `pr-transferred` is a branch that synced
   its base after its PR's boundary review and that the PR gate passed by its base-advance transfer:
-  the op reads the grant the PR gate recorded (`gates.recorded_transfer_grant`), or, with none,
+  the op reads the grant recorded for exactly that span (`gates.recorded_transfer_grant`: the PR gate's,
+  or the Stop gate's when one record serves both), or, with none,
   re-decides with the gate's own function (`gates.base_advance_transfer`) over the branch's suite
   runs. It counts as covered and is named in the count line. Grants and suite runs are clone-local
   (not in `evidence.TRANSPORTED_KINDS`), so in another clone the same merge can read `uncovered`,
-  with a reason saying so. `release-bookkeeping` (covered) is a single-parent commit whose judgeable changes
-  are all paths `release_version_files:` declares at its parent; the undeclared fallback never
-  qualifies. The human form marks each entry not counted as covered
+  with a reason saying so. `release-bookkeeping` (covered) is a single-parent commit after the anchor whose
+  judgeable changes are all paths `release_version_files:` declared at the anchor; the undeclared
+  fallback never qualifies. The human form marks each entry not counted as covered
   `[not covered]`, names the anchor, and ends with a count line naming its denominator and the anchor. Exit 0
   whenever it answered, whatever it found; 2 on an unknown argument; 3 when it could not evaluate.
   `--json` keys: `status` (`ok` | `unevaluable`), `base`, `reason` (`null` when `ok`), `counts` (one
   key per classification), `entries[]{scope, classification, reason, commit, subject, source}`
-  (`source`: `fragment`, `walk` or `both`; a walked commit no fragment names has an empty `scope`;
+  (`source`: `fragment`, `walk` or `both`, or `walk-failed` on the one `unknown` entry standing
+  for a walk git could not run, with no commit; a walked commit no fragment names has an empty `scope`;
   two fragments one merge added share one entry, scopes joined by `, `), `anchor` (`{commit, tree,
   source, reason}`, `source` `release-file` | `tag`, or `null`), `no_anchor_reason` (why there is
   none, else `null`) and `refusals[]` (fragments the pending set refused, which are not classified).

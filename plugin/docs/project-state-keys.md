@@ -479,9 +479,9 @@ tail after a blocker-free review may merge before a review reads it, deferred to
 check; a tail on a risk surface still buys its verify round. BLOCKING findings clear only through
 `verify-resolutions`, at either point.
 
-The value in force is the integration branch's: a PR reads it at the merge-base, the release check
-at the branch's tip. So the branch that adds `per_release` is still judged `per_pr`. A branch may
-drop it, the stricter policy, never add it. Anything but exactly `per_release` (absent, null, a
+The value in force is the integration branch's: a PR needs it at both the merge-base and the
+branch's tip, the release check at the tip. So the branch that adds `per_release` is still judged
+`per_pr`, and so is one forked before the branch dropped it. A branch may drop it, never add it. Anything but exactly `per_release` (absent, null, a
 typo, another case) reads `per_pr`, as does a repo whose integration branch does not resolve.
 
 Until the release batch review and the blocking release check ship, `per_release` is read and
