@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/session_start.py\"",
+            "statusMessage": "Prawduct: experimental session briefing",
+            "additionalContextLimit": 5000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/stop.py\"",
+            "statusMessage": "Prawduct: experimental reflection check"
+          }
+        ]
+      }
+    ]
+  }
+}
